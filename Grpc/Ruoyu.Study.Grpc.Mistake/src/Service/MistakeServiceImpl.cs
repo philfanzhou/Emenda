@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Mapster;
@@ -31,13 +32,13 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> DeleteMistake(IdRequest request, ServerCallContext context)
     {
-        var success = await _mistakeService.DeleteMistakeAsync(request.Id);
+        var success = await _mistakeService.DeleteMistakeAsync(Guid.Parse(request.Id));
         return new BoolResponse { Success = success };
     }
 
     public override async Task<MistakeDto> GetMistake(GetMistakeRequest request, ServerCallContext context)
     {
-        var mistake = await _mistakeService.GetMistakeAsync(request.MistakeId);
+        var mistake = await _mistakeService.GetMistakeAsync(Guid.Parse(request.MistakeId));
         if (mistake == null || mistake.StudentId != request.StudentId)
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Mistake not found"));
@@ -77,7 +78,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             ? request.Images.Select(b => b.ToByteArray()).ToList()
             : null;
 
-        var success = await _mistakeService.UpdateMistakeAsync(request.MistakeId, entity =>
+        var success = await _mistakeService.UpdateMistakeAsync(Guid.Parse(request.MistakeId), entity =>
         {
             entity.Content = request.Content;
             entity.CorrectAnswer = request.CorrectAnswer;
@@ -91,7 +92,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> MarkMistakeProcessed(IdRequest request, ServerCallContext context)
     {
-        var success = await _mistakeService.MarkMistakeProcessedAsync(request.Id);
+        var success = await _mistakeService.MarkMistakeProcessedAsync(Guid.Parse(request.Id));
         return new BoolResponse { Success = success };
     }
 
@@ -110,7 +111,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<MistakePracticeListResponse> GetMistakePractices(IdRequest request, ServerCallContext context)
     {
-        var practices = await _mistakeService.GetPracticesAsync(request.Id);
+        var practices = await _mistakeService.GetPracticesAsync(Guid.Parse(request.Id));
         var response = new MistakePracticeListResponse();
         response.Practices.AddRange(practices.Adapt<MistakePracticeDto[]>());
         return response;
@@ -129,7 +130,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     public override async Task<BoolResponse> LogMistakeProcess(LogMistakeProcessRequest request, ServerCallContext context)
     {
         var success = await _mistakeService.LogMistakeProcessAsync(
-            request.MistakeId,
+            Guid.Parse(request.MistakeId),
             request.StudentId,
             request.Action,
             request.Details);
@@ -139,7 +140,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<ProcessLogListResponse> GetMistakeProcessHistory(IdRequest request, ServerCallContext context)
     {
-        var logs = await _mistakeService.GetMistakeProcessHistoryAsync(request.Id);
+        var logs = await _mistakeService.GetMistakeProcessHistoryAsync(Guid.Parse(request.Id));
         var response = new ProcessLogListResponse();
         response.Logs.AddRange(logs.Adapt<ProcessLogDto[]>());
         return response;

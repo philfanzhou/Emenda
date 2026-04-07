@@ -23,7 +23,7 @@ public class MistakeDomainService
 
     public async Task<MistakeEntity> UploadMistakeAsync(MistakeEntity mistake, List<byte[]> images)
     {
-        mistake.Id = Guid.NewGuid().ToString();
+        mistake.Id = Guid.NewGuid();
         mistake.CreatedAt = DateTime.UtcNow;
         mistake.Status = (int)MistakeStatus.Pending;
 
@@ -37,7 +37,7 @@ public class MistakeDomainService
                 var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
                 imagePaths.Add(path);
             }
-            mistake.ImagePathList = imagePaths;
+            mistake.ImagePaths = imagePaths;
         }
 
         _dbContext.Mistakes.Add(mistake);
@@ -45,7 +45,7 @@ public class MistakeDomainService
         // Record process log
         var processLog = new ProcessLogEntity
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = Guid.NewGuid(),
             MistakeId = mistake.Id,
             Action = (int)ProcessAction.Created,
             Details = "Student uploaded mistake",
@@ -57,7 +57,7 @@ public class MistakeDomainService
         return mistake;
     }
 
-    public async Task<bool> DeleteMistakeAsync(string id)
+    public async Task<bool> DeleteMistakeAsync(Guid id)
     {
         var mistake = await _dbContext.Mistakes.FindAsync(id);
         if (mistake == null) return false;
@@ -66,9 +66,9 @@ public class MistakeDomainService
         if (mistake.Status != (int)MistakeStatus.Pending) return false;
 
         // Delete images from MinIO
-        if (!string.IsNullOrEmpty(mistake.ImagePaths))
+        if (mistake.ImagePaths.Count > 0)
         {
-            var imagePaths = mistake.ImagePathList;
+            var imagePaths = mistake.ImagePaths;
             if (imagePaths.Count > 0)
             {
                 await _ossService.DeleteManyAsync(imagePaths);
@@ -80,12 +80,12 @@ public class MistakeDomainService
         return true;
     }
 
-    public async Task<MistakeEntity?> GetMistakeAsync(string id)
+    public async Task<MistakeEntity?> GetMistakeAsync(Guid id)
     {
         return await _dbContext.Mistakes.FindAsync(id);
     }
 
-    public async Task<bool> UpdateMistakeAsync(string id, Action<MistakeEntity> updateAction, List<byte[]>? images = null)
+    public async Task<bool> UpdateMistakeAsync(Guid id, Action<MistakeEntity> updateAction, List<byte[]>? images = null)
     {
         var mistake = await _dbContext.Mistakes.FindAsync(id);
         if (mistake == null) return false;
@@ -93,9 +93,9 @@ public class MistakeDomainService
         // Delete old images if new images are provided
         if (images != null && images.Count > 0)
         {
-            if (!string.IsNullOrEmpty(mistake.ImagePaths))
+            if (mistake.ImagePaths.Count > 0)
             {
-                var oldPaths = mistake.ImagePathList;
+                var oldPaths = mistake.ImagePaths;
                 if (oldPaths.Count > 0)
                 {
                     await _ossService.DeleteManyAsync(oldPaths);
@@ -110,7 +110,7 @@ public class MistakeDomainService
                 var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
                 imagePaths.Add(path);
             }
-            mistake.ImagePathList = imagePaths;
+            mistake.ImagePaths = imagePaths;
         }
 
         updateAction(mistake);
@@ -119,7 +119,7 @@ public class MistakeDomainService
         return true;
     }
 
-    public async Task<bool> MarkMistakeProcessedAsync(string id)
+    public async Task<bool> MarkMistakeProcessedAsync(Guid id)
     {
         var mistake = await _dbContext.Mistakes.FindAsync(id);
         if (mistake == null) return false;
@@ -130,7 +130,7 @@ public class MistakeDomainService
         // Record process log
         var processLog = new ProcessLogEntity
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = Guid.NewGuid(),
             MistakeId = mistake.Id,
             Action = (int)ProcessAction.Analyzed,
             Details = "Mistake marked as processed",
@@ -168,7 +168,7 @@ public class MistakeDomainService
 
     public async Task<MistakePracticeEntity> AddPracticeAsync(MistakePracticeEntity practice, List<byte[]>? images = null)
     {
-        practice.Id = Guid.NewGuid().ToString();
+        practice.Id = Guid.NewGuid();
         practice.PracticeDate = DateTime.UtcNow;
 
         // Upload images to MinIO
@@ -181,7 +181,7 @@ public class MistakeDomainService
                 var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
                 imagePaths.Add(path);
             }
-            practice.ImagePathList = imagePaths;
+            practice.ImagePaths = imagePaths;
         }
 
         _dbContext.MistakePractices.Add(practice);
@@ -189,7 +189,7 @@ public class MistakeDomainService
         // Record process log
         var processLog = new ProcessLogEntity
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = Guid.NewGuid(),
             MistakeId = practice.MistakeId,
             Action = (int)ProcessAction.Practiced,
             Details = "Student practiced mistake",
@@ -201,7 +201,7 @@ public class MistakeDomainService
         return practice;
     }
 
-    public async Task<List<MistakePracticeEntity>> GetPracticesAsync(string mistakeId)
+    public async Task<List<MistakePracticeEntity>> GetPracticesAsync(Guid mistakeId)
     {
         return await _dbContext.MistakePractices
             .Where(p => p.MistakeId == mistakeId)
@@ -222,7 +222,7 @@ public class MistakeDomainService
         {
             var processLog = new ProcessLogEntity
             {
-                Id = Guid.NewGuid().ToString(),
+                Id = Guid.NewGuid(),
                 MistakeId = mistake.Id,
                 Action = (int)ProcessAction.Analyzed,
                 Details = $"Mistake analyzed as {typeName}",
@@ -240,14 +240,14 @@ public class MistakeDomainService
         };
     }
 
-    public async Task<bool> LogMistakeProcessAsync(string mistakeId, string studentId, ProcessAction action, string details)
+    public async Task<bool> LogMistakeProcessAsync(Guid mistakeId, string studentId, ProcessAction action, string details)
     {
         var mistake = await _dbContext.Mistakes.FindAsync(mistakeId);
         if (mistake == null) return false;
 
         var processLog = new ProcessLogEntity
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = Guid.NewGuid(),
             MistakeId = mistakeId,
             Action = (int)action,
             Details = details,
@@ -258,7 +258,7 @@ public class MistakeDomainService
         return true;
     }
 
-    public async Task<List<ProcessLogEntity>> GetMistakeProcessHistoryAsync(string mistakeId)
+    public async Task<List<ProcessLogEntity>> GetMistakeProcessHistoryAsync(Guid mistakeId)
     {
         return await _dbContext.ProcessLogs
             .Where(p => p.MistakeId == mistakeId)

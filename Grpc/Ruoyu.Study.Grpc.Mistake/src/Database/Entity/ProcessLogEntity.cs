@@ -9,11 +9,11 @@ public class ProcessLogEntity
 {
     [Key]
     [Column("id")]
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public Guid Id { get; set; } = Guid.NewGuid();
 
     [Column("mistake_id")]
     [Required]
-    public string MistakeId { get; set; } = string.Empty;
+    public Guid MistakeId { get; set; } = Guid.Empty;
 
     [Column("action")]
     public int Action { get; set; }

@@ -10,11 +10,11 @@ public class MistakePracticeEntity
 {
     [Key]
     [Column("id")]
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public Guid Id { get; set; } = Guid.NewGuid();
 
     [Column("mistake_id")]
     [Required]
-    public string MistakeId { get; set; } = string.Empty;
+    public Guid MistakeId { get; set; } = Guid.Empty;
 
     [Column("student_id")]
     [Required]
@@ -24,7 +24,7 @@ public class MistakePracticeEntity
     public DateTime PracticeDate { get; set; } = DateTime.UtcNow;
 
     [Column("image_paths")]
-    public string? ImagePaths { get; set; }
+    public List<string> ImagePaths { get; set; } = new();
 
     [Column("student_answer")]
     public string? StudentAnswer { get; set; }
@@ -37,14 +37,4 @@ public class MistakePracticeEntity
 
     [ForeignKey("MistakeId")]
     public virtual MistakeEntity Mistake { get; set; } = null!;
-
-    // Helper property for domain service - EF Core uses HasConversion for storage
-    [NotMapped]
-    public List<string> ImagePathList
-    {
-        get => string.IsNullOrEmpty(ImagePaths)
-            ? new List<string>()
-            : System.Text.Json.JsonSerializer.Deserialize<List<string>>(ImagePaths) ?? new List<string>();
-        set => ImagePaths = System.Text.Json.JsonSerializer.Serialize(value);
-    }
 }

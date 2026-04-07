@@ -8,12 +8,12 @@
 ```sql
 -- mistake 错题表
 mistake (
-    id              VARCHAR(36) PRIMARY KEY,
+    id              UUID PRIMARY KEY,
     student_id      VARCHAR(36) NOT NULL,
     subject         INT NOT NULL,
     grade           INT NOT NULL,
     date            TIMESTAMP WITH TIME ZONE NOT NULL,
-    image_paths     TEXT,             -- 错题原图路径，JSON数组
+    image_paths     JSONB,             -- 错题原图路径，JSON数组（EF Core 8 原生支持）
     content         TEXT,
     correct_answer  VARCHAR(500),
     student_answer  VARCHAR(500),
@@ -27,11 +27,11 @@ mistake (
 
 -- mistake_practice 错题重答与举一反三表
 mistake_practice (
-    id              VARCHAR(36) PRIMARY KEY,
-    mistake_id      VARCHAR(36) NOT NULL REFERENCES mistake(id) ON DELETE CASCADE,
+    id              UUID PRIMARY KEY,
+    mistake_id      UUID NOT NULL REFERENCES mistake(id) ON DELETE CASCADE,
     student_id      VARCHAR(36) NOT NULL,
     practice_date   TIMESTAMP WITH TIME ZONE NOT NULL,
-    image_paths     TEXT,             -- 学生重答上传的图片，JSON数组
+    image_paths     JSONB,             -- 学生重答上传的图片，JSON数组（EF Core 8 原生支持）
     student_answer  TEXT,
     is_correct      BOOLEAN NOT NULL,
     comments        TEXT
@@ -39,8 +39,8 @@ mistake_practice (
 
 -- process_log 错题处理日志表
 process_log (
-    id              VARCHAR(36) PRIMARY KEY,
-    mistake_id      VARCHAR(36) NOT NULL REFERENCES mistake(id) ON DELETE CASCADE,
+    id              UUID PRIMARY KEY,
+    mistake_id      UUID NOT NULL REFERENCES mistake(id) ON DELETE CASCADE,
     action          INT NOT NULL,
     details         TEXT,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL

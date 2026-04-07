@@ -10,7 +10,7 @@ public class MistakeEntity
 {
     [Key]
     [Column("id")]
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public Guid Id { get; set; } = Guid.NewGuid();
 
     [Column("student_id")]
     [Required]
@@ -26,7 +26,7 @@ public class MistakeEntity
     public DateTime Date { get; set; }
 
     [Column("image_paths")]
-    public string? ImagePaths { get; set; }
+    public List<string> ImagePaths { get; set; } = new();
 
     [Column("content")]
     public string? Content { get; set; }
@@ -56,14 +56,4 @@ public class MistakeEntity
 
     [Column("updated_at")]
     public DateTime? UpdatedAt { get; set; }
-
-    // Helper property for domain service - EF Core uses HasConversion for storage
-    [NotMapped]
-    public List<string> ImagePathList
-    {
-        get => string.IsNullOrEmpty(ImagePaths)
-            ? new List<string>()
-            : System.Text.Json.JsonSerializer.Deserialize<List<string>>(ImagePaths) ?? new List<string>();
-        set => ImagePaths = System.Text.Json.JsonSerializer.Serialize(value);
-    }
 }
