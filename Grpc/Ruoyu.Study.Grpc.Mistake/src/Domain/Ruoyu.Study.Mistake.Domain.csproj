@@ -5,6 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Contract\Ruoyu.Study.Mistake.Contract.csproj" />
     <ProjectReference Include="..\Database\Ruoyu.Study.Mistake.Database.csproj" />
   </ItemGroup>
 

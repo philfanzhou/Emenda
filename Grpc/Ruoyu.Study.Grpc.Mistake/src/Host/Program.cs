@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Mistake.Database;
+using Ruoyu.Study.Mistake.Database.Oss;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service;
 
@@ -9,6 +10,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddGrpc();
 builder.Services.AddDbContext<MistakeDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+// Register MinIO OSS service
+var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
+builder.Services.AddSingleton<IOssService>(new MinioOssService(
+    ossOptions.Endpoint,
+    ossOptions.AccessKey,
+    ossOptions.SecretKey,
+    ossOptions.BucketName));
 
 builder.Services.AddScoped<MistakeDomainService>();
 

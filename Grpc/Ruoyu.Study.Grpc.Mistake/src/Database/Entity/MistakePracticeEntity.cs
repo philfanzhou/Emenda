@@ -38,6 +38,7 @@ public class MistakePracticeEntity
     [ForeignKey("MistakeId")]
     public virtual MistakeEntity Mistake { get; set; } = null!;
 
+    // Helper property for domain service - EF Core uses HasConversion for storage
     [NotMapped]
     public List<string> ImagePathList
     {

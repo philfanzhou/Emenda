@@ -49,7 +49,7 @@ public class MistakeEntity
     public string? Comments { get; set; }
 
     [Column("status")]
-    public int Status { get; set; } // 1: PENDING, 2: PROCESSED
+    public int Status { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -57,6 +57,7 @@ public class MistakeEntity
     [Column("updated_at")]
     public DateTime? UpdatedAt { get; set; }
 
+    // Helper property for domain service - EF Core uses HasConversion for storage
     [NotMapped]
     public List<string> ImagePathList
     {

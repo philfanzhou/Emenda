@@ -19,7 +19,13 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     public override async Task<MistakeDto> UploadMistake(UploadMistakeRequest request, ServerCallContext context)
     {
         var entity = request.Adapt<MistakeEntity>();
-        var result = await _mistakeService.UploadMistakeAsync(entity);
+
+        // Convert image bytes to list
+        var images = request.Images?.Count > 0
+            ? request.Images.Select(b => b.ToByteArray()).ToList()
+            : null;
+
+        var result = await _mistakeService.UploadMistakeAsync(entity, images);
         return result.Adapt<MistakeDto>();
     }
 
@@ -66,6 +72,11 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> UpdateMistake(UpdateMistakeRequest request, ServerCallContext context)
     {
+        // Convert image bytes to list
+        var images = request.Images?.Count > 0
+            ? request.Images.Select(b => b.ToByteArray()).ToList()
+            : null;
+
         var success = await _mistakeService.UpdateMistakeAsync(request.MistakeId, entity =>
         {
             entity.Content = request.Content;
@@ -73,7 +84,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             entity.StudentAnswer = request.StudentAnswer;
             entity.Comments = request.Comments;
             entity.QuestionId = request.QuestionId;
-        });
+        }, images);
 
         return new BoolResponse { Success = success };
     }
@@ -86,8 +97,14 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<MistakePracticeDto> AddMistakePractice(AddMistakePracticeRequest request, ServerCallContext context)
     {
-        var practice = request.Adapt<MistakePracticeEntity>();
-        var result = await _mistakeService.AddPracticeAsync(practice);
+        var entity = request.Adapt<MistakePracticeEntity>();
+
+        // Convert image bytes to list
+        var images = request.Images?.Count > 0
+            ? request.Images.Select(b => b.ToByteArray()).ToList()
+            : null;
+
+        var result = await _mistakeService.AddPracticeAsync(entity, images);
         return result.Adapt<MistakePracticeDto>();
     }
 
@@ -96,6 +113,35 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         var practices = await _mistakeService.GetPracticesAsync(request.Id);
         var response = new MistakePracticeListResponse();
         response.Practices.AddRange(practices.Adapt<MistakePracticeDto[]>());
+        return response;
+    }
+
+    public override async Task<MistakeTypeResponse> AnalyzeMistakeType(AnalyzeMistakeRequest request, ServerCallContext context)
+    {
+        var result = await _mistakeService.AnalyzeMistakeTypeAsync(
+            request.Content,
+            request.CorrectAnswer,
+            request.StudentAnswer);
+
+        return result;
+    }
+
+    public override async Task<BoolResponse> LogMistakeProcess(LogMistakeProcessRequest request, ServerCallContext context)
+    {
+        var success = await _mistakeService.LogMistakeProcessAsync(
+            request.MistakeId,
+            request.StudentId,
+            request.Action,
+            request.Details);
+
+        return new BoolResponse { Success = success };
+    }
+
+    public override async Task<ProcessLogListResponse> GetMistakeProcessHistory(IdRequest request, ServerCallContext context)
+    {
+        var logs = await _mistakeService.GetMistakeProcessHistoryAsync(request.Id);
+        var response = new ProcessLogListResponse();
+        response.Logs.AddRange(logs.Adapt<ProcessLogDto[]>());
         return response;
     }
 }
