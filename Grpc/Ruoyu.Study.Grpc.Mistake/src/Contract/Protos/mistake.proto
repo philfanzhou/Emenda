@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package ruoyu.study.mistake.v1;
+
+import "Protos/mistake.common.proto";
+
+option csharp_namespace = "Ruoyu.Study.Mistake.Contract.Protos";
+
+// ========== 错题本服务 ==========
+service MistakeGrpcService {
+  // === 错题管理 ===
+  rpc UploadMistake(UploadMistakeRequest) returns (MistakeDto);  // 学生上传错题
+  rpc UpdateMistake(UpdateMistakeRequest) returns (BoolResponse); // 教师/系统完善错题
+  rpc DeleteMistake(IdRequest) returns (BoolResponse); // 删除错题（仅PENDING状态）
+  rpc GetMistake(GetMistakeRequest) returns (MistakeDto);
+  rpc GetMistakeList(GetMistakeListRequest) returns (MistakePageResult);
+  rpc MarkMistakeProcessed(IdRequest) returns (BoolResponse); // 教师/系统标记为已处理
+
+  // === 错题重答与举一反三 ===
+  rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
+  rpc GetMistakePractices(IdRequest) returns (MistakePracticeListResponse);
+
+  // === 错题分析 ===
+  rpc AnalyzeMistakeType(AnalyzeMistakeRequest) returns (MistakeTypeResponse);
+  rpc LogMistakeProcess(LogMistakeProcessRequest) returns (BoolResponse);
+  rpc GetMistakeProcessHistory(IdRequest) returns (ProcessLogListResponse);
+}
+
+// ========== 错题请求 ==========
+message UploadMistakeRequest {
+  string student_id = 1;
+  int32 subject = 2;
+  int32 grade = 3;
+  repeated bytes images = 4;   // 错题原图
+  string content = 5;
+  string correct_answer = 6;
+  string student_answer = 7;
+  string comments = 8;
+  string question_id = 9;      // 若已知，关联题库
+}
+
+message UpdateMistakeRequest {
+  string mistake_id = 1;
+  string content = 2;
+  string correct_answer = 3;
+  string student_answer = 4;
+  string comments = 5;
+  repeated bytes images = 6;
+  string question_id = 7;
+}
+
+message GetMistakeRequest {
+  string mistake_id = 1;
+  string student_id = 2;
+}
+
+message GetMistakeListRequest {
+  string student_id = 1;
+  int32 subject = 2;
+  int32 grade = 3;
+  MistakeType type = 4;
+  int32 page = 5;
+  int32 size = 6;
+  string start_date = 7;
+  string end_date = 8;
+  MistakeStatus status = 9;
+}
+
+// ========== 重答请求 ==========
+message AddMistakePracticeRequest {
+  string mistake_id = 1;
+  string student_id = 2;
+  repeated bytes images = 3;
+  string student_answer = 4;
+  bool is_correct = 5;
+  string comments = 6;
+}
+
+message MistakePracticeListResponse {
+  repeated MistakePracticeDto practices = 1;
+}
+
+// ========== 分析请求 ==========
+message AnalyzeMistakeRequest {
+  string mistake_id = 1;
+  string content = 2;
+  string correct_answer = 3;
+  string student_answer = 4;
+}
+
+message MistakeTypeResponse {
+  MistakeType type = 1;
+  string type_name = 2;
+  string analysis_reason = 3;
+}
+
+message LogMistakeProcessRequest {
+  string mistake_id = 1;
+  string student_id = 2;
+  ProcessAction action = 3;
+  string details = 4;
+}
+
+message ProcessLogListResponse {
+  repeated ProcessLogDto logs = 1;
+}

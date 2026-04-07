@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package ruoyu.study.mistake.v1;
+
+option csharp_namespace = "Ruoyu.Study.Mistake.Contract.Protos";
+
+// ========== 通用枚举 ==========
+enum MistakeType {
+  MISTAKE_TYPE_UNSPECIFIED = 0;
+  MISTAKE_TYPE_COMPREHENSION = 1;  // 理解错误
+  MISTAKE_TYPE_CALCULATION = 2;    // 计算错误
+  MISTAKE_TYPE_MEMORY = 3;         // 记忆错误
+  MISTAKE_TYPE_CONCEPT = 4;        // 概念混淆
+  MISTAKE_TYPE_OTHER = 5;          // 其他
+}
+
+enum ProcessAction {
+  PROCESS_ACTION_UNSPECIFIED = 0;
+  PROCESS_ACTION_CREATED = 1;
+  PROCESS_ACTION_ANALYZED = 2;
+  PROCESS_ACTION_PRACTICED = 3;
+  PROCESS_ACTION_MASTERED = 4;
+}
+
+enum MistakeStatus {
+  MISTAKE_STATUS_UNSPECIFIED = 0;
+  MISTAKE_STATUS_PENDING = 1;    // 未处理（学生上传，可以删除）
+  MISTAKE_STATUS_PROCESSED = 2;  // 已处理（系统或教师判定有效，不可删除）
+}
+
+// ========== 通用请求/响应 ==========
+message IdRequest {
+  string id = 1;
+}
+
+message BoolResponse {
+  bool success = 1;
+  optional string error_message = 2;
+}
+
+message PageMeta {
+  int32 page = 1;
+  int32 size = 2;
+  int32 total_count = 3;
+  int32 total_pages = 4;
+}
+
+// ========== 错题 DTO ==========
+message MistakeDto {
+  string id = 1;
+  string student_id = 2;
+  int32 subject = 3;
+  int32 grade = 4;
+  string date = 5;
+  repeated string image_paths = 6;      // 原图路径列表 (JSON array)
+  string content = 7;
+  string correct_answer = 8;
+  string student_answer = 9;
+  MistakeType type = 10;
+  string question_id = 11;              // 关联题库中的QuestionId
+  string comments = 12;
+  MistakeStatus status = 13;            // 错题状态
+}
+
+// ========== 错题练习记录 DTO ==========
+message MistakePracticeDto {
+  string id = 1;
+  string mistake_id = 2;
+  string student_id = 3;
+  string practice_date = 4;
+  repeated string image_paths = 5;      // 重答/举一反三的图片路径
+  string student_answer = 6;
+  bool is_correct = 7;
+  string comments = 8;
+}
+
+// ========== 列表响应 ==========
+message MistakeDtoList {
+  repeated MistakeDto mistakes = 1;
+}
+
+// ========== 分页响应 ==========
+message MistakePageResult {
+  repeated MistakeDto items = 1;
+  PageMeta page_meta = 2;
+}
+
+message ProcessLogDto {
+  string id = 1;
+  string mistake_id = 2;
+  ProcessAction action = 3;
+  string details = 4;
+  string created_at = 5;
+}

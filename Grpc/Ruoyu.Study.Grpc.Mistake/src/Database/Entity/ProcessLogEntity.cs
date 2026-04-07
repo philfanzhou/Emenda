@@ -1,0 +1,29 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Ruoyu.Study.Mistake.Database.Entity;
+
+[Table("process_log")]
+public class ProcessLogEntity
+{
+    [Key]
+    [Column("id")]
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+
+    [Column("mistake_id")]
+    [Required]
+    public string MistakeId { get; set; } = string.Empty;
+
+    [Column("action")]
+    public int Action { get; set; }
+
+    [Column("details")]
+    public string? Details { get; set; }
+
+    [Column("created_at")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    [ForeignKey("MistakeId")]
+    public virtual MistakeEntity Mistake { get; set; } = null!;
+}
