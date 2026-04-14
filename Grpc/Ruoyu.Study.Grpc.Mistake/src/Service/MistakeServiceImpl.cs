@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using Grpc.Core;
 using Mapster;
 using Ruoyu.Study.Mistake.Contract.Protos;
-using Ruoyu.Study.Mistake.Database.Entity;
+using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 
 namespace Ruoyu.Study.Mistake.Service;
@@ -19,7 +19,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<MistakeDto> UploadMistake(UploadMistakeRequest request, ServerCallContext context)
     {
-        var entity = request.Adapt<MistakeEntity>();
+        var entity = request.Adapt<MistakeModel>();
 
         // Convert image bytes to list
         var images = request.Images?.Count > 0
@@ -96,9 +96,27 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return new BoolResponse { Success = success };
     }
 
+    public override async Task<BoolResponse> SplitMistake(SplitMistakeRequest request, ServerCallContext context)
+    {
+        var newMistakes = new List<(MistakeModel mistake, List<byte[]>? images)>();
+
+        foreach (var req in request.NewMistakes)
+        {
+            var entity = req.Adapt<MistakeModel>();
+            var images = req.Images?.Count > 0
+                ? req.Images.Select(b => b.ToByteArray()).ToList()
+                : null;
+            
+            newMistakes.Add((entity, images));
+        }
+
+        var success = await _mistakeService.SplitMistakeAsync(Guid.Parse(request.OriginalMistakeId), newMistakes);
+        return new BoolResponse { Success = success };
+    }
+
     public override async Task<MistakePracticeDto> AddMistakePractice(AddMistakePracticeRequest request, ServerCallContext context)
     {
-        var entity = request.Adapt<MistakePracticeEntity>();
+        var entity = request.Adapt<MistakePracticeModel>();
 
         // Convert image bytes to list
         var images = request.Images?.Count > 0
@@ -120,6 +138,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     public override async Task<MistakeTypeResponse> AnalyzeMistakeType(AnalyzeMistakeRequest request, ServerCallContext context)
     {
         var result = await _mistakeService.AnalyzeMistakeTypeAsync(
+            Guid.Parse(request.MistakeId),
             request.Content,
             request.CorrectAnswer,
             request.StudentAnswer);
@@ -146,3 +165,4 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return response;
     }
 }
+

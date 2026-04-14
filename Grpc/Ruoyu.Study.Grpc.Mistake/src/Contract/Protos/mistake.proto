@@ -15,6 +15,7 @@ service MistakeGrpcService {
   rpc GetMistake(GetMistakeRequest) returns (MistakeDto);
   rpc GetMistakeList(GetMistakeListRequest) returns (MistakePageResult);
   rpc MarkMistakeProcessed(IdRequest) returns (BoolResponse); // 教师/系统标记为已处理
+  rpc SplitMistake(SplitMistakeRequest) returns (BoolResponse); // 将一个错题拆分为多个新错题
 
   // === 错题重答与举一反三 ===
   rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
@@ -49,6 +50,11 @@ message UpdateMistakeRequest {
   string question_id = 7;
 }
 
+message SplitMistakeRequest {
+  string original_mistake_id = 1;
+  repeated UploadMistakeRequest new_mistakes = 2;
+}
+
 message GetMistakeRequest {
   string mistake_id = 1;
   string student_id = 2;
@@ -58,7 +64,7 @@ message GetMistakeListRequest {
   string student_id = 1;
   int32 subject = 2;
   int32 grade = 3;
-  MistakeType type = 4;
+  int32 type = 4;
   int32 page = 5;
   int32 size = 6;
   string start_date = 7;
@@ -89,7 +95,7 @@ message AnalyzeMistakeRequest {
 }
 
 message MistakeTypeResponse {
-  MistakeType type = 1;
+  int32 type = 1;
   string type_name = 2;
   string analysis_reason = 3;
 }

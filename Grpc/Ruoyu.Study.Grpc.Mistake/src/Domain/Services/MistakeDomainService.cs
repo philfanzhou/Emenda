@@ -1,27 +1,36 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Mistake.Database;
-using Ruoyu.Study.Mistake.Database.Entity;
-using Ruoyu.Study.Mistake.Database.Oss;
+using Ruoyu.Study.Mistake.Domain.Models;
+using Ruoyu.Study.Mistake.Domain.Repositories;
+using Ruoyu.Study.Mistake.Components.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Domain.Services;
 
 public class MistakeDomainService
 {
-    private readonly MistakeDbContext _dbContext;
+    private readonly IMistakeRepository _mistakeRepository;
+    private readonly IMistakePracticeRepository _mistakePracticeRepository;
+    private readonly IProcessLogRepository _processLogRepository;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly IOssService _ossService;
 
-    public MistakeDomainService(MistakeDbContext dbContext, IOssService ossService)
+    public MistakeDomainService(
+        IMistakeRepository mistakeRepository,
+        IMistakePracticeRepository mistakePracticeRepository,
+        IProcessLogRepository processLogRepository,
+        IUnitOfWork unitOfWork,
+        IOssService ossService)
     {
-        _dbContext = dbContext;
+        _mistakeRepository = mistakeRepository;
+        _mistakePracticeRepository = mistakePracticeRepository;
+        _processLogRepository = processLogRepository;
+        _unitOfWork = unitOfWork;
         _ossService = ossService;
     }
 
-    public async Task<MistakeEntity> UploadMistakeAsync(MistakeEntity mistake, List<byte[]> images)
+    public async Task<MistakeModel> UploadMistakeAsync(MistakeModel mistake, List<byte[]>? images)
     {
         mistake.Id = Guid.NewGuid();
         mistake.CreatedAt = DateTime.UtcNow;
@@ -40,10 +49,10 @@ public class MistakeDomainService
             mistake.ImagePaths = imagePaths;
         }
 
-        _dbContext.Mistakes.Add(mistake);
+        await _mistakeRepository.AddAsync(mistake);
 
         // Record process log
-        var processLog = new ProcessLogEntity
+        var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
             MistakeId = mistake.Id,
@@ -51,15 +60,15 @@ public class MistakeDomainService
             Details = "Student uploaded mistake",
             CreatedAt = DateTime.UtcNow
         };
-        _dbContext.ProcessLogs.Add(processLog);
+        await _processLogRepository.AddAsync(processLog);
 
-        await _dbContext.SaveChangesAsync();
+        await _unitOfWork.SaveChangesAsync();
         return mistake;
     }
 
     public async Task<bool> DeleteMistakeAsync(Guid id)
     {
-        var mistake = await _dbContext.Mistakes.FindAsync(id);
+        var mistake = await _mistakeRepository.GetByIdAsync(id);
         if (mistake == null) return false;
 
         // Can only delete PENDING status mistakes
@@ -75,19 +84,74 @@ public class MistakeDomainService
             }
         }
 
-        _dbContext.Mistakes.Remove(mistake);
-        await _dbContext.SaveChangesAsync();
+        _mistakeRepository.Remove(mistake);
+        await _unitOfWork.SaveChangesAsync();
         return true;
     }
 
-    public async Task<MistakeEntity?> GetMistakeAsync(Guid id)
+    public async Task<bool> SplitMistakeAsync(Guid originalMistakeId, List<(MistakeModel mistake, List<byte[]>? images)> newMistakes)
     {
-        return await _dbContext.Mistakes.FindAsync(id);
+        var originalMistake = await _mistakeRepository.GetByIdAsync(originalMistakeId);
+        if (originalMistake == null) return false;
+
+        // Delete original images from MinIO
+        if (originalMistake.ImagePaths.Count > 0)
+        {
+            await _ossService.DeleteManyAsync(originalMistake.ImagePaths);
+        }
+
+        // Physically delete the original mistake regardless of its status.
+        // Cascade delete will handle related practices and process logs.
+        _mistakeRepository.Remove(originalMistake);
+
+        // Add new mistakes
+        foreach (var item in newMistakes)
+        {
+            var newMistake = item.mistake;
+            var images = item.images;
+
+            newMistake.Id = Guid.NewGuid();
+            newMistake.CreatedAt = DateTime.UtcNow;
+            newMistake.Status = (int)MistakeStatus.Pending;
+
+            if (images != null && images.Count > 0)
+            {
+                var imagePaths = new List<string>();
+                for (int i = 0; i < images.Count; i++)
+                {
+                    var fileName = $"m_{newMistake.Id}_{i}.jpg";
+                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
+                    imagePaths.Add(path);
+                }
+                newMistake.ImagePaths = imagePaths;
+            }
+
+            await _mistakeRepository.AddAsync(newMistake);
+
+            var processLog = new ProcessLogModel
+            {
+                Id = Guid.NewGuid(),
+                MistakeId = newMistake.Id,
+                Action = (int)ProcessAction.Created,
+                Details = $"Split from original mistake {originalMistakeId}",
+                CreatedAt = DateTime.UtcNow
+            };
+            await _processLogRepository.AddAsync(processLog);
+        }
+
+        // Commit all changes in one transaction
+        await _unitOfWork.SaveChangesAsync();
+        return true;
     }
 
-    public async Task<bool> UpdateMistakeAsync(Guid id, Action<MistakeEntity> updateAction, List<byte[]>? images = null)
+    public async Task<MistakeModel?> GetMistakeAsync(Guid id)
     {
-        var mistake = await _dbContext.Mistakes.FindAsync(id);
+        return await _mistakeRepository.GetByIdAsync(id);
+    }
+
+    public async Task<bool> UpdateMistakeAsync(Guid id, Action<MistakeModel> updateAction, List<byte[]>? images = null)
+    {
+        var mistake = await _mistakeRepository.GetByIdAsync(id);
         if (mistake == null) return false;
 
         // Delete old images if new images are provided
@@ -115,20 +179,20 @@ public class MistakeDomainService
 
         updateAction(mistake);
         mistake.UpdatedAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync();
+        await _unitOfWork.SaveChangesAsync();
         return true;
     }
 
     public async Task<bool> MarkMistakeProcessedAsync(Guid id)
     {
-        var mistake = await _dbContext.Mistakes.FindAsync(id);
+        var mistake = await _mistakeRepository.GetByIdAsync(id);
         if (mistake == null) return false;
 
         mistake.Status = (int)MistakeStatus.Processed;
         mistake.UpdatedAt = DateTime.UtcNow;
 
         // Record process log
-        var processLog = new ProcessLogEntity
+        var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
             MistakeId = mistake.Id,
@@ -136,13 +200,13 @@ public class MistakeDomainService
             Details = "Mistake marked as processed",
             CreatedAt = DateTime.UtcNow
         };
-        _dbContext.ProcessLogs.Add(processLog);
+        await _processLogRepository.AddAsync(processLog);
 
-        await _dbContext.SaveChangesAsync();
+        await _unitOfWork.SaveChangesAsync();
         return true;
     }
 
-    public async Task<(List<MistakeEntity> Items, int TotalCount)> GetMistakeListAsync(
+    public async Task<(List<MistakeModel> Items, int TotalCount)> GetMistakeListAsync(
         string studentId, int subject, int grade, int status, int page, int size)
     {
         // Pagination validation
@@ -150,23 +214,10 @@ public class MistakeDomainService
         if (size <= 0) size = 10;
         if (size > 100) size = 100;
 
-        var query = _dbContext.Mistakes.Where(m => m.StudentId == studentId);
-
-        if (subject > 0) query = query.Where(m => m.Subject == subject);
-        if (grade > 0) query = query.Where(m => m.Grade == grade);
-        if (status > 0) query = query.Where(m => m.Status == status);
-
-        var totalCount = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(m => m.Date)
-            .Skip((page - 1) * size)
-            .Take(size)
-            .ToListAsync();
-
-        return (items, totalCount);
+        return await _mistakeRepository.GetListAsync(studentId, subject, grade, status, page, size);
     }
 
-    public async Task<MistakePracticeEntity> AddPracticeAsync(MistakePracticeEntity practice, List<byte[]>? images = null)
+    public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<byte[]>? images = null)
     {
         practice.Id = Guid.NewGuid();
         practice.PracticeDate = DateTime.UtcNow;
@@ -184,10 +235,10 @@ public class MistakeDomainService
             practice.ImagePaths = imagePaths;
         }
 
-        _dbContext.MistakePractices.Add(practice);
+        await _mistakePracticeRepository.AddAsync(practice);
 
         // Record process log
-        var processLog = new ProcessLogEntity
+        var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
             MistakeId = practice.MistakeId,
@@ -195,32 +246,29 @@ public class MistakeDomainService
             Details = "Student practiced mistake",
             CreatedAt = DateTime.UtcNow
         };
-        _dbContext.ProcessLogs.Add(processLog);
+        await _processLogRepository.AddAsync(processLog);
 
-        await _dbContext.SaveChangesAsync();
+        await _unitOfWork.SaveChangesAsync();
         return practice;
     }
 
-    public async Task<List<MistakePracticeEntity>> GetPracticesAsync(Guid mistakeId)
+    public async Task<List<MistakePracticeModel>> GetPracticesAsync(Guid mistakeId)
     {
-        return await _dbContext.MistakePractices
-            .Where(p => p.MistakeId == mistakeId)
-            .OrderBy(p => p.PracticeDate)
-            .ToListAsync();
+        return await _mistakePracticeRepository.GetByMistakeIdAsync(mistakeId);
     }
 
-    public async Task<MistakeTypeResponse> AnalyzeMistakeTypeAsync(string content, string correctAnswer, string studentAnswer)
+    public async Task<MistakeTypeResponse> AnalyzeMistakeTypeAsync(Guid mistakeId, string content, string correctAnswer, string studentAnswer)
     {
         // Simple analysis logic - in production this would call an AI service
-        var type = MistakeType.Other;
+        var type = 5; // 5 = 其他错误 (Other)
         var typeName = "其他错误";
         var analysisReason = "根据答案对比无法明确分类";
 
         // Record process log
-        var mistake = await _dbContext.Mistakes.FirstOrDefaultAsync(m => m.Content == content);
+        var mistake = await _mistakeRepository.GetByIdAsync(mistakeId);
         if (mistake != null)
         {
-            var processLog = new ProcessLogEntity
+            var processLog = new ProcessLogModel
             {
                 Id = Guid.NewGuid(),
                 MistakeId = mistake.Id,
@@ -228,8 +276,8 @@ public class MistakeDomainService
                 Details = $"Mistake analyzed as {typeName}",
                 CreatedAt = DateTime.UtcNow
             };
-            _dbContext.ProcessLogs.Add(processLog);
-            await _dbContext.SaveChangesAsync();
+            await _processLogRepository.AddAsync(processLog);
+            await _unitOfWork.SaveChangesAsync();
         }
 
         return new MistakeTypeResponse
@@ -242,10 +290,10 @@ public class MistakeDomainService
 
     public async Task<bool> LogMistakeProcessAsync(Guid mistakeId, string studentId, ProcessAction action, string details)
     {
-        var mistake = await _dbContext.Mistakes.FindAsync(mistakeId);
+        var mistake = await _mistakeRepository.GetByIdAsync(mistakeId);
         if (mistake == null) return false;
 
-        var processLog = new ProcessLogEntity
+        var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
             MistakeId = mistakeId,
@@ -253,16 +301,14 @@ public class MistakeDomainService
             Details = details,
             CreatedAt = DateTime.UtcNow
         };
-        _dbContext.ProcessLogs.Add(processLog);
-        await _dbContext.SaveChangesAsync();
+        await _processLogRepository.AddAsync(processLog);
+        await _unitOfWork.SaveChangesAsync();
         return true;
     }
 
-    public async Task<List<ProcessLogEntity>> GetMistakeProcessHistoryAsync(Guid mistakeId)
+    public async Task<List<ProcessLogModel>> GetMistakeProcessHistoryAsync(Guid mistakeId)
     {
-        return await _dbContext.ProcessLogs
-            .Where(p => p.MistakeId == mistakeId)
-            .OrderBy(p => p.CreatedAt)
-            .ToListAsync();
+        return await _processLogRepository.GetByMistakeIdAsync(mistakeId);
     }
 }
+

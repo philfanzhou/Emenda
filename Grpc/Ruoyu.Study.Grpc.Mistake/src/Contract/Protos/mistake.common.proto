@@ -5,15 +5,6 @@ package ruoyu.study.mistake.v1;
 option csharp_namespace = "Ruoyu.Study.Mistake.Contract.Protos";
 
 // ========== 通用枚举 ==========
-enum MistakeType {
-  MISTAKE_TYPE_UNSPECIFIED = 0;
-  MISTAKE_TYPE_COMPREHENSION = 1;  // 理解错误
-  MISTAKE_TYPE_CALCULATION = 2;    // 计算错误
-  MISTAKE_TYPE_MEMORY = 3;         // 记忆错误
-  MISTAKE_TYPE_CONCEPT = 4;        // 概念混淆
-  MISTAKE_TYPE_OTHER = 5;          // 其他
-}
-
 enum ProcessAction {
   PROCESS_ACTION_UNSPECIFIED = 0;
   PROCESS_ACTION_CREATED = 1;
@@ -56,7 +47,7 @@ message MistakeDto {
   string content = 7;
   string correct_answer = 8;
   string student_answer = 9;
-  MistakeType type = 10;
+  int32 type = 10;
   string question_id = 11;              // 关联题库中的QuestionId
   string comments = 12;
   MistakeStatus status = 13;            // 错题状态

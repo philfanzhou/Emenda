@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Minio;
 using Minio.DataModel.Args;
 
-namespace Ruoyu.Study.Mistake.Database.Oss;
+namespace Ruoyu.Study.Mistake.Components.Oss;
 
 public enum OssBucket
 {
@@ -22,8 +22,8 @@ public interface IOssService
     Task<List<Stream>> DownloadManyAsync(IEnumerable<string> objectPaths);
     Task<bool> DeleteAsync(string objectPath);
     Task<int> DeleteManyAsync(IEnumerable<string> objectPaths);
-    string GetPresignedUrl(string objectPath, int expirySeconds = 3600);
-    List<string> GetPresignedUrls(IEnumerable<string> objectPaths, int expirySeconds = 3600);
+    Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600);
+    Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600);
     Task<bool> CheckConnectivityAsync();
 }
 
@@ -150,19 +150,24 @@ public class MinioOssService : IOssService
         return count;
     }
 
-    public string GetPresignedUrl(string objectPath, int expirySeconds = 3600)
+    public async Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600)
     {
         var presignedGetObjectArgs = new PresignedGetObjectArgs()
             .WithBucket(_bucketName)
             .WithObject(objectPath)
             .WithExpiry(expirySeconds);
 
-        return _minioClient.PresignedGetObjectAsync(presignedGetObjectArgs).Result;
+        return await _minioClient.PresignedGetObjectAsync(presignedGetObjectArgs);
     }
 
-    public List<string> GetPresignedUrls(IEnumerable<string> objectPaths, int expirySeconds = 3600)
+    public async Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600)
     {
-        return objectPaths.Select(p => GetPresignedUrl(p, expirySeconds)).ToList();
+        var urls = new List<string>();
+        foreach (var p in objectPaths)
+        {
+            urls.Add(await GetPresignedUrlAsync(p, expirySeconds));
+        }
+        return urls;
     }
 
     public async Task<bool> CheckConnectivityAsync()

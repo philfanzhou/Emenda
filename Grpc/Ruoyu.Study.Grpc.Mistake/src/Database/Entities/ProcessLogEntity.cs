@@ -2,7 +2,7 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Ruoyu.Study.Mistake.Database.Entity;
+namespace Ruoyu.Study.Mistake.Database.Entities;
 
 [Table("process_log")]
 public class ProcessLogEntity

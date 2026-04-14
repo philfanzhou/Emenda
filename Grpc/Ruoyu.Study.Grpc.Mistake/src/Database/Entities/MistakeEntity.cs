@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Ruoyu.Study.Mistake.Database.Entity;
+namespace Ruoyu.Study.Mistake.Database.Entities;
 
 [Table("mistake")]
 public class MistakeEntity

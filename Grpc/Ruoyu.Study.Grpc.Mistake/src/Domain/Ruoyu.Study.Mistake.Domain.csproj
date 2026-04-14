@@ -1,12 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.4" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\Contract\Ruoyu.Study.Mistake.Contract.csproj" />
-    <ProjectReference Include="..\Database\Ruoyu.Study.Mistake.Database.csproj" />
+    <ProjectReference Include="..\Components\Ruoyu.Study.Mistake.Components.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

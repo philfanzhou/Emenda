@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
-using Ruoyu.Study.Mistake.Database.Entity;
+using Ruoyu.Study.Mistake.Database.Entities;
 
 namespace Ruoyu.Study.Mistake.Database;
 
@@ -30,17 +32,16 @@ public class MistakeDbContext : DbContext
             entity.HasIndex(e => e.Date);
             entity.HasIndex(e => e.CreatedAt);
 
-            // Configure Id as UUID for PostgreSQL
-            entity.Property(e => e.Id)
-                .HasColumnType("uuid");
-
-            // Configure ImagePaths as JSON column (EF Core 8 with Npgsql handles List<string> natively)
+            // Configure ImagePaths as JSON string for cross-database compatibility
             var imagePathsComparer = new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList());
 
             entity.Property(e => e.ImagePaths)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                    v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
                 .Metadata.SetValueComparer(imagePathsComparer);
         });
 
@@ -56,17 +57,16 @@ public class MistakeDbContext : DbContext
                   .HasForeignKey(e => e.MistakeId)
                   .OnDelete(DeleteBehavior.Cascade);
 
-            // Configure Id as UUID for PostgreSQL
-            entity.Property(e => e.Id)
-                .HasColumnType("uuid");
-
-            // Configure ImagePaths as JSON column
+            // Configure ImagePaths as JSON string for cross-database compatibility
             var imagePathsComparer = new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList());
 
             entity.Property(e => e.ImagePaths)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                    v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
                 .Metadata.SetValueComparer(imagePathsComparer);
         });
 
@@ -80,10 +80,6 @@ public class MistakeDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.MistakeId)
                   .OnDelete(DeleteBehavior.Cascade);
-
-            // Configure Id as UUID for PostgreSQL
-            entity.Property(e => e.Id)
-                .HasColumnType("uuid");
         });
     }
 }
