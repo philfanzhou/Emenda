@@ -75,13 +75,9 @@ public class MistakeDomainService
         if (mistake.Status != (int)MistakeStatus.Pending) return false;
 
         // Delete images from MinIO
-        if (mistake.ImagePaths.Count > 0)
+        if (mistake.ImagePaths != null && mistake.ImagePaths.Count > 0)
         {
-            var imagePaths = mistake.ImagePaths;
-            if (imagePaths.Count > 0)
-            {
-                await _ossService.DeleteManyAsync(imagePaths);
-            }
+            await _ossService.DeleteManyAsync(mistake.ImagePaths);
         }
 
         _mistakeRepository.Remove(mistake);
@@ -95,13 +91,24 @@ public class MistakeDomainService
         if (originalMistake == null) return false;
 
         // Delete original images from MinIO
-        if (originalMistake.ImagePaths.Count > 0)
+        if (originalMistake.ImagePaths != null && originalMistake.ImagePaths.Count > 0)
         {
             await _ossService.DeleteManyAsync(originalMistake.ImagePaths);
         }
 
+        // Explicitly delete child records to ensure data consistency and prevent OSS file leaks from practices
+        var practices = await _mistakePracticeRepository.GetByMistakeIdAsync(originalMistakeId);
+        foreach (var practice in practices)
+        {
+            if (practice.ImagePaths != null && practice.ImagePaths.Count > 0)
+            {
+                await _ossService.DeleteManyAsync(practice.ImagePaths);
+            }
+        }
+        await _mistakePracticeRepository.RemoveByMistakeIdAsync(originalMistakeId);
+        await _processLogRepository.RemoveByMistakeIdAsync(originalMistakeId);
+
         // Physically delete the original mistake regardless of its status.
-        // Cascade delete will handle related practices and process logs.
         _mistakeRepository.Remove(originalMistake);
 
         // Add new mistakes

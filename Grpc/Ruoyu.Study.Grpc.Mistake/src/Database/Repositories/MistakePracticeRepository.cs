@@ -33,4 +33,16 @@ public class MistakePracticeRepository : IMistakePracticeRepository
             .ToListAsync();
         return items.Adapt<List<MistakePracticeModel>>();
     }
+
+    public async Task RemoveByMistakeIdAsync(Guid mistakeId)
+    {
+        var entities = await _dbContext.MistakePractices
+            .Where(p => p.MistakeId == mistakeId)
+            .ToListAsync();
+        
+        if (entities.Count > 0)
+        {
+            _dbContext.MistakePractices.RemoveRange(entities);
+        }
+    }
 }

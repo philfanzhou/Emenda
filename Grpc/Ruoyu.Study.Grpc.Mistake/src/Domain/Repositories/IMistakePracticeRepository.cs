@@ -9,4 +9,5 @@ public interface IMistakePracticeRepository
 {
     Task AddAsync(MistakePracticeModel entity);
     Task<List<MistakePracticeModel>> GetByMistakeIdAsync(Guid mistakeId);
+    Task RemoveByMistakeIdAsync(Guid mistakeId);
 }

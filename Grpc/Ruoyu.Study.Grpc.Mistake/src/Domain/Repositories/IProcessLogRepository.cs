@@ -9,4 +9,5 @@ public interface IProcessLogRepository
 {
     Task AddAsync(ProcessLogModel entity);
     Task<List<ProcessLogModel>> GetByMistakeIdAsync(Guid mistakeId);
+    Task RemoveByMistakeIdAsync(Guid mistakeId);
 }

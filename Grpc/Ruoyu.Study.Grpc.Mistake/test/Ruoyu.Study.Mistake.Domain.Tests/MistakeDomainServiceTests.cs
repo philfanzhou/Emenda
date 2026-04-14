@@ -139,6 +139,7 @@ public class MistakeDomainServiceTests
         };
 
         _mockMistakeRepo.Setup(x => x.GetByIdAsync(originalId)).ReturnsAsync(originalMistake);
+        _mockPracticeRepo.Setup(x => x.GetByMistakeIdAsync(originalId)).ReturnsAsync(new List<MistakePracticeModel>());
 
         // Act
         var result = await _service.SplitMistakeAsync(originalId, newMistakes);

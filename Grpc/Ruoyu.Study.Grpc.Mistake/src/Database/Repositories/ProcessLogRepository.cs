@@ -33,4 +33,16 @@ public class ProcessLogRepository : IProcessLogRepository
             .ToListAsync();
         return items.Adapt<List<ProcessLogModel>>();
     }
+
+    public async Task RemoveByMistakeIdAsync(Guid mistakeId)
+    {
+        var entities = await _dbContext.ProcessLogs
+            .Where(p => p.MistakeId == mistakeId)
+            .ToListAsync();
+            
+        if (entities.Count > 0)
+        {
+            _dbContext.ProcessLogs.RemoveRange(entities);
+        }
+    }
 }
