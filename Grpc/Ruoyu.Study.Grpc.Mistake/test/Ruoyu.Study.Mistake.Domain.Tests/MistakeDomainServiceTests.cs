@@ -14,6 +14,7 @@ namespace Ruoyu.Study.Mistake.Domain.Tests;
 public class MistakeDomainServiceTests
 {
     private readonly Mock<IMistakeRepository> _mockMistakeRepo;
+    private readonly Mock<IMistakeDetailRepository> _mockDetailRepo;
     private readonly Mock<IMistakePracticeRepository> _mockPracticeRepo;
     private readonly Mock<IProcessLogRepository> _mockLogRepo;
     private readonly Mock<IUnitOfWork> _mockUow;
@@ -23,6 +24,7 @@ public class MistakeDomainServiceTests
     public MistakeDomainServiceTests()
     {
         _mockMistakeRepo = new Mock<IMistakeRepository>();
+        _mockDetailRepo = new Mock<IMistakeDetailRepository>();
         _mockPracticeRepo = new Mock<IMistakePracticeRepository>();
         _mockLogRepo = new Mock<IProcessLogRepository>();
         _mockUow = new Mock<IUnitOfWork>();
@@ -30,6 +32,7 @@ public class MistakeDomainServiceTests
 
         _service = new MistakeDomainService(
             _mockMistakeRepo.Object,
+            _mockDetailRepo.Object,
             _mockPracticeRepo.Object,
             _mockLogRepo.Object,
             _mockUow.Object,
@@ -39,11 +42,11 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task UploadMistakeAsync_ShouldUploadImagesAndSaveToDb()
     {
-        // Arrange
         var mistake = new MistakeModel
         {
             StudentId = "student-1",
-            Content = "Test content"
+            Subject = 1,
+            Grade = 1
         };
         var images = new List<byte[]> { new byte[] { 1, 2, 3 } };
         var expectedPath = "mistakes/2026/04/14/uuid/m_uuid_0.jpg";
@@ -55,41 +58,46 @@ public class MistakeDomainServiceTests
                 It.IsAny<OssBucket>()))
             .ReturnsAsync(expectedPath);
 
-        // Act
-        var result = await _service.UploadMistakeAsync(mistake, images);
+        var (resultMistake, resultDetail) = await _service.UploadMistakeAsync(mistake, images);
 
-        // Assert
-        result.Should().NotBeNull();
-        result.Id.Should().NotBeEmpty();
-        result.Status.Should().Be(1); // MISTAKE_STATUS_PENDING
-        result.ImagePaths.Should().ContainSingle().Which.Should().Be(expectedPath);
+        resultMistake.Should().NotBeNull();
+        resultMistake.Id.Should().NotBeEmpty();
+        resultMistake.Status.Should().Be(1);
+        resultDetail.Should().NotBeNull();
+        resultDetail.OriginalImages.Should().ContainSingle().Which.Should().Be(expectedPath);
 
-        _mockMistakeRepo.Verify(x => x.AddAsync(It.Is<MistakeModel>(m => m == result)), Times.Once);
-        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(l => l.MistakeId == result.Id && l.Action == 1)), Times.Once);
+        _mockMistakeRepo.Verify(x => x.AddAsync(It.Is<MistakeModel>(m => m == resultMistake)), Times.Once);
+        _mockDetailRepo.Verify(x => x.AddAsync(It.Is<MistakeDetailModel>(d => d.MistakeId == resultMistake.Id)), Times.Once);
+        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(l => l.MistakeId == resultMistake.Id && l.Action == 1)), Times.Once);
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 
     [Fact]
     public async Task DeleteMistakeAsync_WhenMistakeIsPending_ShouldDeleteImagesAndRemoveFromDb()
     {
-        // Arrange
         var mistakeId = Guid.NewGuid();
         var mistake = new MistakeModel
         {
             Id = mistakeId,
-            Status = 1, // MISTAKE_STATUS_PENDING
-            ImagePaths = new List<string> { "path1.jpg", "path2.jpg" }
+            Status = 1,
+            Subject = 1,
+            Grade = 1
+        };
+        var detail = new MistakeDetailModel
+        {
+            MistakeId = mistakeId,
+            OriginalImages = new List<string> { "path1.jpg", "path2.jpg" }
         };
 
         _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
-        _mockOssService.Setup(x => x.DeleteManyAsync(mistake.ImagePaths)).ReturnsAsync(2);
+        _mockDetailRepo.Setup(x => x.GetByMistakeIdAsync(mistakeId)).ReturnsAsync(detail);
+        _mockOssService.Setup(x => x.DeleteManyAsync(detail.OriginalImages)).ReturnsAsync(2);
 
-        // Act
         var result = await _service.DeleteMistakeAsync(mistakeId);
 
-        // Assert
         result.Should().BeTrue();
-        _mockOssService.Verify(x => x.DeleteManyAsync(mistake.ImagePaths), Times.Once);
+        _mockOssService.Verify(x => x.DeleteManyAsync(detail.OriginalImages), Times.Once);
+        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(mistakeId), Times.Once);
         _mockMistakeRepo.Verify(x => x.Remove(mistake), Times.Once);
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
@@ -97,21 +105,19 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task DeleteMistakeAsync_WhenMistakeIsProcessed_ShouldReturnFalseAndNotDelete()
     {
-        // Arrange
         var mistakeId = Guid.NewGuid();
         var mistake = new MistakeModel
         {
             Id = mistakeId,
-            Status = 2, // MISTAKE_STATUS_PROCESSED
-            ImagePaths = new List<string> { "path1.jpg" }
+            Status = 2,
+            Subject = 1,
+            Grade = 1
         };
 
         _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
 
-        // Act
         var result = await _service.DeleteMistakeAsync(mistakeId);
 
-        // Assert
         result.Should().BeFalse();
         _mockOssService.Verify(x => x.DeleteManyAsync(It.IsAny<IEnumerable<string>>()), Times.Never);
         _mockMistakeRepo.Verify(x => x.Remove(It.IsAny<MistakeModel>()), Times.Never);
@@ -121,40 +127,75 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task SplitMistakeAsync_ShouldDeleteOriginalAndCreateNewMistakes()
     {
-        // Arrange
         var originalId = Guid.NewGuid();
         var originalMistake = new MistakeModel
         {
             Id = originalId,
-            Status = 2, // MISTAKE_STATUS_PROCESSED
-            ImagePaths = new List<string> { "original.jpg" }
+            Status = 2,
+            Subject = 1,
+            Grade = 1
+        };
+        var originalDetail = new MistakeDetailModel
+        {
+            MistakeId = originalId,
+            OriginalImages = new List<string> { "original.jpg" }
         };
 
-        var newMistake1 = new MistakeModel { Content = "Part 1" };
-        var newMistake2 = new MistakeModel { Content = "Part 2" };
-        var newMistakes = new List<(MistakeModel, List<byte[]>?)>
+        var newMistake1 = new MistakeModel { Subject = 1, Grade = 1 };
+        var newMistake2 = new MistakeModel { Subject = 1, Grade = 1 };
+        var newMistakes = new List<(MistakeModel mistake, List<byte[]>? images, string? comments)>
         {
-            (newMistake1, null),
-            (newMistake2, null)
+            (newMistake1, null, "Part 1"),
+            (newMistake2, null, "Part 2")
         };
 
         _mockMistakeRepo.Setup(x => x.GetByIdAsync(originalId)).ReturnsAsync(originalMistake);
+        _mockDetailRepo.Setup(x => x.GetByMistakeIdAsync(originalId)).ReturnsAsync(originalDetail);
         _mockPracticeRepo.Setup(x => x.GetByMistakeIdAsync(originalId)).ReturnsAsync(new List<MistakePracticeModel>());
 
-        // Act
         var result = await _service.SplitMistakeAsync(originalId, newMistakes);
 
-        // Assert
         result.Should().BeTrue();
-        _mockOssService.Verify(x => x.DeleteManyAsync(originalMistake.ImagePaths), Times.Once);
+        _mockOssService.Verify(x => x.DeleteManyAsync(originalDetail.OriginalImages), Times.Once);
+        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(originalId), Times.Once);
         _mockMistakeRepo.Verify(x => x.Remove(originalMistake), Times.Once);
-
-        _mockMistakeRepo.Verify(x => x.AddAsync(It.Is<MistakeModel>(m => m.Content == "Part 1")), Times.Once);
-        _mockMistakeRepo.Verify(x => x.AddAsync(It.Is<MistakeModel>(m => m.Content == "Part 2")), Times.Once);
-
-        // Verify that 2 logs were created for the 2 new mistakes
+        _mockMistakeRepo.Verify(x => x.AddAsync(It.IsAny<MistakeModel>()), Times.Exactly(2));
+        _mockDetailRepo.Verify(x => x.AddAsync(It.IsAny<MistakeDetailModel>()), Times.Exactly(2));
         _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>()), Times.Exactly(2));
+        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+    }
 
+    [Fact]
+    public async Task GetMistakeAsync_ShouldReturnBothMistakeAndDetail()
+    {
+        var mistakeId = Guid.NewGuid();
+        var mistake = new MistakeModel { Id = mistakeId, StudentId = "s1", Subject = 1, Grade = 1 };
+        var detail = new MistakeDetailModel { MistakeId = mistakeId, OriginalImages = new List<string> { "img.jpg" } };
+
+        _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
+        _mockDetailRepo.Setup(x => x.GetByMistakeIdAsync(mistakeId)).ReturnsAsync(detail);
+
+        var (resultMistake, resultDetail) = await _service.GetMistakeAsync(mistakeId);
+
+        resultMistake.Should().NotBeNull();
+        resultDetail.Should().NotBeNull();
+        resultMistake!.Id.Should().Be(mistakeId);
+        resultDetail!.MistakeId.Should().Be(mistakeId);
+    }
+
+    [Fact]
+    public async Task MarkMistakeProcessedAsync_ShouldUpdateStatusAndQuestionId()
+    {
+        var mistakeId = Guid.NewGuid();
+        var mistake = new MistakeModel { Id = mistakeId, Status = 1, Subject = 1, Grade = 1 };
+
+        _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
+
+        var result = await _service.MarkMistakeProcessedAsync(mistakeId, "q-123");
+
+        result.Should().BeTrue();
+        mistake.Status.Should().Be(2);
+        mistake.QuestionId.Should().Be("q-123");
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 }

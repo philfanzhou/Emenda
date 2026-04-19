@@ -15,6 +15,7 @@ public class MistakeDbContext : DbContext
     }
 
     public DbSet<MistakeEntity> Mistakes { get; set; } = null!;
+    public DbSet<MistakeDetailEntity> MistakeDetails { get; set; } = null!;
     public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
 
@@ -32,13 +33,23 @@ public class MistakeDbContext : DbContext
             entity.HasIndex(e => e.Date);
             entity.HasIndex(e => e.CreatedAt);
 
-            // Configure ImagePaths as JSON string for cross-database compatibility
+            entity.HasOne<MistakeDetailEntity>()
+                  .WithOne(d => d.Mistake)
+                  .HasForeignKey<MistakeDetailEntity>(d => d.MistakeId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // MistakeDetail 配置
+        modelBuilder.Entity<MistakeDetailEntity>(entity =>
+        {
+            entity.HasIndex(e => e.MistakeId);
+
             var imagePathsComparer = new ValueComparer<List<string>>(
                 (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
                 c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
                 c => c.ToList());
 
-            entity.Property(e => e.ImagePaths)
+            entity.Property(e => e.OriginalImages)
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())

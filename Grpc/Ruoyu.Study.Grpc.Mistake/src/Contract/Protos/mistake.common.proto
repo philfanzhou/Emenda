@@ -43,14 +43,17 @@ message MistakeDto {
   int32 subject = 3;
   int32 grade = 4;
   string date = 5;
-  repeated string image_paths = 6;      // 原图路径列表 (JSON array)
-  string content = 7;
-  string correct_answer = 8;
-  string student_answer = 9;
   int32 type = 10;
   string question_id = 11;              // 关联题库中的QuestionId
-  string comments = 12;
   MistakeStatus status = 13;            // 错题状态
+  string created_at = 14;
+  string updated_at = 15;
+}
+
+message MistakeDetailDto {
+  string mistake_id = 1;
+  repeated string original_images = 2;  // 原始上传图片素材
+  string comments = 3;
 }
 
 // ========== 错题练习记录 DTO ==========

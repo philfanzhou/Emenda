@@ -31,12 +31,6 @@ public class MistakeRepository : IMistakeRepository
         return entity?.Adapt<MistakeModel>();
     }
 
-    public async Task<MistakeModel?> GetByContentAsync(string content)
-    {
-        var entity = await _dbContext.Mistakes.FirstOrDefaultAsync(m => m.Content == content);
-        return entity?.Adapt<MistakeModel>();
-    }
-
     public void Remove(MistakeModel model)
     {
         // When removing, we just need the entity with the ID to be tracked/deleted

@@ -17,17 +17,34 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         _mistakeService = mistakeService;
     }
 
-    public override async Task<MistakeDto> UploadMistake(UploadMistakeRequest request, ServerCallContext context)
+    public override async Task<UploadMistakeResponse> UploadMistake(UploadMistakeRequest request, ServerCallContext context)
     {
-        var entity = request.Adapt<MistakeModel>();
+        var entity = new MistakeModel
+        {
+            StudentId = request.StudentId,
+            Subject = request.Subject,
+            Grade = request.Grade,
+            Date = DateTime.UtcNow,
+            Type = request.Type
+        };
 
-        // Convert image bytes to list
         var images = request.Images?.Count > 0
             ? request.Images.Select(b => b.ToByteArray()).ToList()
             : null;
 
-        var result = await _mistakeService.UploadMistakeAsync(entity, images);
-        return result.Adapt<MistakeDto>();
+        var (mistake, detail) = await _mistakeService.UploadMistakeAsync(entity, images);
+
+        var response = new UploadMistakeResponse
+        {
+            Mistake = mistake.Adapt<MistakeDto>(),
+            Detail = new MistakeDetailDto
+            {
+                MistakeId = detail.MistakeId.ToString(),
+                OriginalImages = { detail.OriginalImages },
+                Comments = detail.Comments ?? string.Empty
+            }
+        };
+        return response;
     }
 
     public override async Task<BoolResponse> DeleteMistake(IdRequest request, ServerCallContext context)
@@ -36,14 +53,25 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return new BoolResponse { Success = success };
     }
 
-    public override async Task<MistakeDto> GetMistake(GetMistakeRequest request, ServerCallContext context)
+    public override async Task<GetMistakeResponse> GetMistake(GetMistakeRequest request, ServerCallContext context)
     {
-        var mistake = await _mistakeService.GetMistakeAsync(Guid.Parse(request.MistakeId));
+        var (mistake, detail) = await _mistakeService.GetMistakeAsync(Guid.Parse(request.MistakeId));
         if (mistake == null || mistake.StudentId != request.StudentId)
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Mistake not found"));
         }
-        return mistake.Adapt<MistakeDto>();
+
+        var response = new GetMistakeResponse
+        {
+            Mistake = mistake.Adapt<MistakeDto>(),
+            Detail = detail != null ? new MistakeDetailDto
+            {
+                MistakeId = detail.MistakeId.ToString(),
+                OriginalImages = { detail.OriginalImages },
+                Comments = detail.Comments ?? string.Empty
+            } : null
+        };
+        return response;
     }
 
     public override async Task<MistakePageResult> GetMistakeList(GetMistakeListRequest request, ServerCallContext context)
@@ -73,41 +101,62 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> UpdateMistake(UpdateMistakeRequest request, ServerCallContext context)
     {
-        // Convert image bytes to list
         var images = request.Images?.Count > 0
             ? request.Images.Select(b => b.ToByteArray()).ToList()
             : null;
 
-        var success = await _mistakeService.UpdateMistakeAsync(Guid.Parse(request.MistakeId), entity =>
-        {
-            entity.Content = request.Content;
-            entity.CorrectAnswer = request.CorrectAnswer;
-            entity.StudentAnswer = request.StudentAnswer;
-            entity.Comments = request.Comments;
-            entity.QuestionId = request.QuestionId;
-        }, images);
+        var success = await _mistakeService.UpdateMistakeAsync(
+            Guid.Parse(request.MistakeId),
+            entity =>
+            {
+                entity.Subject = request.Subject > 0 ? request.Subject : entity.Subject;
+                entity.Grade = request.Grade > 0 ? request.Grade : entity.Grade;
+                entity.Type = request.Type > 0 ? request.Type : entity.Type;
+                if (!string.IsNullOrEmpty(request.QuestionId))
+                {
+                    entity.QuestionId = request.QuestionId;
+                }
+            },
+            detail =>
+            {
+                if (!string.IsNullOrEmpty(request.Comments))
+                {
+                    detail.Comments = request.Comments;
+                }
+            },
+            images);
 
         return new BoolResponse { Success = success };
     }
 
-    public override async Task<BoolResponse> MarkMistakeProcessed(IdRequest request, ServerCallContext context)
+    public override async Task<BoolResponse> MarkMistakeProcessed(MarkMistakeProcessedRequest request, ServerCallContext context)
     {
-        var success = await _mistakeService.MarkMistakeProcessedAsync(Guid.Parse(request.Id));
+        var success = await _mistakeService.MarkMistakeProcessedAsync(
+            Guid.Parse(request.Id),
+            request.QuestionId);
         return new BoolResponse { Success = success };
     }
 
     public override async Task<BoolResponse> SplitMistake(SplitMistakeRequest request, ServerCallContext context)
     {
-        var newMistakes = new List<(MistakeModel mistake, List<byte[]>? images)>();
+        var newMistakes = new List<(MistakeModel mistake, List<byte[]>? images, string? comments)>();
 
         foreach (var req in request.NewMistakes)
         {
-            var entity = req.Adapt<MistakeModel>();
+            var entity = new MistakeModel
+            {
+                StudentId = req.StudentId,
+                Subject = req.Subject,
+                Grade = req.Grade,
+                Date = DateTime.UtcNow,
+                Type = req.Type
+            };
             var images = req.Images?.Count > 0
                 ? req.Images.Select(b => b.ToByteArray()).ToList()
                 : null;
-            
-            newMistakes.Add((entity, images));
+            var comments = req.Comments;
+
+            newMistakes.Add((entity, images, comments));
         }
 
         var success = await _mistakeService.SplitMistakeAsync(Guid.Parse(request.OriginalMistakeId), newMistakes);
@@ -118,7 +167,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     {
         var entity = request.Adapt<MistakePracticeModel>();
 
-        // Convert image bytes to list
         var images = request.Images?.Count > 0
             ? request.Images.Select(b => b.ToByteArray()).ToList()
             : null;
@@ -138,10 +186,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     public override async Task<MistakeTypeResponse> AnalyzeMistakeType(AnalyzeMistakeRequest request, ServerCallContext context)
     {
         var result = await _mistakeService.AnalyzeMistakeTypeAsync(
-            Guid.Parse(request.MistakeId),
-            request.Content,
-            request.CorrectAnswer,
-            request.StudentAnswer);
+            Guid.Parse(request.MistakeId));
 
         return result;
     }
@@ -165,4 +210,3 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return response;
     }
 }
-

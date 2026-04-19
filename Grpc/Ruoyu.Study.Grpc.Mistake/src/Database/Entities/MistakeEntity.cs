@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -25,28 +24,11 @@ public class MistakeEntity
     [Column("date")]
     public DateTime Date { get; set; }
 
-    [Column("image_paths")]
-    public List<string> ImagePaths { get; set; } = new();
-
-    [Column("content")]
-    public string? Content { get; set; }
-
-    [Column("correct_answer")]
-    [MaxLength(500)]
-    public string? CorrectAnswer { get; set; }
-
-    [Column("student_answer")]
-    [MaxLength(500)]
-    public string? StudentAnswer { get; set; }
-
     [Column("type")]
     public int Type { get; set; }
 
     [Column("question_id")]
     public string? QuestionId { get; set; }
-
-    [Column("comments")]
-    public string? Comments { get; set; }
 
     [Column("status")]
     public int Status { get; set; }

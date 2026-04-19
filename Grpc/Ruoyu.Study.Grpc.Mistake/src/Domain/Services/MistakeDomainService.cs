@@ -11,6 +11,7 @@ namespace Ruoyu.Study.Mistake.Domain.Services;
 public class MistakeDomainService
 {
     private readonly IMistakeRepository _mistakeRepository;
+    private readonly IMistakeDetailRepository _mistakeDetailRepository;
     private readonly IMistakePracticeRepository _mistakePracticeRepository;
     private readonly IProcessLogRepository _processLogRepository;
     private readonly IUnitOfWork _unitOfWork;
@@ -18,25 +19,34 @@ public class MistakeDomainService
 
     public MistakeDomainService(
         IMistakeRepository mistakeRepository,
+        IMistakeDetailRepository mistakeDetailRepository,
         IMistakePracticeRepository mistakePracticeRepository,
         IProcessLogRepository processLogRepository,
         IUnitOfWork unitOfWork,
         IOssService ossService)
     {
         _mistakeRepository = mistakeRepository;
+        _mistakeDetailRepository = mistakeDetailRepository;
         _mistakePracticeRepository = mistakePracticeRepository;
         _processLogRepository = processLogRepository;
         _unitOfWork = unitOfWork;
         _ossService = ossService;
     }
 
-    public async Task<MistakeModel> UploadMistakeAsync(MistakeModel mistake, List<byte[]>? images)
+    public async Task<(MistakeModel mistake, MistakeDetailModel detail)> UploadMistakeAsync(MistakeModel mistake, List<byte[]>? images)
     {
         mistake.Id = Guid.NewGuid();
         mistake.CreatedAt = DateTime.UtcNow;
         mistake.Status = (int)MistakeStatus.Pending;
 
-        // Upload images to MinIO
+        await _mistakeRepository.AddAsync(mistake);
+
+        var detail = new MistakeDetailModel
+        {
+            Id = Guid.NewGuid(),
+            MistakeId = mistake.Id
+        };
+
         if (images != null && images.Count > 0)
         {
             var imagePaths = new List<string>();
@@ -46,12 +56,11 @@ public class MistakeDomainService
                 var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
                 imagePaths.Add(path);
             }
-            mistake.ImagePaths = imagePaths;
+            detail.OriginalImages = imagePaths;
         }
 
-        await _mistakeRepository.AddAsync(mistake);
+        await _mistakeDetailRepository.AddAsync(detail);
 
-        // Record process log
         var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
@@ -63,7 +72,7 @@ public class MistakeDomainService
         await _processLogRepository.AddAsync(processLog);
 
         await _unitOfWork.SaveChangesAsync();
-        return mistake;
+        return (mistake, detail);
     }
 
     public async Task<bool> DeleteMistakeAsync(Guid id)
@@ -71,13 +80,13 @@ public class MistakeDomainService
         var mistake = await _mistakeRepository.GetByIdAsync(id);
         if (mistake == null) return false;
 
-        // Can only delete PENDING status mistakes
         if (mistake.Status != (int)MistakeStatus.Pending) return false;
 
-        // Delete images from MinIO
-        if (mistake.ImagePaths != null && mistake.ImagePaths.Count > 0)
+        var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
+        if (detail != null && detail.OriginalImages != null && detail.OriginalImages.Count > 0)
         {
-            await _ossService.DeleteManyAsync(mistake.ImagePaths);
+            await _ossService.DeleteManyAsync(detail.OriginalImages);
+            await _mistakeDetailRepository.DeleteByMistakeIdAsync(id);
         }
 
         _mistakeRepository.Remove(mistake);
@@ -85,18 +94,18 @@ public class MistakeDomainService
         return true;
     }
 
-    public async Task<bool> SplitMistakeAsync(Guid originalMistakeId, List<(MistakeModel mistake, List<byte[]>? images)> newMistakes)
+    public async Task<bool> SplitMistakeAsync(Guid originalMistakeId, List<(MistakeModel mistake, List<byte[]>? images, string? comments)> newMistakes)
     {
         var originalMistake = await _mistakeRepository.GetByIdAsync(originalMistakeId);
         if (originalMistake == null) return false;
 
-        // Delete original images from MinIO
-        if (originalMistake.ImagePaths != null && originalMistake.ImagePaths.Count > 0)
+        var originalDetail = await _mistakeDetailRepository.GetByMistakeIdAsync(originalMistakeId);
+        if (originalDetail != null && originalDetail.OriginalImages != null && originalDetail.OriginalImages.Count > 0)
         {
-            await _ossService.DeleteManyAsync(originalMistake.ImagePaths);
+            await _ossService.DeleteManyAsync(originalDetail.OriginalImages);
+            await _mistakeDetailRepository.DeleteByMistakeIdAsync(originalMistakeId);
         }
 
-        // Explicitly delete child records to ensure data consistency and prevent OSS file leaks from practices
         var practices = await _mistakePracticeRepository.GetByMistakeIdAsync(originalMistakeId);
         foreach (var practice in practices)
         {
@@ -108,18 +117,26 @@ public class MistakeDomainService
         await _mistakePracticeRepository.RemoveByMistakeIdAsync(originalMistakeId);
         await _processLogRepository.RemoveByMistakeIdAsync(originalMistakeId);
 
-        // Physically delete the original mistake regardless of its status.
         _mistakeRepository.Remove(originalMistake);
 
-        // Add new mistakes
         foreach (var item in newMistakes)
         {
             var newMistake = item.mistake;
             var images = item.images;
+            var comments = item.comments;
 
             newMistake.Id = Guid.NewGuid();
             newMistake.CreatedAt = DateTime.UtcNow;
             newMistake.Status = (int)MistakeStatus.Pending;
+
+            await _mistakeRepository.AddAsync(newMistake);
+
+            var newDetail = new MistakeDetailModel
+            {
+                Id = Guid.NewGuid(),
+                MistakeId = newMistake.Id,
+                Comments = comments
+            };
 
             if (images != null && images.Count > 0)
             {
@@ -130,10 +147,10 @@ public class MistakeDomainService
                     var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
                     imagePaths.Add(path);
                 }
-                newMistake.ImagePaths = imagePaths;
+                newDetail.OriginalImages = imagePaths;
             }
 
-            await _mistakeRepository.AddAsync(newMistake);
+            await _mistakeDetailRepository.AddAsync(newDetail);
 
             var processLog = new ProcessLogModel
             {
@@ -146,34 +163,33 @@ public class MistakeDomainService
             await _processLogRepository.AddAsync(processLog);
         }
 
-        // Commit all changes in one transaction
         await _unitOfWork.SaveChangesAsync();
         return true;
     }
 
-    public async Task<MistakeModel?> GetMistakeAsync(Guid id)
+    public async Task<(MistakeModel? mistake, MistakeDetailModel? detail)> GetMistakeAsync(Guid id)
     {
-        return await _mistakeRepository.GetByIdAsync(id);
+        var mistake = await _mistakeRepository.GetByIdAsync(id);
+        if (mistake == null) return (null, null);
+
+        var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
+        return (mistake, detail);
     }
 
-    public async Task<bool> UpdateMistakeAsync(Guid id, Action<MistakeModel> updateAction, List<byte[]>? images = null)
+    public async Task<bool> UpdateMistakeAsync(Guid id, Action<MistakeModel> updateMistakeAction, Action<MistakeDetailModel>? updateDetailAction = null, List<byte[]>? images = null)
     {
         var mistake = await _mistakeRepository.GetByIdAsync(id);
         if (mistake == null) return false;
 
-        // Delete old images if new images are provided
+        var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
+
         if (images != null && images.Count > 0)
         {
-            if (mistake.ImagePaths.Count > 0)
+            if (detail != null && detail.OriginalImages.Count > 0)
             {
-                var oldPaths = mistake.ImagePaths;
-                if (oldPaths.Count > 0)
-                {
-                    await _ossService.DeleteManyAsync(oldPaths);
-                }
+                await _ossService.DeleteManyAsync(detail.OriginalImages);
             }
 
-            // Upload new images to MinIO
             var imagePaths = new List<string>();
             for (int i = 0; i < images.Count; i++)
             {
@@ -181,24 +197,47 @@ public class MistakeDomainService
                 var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
                 imagePaths.Add(path);
             }
-            mistake.ImagePaths = imagePaths;
+
+            if (detail == null)
+            {
+                detail = new MistakeDetailModel
+                {
+                    Id = Guid.NewGuid(),
+                    MistakeId = mistake.Id,
+                    OriginalImages = imagePaths
+                };
+                await _mistakeDetailRepository.AddAsync(detail);
+            }
+            else
+            {
+                detail.OriginalImages = imagePaths;
+                await _mistakeDetailRepository.UpdateAsync(detail);
+            }
+        }
+        else if (detail != null && updateDetailAction != null)
+        {
+            updateDetailAction(detail);
+            await _mistakeDetailRepository.UpdateAsync(detail);
         }
 
-        updateAction(mistake);
+        updateMistakeAction(mistake);
         mistake.UpdatedAt = DateTime.UtcNow;
         await _unitOfWork.SaveChangesAsync();
         return true;
     }
 
-    public async Task<bool> MarkMistakeProcessedAsync(Guid id)
+    public async Task<bool> MarkMistakeProcessedAsync(Guid id, string? questionId = null)
     {
         var mistake = await _mistakeRepository.GetByIdAsync(id);
         if (mistake == null) return false;
 
         mistake.Status = (int)MistakeStatus.Processed;
         mistake.UpdatedAt = DateTime.UtcNow;
+        if (!string.IsNullOrEmpty(questionId))
+        {
+            mistake.QuestionId = questionId;
+        }
 
-        // Record process log
         var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
@@ -216,7 +255,6 @@ public class MistakeDomainService
     public async Task<(List<MistakeModel> Items, int TotalCount)> GetMistakeListAsync(
         string studentId, int subject, int grade, int status, int page, int size)
     {
-        // Pagination validation
         if (page <= 0) page = 1;
         if (size <= 0) size = 10;
         if (size > 100) size = 100;
@@ -229,7 +267,6 @@ public class MistakeDomainService
         practice.Id = Guid.NewGuid();
         practice.PracticeDate = DateTime.UtcNow;
 
-        // Upload images to MinIO
         if (images != null && images.Count > 0)
         {
             var imagePaths = new List<string>();
@@ -244,7 +281,6 @@ public class MistakeDomainService
 
         await _mistakePracticeRepository.AddAsync(practice);
 
-        // Record process log
         var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
@@ -264,14 +300,12 @@ public class MistakeDomainService
         return await _mistakePracticeRepository.GetByMistakeIdAsync(mistakeId);
     }
 
-    public async Task<MistakeTypeResponse> AnalyzeMistakeTypeAsync(Guid mistakeId, string content, string correctAnswer, string studentAnswer)
+    public async Task<MistakeTypeResponse> AnalyzeMistakeTypeAsync(Guid mistakeId)
     {
-        // Simple analysis logic - in production this would call an AI service
-        var type = 5; // 5 = 其他错误 (Other)
+        var type = 5;
         var typeName = "其他错误";
         var analysisReason = "根据答案对比无法明确分类";
 
-        // Record process log
         var mistake = await _mistakeRepository.GetByIdAsync(mistakeId);
         if (mistake != null)
         {
@@ -318,4 +352,3 @@ public class MistakeDomainService
         return await _processLogRepository.GetByMistakeIdAsync(mistakeId);
     }
 }
-

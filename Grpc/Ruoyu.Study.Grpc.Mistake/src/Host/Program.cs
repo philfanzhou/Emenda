@@ -29,6 +29,7 @@ builder.Services.AddSingleton<IOssService>(new MinioOssService(
     ossOptions.BucketName));
 
 builder.Services.AddScoped<IMistakeRepository, MistakeRepository>();
+builder.Services.AddScoped<IMistakeDetailRepository, MistakeDetailRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
