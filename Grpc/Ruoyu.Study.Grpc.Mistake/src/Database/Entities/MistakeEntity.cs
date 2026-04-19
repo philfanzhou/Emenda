@@ -13,6 +13,7 @@ public class MistakeEntity
 
     [Column("student_id")]
     [Required]
+    [MaxLength(36)]
     public string StudentId { get; set; } = string.Empty;
 
     [Column("subject")]
@@ -28,6 +29,7 @@ public class MistakeEntity
     public int Type { get; set; }
 
     [Column("question_id")]
+    [MaxLength(36)]
     public string? QuestionId { get; set; }
 
     [Column("status")]

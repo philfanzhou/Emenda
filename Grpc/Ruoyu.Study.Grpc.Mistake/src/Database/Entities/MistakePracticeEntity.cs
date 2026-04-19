@@ -18,6 +18,7 @@ public class MistakePracticeEntity
 
     [Column("student_id")]
     [Required]
+    [MaxLength(36)]
     public string StudentId { get; set; } = string.Empty;
 
     [Column("practice_date")]

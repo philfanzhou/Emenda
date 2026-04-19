@@ -156,13 +156,15 @@ public class MistakeDomainServiceTests
         var result = await _service.SplitMistakeAsync(originalId, newMistakes);
 
         result.Should().BeTrue();
-        _mockOssService.Verify(x => x.DeleteManyAsync(originalDetail.OriginalImages), Times.Once);
-        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(originalId), Times.Once);
         _mockMistakeRepo.Verify(x => x.Remove(originalMistake), Times.Once);
         _mockMistakeRepo.Verify(x => x.AddAsync(It.IsAny<MistakeModel>()), Times.Exactly(2));
         _mockDetailRepo.Verify(x => x.AddAsync(It.IsAny<MistakeDetailModel>()), Times.Exactly(2));
         _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>()), Times.Exactly(2));
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+
+        await Task.Delay(200);
+        _mockOssService.Verify(x => x.DeleteManyAsync(It.Is<IEnumerable<string>>(l => l.Contains("original.jpg"))), Times.AtLeastOnce);
+        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(originalId), Times.Once);
     }
 
     [Fact]

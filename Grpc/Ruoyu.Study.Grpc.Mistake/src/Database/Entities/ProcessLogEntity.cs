@@ -12,8 +12,7 @@ public class ProcessLogEntity
     public Guid Id { get; set; } = Guid.NewGuid();
 
     [Column("mistake_id")]
-    [Required]
-    public Guid MistakeId { get; set; } = Guid.Empty;
+    public Guid MistakeId { get; set; }
 
     [Column("action")]
     public int Action { get; set; }
