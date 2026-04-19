@@ -39,5 +39,6 @@ public class MistakeEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     [Column("updated_at")]
+    [ConcurrencyCheck]
     public DateTime? UpdatedAt { get; set; }
 }
