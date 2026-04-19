@@ -11,7 +11,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddGrpc();
 builder.Services.AddDbContext<MistakeDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+{
+    var connectionString = builder.Configuration.GetConnectionString("Default");
+    if (string.IsNullOrEmpty(connectionString))
+    {
+        throw new ArgumentException("PostgreSQL连接字符串不能为空");
+    }
+    options.UseNpgsql(connectionString);
+});
 
 // Register MinIO OSS service
 var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
