@@ -27,16 +27,16 @@ public interface IOssService
     Task<bool> CheckConnectivityAsync();
 }
 
-public class MinioOssService : IOssService
+public class S3OssService : IOssService
 {
-    private readonly IMinioClient _minioClient;
+    private readonly IMinioClient _s3Client;
     private readonly string _bucketName;
 
-    public MinioOssService(string endpoint, string accessKey, string secretKey, string bucketName)
+    public S3OssService(string endpoint, string accessKey, string secretKey, string bucketName)
     {
         _bucketName = bucketName;
 
-        _minioClient = new MinioClient()
+        _s3Client = new MinioClient()
             .WithEndpoint(endpoint)
             .WithCredentials(accessKey, secretKey)
             .Build();
@@ -55,7 +55,7 @@ public class MinioOssService : IOssService
             .WithObjectSize(stream.Length)
             .WithContentType(contentType);
 
-        await _minioClient.PutObjectAsync(putObjectArgs);
+        await _s3Client.PutObjectAsync(putObjectArgs);
 
         return objectPath;
     }
@@ -84,7 +84,7 @@ public class MinioOssService : IOssService
                 .WithObjectSize(stream.Length)
                 .WithContentType(contentType);
 
-            await _minioClient.PutObjectAsync(putObjectArgs);
+            await _s3Client.PutObjectAsync(putObjectArgs);
             paths.Add(objectPath);
             index++;
         }
@@ -105,7 +105,7 @@ public class MinioOssService : IOssService
                 memoryStream.Position = 0;
             });
 
-        await _minioClient.GetObjectAsync(getObjectArgs);
+        await _s3Client.GetObjectAsync(getObjectArgs);
 
         return memoryStream;
     }
@@ -128,7 +128,7 @@ public class MinioOssService : IOssService
                 .WithBucket(_bucketName)
                 .WithObject(objectPath);
 
-            await _minioClient.RemoveObjectAsync(removeObjectArgs);
+            await _s3Client.RemoveObjectAsync(removeObjectArgs);
             return true;
         }
         catch
@@ -157,7 +157,7 @@ public class MinioOssService : IOssService
             .WithObject(objectPath)
             .WithExpiry(expirySeconds);
 
-        return await _minioClient.PresignedGetObjectAsync(presignedGetObjectArgs);
+        return await _s3Client.PresignedGetObjectAsync(presignedGetObjectArgs);
     }
 
     public async Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600)
@@ -175,7 +175,7 @@ public class MinioOssService : IOssService
         try
         {
             var beArgs = new BucketExistsArgs().WithBucket(_bucketName);
-            return await _minioClient.BucketExistsAsync(beArgs);
+            return await _s3Client.BucketExistsAsync(beArgs);
         }
         catch
         {
@@ -186,10 +186,10 @@ public class MinioOssService : IOssService
     private async Task EnsureBucketExistsAsync()
     {
         var beArgs = new BucketExistsArgs().WithBucket(_bucketName);
-        if (!await _minioClient.BucketExistsAsync(beArgs))
+        if (!await _s3Client.BucketExistsAsync(beArgs))
         {
             var mbArgs = new MakeBucketArgs().WithBucket(_bucketName);
-            await _minioClient.MakeBucketAsync(mbArgs);
+            await _s3Client.MakeBucketAsync(mbArgs);
         }
     }
 
@@ -208,9 +208,9 @@ public class MinioOssService : IOssService
 
 public class OssOptions
 {
-    public string Endpoint { get; set; } = "localhost:9000";
-    public string AccessKey { get; set; } = "minioadmin";
-    public string SecretKey { get; set; } = "minioadmin";
+    public string Endpoint { get; set; } = "localhost:8333";
+    public string AccessKey { get; set; } = "seaweedfs_admin";
+    public string SecretKey { get; set; } = "seaweedfs_admin";
     public string BucketName { get; set; } = "ruoyu-study";
     public bool IsSecure { get; set; } = false;
 }

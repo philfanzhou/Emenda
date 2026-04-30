@@ -20,9 +20,9 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 
-// Register MinIO OSS service
+// Register S3 OSS service
 var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
-builder.Services.AddSingleton<IOssService>(new MinioOssService(
+builder.Services.AddSingleton<IOssService>(new S3OssService(
     ossOptions.Endpoint,
     ossOptions.AccessKey,
     ossOptions.SecretKey,
