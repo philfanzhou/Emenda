@@ -33,9 +33,16 @@ public class MistakeRepository : IMistakeRepository
 
     public void Remove(MistakeModel model)
     {
-        // When removing, we just need the entity with the ID to be tracked/deleted
-        var entity = model.Adapt<MistakeEntity>();
-        _dbContext.Mistakes.Remove(entity);
+        var tracked = _dbContext.Mistakes.Local.FirstOrDefault(e => e.Id == model.Id);
+        if (tracked != null)
+        {
+            _dbContext.Mistakes.Remove(tracked);
+        }
+        else
+        {
+            var entity = model.Adapt<MistakeEntity>();
+            _dbContext.Mistakes.Remove(entity);
+        }
     }
 
     public async Task<(List<MistakeModel> Items, int TotalCount)> GetListAsync(string studentId, int subject, int grade, int status, int page, int size)
