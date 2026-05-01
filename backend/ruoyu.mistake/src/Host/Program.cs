@@ -24,7 +24,11 @@ builder.WebHost.ConfigureKestrel(options =>
     });
 });
 
-builder.Services.AddGrpc();
+builder.Services.AddGrpc(options =>
+{
+    options.MaxReceiveMessageSize = 100 * 1024 * 1024;
+    options.MaxSendMessageSize = 100 * 1024 * 1024;
+});
 builder.Services.AddDbContext<MistakeDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("Default");
