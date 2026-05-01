@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <Protobuf Include="Protos\mistake.common.proto" GrpcServices="None" />
-    <Protobuf Include="Protos\mistake.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\mistake.proto" GrpcServices="Both" />
   </ItemGroup>
 
 </Project>
