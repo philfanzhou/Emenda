@@ -38,11 +38,12 @@ builder.Services.AddScoped<MistakeDomainService>();
 
 var app = builder.Build();
 
-// Configure database initialization (Code First without Migrations)
+// Configure database initialization (auto-migrate on startup)
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
-    dbContext.Database.EnsureCreated();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    await DatabaseInitializer.InitializeAsync(dbContext, logger);
 }
 
 // Configure the HTTP request pipeline.
