@@ -51,4 +51,16 @@ public class MistakeDetailRepository : IMistakeDetailRepository
         await _dbContext.SaveChangesAsync();
         return true;
     }
+
+    public async Task<bool> RemoveImageAsync(Guid mistakeId, string imagePath)
+    {
+        var entity = await _dbContext.MistakeDetails.FirstOrDefaultAsync(d => d.MistakeId == mistakeId);
+        if (entity == null) return false;
+
+        var removed = entity.OriginalImages.Remove(imagePath);
+        if (!removed) return false;
+
+        await _dbContext.SaveChangesAsync();
+        return true;
+    }
 }

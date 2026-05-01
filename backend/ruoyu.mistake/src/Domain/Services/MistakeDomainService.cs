@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Components.Oss;
@@ -14,27 +17,97 @@ public class MistakeDomainService
     private readonly IMistakeDetailRepository _mistakeDetailRepository;
     private readonly IMistakePracticeRepository _mistakePracticeRepository;
     private readonly IProcessLogRepository _processLogRepository;
+    private readonly IImageFingerprintRepository _imageFingerprintRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IOssService _ossService;
+    private readonly ILogger<MistakeDomainService> _logger;
 
     public MistakeDomainService(
         IMistakeRepository mistakeRepository,
         IMistakeDetailRepository mistakeDetailRepository,
         IMistakePracticeRepository mistakePracticeRepository,
         IProcessLogRepository processLogRepository,
+        IImageFingerprintRepository imageFingerprintRepository,
         IUnitOfWork unitOfWork,
-        IOssService ossService)
+        IOssService ossService,
+        ILogger<MistakeDomainService> logger)
     {
         _mistakeRepository = mistakeRepository;
         _mistakeDetailRepository = mistakeDetailRepository;
         _mistakePracticeRepository = mistakePracticeRepository;
         _processLogRepository = processLogRepository;
+        _imageFingerprintRepository = imageFingerprintRepository;
         _unitOfWork = unitOfWork;
         _ossService = ossService;
+        _logger = logger;
     }
 
-    public async Task<(MistakeModel mistake, MistakeDetailModel detail)> UploadMistakeAsync(MistakeModel mistake, List<byte[]>? images)
+    private static string BuildOssFolder(int subject, string studentId, Guid mistakeId)
     {
+        var now = DateTime.UtcNow;
+        return $"{subject}/{studentId}/{now.Year}/{now.Month:D2}/{now.Day:D2}/{mistakeId}";
+    }
+
+    private static string ComputeSha256Hash(byte[] imageBytes)
+    {
+        var hashBytes = SHA256.HashData(imageBytes);
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+    }
+
+    public async Task<UploadMistakeResult> UploadMistakeAsync(MistakeModel mistake, List<byte[]>? images)
+    {
+        if (images != null && images.Count > 0)
+        {
+            var hashes = images.Select(ComputeSha256Hash).ToList();
+
+            var seenHashes = new Dictionary<string, int>();
+            for (int i = 0; i < hashes.Count; i++)
+            {
+                if (seenHashes.TryGetValue(hashes[i], out var firstIndex))
+                {
+                    return new UploadMistakeResult
+                    {
+                        Success = false,
+                        Duplicates = new List<Models.DuplicateImageInfo>
+                        {
+                            new()
+                            {
+                                ImageIndex = i,
+                                MistakeId = Guid.Empty,
+                                CreatedAt = DateTime.MinValue
+                            }
+                        }
+                    };
+                }
+                seenHashes[hashes[i]] = i;
+            }
+
+            var existingFingerprints = await _imageFingerprintRepository.GetByHashesAndStudentIdAsync(hashes, mistake.StudentId);
+            if (existingFingerprints.Count > 0)
+            {
+                var existingHashSet = existingFingerprints.Select(f => f.Hash).ToHashSet();
+                var duplicates = new List<Models.DuplicateImageInfo>();
+                for (int i = 0; i < hashes.Count; i++)
+                {
+                    if (existingHashSet.Contains(hashes[i]))
+                    {
+                        var fp = existingFingerprints.First(f => f.Hash == hashes[i]);
+                        duplicates.Add(new Models.DuplicateImageInfo
+                        {
+                            ImageIndex = i,
+                            MistakeId = fp.MistakeId,
+                            CreatedAt = fp.CreatedAt
+                        });
+                    }
+                }
+                return new UploadMistakeResult
+                {
+                    Success = false,
+                    Duplicates = duplicates
+                };
+            }
+        }
+
         List<string>? uploadedPaths = null;
 
         try
@@ -49,17 +122,38 @@ public class MistakeDomainService
                 MistakeId = mistake.Id
             };
 
+            List<string>? imageHashes = null;
+
             if (images != null && images.Count > 0)
             {
+                var folder = BuildOssFolder(mistake.Subject, mistake.StudentId, mistake.Id);
                 var imagePaths = new List<string>();
+                imageHashes = new List<string>();
                 for (int i = 0; i < images.Count; i++)
                 {
-                    var fileName = $"m_{mistake.Id}_{i}.jpg";
-                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
+                    var fileName = $"original_{i}.jpg";
+                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes, folder);
                     imagePaths.Add(path);
+                    imageHashes.Add(ComputeSha256Hash(images[i]));
                 }
                 uploadedPaths = imagePaths;
                 detail.OriginalImages = imagePaths;
+
+                var fingerprints = new List<ImageFingerprintModel>();
+                for (int i = 0; i < imagePaths.Count; i++)
+                {
+                    fingerprints.Add(new ImageFingerprintModel
+                    {
+                        Id = Guid.NewGuid(),
+                        Hash = imageHashes[i],
+                        StudentId = mistake.StudentId,
+                        MistakeId = mistake.Id,
+                        ImageIndex = i,
+                        OssPath = imagePaths[i],
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                await _imageFingerprintRepository.AddRangeAsync(fingerprints);
             }
 
             await _mistakeRepository.AddAsync(mistake);
@@ -76,16 +170,39 @@ public class MistakeDomainService
             await _processLogRepository.AddAsync(processLog);
 
             await _unitOfWork.SaveChangesAsync();
-            return (mistake, detail);
+            return new UploadMistakeResult
+            {
+                Success = true,
+                Mistake = mistake,
+                Detail = detail
+            };
         }
         catch
         {
             if (uploadedPaths != null && uploadedPaths.Count > 0)
             {
-                await _ossService.DeleteManyAsync(uploadedPaths);
+                await SafeDeleteOssFilesAsync(uploadedPaths, "UploadMistake rollback");
             }
             throw;
         }
+    }
+
+    public async Task<bool> DeleteMistakeImageAsync(Guid mistakeId, string imagePath)
+    {
+        var mistake = await _mistakeRepository.GetByIdAsync(mistakeId);
+        if (mistake == null) return false;
+
+        if (mistake.Status != (int)MistakeStatus.Pending) return false;
+
+        var removed = await _mistakeDetailRepository.RemoveImageAsync(mistakeId, imagePath);
+        if (!removed) return false;
+
+        await _imageFingerprintRepository.RemoveByOssPathAsync(imagePath);
+        await _unitOfWork.SaveChangesAsync();
+
+        await SafeDeleteOssFileAsync(imagePath, "DeleteMistakeImage");
+
+        return true;
     }
 
     public async Task<bool> DeleteMistakeAsync(Guid id)
@@ -96,11 +213,27 @@ public class MistakeDomainService
         if (mistake.Status != (int)MistakeStatus.Pending) return false;
 
         var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
-        List<string>? imagesToDelete = detail != null && detail.OriginalImages.Count > 0
-            ? new List<string>(detail.OriginalImages)
-            : null;
+        var practices = await _mistakePracticeRepository.GetByMistakeIdAsync(id);
 
-        if (imagesToDelete != null)
+        var allImagesToDelete = new List<string>();
+
+        if (detail != null && detail.OriginalImages.Count > 0)
+        {
+            allImagesToDelete.AddRange(detail.OriginalImages);
+        }
+
+        foreach (var practice in practices)
+        {
+            if (practice.ImagePaths != null && practice.ImagePaths.Count > 0)
+            {
+                allImagesToDelete.AddRange(practice.ImagePaths);
+            }
+        }
+
+        await _mistakePracticeRepository.RemoveByMistakeIdAsync(id);
+        await _processLogRepository.RemoveByMistakeIdAsync(id);
+
+        if (detail != null)
         {
             await _mistakeDetailRepository.DeleteByMistakeIdAsync(id);
         }
@@ -108,13 +241,9 @@ public class MistakeDomainService
         _mistakeRepository.Remove(mistake);
         await _unitOfWork.SaveChangesAsync();
 
-        if (imagesToDelete != null && imagesToDelete.Count > 0)
+        if (allImagesToDelete.Count > 0)
         {
-            _ = Task.Run(async () =>
-            {
-                try { await _ossService.DeleteManyAsync(imagesToDelete); }
-                catch { }
-            });
+            await SafeDeleteOssFilesAsync(allImagesToDelete, "DeleteMistake");
         }
 
         return true;
@@ -147,7 +276,7 @@ public class MistakeDomainService
             await _mistakePracticeRepository.RemoveByMistakeIdAsync(originalMistakeId);
             await _processLogRepository.RemoveByMistakeIdAsync(originalMistakeId);
 
-            if (originalImagesToDelete != null)
+            if (originalDetail != null)
             {
                 await _mistakeDetailRepository.DeleteByMistakeIdAsync(originalMistakeId);
             }
@@ -175,16 +304,35 @@ public class MistakeDomainService
 
                 if (images != null && images.Count > 0)
                 {
+                    var folder = BuildOssFolder(newMistake.Subject, newMistake.StudentId, newMistake.Id);
                     var imagePaths = new List<string>();
+                    var imageHashes = new List<string>();
                     for (int i = 0; i < images.Count; i++)
                     {
-                        var fileName = $"m_{newMistake.Id}_{i}.jpg";
-                        var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
+                        var fileName = $"original_{i}.jpg";
+                        var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes, folder);
                         imagePaths.Add(path);
+                        imageHashes.Add(ComputeSha256Hash(images[i]));
                     }
                     newDetail.OriginalImages = imagePaths;
                     newlyUploadedPaths ??= new List<string>();
                     newlyUploadedPaths.AddRange(imagePaths);
+
+                    var fingerprints = new List<ImageFingerprintModel>();
+                    for (int i = 0; i < imagePaths.Count; i++)
+                    {
+                        fingerprints.Add(new ImageFingerprintModel
+                        {
+                            Id = Guid.NewGuid(),
+                            Hash = imageHashes[i],
+                            StudentId = newMistake.StudentId,
+                            MistakeId = newMistake.Id,
+                            ImageIndex = i,
+                            OssPath = imagePaths[i],
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    await _imageFingerprintRepository.AddRangeAsync(fingerprints);
                 }
 
                 await _mistakeDetailRepository.AddAsync(newDetail);
@@ -204,19 +352,11 @@ public class MistakeDomainService
 
             if (originalImagesToDelete != null && originalImagesToDelete.Count > 0)
             {
-                _ = Task.Run(async () =>
-                {
-                    try { await _ossService.DeleteManyAsync(originalImagesToDelete); }
-                    catch { }
-                });
+                await SafeDeleteOssFilesAsync(originalImagesToDelete, "SplitMistake original images");
             }
             if (practiceImagesToDelete.Count > 0)
             {
-                _ = Task.Run(async () =>
-                {
-                    try { await _ossService.DeleteManyAsync(practiceImagesToDelete); }
-                    catch { }
-                });
+                await SafeDeleteOssFilesAsync(practiceImagesToDelete, "SplitMistake practice images");
             }
 
             return true;
@@ -225,7 +365,7 @@ public class MistakeDomainService
         {
             if (newlyUploadedPaths != null && newlyUploadedPaths.Count > 0)
             {
-                await _ossService.DeleteManyAsync(newlyUploadedPaths);
+                await SafeDeleteOssFilesAsync(newlyUploadedPaths, "SplitMistake rollback");
             }
             throw;
         }
@@ -249,17 +389,39 @@ public class MistakeDomainService
 
         if (images != null && images.Count > 0)
         {
+            var hashes = images.Select(ComputeSha256Hash).ToList();
+
+            var seenHashes = new Dictionary<string, int>();
+            for (int i = 0; i < hashes.Count; i++)
+            {
+                if (seenHashes.TryGetValue(hashes[i], out var firstIndex))
+                {
+                    return false;
+                }
+                seenHashes[hashes[i]] = i;
+            }
+
+            var existingFingerprints = await _imageFingerprintRepository.GetByHashesAndStudentIdAsync(hashes, mistake.StudentId);
+            var conflictFingerprints = existingFingerprints.Where(f => f.MistakeId != id).ToList();
+            if (conflictFingerprints.Count > 0)
+            {
+                return false;
+            }
+
             List<string>? oldImagesToDelete = null;
             List<string>? newlyUploadedPaths = null;
 
             try
             {
+                var folder = BuildOssFolder(mistake.Subject, mistake.StudentId, mistake.Id);
                 var imagePaths = new List<string>();
+                var imageHashes = new List<string>();
                 for (int i = 0; i < images.Count; i++)
                 {
-                    var fileName = $"m_{mistake.Id}_{i}.jpg";
-                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
+                    var fileName = $"original_{i}.jpg";
+                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes, folder);
                     imagePaths.Add(path);
+                    imageHashes.Add(ComputeSha256Hash(images[i]));
                 }
                 newlyUploadedPaths = imagePaths;
 
@@ -267,6 +429,24 @@ public class MistakeDomainService
                 {
                     oldImagesToDelete = new List<string>(detail.OriginalImages);
                 }
+
+                await _imageFingerprintRepository.RemoveByMistakeIdAsync(id);
+
+                var fingerprints = new List<ImageFingerprintModel>();
+                for (int i = 0; i < imagePaths.Count; i++)
+                {
+                    fingerprints.Add(new ImageFingerprintModel
+                    {
+                        Id = Guid.NewGuid(),
+                        Hash = imageHashes[i],
+                        StudentId = mistake.StudentId,
+                        MistakeId = id,
+                        ImageIndex = i,
+                        OssPath = imagePaths[i],
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                await _imageFingerprintRepository.AddRangeAsync(fingerprints);
 
                 if (detail == null)
                 {
@@ -290,11 +470,7 @@ public class MistakeDomainService
 
                 if (oldImagesToDelete != null && oldImagesToDelete.Count > 0)
                 {
-                    _ = Task.Run(async () =>
-                    {
-                        try { await _ossService.DeleteManyAsync(oldImagesToDelete); }
-                        catch { }
-                    });
+                    await SafeDeleteOssFilesAsync(oldImagesToDelete, "UpdateMistake old images");
                 }
 
                 return true;
@@ -303,7 +479,7 @@ public class MistakeDomainService
             {
                 if (newlyUploadedPaths != null && newlyUploadedPaths.Count > 0)
                 {
-                    await _ossService.DeleteManyAsync(newlyUploadedPaths);
+                    await SafeDeleteOssFilesAsync(newlyUploadedPaths, "UpdateMistake rollback");
                 }
                 throw;
             }
@@ -371,11 +547,16 @@ public class MistakeDomainService
 
             if (images != null && images.Count > 0)
             {
+                var mistake = await _mistakeRepository.GetByIdAsync(practice.MistakeId);
+                var folder = mistake != null
+                    ? BuildOssFolder(mistake.Subject, mistake.StudentId, mistake.Id)
+                    : $"unknown/{practice.MistakeId}";
+
                 var imagePaths = new List<string>();
                 for (int i = 0; i < images.Count; i++)
                 {
-                    var fileName = $"p_{practice.Id}_{i}.jpg";
-                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes);
+                    var fileName = $"practice_{practice.Id}_{i}.jpg";
+                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes, folder);
                     imagePaths.Add(path);
                 }
                 uploadedPaths = imagePaths;
@@ -401,7 +582,7 @@ public class MistakeDomainService
         {
             if (uploadedPaths != null && uploadedPaths.Count > 0)
             {
-                await _ossService.DeleteManyAsync(uploadedPaths);
+                await SafeDeleteOssFilesAsync(uploadedPaths, "AddPractice rollback");
             }
             throw;
         }
@@ -462,5 +643,46 @@ public class MistakeDomainService
     public async Task<List<ProcessLogModel>> GetMistakeProcessHistoryAsync(Guid mistakeId)
     {
         return await _processLogRepository.GetByMistakeIdAsync(mistakeId);
+    }
+
+    public async Task<List<Models.ImageExistenceResult>> CheckImagesExistAsync(string studentId, List<string> imageHashes)
+    {
+        var existingFingerprints = await _imageFingerprintRepository.GetByHashesAndStudentIdAsync(imageHashes, studentId);
+        var existingHashSet = existingFingerprints.Select(f => f.Hash).ToHashSet();
+
+        var results = new List<Models.ImageExistenceResult>();
+        for (int i = 0; i < imageHashes.Count; i++)
+        {
+            var exists = existingHashSet.Contains(imageHashes[i]);
+            var fp = exists ? existingFingerprints.First(f => f.Hash == imageHashes[i]) : null;
+            results.Add(new Models.ImageExistenceResult
+            {
+                ImageIndex = i,
+                Exists = exists,
+                MistakeId = fp?.MistakeId ?? Guid.Empty,
+                CreatedAt = fp?.CreatedAt ?? DateTime.MinValue
+            });
+        }
+        return results;
+    }
+
+    private async Task SafeDeleteOssFileAsync(string objectPath, string operation)
+    {
+        try
+        {
+            await _ossService.DeleteAsync(objectPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete OSS file '{ObjectPath}' during '{Operation}'. Manual cleanup may be required.", objectPath, operation);
+        }
+    }
+
+    private async Task SafeDeleteOssFilesAsync(IEnumerable<string> objectPaths, string operation)
+    {
+        foreach (var path in objectPaths)
+        {
+            await SafeDeleteOssFileAsync(path, operation);
+        }
     }
 }

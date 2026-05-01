@@ -32,24 +32,46 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             ? request.Images.Select(b => b.ToByteArray()).ToList()
             : null;
 
-        var (mistake, detail) = await _mistakeService.UploadMistakeAsync(entity, images);
+        var result = await _mistakeService.UploadMistakeAsync(entity, images);
 
         var response = new UploadMistakeResponse
         {
-            Mistake = mistake.Adapt<MistakeDto>(),
-            Detail = new MistakeDetailDto
-            {
-                MistakeId = detail.MistakeId.ToString(),
-                OriginalImages = { detail.OriginalImages },
-                Comments = detail.Comments ?? string.Empty
-            }
+            Success = result.Success
         };
+
+        if (result.Success && result.Mistake != null && result.Detail != null)
+        {
+            response.Mistake = result.Mistake.Adapt<MistakeDto>();
+            response.Detail = new MistakeDetailDto
+            {
+                MistakeId = result.Detail.MistakeId.ToString(),
+                OriginalImages = { result.Detail.OriginalImages },
+                Comments = result.Detail.Comments ?? string.Empty
+            };
+        }
+
+        foreach (var dup in result.Duplicates)
+        {
+            response.Duplicates.Add(new Contract.Protos.DuplicateImageInfo
+            {
+                ImageIndex = dup.ImageIndex,
+                MistakeId = dup.MistakeId.ToString(),
+                CreatedAt = dup.CreatedAt == DateTime.MinValue ? string.Empty : dup.CreatedAt.ToString("o")
+            });
+        }
+
         return response;
     }
 
     public override async Task<BoolResponse> DeleteMistake(IdRequest request, ServerCallContext context)
     {
         var success = await _mistakeService.DeleteMistakeAsync(Guid.Parse(request.Id));
+        return new BoolResponse { Success = success };
+    }
+
+    public override async Task<BoolResponse> DeleteMistakeImage(DeleteMistakeImageRequest request, ServerCallContext context)
+    {
+        var success = await _mistakeService.DeleteMistakeImageAsync(Guid.Parse(request.MistakeId), request.ImagePath);
         return new BoolResponse { Success = success };
     }
 
@@ -207,6 +229,24 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         var logs = await _mistakeService.GetMistakeProcessHistoryAsync(Guid.Parse(request.Id));
         var response = new ProcessLogListResponse();
         response.Logs.AddRange(logs.Adapt<ProcessLogDto[]>());
+        return response;
+    }
+
+    public override async Task<CheckImagesExistResponse> CheckImagesExist(CheckImagesExistRequest request, ServerCallContext context)
+    {
+        var results = await _mistakeService.CheckImagesExistAsync(request.StudentId, request.ImageHashes.ToList());
+
+        var response = new CheckImagesExistResponse();
+        foreach (var r in results)
+        {
+            response.Results.Add(new Contract.Protos.ImageExistenceResult
+            {
+                ImageIndex = r.ImageIndex,
+                Exists = r.Exists,
+                MistakeId = r.MistakeId.ToString(),
+                CreatedAt = r.CreatedAt == DateTime.MinValue ? string.Empty : r.CreatedAt.ToString("o")
+            });
+        }
         return response;
     }
 }

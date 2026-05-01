@@ -15,9 +15,9 @@ public enum OssBucket
 
 public interface IOssService
 {
-    Task<string> UploadAsync(Stream stream, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes);
-    Task<string> UploadAsync(byte[] data, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes);
-    Task<List<string>> UploadManyAsync(IEnumerable<(Stream stream, string fileName, string contentType)> files, OssBucket bucket = OssBucket.Mistakes);
+    Task<string> UploadAsync(Stream stream, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes, string? folder = null);
+    Task<string> UploadAsync(byte[] data, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes, string? folder = null);
+    Task<List<string>> UploadManyAsync(IEnumerable<(Stream stream, string fileName, string contentType)> files, OssBucket bucket = OssBucket.Mistakes, string? folder = null);
     Task<Stream> DownloadAsync(string objectPath);
     Task<List<Stream>> DownloadManyAsync(IEnumerable<string> objectPaths);
     Task<bool> DeleteAsync(string objectPath);
@@ -42,9 +42,9 @@ public class S3OssService : IOssService
             .Build();
     }
 
-    public async Task<string> UploadAsync(Stream stream, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes)
+    public async Task<string> UploadAsync(Stream stream, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes, string? folder = null)
     {
-        var objectPath = GenerateObjectPath(fileName, bucket);
+        var objectPath = GenerateObjectPath(fileName, bucket, folder);
 
         await EnsureBucketExistsAsync();
 
@@ -60,13 +60,13 @@ public class S3OssService : IOssService
         return objectPath;
     }
 
-    public async Task<string> UploadAsync(byte[] data, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes)
+    public async Task<string> UploadAsync(byte[] data, string fileName, string contentType, OssBucket bucket = OssBucket.Mistakes, string? folder = null)
     {
         using var stream = new MemoryStream(data);
-        return await UploadAsync(stream, fileName, contentType, bucket);
+        return await UploadAsync(stream, fileName, contentType, bucket, folder);
     }
 
-    public async Task<List<string>> UploadManyAsync(IEnumerable<(Stream stream, string fileName, string contentType)> files, OssBucket bucket = OssBucket.Mistakes)
+    public async Task<List<string>> UploadManyAsync(IEnumerable<(Stream stream, string fileName, string contentType)> files, OssBucket bucket = OssBucket.Mistakes, string? folder = null)
     {
         await EnsureBucketExistsAsync();
 
@@ -75,7 +75,7 @@ public class S3OssService : IOssService
 
         foreach (var (stream, fileName, contentType) in files)
         {
-            var objectPath = GenerateObjectPath($"{index}_{fileName}", bucket);
+            var objectPath = GenerateObjectPath($"{index}_{fileName}", bucket, folder);
 
             var putObjectArgs = new PutObjectArgs()
                 .WithBucket(_bucketName)
@@ -193,15 +193,20 @@ public class S3OssService : IOssService
         }
     }
 
-    private static string GenerateObjectPath(string fileName, OssBucket bucket)
+    private static string GenerateObjectPath(string fileName, OssBucket bucket, string? folder = null)
     {
-        var now = DateTime.UtcNow;
         var prefix = bucket switch
         {
             OssBucket.Mistakes => "mistakes",
             _ => "others"
         };
 
+        if (!string.IsNullOrWhiteSpace(folder))
+        {
+            return $"{prefix}/{folder}/{fileName}";
+        }
+
+        var now = DateTime.UtcNow;
         return $"{prefix}/{now.Year}/{now.Month:D2}/{now.Day:D2}/{Guid.NewGuid():N}/{fileName}";
     }
 }

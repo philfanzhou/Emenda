@@ -86,3 +86,16 @@ message ProcessLogDto {
   string details = 4;
   string created_at = 5;
 }
+
+message DuplicateImageInfo {
+  int32 image_index = 1;
+  string mistake_id = 2;
+  string created_at = 3;
+}
+
+message ImageExistenceResult {
+  int32 image_index = 1;
+  bool exists = 2;
+  string mistake_id = 3;
+  string created_at = 4;
+}

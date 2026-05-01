@@ -32,6 +32,7 @@ builder.Services.AddScoped<IMistakeRepository, MistakeRepository>();
 builder.Services.AddScoped<IMistakeDetailRepository, MistakeDetailRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
+builder.Services.AddScoped<IImageFingerprintRepository, ImageFingerprintRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<MistakeDomainService>();
 
