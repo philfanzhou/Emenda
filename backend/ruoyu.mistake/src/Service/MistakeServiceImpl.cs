@@ -41,7 +41,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
         if (result.Success && result.Mistake != null && result.Detail != null)
         {
-            response.Mistake = result.Mistake.Adapt<MistakeDto>();
+            response.Mistake = MapMistakeDto(result.Mistake);
             response.Detail = new MistakeDetailDto
             {
                 MistakeId = result.Detail.MistakeId.ToString(),
@@ -85,7 +85,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
         var response = new GetMistakeResponse
         {
-            Mistake = mistake.Adapt<MistakeDto>(),
+            Mistake = MapMistakeDto(mistake),
             Detail = detail != null ? new MistakeDetailDto
             {
                 MistakeId = detail.MistakeId.ToString(),
@@ -117,7 +117,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 TotalPages = (totalCount + request.Size - 1) / request.Size
             }
         };
-        result.Items.AddRange(items.Adapt<MistakeDto[]>());
+        result.Items.AddRange(items.Select(MapMistakeDto));
         return result;
     }
 
@@ -248,5 +248,22 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             });
         }
         return response;
+    }
+
+    private static MistakeDto MapMistakeDto(MistakeModel mistake)
+    {
+        return new MistakeDto
+        {
+            Id = mistake.Id.ToString(),
+            StudentId = mistake.StudentId ?? string.Empty,
+            Subject = mistake.Subject,
+            Grade = mistake.Grade,
+            Date = mistake.Date == DateTime.MinValue ? string.Empty : mistake.Date.ToString("o"),
+            Type = mistake.Type,
+            QuestionId = mistake.QuestionId ?? string.Empty,
+            Status = (MistakeStatus)mistake.Status,
+            CreatedAt = mistake.CreatedAt == DateTime.MinValue ? string.Empty : mistake.CreatedAt.ToString("o"),
+            UpdatedAt = mistake.UpdatedAt.HasValue ? mistake.UpdatedAt.Value.ToString("o") : string.Empty
+        };
     }
 }
