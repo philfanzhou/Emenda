@@ -20,6 +20,7 @@ public interface IOssService
     Task<List<string>> UploadManyAsync(IEnumerable<(Stream stream, string fileName, string contentType)> files, OssBucket bucket = OssBucket.Mistakes, string? folder = null);
     Task<Stream> DownloadAsync(string objectPath);
     Task<List<Stream>> DownloadManyAsync(IEnumerable<string> objectPaths);
+    Task<bool> ObjectExistsAsync(string objectPath);
     Task<bool> DeleteAsync(string objectPath);
     Task<int> DeleteManyAsync(IEnumerable<string> objectPaths);
     Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600);
@@ -118,6 +119,23 @@ public class S3OssService : IOssService
             streams.Add(await DownloadAsync(path));
         }
         return streams;
+    }
+
+    public async Task<bool> ObjectExistsAsync(string objectPath)
+    {
+        try
+        {
+            var statArgs = new StatObjectArgs()
+                .WithBucket(_bucketName)
+                .WithObject(objectPath);
+
+            var stat = await _s3Client.StatObjectAsync(statArgs);
+            return stat != null && stat.Size > 0;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<bool> DeleteAsync(string objectPath)
