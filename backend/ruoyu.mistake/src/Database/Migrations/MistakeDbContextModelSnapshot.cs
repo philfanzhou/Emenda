@@ -22,54 +22,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ImageFingerprintEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Hash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("hash");
-
-                    b.Property<int>("ImageIndex")
-                        .HasColumnType("integer")
-                        .HasColumnName("image_index");
-
-                    b.Property<Guid>("MistakeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("mistake_id");
-
-                    b.Property<string>("OssPath")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("oss_path");
-
-                    b.Property<string>("StudentId")
-                        .IsRequired()
-                        .HasMaxLength(36)
-                        .HasColumnType("character varying(36)")
-                        .HasColumnName("student_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MistakeId");
-
-                    b.HasIndex("OssPath");
-
-                    b.HasIndex("Hash", "StudentId")
-                        .IsUnique();
-
-                    b.ToTable("mistake_image_fingerprint");
-                });
-
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeDetailEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -241,17 +193,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.HasIndex("MistakeId", "CreatedAt");
 
                     b.ToTable("process_log");
-                });
-
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ImageFingerprintEntity", b =>
-                {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeEntity", "Mistake")
-                        .WithMany()
-                        .HasForeignKey("MistakeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Mistake");
                 });
 
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeDetailEntity", b =>

@@ -9,7 +9,6 @@ option csharp_namespace = "Ruoyu.Study.Mistake.Contract.Protos";
 // ========== 错题本服务 ==========
 service MistakeGrpcService {
   // === 错题管理 ===
-  rpc UploadMistake(UploadMistakeRequest) returns (UploadMistakeResponse);  // 学生上传错题
   rpc UpdateMistake(UpdateMistakeRequest) returns (BoolResponse); // 教师/系统完善错题
   rpc DeleteMistake(IdRequest) returns (BoolResponse); // 删除错题（仅PENDING状态）
   rpc DeleteMistakeImage(DeleteMistakeImageRequest) returns (BoolResponse); // 删除错题中的单张图片（仅PENDING状态）
@@ -26,29 +25,9 @@ service MistakeGrpcService {
   rpc AnalyzeMistakeType(AnalyzeMistakeRequest) returns (MistakeTypeResponse);
   rpc LogMistakeProcess(LogMistakeProcessRequest) returns (BoolResponse);
   rpc GetMistakeProcessHistory(IdRequest) returns (ProcessLogListResponse);
-
-  // === 图片去重 ===
-  rpc CheckImagesExist(CheckImagesExistRequest) returns (CheckImagesExistResponse);
 }
 
 // ========== 错题请求 ==========
-message UploadMistakeRequest {
-  string student_id = 1;
-  int32 subject = 2;
-  int32 grade = 3;
-  int32 type = 4;
-  repeated bytes images = 5;   // 错题原图
-  string comments = 6;
-  string question_id = 7;      // 若已知，关联题库
-}
-
-message UploadMistakeResponse {
-  bool success = 1;
-  MistakeDto mistake = 2;
-  MistakeDetailDto detail = 3;
-  repeated DuplicateImageInfo duplicates = 4;
-}
-
 message GetMistakeResponse {
   MistakeDto mistake = 1;
   MistakeDetailDto detail = 2;
@@ -142,14 +121,4 @@ message LogMistakeProcessRequest {
 
 message ProcessLogListResponse {
   repeated ProcessLogDto logs = 1;
-}
-
-// ========== 图片去重请求 ==========
-message CheckImagesExistRequest {
-  string student_id = 1;
-  repeated string image_hashes = 2;
-}
-
-message CheckImagesExistResponse {
-  repeated ImageExistenceResult results = 1;
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -19,7 +18,6 @@ public class MistakeDomainServiceTests
     private readonly Mock<IMistakeDetailRepository> _mockDetailRepo;
     private readonly Mock<IMistakePracticeRepository> _mockPracticeRepo;
     private readonly Mock<IProcessLogRepository> _mockLogRepo;
-    private readonly Mock<IImageFingerprintRepository> _mockFingerprintRepo;
     private readonly Mock<IUnitOfWork> _mockUow;
     private readonly Mock<IOssService> _mockOssService;
     private readonly Mock<ILogger<MistakeDomainService>> _mockLogger;
@@ -31,7 +29,6 @@ public class MistakeDomainServiceTests
         _mockDetailRepo = new Mock<IMistakeDetailRepository>();
         _mockPracticeRepo = new Mock<IMistakePracticeRepository>();
         _mockLogRepo = new Mock<IProcessLogRepository>();
-        _mockFingerprintRepo = new Mock<IImageFingerprintRepository>();
         _mockUow = new Mock<IUnitOfWork>();
         _mockOssService = new Mock<IOssService>();
         _mockLogger = new Mock<ILogger<MistakeDomainService>>();
@@ -41,48 +38,9 @@ public class MistakeDomainServiceTests
             _mockDetailRepo.Object,
             _mockPracticeRepo.Object,
             _mockLogRepo.Object,
-            _mockFingerprintRepo.Object,
             _mockUow.Object,
             _mockOssService.Object,
             _mockLogger.Object);
-    }
-
-    [Fact]
-    public async Task UploadMistakeAsync_ShouldUploadImagesAndSaveToDb()
-    {
-        var mistake = new MistakeModel
-        {
-            StudentId = "student-1",
-            Subject = 1,
-            Grade = 1
-        };
-        var images = new List<byte[]> { new byte[] { 1, 2, 3 } };
-        var expectedPath = "mistakes/1/student-1/2026/05/01/{mistakeId}/original_0.jpg";
-
-        _mockOssService.Setup(x => x.UploadAsync(
-                It.IsAny<byte[]>(),
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<OssBucket>(),
-                It.IsAny<string?>()))
-            .ReturnsAsync(expectedPath);
-
-        _mockFingerprintRepo.Setup(x => x.GetByHashesAndStudentIdAsync(It.IsAny<List<string>>(), It.IsAny<string>()))
-            .ReturnsAsync(new List<ImageFingerprintModel>());
-
-        var result = await _service.UploadMistakeAsync(mistake, images);
-
-        result.Success.Should().BeTrue();
-        result.Mistake.Should().NotBeNull();
-        result.Mistake!.Id.Should().NotBeEmpty();
-        result.Mistake.Status.Should().Be(1);
-        result.Detail.Should().NotBeNull();
-        result.Detail!.OriginalImages.Should().ContainSingle().Which.Should().Be(expectedPath);
-
-        _mockMistakeRepo.Verify(x => x.AddAsync(It.Is<MistakeModel>(m => m == result.Mistake)), Times.Once);
-        _mockDetailRepo.Verify(x => x.AddAsync(It.Is<MistakeDetailModel>(d => d.MistakeId == result.Mistake.Id)), Times.Once);
-        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(l => l.MistakeId == result.Mistake.Id && l.Action == 1)), Times.Once);
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 
     [Fact]
@@ -195,7 +153,6 @@ public class MistakeDomainServiceTests
 
         result.Should().BeTrue();
         _mockDetailRepo.Verify(x => x.RemoveImageAsync(mistakeId, imagePath), Times.Once);
-        _mockFingerprintRepo.Verify(x => x.RemoveByOssPathAsync(imagePath), Times.Once);
         _mockOssService.Verify(x => x.DeleteAsync(imagePath), Times.Once);
     }
 
@@ -318,49 +275,4 @@ public class MistakeDomainServiceTests
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 
-    [Fact]
-    public async Task UploadMistakeAsync_WhenImageAlreadyExists_ShouldReturnDuplicates()
-    {
-        var mistake = new MistakeModel
-        {
-            StudentId = "student-1",
-            Subject = 1,
-            Grade = 1
-        };
-        var imageBytes = new byte[] { 1, 2, 3 };
-        var images = new List<byte[]> { imageBytes };
-        var existingMistakeId = Guid.NewGuid();
-        var expectedHash = Convert.ToHexString(SHA256.HashData(imageBytes)).ToLowerInvariant();
-
-        _mockFingerprintRepo.Setup(x => x.GetByHashesAndStudentIdAsync(It.IsAny<List<string>>(), "student-1"))
-            .ReturnsAsync(new List<ImageFingerprintModel>
-            {
-                new() { Hash = expectedHash, StudentId = "student-1", MistakeId = existingMistakeId, CreatedAt = DateTime.UtcNow }
-            });
-
-        var result = await _service.UploadMistakeAsync(mistake, images);
-
-        result.Success.Should().BeFalse();
-        result.Duplicates.Should().NotBeEmpty();
-        result.Duplicates[0].MistakeId.Should().Be(existingMistakeId);
-        _mockOssService.Verify(x => x.UploadAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OssBucket>(), It.IsAny<string?>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task UploadMistakeAsync_WhenSameImageInBatch_ShouldReturnDuplicate()
-    {
-        var mistake = new MistakeModel
-        {
-            StudentId = "student-1",
-            Subject = 1,
-            Grade = 1
-        };
-        var sameImage = new byte[] { 1, 2, 3 };
-        var images = new List<byte[]> { sameImage, sameImage };
-
-        var result = await _service.UploadMistakeAsync(mistake, images);
-
-        result.Success.Should().BeFalse();
-        result.Duplicates.Should().NotBeEmpty();
-    }
 }

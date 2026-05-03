@@ -17,7 +17,6 @@ public class MistakeDbContext : DbContext
     public DbSet<MistakeDetailEntity> MistakeDetails { get; set; } = null!;
     public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
-    public DbSet<ImageFingerprintEntity> ImageFingerprints { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -86,19 +85,6 @@ public class MistakeDbContext : DbContext
         {
             entity.HasIndex(e => new { e.MistakeId, e.CreatedAt });
             entity.HasIndex(e => e.CreatedAt);
-
-            entity.HasOne(e => e.Mistake)
-                  .WithMany()
-                  .HasForeignKey(e => e.MistakeId)
-                  .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        // ImageFingerprint 配置
-        modelBuilder.Entity<ImageFingerprintEntity>(entity =>
-        {
-            entity.HasIndex(e => new { e.Hash, e.StudentId }).IsUnique();
-            entity.HasIndex(e => e.MistakeId);
-            entity.HasIndex(e => e.OssPath);
 
             entity.HasOne(e => e.Mistake)
                   .WithMany()
