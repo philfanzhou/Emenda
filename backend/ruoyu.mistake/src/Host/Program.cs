@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Mistake.Components.Oss;
+using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
