@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Service\Ruoyu.Study.Mistake.Service.csproj" />
-    <ProjectReference Include="..\Components\Ruoyu.Study.Mistake.Components.csproj" />
+    <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
     <ProjectReference Include="..\Database\Ruoyu.Study.Mistake.Database.csproj" />
   </ItemGroup>
 
