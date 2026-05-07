@@ -9,14 +9,14 @@ option csharp_namespace = "Ruoyu.Study.Mistake.Contract.Protos";
 // ========== 错题本服务 ==========
 service MistakeGrpcService {
   // === 错题管理 ===
-  rpc UpdateMistake(UpdateMistakeRequest) returns (BoolResponse); // 教师/系统完善错题
-  rpc DeleteMistake(IdRequest) returns (BoolResponse); // 删除错题（仅PENDING状态）
-  rpc DeleteMistakeImage(DeleteMistakeImageRequest) returns (BoolResponse); // 删除错题中的单张图片（仅PENDING状态）
+  rpc UpdateMistake(UpdateMistakeRequest) returns (BoolResponse);
+  rpc DeleteMistake(IdRequest) returns (BoolResponse);
+  rpc DeleteMistakeImage(DeleteMistakeImageRequest) returns (BoolResponse);
   rpc GetMistake(GetMistakeRequest) returns (GetMistakeResponse);
   rpc GetMistakeList(GetMistakeListRequest) returns (MistakePageResult);
-  rpc MarkMistakeProcessed(MarkMistakeProcessedRequest) returns (BoolResponse); // 教师/系统标记为已处理
-  rpc SplitMistake(SplitMistakeRequest) returns (BoolResponse); // 将一个错题拆分为多个新错题
-  rpc ReturnMistake(ReturnMistakeRequest) returns (BoolResponse); // 退回错题为上传记录
+  rpc MarkMistakeProcessed(MarkMistakeProcessedRequest) returns (BoolResponse);
+  rpc SplitMistake(SplitMistakeRequest) returns (BoolResponse);
+  rpc ReturnMistake(ReturnMistakeRequest) returns (BoolResponse);
 
   // === 错题重答与举一反三 ===
   rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
@@ -42,7 +42,6 @@ message MarkMistakeProcessedRequest {
 message UpdateMistakeRequest {
   string mistake_id = 1;
   string comments = 2;
-  repeated bytes images = 3;
   string question_id = 4;
   int32 subject = 5;
   int32 grade = 6;
@@ -59,7 +58,7 @@ message SplitMistakeItem {
   int32 subject = 2;
   int32 grade = 3;
   int32 type = 4;
-  repeated bytes images = 5;
+  repeated string image_paths = 5;
   string comments = 6;
 }
 
@@ -89,7 +88,7 @@ message GetMistakeListRequest {
 message AddMistakePracticeRequest {
   string mistake_id = 1;
   string student_id = 2;
-  repeated bytes images = 3;
+  repeated string image_paths = 3;
   string student_answer = 4;
   bool is_correct = 5;
   string comments = 6;
@@ -123,7 +122,7 @@ message LogMistakeProcessRequest {
 message ReturnMistakeRequest {
   string mistake_id = 1;
   string student_id = 2;
-  string return_reason = 3; // 退回原因
+  string return_reason = 3;
 }
 
 message ProcessLogListResponse {

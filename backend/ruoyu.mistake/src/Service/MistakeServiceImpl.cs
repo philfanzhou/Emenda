@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Mapster;
@@ -77,10 +78,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> UpdateMistake(UpdateMistakeRequest request, ServerCallContext context)
     {
-        var images = request.Images?.Count > 0
-            ? request.Images.Select(b => b.ToByteArray()).ToList()
-            : null;
-
         var success = await _mistakeService.UpdateMistakeAsync(
             Guid.Parse(request.MistakeId),
             entity =>
@@ -99,8 +96,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 {
                     detail.Comments = request.Comments;
                 }
-            },
-            images);
+            });
 
         return new BoolResponse { Success = success };
     }
@@ -115,7 +111,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> SplitMistake(SplitMistakeRequest request, ServerCallContext context)
     {
-        var newMistakes = new List<(MistakeModel mistake, List<byte[]>? images, string? comments)>();
+        var newMistakes = new List<(MistakeModel mistake, List<string>? imagePaths, string? comments)>();
 
         foreach (var req in request.NewMistakes)
         {
@@ -127,12 +123,12 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 Date = DateTime.UtcNow,
                 Type = req.Type
             };
-            var images = req.Images?.Count > 0
-                ? req.Images.Select(b => b.ToByteArray()).ToList()
+            var imagePaths = req.ImagePaths?.Count > 0
+                ? new List<string>(req.ImagePaths)
                 : null;
             var comments = req.Comments;
 
-            newMistakes.Add((entity, images, comments));
+            newMistakes.Add((entity, imagePaths, comments));
         }
 
         var success = await _mistakeService.SplitMistakeAsync(Guid.Parse(request.OriginalMistakeId), newMistakes);
@@ -143,11 +139,11 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     {
         var entity = request.Adapt<MistakePracticeModel>();
 
-        var images = request.Images?.Count > 0
-            ? request.Images.Select(b => b.ToByteArray()).ToList()
+        var imagePaths = request.ImagePaths?.Count > 0
+            ? new List<string>(request.ImagePaths)
             : null;
 
-        var result = await _mistakeService.AddPracticeAsync(entity, images);
+        var result = await _mistakeService.AddPracticeAsync(entity, imagePaths);
         return result.Adapt<MistakePracticeDto>();
     }
 
@@ -188,9 +184,9 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> ReturnMistake(ReturnMistakeRequest request, ServerCallContext context)
     {
-        var (success, error) = await _mistakeService.ReturnMistakeAsync(
-            Guid.Parse(request.MistakeId), request.StudentId);
-        return new BoolResponse { Success = success, ErrorMessage = error ?? "" };
+        var success = await _mistakeService.DeleteMistakeWithoutDeletingImagesAsync(
+            Guid.Parse(request.MistakeId));
+        return new BoolResponse { Success = success };
     }
 
     private static MistakeDto MapMistakeDto(MistakeModel mistake)

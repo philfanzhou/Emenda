@@ -37,12 +37,6 @@ public class MistakeDomainService
         _logger = logger;
     }
 
-    private static string BuildOssFolder(int subject, string studentId, Guid mistakeId)
-    {
-        var now = DateTime.UtcNow;
-        return $"{subject}/{studentId}/{now.Year}/{now.Month:D2}/{now.Day:D2}/{mistakeId}";
-    }
-
     public async Task<bool> DeleteMistakeImageAsync(Guid mistakeId, string imagePath)
     {
         var mistake = await _mistakeRepository.GetByIdAsync(mistakeId);
@@ -90,7 +84,7 @@ public class MistakeDomainService
 
         if (detail != null)
         {
-            await _mistakeDetailRepository.RemoveByMistakeIdAsync(id);
+            await _mistakeDetailRepository.DeleteByMistakeIdAsync(id);
         }
 
         _mistakeRepository.Remove(mistake);
@@ -116,30 +110,6 @@ public class MistakeDomainService
         return (true, mistake.StudentId, imagePaths, detail?.Comments);
     }
 
-    public async Task<(bool success, string? error)> ReturnMistakeAsync(Guid id, string studentId)
-    {
-        var mistake = await _mistakeRepository.GetByIdAsync(id);
-        if (mistake == null) return (false, "错题不存在");
-
-        if (mistake.StudentId != studentId) return (false, "学生ID不匹配");
-
-        var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
-        var practices = await _mistakePracticeRepository.GetByMistakeIdAsync(id);
-
-        await _mistakePracticeRepository.RemoveByMistakeIdAsync(id);
-        await _processLogRepository.RemoveByMistakeIdAsync(id);
-
-        if (detail != null)
-        {
-            await _mistakeDetailRepository.RemoveByMistakeIdAsync(id);
-        }
-
-        _mistakeRepository.Remove(mistake);
-        await _unitOfWork.SaveChangesAsync();
-
-        return (true, null);
-    }
-
     public async Task<bool> DeleteMistakeWithoutDeletingImagesAsync(Guid id)
     {
         var mistake = await _mistakeRepository.GetByIdAsync(id);
@@ -153,7 +123,7 @@ public class MistakeDomainService
 
         if (detail != null)
         {
-            await _mistakeDetailRepository.RemoveByMistakeIdAsync(id);
+            await _mistakeDetailRepository.DeleteByMistakeIdAsync(id);
         }
 
         _mistakeRepository.Remove(mistake);
@@ -162,7 +132,7 @@ public class MistakeDomainService
         return true;
     }
 
-    public async Task<bool> SplitMistakeAsync(Guid originalMistakeId, List<(MistakeModel mistake, List<byte[]>? images, string? comments)> newMistakes)
+    public async Task<bool> SplitMistakeAsync(Guid originalMistakeId, List<(MistakeModel mistake, List<string>? imagePaths, string? comments)> newMistakes)
     {
         var originalMistake = await _mistakeRepository.GetByIdAsync(originalMistakeId);
         if (originalMistake == null) return false;
@@ -182,88 +152,61 @@ public class MistakeDomainService
             }
         }
 
-        List<string>? newlyUploadedPaths = null;
+        await _mistakePracticeRepository.RemoveByMistakeIdAsync(originalMistakeId);
+        await _processLogRepository.RemoveByMistakeIdAsync(originalMistakeId);
 
-        try
+        if (originalDetail != null)
         {
-            await _mistakePracticeRepository.RemoveByMistakeIdAsync(originalMistakeId);
-            await _processLogRepository.RemoveByMistakeIdAsync(originalMistakeId);
-
-            if (originalDetail != null)
-            {
-                await _mistakeDetailRepository.RemoveByMistakeIdAsync(originalMistakeId);
-            }
-
-            _mistakeRepository.Remove(originalMistake);
-
-            foreach (var item in newMistakes)
-            {
-                var newMistake = item.mistake;
-                var images = item.images;
-                var comments = item.comments;
-
-                newMistake.Id = Guid.NewGuid();
-                newMistake.CreatedAt = DateTime.UtcNow;
-                newMistake.Status = (int)MistakeStatus.Pending;
-
-                await _mistakeRepository.AddAsync(newMistake);
-
-                var newDetail = new MistakeDetailModel
-                {
-                    Id = Guid.NewGuid(),
-                    MistakeId = newMistake.Id,
-                    Comments = comments
-                };
-
-                if (images != null && images.Count > 0)
-                {
-                    var folder = BuildOssFolder(newMistake.Subject, newMistake.StudentId, newMistake.Id);
-                    var imagePaths = new List<string>();
-                    for (int i = 0; i < images.Count; i++)
-                    {
-                        var fileName = $"original_{i}.jpg";
-                        var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes, folder);
-                        imagePaths.Add(path);
-                    }
-                    newDetail.OriginalImages = imagePaths;
-                    newlyUploadedPaths ??= new List<string>();
-                    newlyUploadedPaths.AddRange(imagePaths);
-                }
-
-                await _mistakeDetailRepository.AddAsync(newDetail);
-
-                var processLog = new ProcessLogModel
-                {
-                    Id = Guid.NewGuid(),
-                    MistakeId = newMistake.Id,
-                    Action = (int)ProcessAction.Created,
-                    Details = $"Split from original mistake {originalMistakeId}",
-                    CreatedAt = DateTime.UtcNow
-                };
-                await _processLogRepository.AddAsync(processLog);
-            }
-
-            await _unitOfWork.SaveChangesAsync();
-
-            if (originalImagesToDelete != null && originalImagesToDelete.Count > 0)
-            {
-                await SafeDeleteOssFilesAsync(originalImagesToDelete, "SplitMistake original images");
-            }
-            if (practiceImagesToDelete.Count > 0)
-            {
-                await SafeDeleteOssFilesAsync(practiceImagesToDelete, "SplitMistake practice images");
-            }
-
-            return true;
+            await _mistakeDetailRepository.DeleteByMistakeIdAsync(originalMistakeId);
         }
-        catch
+
+        _mistakeRepository.Remove(originalMistake);
+
+        foreach (var item in newMistakes)
         {
-            if (newlyUploadedPaths != null && newlyUploadedPaths.Count > 0)
+            var newMistake = item.mistake;
+            var imagePaths = item.imagePaths;
+            var comments = item.comments;
+
+            newMistake.Id = Guid.NewGuid();
+            newMistake.CreatedAt = DateTime.UtcNow;
+            newMistake.Status = (int)MistakeStatus.Pending;
+
+            await _mistakeRepository.AddAsync(newMistake);
+
+            var newDetail = new MistakeDetailModel
             {
-                await SafeDeleteOssFilesAsync(newlyUploadedPaths, "SplitMistake rollback");
-            }
-            throw;
+                Id = Guid.NewGuid(),
+                MistakeId = newMistake.Id,
+                Comments = comments,
+                OriginalImages = imagePaths ?? new List<string>()
+            };
+
+            await _mistakeDetailRepository.AddAsync(newDetail);
+
+            var processLog = new ProcessLogModel
+            {
+                Id = Guid.NewGuid(),
+                MistakeId = newMistake.Id,
+                Action = (int)ProcessAction.Created,
+                Details = $"Split from original mistake {originalMistakeId}",
+                CreatedAt = DateTime.UtcNow
+            };
+            await _processLogRepository.AddAsync(processLog);
         }
+
+        await _unitOfWork.SaveChangesAsync();
+
+        if (originalImagesToDelete != null && originalImagesToDelete.Count > 0)
+        {
+            await SafeDeleteOssFilesAsync(originalImagesToDelete, "SplitMistake original images");
+        }
+        if (practiceImagesToDelete.Count > 0)
+        {
+            await SafeDeleteOssFilesAsync(practiceImagesToDelete, "SplitMistake practice images");
+        }
+
+        return true;
     }
 
     public async Task<(MistakeModel? mistake, MistakeDetailModel? detail)> GetMistakeAsync(Guid id)
@@ -275,79 +218,17 @@ public class MistakeDomainService
         return (mistake, detail);
     }
 
-    public async Task<bool> UpdateMistakeAsync(Guid id, Action<MistakeModel> updateMistakeAction, Action<MistakeDetailModel>? updateDetailAction = null, List<byte[]>? images = null)
+    public async Task<bool> UpdateMistakeAsync(Guid id, Action<MistakeModel> updateMistakeAction, Action<MistakeDetailModel>? updateDetailAction = null)
     {
         var mistake = await _mistakeRepository.GetByIdAsync(id);
         if (mistake == null) return false;
 
         var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
 
-        if (images != null && images.Count > 0)
-        {
-            List<string>? oldImagesToDelete = null;
-            List<string>? newlyUploadedPaths = null;
-
-            try
-            {
-                var folder = BuildOssFolder(mistake.Subject, mistake.StudentId, mistake.Id);
-                var imagePaths = new List<string>();
-                for (int i = 0; i < images.Count; i++)
-                {
-                    var fileName = $"original_{i}.jpg";
-                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes, folder);
-                    imagePaths.Add(path);
-                }
-                newlyUploadedPaths = imagePaths;
-
-                if (detail != null && detail.OriginalImages.Count > 0)
-                {
-                    oldImagesToDelete = new List<string>(detail.OriginalImages);
-                }
-
-                if (detail == null)
-                {
-                    detail = new MistakeDetailModel
-                    {
-                        Id = Guid.NewGuid(),
-                        MistakeId = mistake.Id,
-                        OriginalImages = imagePaths
-                    };
-                    await _mistakeDetailRepository.AddAsync(detail);
-                }
-                else
-                {
-                    detail.OriginalImages = imagePaths;
-                    await _mistakeDetailRepository.UpdateAsync(detail);
-                }
-
-                updateMistakeAction(mistake);
-                mistake.UpdatedAt = DateTime.UtcNow;
-                await _unitOfWork.SaveChangesAsync();
-
-                if (oldImagesToDelete != null && oldImagesToDelete.Count > 0)
-                {
-                    await SafeDeleteOssFilesAsync(oldImagesToDelete, "UpdateMistake old images");
-                }
-
-                return true;
-            }
-            catch
-            {
-                if (newlyUploadedPaths != null && newlyUploadedPaths.Count > 0)
-                {
-                    await SafeDeleteOssFilesAsync(newlyUploadedPaths, "UpdateMistake rollback");
-                }
-                throw;
-            }
-        }
-        else if (detail != null && updateDetailAction != null)
+        if (detail != null && updateDetailAction != null)
         {
             updateDetailAction(detail);
             await _mistakeDetailRepository.UpdateAsync(detail);
-            updateMistakeAction(mistake);
-            mistake.UpdatedAt = DateTime.UtcNow;
-            await _unitOfWork.SaveChangesAsync();
-            return true;
         }
 
         updateMistakeAction(mistake);
@@ -392,56 +273,30 @@ public class MistakeDomainService
         return await _mistakeRepository.GetListAsync(studentId, subject, grade, status, page, size);
     }
 
-    public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<byte[]>? images = null)
+    public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null)
     {
-        List<string>? uploadedPaths = null;
+        practice.Id = Guid.NewGuid();
+        practice.PracticeDate = DateTime.UtcNow;
 
-        try
+        if (imagePaths != null && imagePaths.Count > 0)
         {
-            practice.Id = Guid.NewGuid();
-            practice.PracticeDate = DateTime.UtcNow;
-
-            if (images != null && images.Count > 0)
-            {
-                var mistake = await _mistakeRepository.GetByIdAsync(practice.MistakeId);
-                var folder = mistake != null
-                    ? BuildOssFolder(mistake.Subject, mistake.StudentId, mistake.Id)
-                    : $"unknown/{practice.MistakeId}";
-
-                var imagePaths = new List<string>();
-                for (int i = 0; i < images.Count; i++)
-                {
-                    var fileName = $"practice_{practice.Id}_{i}.jpg";
-                    var path = await _ossService.UploadAsync(images[i], fileName, "image/jpeg", OssBucket.Mistakes, folder);
-                    imagePaths.Add(path);
-                }
-                uploadedPaths = imagePaths;
-                practice.ImagePaths = imagePaths;
-            }
-
-            await _mistakePracticeRepository.AddAsync(practice);
-
-            var processLog = new ProcessLogModel
-            {
-                Id = Guid.NewGuid(),
-                MistakeId = practice.MistakeId,
-                Action = (int)ProcessAction.Practiced,
-                Details = "Student practiced mistake",
-                CreatedAt = DateTime.UtcNow
-            };
-            await _processLogRepository.AddAsync(processLog);
-
-            await _unitOfWork.SaveChangesAsync();
-            return practice;
+            practice.ImagePaths = imagePaths;
         }
-        catch
+
+        await _mistakePracticeRepository.AddAsync(practice);
+
+        var processLog = new ProcessLogModel
         {
-            if (uploadedPaths != null && uploadedPaths.Count > 0)
-            {
-                await SafeDeleteOssFilesAsync(uploadedPaths, "AddPractice rollback");
-            }
-            throw;
-        }
+            Id = Guid.NewGuid(),
+            MistakeId = practice.MistakeId,
+            Action = (int)ProcessAction.Practiced,
+            Details = "Student practiced mistake",
+            CreatedAt = DateTime.UtcNow
+        };
+        await _processLogRepository.AddAsync(processLog);
+
+        await _unitOfWork.SaveChangesAsync();
+        return practice;
     }
 
     public async Task<List<MistakePracticeModel>> GetPracticesAsync(Guid mistakeId)
