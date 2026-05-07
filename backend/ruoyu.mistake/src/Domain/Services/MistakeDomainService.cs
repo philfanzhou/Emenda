@@ -90,7 +90,7 @@ public class MistakeDomainService
 
         if (detail != null)
         {
-            await _mistakeDetailRepository.DeleteByMistakeIdAsync(id);
+            await _mistakeDetailRepository.RemoveByMistakeIdAsync(id);
         }
 
         _mistakeRepository.Remove(mistake);
@@ -116,6 +116,30 @@ public class MistakeDomainService
         return (true, mistake.StudentId, imagePaths, detail?.Comments);
     }
 
+    public async Task<(bool success, string? error)> ReturnMistakeAsync(Guid id, string studentId)
+    {
+        var mistake = await _mistakeRepository.GetByIdAsync(id);
+        if (mistake == null) return (false, "错题不存在");
+
+        if (mistake.StudentId != studentId) return (false, "学生ID不匹配");
+
+        var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
+        var practices = await _mistakePracticeRepository.GetByMistakeIdAsync(id);
+
+        await _mistakePracticeRepository.RemoveByMistakeIdAsync(id);
+        await _processLogRepository.RemoveByMistakeIdAsync(id);
+
+        if (detail != null)
+        {
+            await _mistakeDetailRepository.RemoveByMistakeIdAsync(id);
+        }
+
+        _mistakeRepository.Remove(mistake);
+        await _unitOfWork.SaveChangesAsync();
+
+        return (true, null);
+    }
+
     public async Task<bool> DeleteMistakeWithoutDeletingImagesAsync(Guid id)
     {
         var mistake = await _mistakeRepository.GetByIdAsync(id);
@@ -129,7 +153,7 @@ public class MistakeDomainService
 
         if (detail != null)
         {
-            await _mistakeDetailRepository.DeleteByMistakeIdAsync(id);
+            await _mistakeDetailRepository.RemoveByMistakeIdAsync(id);
         }
 
         _mistakeRepository.Remove(mistake);
@@ -167,7 +191,7 @@ public class MistakeDomainService
 
             if (originalDetail != null)
             {
-                await _mistakeDetailRepository.DeleteByMistakeIdAsync(originalMistakeId);
+                await _mistakeDetailRepository.RemoveByMistakeIdAsync(originalMistakeId);
             }
 
             _mistakeRepository.Remove(originalMistake);

@@ -11,5 +11,6 @@ public interface IMistakeDetailRepository
     Task<MistakeDetailModel?> GetByMistakeIdAsync(Guid mistakeId);
     Task<bool> UpdateAsync(MistakeDetailModel model);
     Task<bool> DeleteByMistakeIdAsync(Guid mistakeId);
+    Task RemoveByMistakeIdAsync(Guid mistakeId);
     Task<bool> RemoveImageAsync(Guid mistakeId, string imagePath);
 }

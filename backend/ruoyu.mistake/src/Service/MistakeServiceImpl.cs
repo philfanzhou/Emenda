@@ -188,9 +188,9 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<BoolResponse> ReturnMistake(ReturnMistakeRequest request, ServerCallContext context)
     {
-        var success = await _mistakeService.DeleteMistakeWithoutDeletingImagesAsync(
-            Guid.Parse(request.MistakeId));
-        return new BoolResponse { Success = success };
+        var (success, error) = await _mistakeService.ReturnMistakeAsync(
+            Guid.Parse(request.MistakeId), request.StudentId);
+        return new BoolResponse { Success = success, ErrorMessage = error ?? "" };
     }
 
     private static MistakeDto MapMistakeDto(MistakeModel mistake)

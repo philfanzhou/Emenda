@@ -75,7 +75,7 @@ public class MistakeDomainServiceTests
         _mockOssService.Verify(x => x.DeleteAsync("path1.jpg"), Times.Once);
         _mockOssService.Verify(x => x.DeleteAsync("path2.jpg"), Times.Once);
         _mockOssService.Verify(x => x.DeleteAsync("practice1.jpg"), Times.Once);
-        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(mistakeId), Times.Once);
+        _mockDetailRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockPracticeRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockLogRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockMistakeRepo.Verify(x => x.Remove(mistake), Times.Once);
@@ -128,7 +128,7 @@ public class MistakeDomainServiceTests
         var result = await _service.DeleteMistakeAsync(mistakeId);
 
         result.Should().BeTrue();
-        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(mistakeId), Times.Once);
+        _mockDetailRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockMistakeRepo.Verify(x => x.Remove(mistake), Times.Once);
     }
 
@@ -238,7 +238,7 @@ public class MistakeDomainServiceTests
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
 
         _mockOssService.Verify(x => x.DeleteAsync("original.jpg"), Times.Once);
-        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(originalId), Times.Once);
+        _mockDetailRepo.Verify(x => x.RemoveByMistakeIdAsync(originalId), Times.Once);
     }
 
     [Fact]
@@ -345,7 +345,7 @@ public class MistakeDomainServiceTests
         result.Should().BeTrue();
         _mockPracticeRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockLogRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
-        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(mistakeId), Times.Once);
+        _mockDetailRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockMistakeRepo.Verify(x => x.Remove(mistake), Times.Once);
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
         _mockOssService.Verify(x => x.DeleteAsync(It.IsAny<string>()), Times.Never);
