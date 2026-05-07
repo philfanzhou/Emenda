@@ -2,11 +2,13 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.62.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Contract\Ruoyu.Study.Mistake.Contract.csproj" />
     <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
+    <ProjectReference Include="..\..\..\ruoyu.student\src\Contract\Ruoyu.Study.Student.Contract.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

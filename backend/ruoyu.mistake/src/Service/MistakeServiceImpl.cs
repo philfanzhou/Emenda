@@ -186,6 +186,15 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return response;
     }
 
+    public override async Task<BoolResponse> ReturnMistake(ReturnMistakeRequest request, ServerCallContext context)
+    {
+        var success = await _mistakeService.ReturnMistakeAsync(
+            Guid.Parse(request.MistakeId),
+            request.StudentId,
+            request.ReturnReason);
+        return new BoolResponse { Success = success };
+    }
+
     private static MistakeDto MapMistakeDto(MistakeModel mistake)
     {
         return new MistakeDto

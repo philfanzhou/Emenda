@@ -16,6 +16,7 @@ service MistakeGrpcService {
   rpc GetMistakeList(GetMistakeListRequest) returns (MistakePageResult);
   rpc MarkMistakeProcessed(MarkMistakeProcessedRequest) returns (BoolResponse); // 教师/系统标记为已处理
   rpc SplitMistake(SplitMistakeRequest) returns (BoolResponse); // 将一个错题拆分为多个新错题
+  rpc ReturnMistake(ReturnMistakeRequest) returns (BoolResponse); // 退回错题为上传记录
 
   // === 错题重答与举一反三 ===
   rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
@@ -117,6 +118,12 @@ message LogMistakeProcessRequest {
   string student_id = 2;
   ProcessAction action = 3;
   string details = 4;
+}
+
+message ReturnMistakeRequest {
+  string mistake_id = 1;
+  string student_id = 2;
+  string return_reason = 3; // 退回原因
 }
 
 message ProcessLogListResponse {
