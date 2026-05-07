@@ -6,7 +6,6 @@ using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
-using Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Domain.Services;
 
@@ -19,7 +18,6 @@ public class MistakeDomainService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IOssService _ossService;
     private readonly ILogger<MistakeDomainService> _logger;
-    private readonly StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentLearningClient;
 
     public MistakeDomainService(
         IMistakeRepository mistakeRepository,
@@ -28,8 +26,7 @@ public class MistakeDomainService
         IProcessLogRepository processLogRepository,
         IUnitOfWork unitOfWork,
         IOssService ossService,
-        ILogger<MistakeDomainService> logger,
-        StudentLearningGrpcService.StudentLearningGrpcServiceClient studentLearningClient)
+        ILogger<MistakeDomainService> logger)
     {
         _mistakeRepository = mistakeRepository;
         _mistakeDetailRepository = mistakeDetailRepository;
@@ -38,7 +35,6 @@ public class MistakeDomainService
         _unitOfWork = unitOfWork;
         _ossService = ossService;
         _logger = logger;
-        _studentLearningClient = studentLearningClient;
     }
 
     private static string BuildOssFolder(int subject, string studentId, Guid mistakeId)
@@ -114,7 +110,7 @@ public class MistakeDomainService
         if (mistake == null) return (false, null, null, null);
 
         var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(id);
-        
+
         var imagePaths = detail?.OriginalImages ?? new List<string>();
 
         return (true, mistake.StudentId, imagePaths, detail?.Comments);
@@ -498,51 +494,6 @@ public class MistakeDomainService
         foreach (var path in objectPaths)
         {
             await SafeDeleteOssFileAsync(path, operation);
-        }
-    }
-
-    public async Task<bool> ReturnMistakeAsync(Guid mistakeId, string studentId, string returnReason)
-    {
-        var mistake = await _mistakeRepository.GetByIdAsync(mistakeId);
-        if (mistake == null) return false;
-        if (mistake.StudentId != studentId) return false;
-
-        var detail = await _mistakeDetailRepository.GetByMistakeIdAsync(mistakeId);
-        var imagePaths = detail?.OriginalImages ?? new List<string>();
-
-        try
-        {
-            var createReturnedRequest = new CreateReturnedRecordRequest
-            {
-                StudentId = studentId,
-                Comments = returnReason
-            };
-            createReturnedRequest.ImagePaths.AddRange(imagePaths);
-
-            var studentResult = await _studentLearningClient.CreateReturnedRecordAsync(createReturnedRequest);
-            if (!studentResult.Success)
-            {
-                _logger.LogError("Failed to create returned record in Student service for mistake {MistakeId}", mistakeId);
-                return false;
-            }
-
-            await _mistakePracticeRepository.RemoveByMistakeIdAsync(mistakeId);
-            await _processLogRepository.RemoveByMistakeIdAsync(mistakeId);
-
-            if (detail != null)
-            {
-                await _mistakeDetailRepository.DeleteByMistakeIdAsync(mistakeId);
-            }
-
-            _mistakeRepository.Remove(mistake);
-            await _unitOfWork.SaveChangesAsync();
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to return mistake {MistakeId}", mistakeId);
-            return false;
         }
     }
 }

@@ -2,14 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Student.Contract.Protos;
 using Xunit;
 
 namespace Ruoyu.Study.Mistake.Domain.Tests;
@@ -23,7 +21,6 @@ public class MistakeDomainServiceTests
     private readonly Mock<IUnitOfWork> _mockUow;
     private readonly Mock<IOssService> _mockOssService;
     private readonly Mock<ILogger<MistakeDomainService>> _mockLogger;
-    private readonly Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient> _mockStudentLearningClient;
     private readonly MistakeDomainService _service;
 
     public MistakeDomainServiceTests()
@@ -35,7 +32,6 @@ public class MistakeDomainServiceTests
         _mockUow = new Mock<IUnitOfWork>();
         _mockOssService = new Mock<IOssService>();
         _mockLogger = new Mock<ILogger<MistakeDomainService>>();
-        _mockStudentLearningClient = new Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
 
         _service = new MistakeDomainService(
             _mockMistakeRepo.Object,
@@ -44,8 +40,7 @@ public class MistakeDomainServiceTests
             _mockLogRepo.Object,
             _mockUow.Object,
             _mockOssService.Object,
-            _mockLogger.Object,
-            _mockStudentLearningClient.Object);
+            _mockLogger.Object);
     }
 
     [Fact]
@@ -281,17 +276,56 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task ReturnMistakeAsync_WhenValidRequest_ShouldCreateReturnedRecordAndDeleteMistake()
+    public async Task GetMistakeForReturnAsync_WhenMistakeExists_ShouldReturnStudentIdAndImagePaths()
     {
         var mistakeId = Guid.NewGuid();
-        var studentId = "student-123";
-        var returnReason = "图片模糊";
-        var imagePaths = new List<string> { "path1.jpg", "path2.jpg" };
-
         var mistake = new MistakeModel
         {
             Id = mistakeId,
-            StudentId = studentId,
+            StudentId = "student-123",
+            Subject = 1,
+            Grade = 1
+        };
+        var detail = new MistakeDetailModel
+        {
+            MistakeId = mistakeId,
+            OriginalImages = new List<string> { "path1.jpg", "path2.jpg" },
+            Comments = "some comments"
+        };
+
+        _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
+        _mockDetailRepo.Setup(x => x.GetByMistakeIdAsync(mistakeId)).ReturnsAsync(detail);
+
+        var (success, studentId, imagePaths, comments) = await _service.GetMistakeForReturnAsync(mistakeId);
+
+        success.Should().BeTrue();
+        studentId.Should().Be("student-123");
+        imagePaths.Should().BeEquivalentTo(new List<string> { "path1.jpg", "path2.jpg" });
+        comments.Should().Be("some comments");
+    }
+
+    [Fact]
+    public async Task GetMistakeForReturnAsync_WhenMistakeNotFound_ShouldReturnFalse()
+    {
+        var mistakeId = Guid.NewGuid();
+
+        _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync((MistakeModel?)null);
+
+        var (success, studentId, imagePaths, comments) = await _service.GetMistakeForReturnAsync(mistakeId);
+
+        success.Should().BeFalse();
+        studentId.Should().BeNull();
+        imagePaths.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DeleteMistakeWithoutDeletingImagesAsync_WhenMistakeExists_ShouldDeleteRecordsButNotImages()
+    {
+        var mistakeId = Guid.NewGuid();
+        var mistake = new MistakeModel
+        {
+            Id = mistakeId,
+            StudentId = "student-123",
             Subject = 1,
             Grade = 1,
             Status = 1
@@ -299,94 +333,35 @@ public class MistakeDomainServiceTests
         var detail = new MistakeDetailModel
         {
             MistakeId = mistakeId,
-            OriginalImages = imagePaths
+            OriginalImages = new List<string> { "path1.jpg", "path2.jpg" }
         };
 
         _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
         _mockDetailRepo.Setup(x => x.GetByMistakeIdAsync(mistakeId)).ReturnsAsync(detail);
+        _mockPracticeRepo.Setup(x => x.GetByMistakeIdAsync(mistakeId)).ReturnsAsync(new List<MistakePracticeModel>());
 
-        // Mock the CreateReturnedRecordAsync call
-        var mockCall = new Mock<AsyncUnaryCall<UploadImagesResponse>>();
-        mockCall.Setup(x => x.ResponseAsync).ReturnsAsync(new UploadImagesResponse { Success = true });
-        _mockStudentLearningClient
-            .Setup(x => x.CreateReturnedRecordAsync(
-                It.Is<CreateReturnedRecordRequest>(r =>
-                    r.StudentId == studentId &&
-                    r.Comments == returnReason &&
-                    r.ImagePaths.Count == 2),
-                null, null, default))
-            .Returns(mockCall.Object);
-
-        var result = await _service.ReturnMistakeAsync(mistakeId, studentId, returnReason);
+        var result = await _service.DeleteMistakeWithoutDeletingImagesAsync(mistakeId);
 
         result.Should().BeTrue();
-        _mockStudentLearningClient.Verify(x => x.CreateReturnedRecordAsync(
-            It.Is<CreateReturnedRecordRequest>(r => r.StudentId == studentId && r.Comments == returnReason),
-            null, null, default), Times.Once);
         _mockPracticeRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockLogRepo.Verify(x => x.RemoveByMistakeIdAsync(mistakeId), Times.Once);
         _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(mistakeId), Times.Once);
         _mockMistakeRepo.Verify(x => x.Remove(mistake), Times.Once);
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockOssService.Verify(x => x.DeleteAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task ReturnMistakeAsync_WhenMistakeNotFound_ShouldReturnFalse()
+    public async Task DeleteMistakeWithoutDeletingImagesAsync_WhenMistakeNotFound_ShouldReturnFalse()
     {
         var mistakeId = Guid.NewGuid();
-        var studentId = "student-123";
 
         _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync((MistakeModel?)null);
 
-        var result = await _service.ReturnMistakeAsync(mistakeId, studentId, "reason");
+        var result = await _service.DeleteMistakeWithoutDeletingImagesAsync(mistakeId);
 
         result.Should().BeFalse();
-        _mockStudentLearningClient.Verify(x => x.CreateReturnedRecordAsync(It.IsAny<CreateReturnedRecordRequest>(), It.IsAny<Metadata>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockMistakeRepo.Verify(x => x.Remove(It.IsAny<MistakeModel>()), Times.Never);
+        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Never);
     }
-
-    [Fact]
-    public async Task ReturnMistakeAsync_WhenStudentIdMismatch_ShouldReturnFalse()
-    {
-        var mistakeId = Guid.NewGuid();
-        var mistake = new MistakeModel
-        {
-            Id = mistakeId,
-            StudentId = "student-123",
-            Status = 1
-        };
-
-        _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
-
-        var result = await _service.ReturnMistakeAsync(mistakeId, "student-456", "reason");
-
-        result.Should().BeFalse();
-        _mockStudentLearningClient.Verify(x => x.CreateReturnedRecordAsync(It.IsAny<CreateReturnedRecordRequest>(), It.IsAny<Metadata>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task ReturnMistakeAsync_WhenStudentServiceFails_ShouldReturnFalse()
-    {
-        var mistakeId = Guid.NewGuid();
-        var studentId = "student-123";
-        var mistake = new MistakeModel
-        {
-            Id = mistakeId,
-            StudentId = studentId,
-            Status = 1
-        };
-
-        _mockMistakeRepo.Setup(x => x.GetByIdAsync(mistakeId)).ReturnsAsync(mistake);
-        _mockDetailRepo.Setup(x => x.GetByMistakeIdAsync(mistakeId)).ReturnsAsync((MistakeDetailModel?)null);
-
-        var mockCall = new Mock<AsyncUnaryCall<UploadImagesResponse>>();
-        mockCall.Setup(x => x.ResponseAsync).ReturnsAsync(new UploadImagesResponse { Success = false });
-        _mockStudentLearningClient
-            .Setup(x => x.CreateReturnedRecordAsync(It.IsAny<CreateReturnedRecordRequest>(), null, null, default))
-            .Returns(mockCall.Object);
-
-        var result = await _service.ReturnMistakeAsync(mistakeId, studentId, "reason");
-
-        result.Should().BeFalse();
-    }
-
 }

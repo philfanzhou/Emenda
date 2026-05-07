@@ -1,4 +1,3 @@
-using Grpc.Net.Client;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
@@ -6,7 +5,6 @@ using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service;
-using Ruoyu.Study.Student.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,30 +46,6 @@ builder.Services.AddSingleton<IOssService>(new S3OssService(
     ossOptions.AccessKey,
     ossOptions.SecretKey,
     ossOptions.BucketName));
-
-builder.Services.AddSingleton(sp =>
-{
-    var grpcUrl = builder.Configuration["StudentService:GrpcUrl"] ?? "http://localhost:5005";
-    var logger = sp.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("Connecting to Student Learning gRPC: {Url}", grpcUrl);
-
-    var handler = new SocketsHttpHandler
-    {
-        ConnectTimeout = TimeSpan.FromSeconds(5),
-        MaxConnectionsPerServer = 10,
-        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-        EnableMultipleHttp2Connections = true,
-    };
-
-    var channel = GrpcChannel.ForAddress(grpcUrl, new GrpcChannelOptions
-    {
-        HttpHandler = handler,
-        MaxRetryAttempts = 3,
-    });
-
-    return new StudentLearningGrpcService.StudentLearningGrpcServiceClient(channel);
-});
 
 builder.Services.AddScoped<IMistakeRepository, MistakeRepository>();
 builder.Services.AddScoped<IMistakeDetailRepository, MistakeDetailRepository>();
