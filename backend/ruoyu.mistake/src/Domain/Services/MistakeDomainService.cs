@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Ruoyu.Study.Mistake.Domain.Models;
@@ -8,6 +9,11 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Domain.Services;
+
+public class MistakeValidationException : Exception
+{
+    public MistakeValidationException(string message) : base(message) { }
+}
 
 public class MistakeDomainService
 {
@@ -132,83 +138,6 @@ public class MistakeDomainService
         return true;
     }
 
-    public async Task<bool> SplitMistakeAsync(Guid originalMistakeId, List<(MistakeModel mistake, List<string>? imagePaths, string? comments)> newMistakes)
-    {
-        var originalMistake = await _mistakeRepository.GetByIdAsync(originalMistakeId);
-        if (originalMistake == null) return false;
-
-        var originalDetail = await _mistakeDetailRepository.GetByMistakeIdAsync(originalMistakeId);
-        List<string>? originalImagesToDelete = originalDetail != null && originalDetail.OriginalImages.Count > 0
-            ? new List<string>(originalDetail.OriginalImages)
-            : null;
-
-        var practices = await _mistakePracticeRepository.GetByMistakeIdAsync(originalMistakeId);
-        var practiceImagesToDelete = new List<string>();
-        foreach (var practice in practices)
-        {
-            if (practice.ImagePaths != null && practice.ImagePaths.Count > 0)
-            {
-                practiceImagesToDelete.AddRange(practice.ImagePaths);
-            }
-        }
-
-        await _mistakePracticeRepository.RemoveByMistakeIdAsync(originalMistakeId);
-        await _processLogRepository.RemoveByMistakeIdAsync(originalMistakeId);
-
-        if (originalDetail != null)
-        {
-            await _mistakeDetailRepository.DeleteByMistakeIdAsync(originalMistakeId);
-        }
-
-        _mistakeRepository.Remove(originalMistake);
-
-        foreach (var item in newMistakes)
-        {
-            var newMistake = item.mistake;
-            var imagePaths = item.imagePaths;
-            var comments = item.comments;
-
-            newMistake.Id = Guid.NewGuid();
-            newMistake.CreatedAt = DateTimeOffset.UtcNow;
-            newMistake.Status = (int)MistakeStatus.Pending;
-
-            await _mistakeRepository.AddAsync(newMistake);
-
-            var newDetail = new MistakeDetailModel
-            {
-                Id = Guid.NewGuid(),
-                MistakeId = newMistake.Id,
-                Comments = comments,
-                OriginalImages = imagePaths ?? new List<string>()
-            };
-
-            await _mistakeDetailRepository.AddAsync(newDetail);
-
-            var processLog = new ProcessLogModel
-            {
-                Id = Guid.NewGuid(),
-                MistakeId = newMistake.Id,
-                Action = (int)ProcessAction.Created,
-                Details = $"Split from original mistake {originalMistakeId}",
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            await _processLogRepository.AddAsync(processLog);
-        }
-
-        await _unitOfWork.SaveChangesAsync();
-
-        if (originalImagesToDelete != null && originalImagesToDelete.Count > 0)
-        {
-            await SafeDeleteOssFilesAsync(originalImagesToDelete, "SplitMistake original images");
-        }
-        if (practiceImagesToDelete.Count > 0)
-        {
-            await SafeDeleteOssFilesAsync(practiceImagesToDelete, "SplitMistake practice images");
-        }
-
-        return true;
-    }
-
     public async Task<(MistakeModel? mistake, MistakeDetailModel? detail)> GetMistakeAsync(Guid id)
     {
         var mistake = await _mistakeRepository.GetByIdAsync(id);
@@ -232,6 +161,9 @@ public class MistakeDomainService
         }
 
         updateMistakeAction(mistake);
+
+        ValidateMistakeData(mistake, detail?.OriginalImages, detail?.Comments, "更新后的错题");
+
         mistake.UpdatedAt = DateTimeOffset.UtcNow;
         await _unitOfWork.SaveChangesAsync();
         return true;
@@ -374,5 +306,73 @@ public class MistakeDomainService
         {
             await SafeDeleteOssFileAsync(path, operation);
         }
+    }
+
+    public async Task<(MistakeModel mistake, MistakeDetailModel detail)> CreateMistakeAsync(
+        MistakeModel mistake, List<string>? imagePaths, string? comments)
+    {
+        ValidateMistakeData(mistake, imagePaths, comments, "错题");
+
+        mistake.Id = Guid.NewGuid();
+        mistake.CreatedAt = DateTimeOffset.UtcNow;
+        mistake.Status = (int)MistakeStatus.Pending;
+
+        await _mistakeRepository.AddAsync(mistake);
+
+        var detail = new MistakeDetailModel
+        {
+            Id = Guid.NewGuid(),
+            MistakeId = mistake.Id,
+            Comments = comments,
+            OriginalImages = imagePaths ?? new List<string>()
+        };
+        await _mistakeDetailRepository.AddAsync(detail);
+
+        var processLog = new ProcessLogModel
+        {
+            Id = Guid.NewGuid(),
+            MistakeId = mistake.Id,
+            Action = (int)ProcessAction.Created,
+            Details = "Mistake created",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        await _processLogRepository.AddAsync(processLog);
+
+        await _unitOfWork.SaveChangesAsync();
+
+        return (mistake, detail);
+    }
+
+    private static void ValidateMistakeData(MistakeModel mistake, List<string>? imagePaths, string? comments, string prefix)
+    {
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(mistake.StudentId))
+            errors.Add($"{prefix}缺少学生ID");
+
+        if (mistake.Subject <= 0)
+            errors.Add($"{prefix}必须指定学科");
+        else if (mistake.Subject > 9)
+            errors.Add($"{prefix}学科值无效（有效范围：1-9）");
+
+        if (mistake.Grade <= 0)
+            errors.Add($"{prefix}必须指定年级");
+        else if (mistake.Grade > 12)
+            errors.Add($"{prefix}年级值无效（有效范围：1-12）");
+
+        var hasImages = imagePaths != null && imagePaths.Count > 0;
+        var hasComments = !string.IsNullOrWhiteSpace(comments);
+
+        if (!hasImages && !hasComments)
+            errors.Add($"{prefix}错题图片和错题正文不能同时为空，至少需要提供一项");
+
+        if (hasImages && imagePaths!.Count > 9)
+            errors.Add($"{prefix}错题图片不能超过9张");
+
+        if (hasComments && comments!.Length > 2000)
+            errors.Add($"{prefix}错题正文不能超过2000字");
+
+        if (errors.Count > 0)
+            throw new MistakeValidationException(string.Join("; ", errors));
     }
 }

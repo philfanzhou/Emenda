@@ -200,48 +200,6 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task SplitMistakeAsync_ShouldDeleteOriginalAndCreateNewMistakes()
-    {
-        var originalId = Guid.NewGuid();
-        var originalMistake = new MistakeModel
-        {
-            Id = originalId,
-            Status = 2,
-            Subject = 1,
-            Grade = 1
-        };
-        var originalDetail = new MistakeDetailModel
-        {
-            MistakeId = originalId,
-            OriginalImages = new List<string> { "original.jpg" }
-        };
-
-        var newMistake1 = new MistakeModel { Subject = 1, Grade = 1, StudentId = "s1" };
-        var newMistake2 = new MistakeModel { Subject = 1, Grade = 1, StudentId = "s1" };
-        var newMistakes = new List<(MistakeModel mistake, List<string>? imagePaths, string? comments)>
-        {
-            (newMistake1, null, "Part 1"),
-            (newMistake2, null, "Part 2")
-        };
-
-        _mockMistakeRepo.Setup(x => x.GetByIdAsync(originalId)).ReturnsAsync(originalMistake);
-        _mockDetailRepo.Setup(x => x.GetByMistakeIdAsync(originalId)).ReturnsAsync(originalDetail);
-        _mockPracticeRepo.Setup(x => x.GetByMistakeIdAsync(originalId)).ReturnsAsync(new List<MistakePracticeModel>());
-
-        var result = await _service.SplitMistakeAsync(originalId, newMistakes);
-
-        result.Should().BeTrue();
-        _mockMistakeRepo.Verify(x => x.Remove(originalMistake), Times.Once);
-        _mockMistakeRepo.Verify(x => x.AddAsync(It.IsAny<MistakeModel>()), Times.Exactly(2));
-        _mockDetailRepo.Verify(x => x.AddAsync(It.IsAny<MistakeDetailModel>()), Times.Exactly(2));
-        _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>()), Times.Exactly(2));
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
-
-        _mockOssService.Verify(x => x.DeleteAsync("original.jpg"), Times.Once);
-        _mockDetailRepo.Verify(x => x.DeleteByMistakeIdAsync(originalId), Times.Once);
-    }
-
-    [Fact]
     public async Task GetMistakeAsync_ShouldReturnBothMistakeAndDetail()
     {
         var mistakeId = Guid.NewGuid();

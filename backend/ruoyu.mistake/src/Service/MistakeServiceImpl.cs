@@ -76,29 +76,83 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return result;
     }
 
+    public override async Task<CreateMistakeResponse> CreateMistake(CreateMistakeRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.StudentId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "缺少学生ID"));
+
+        if (request.Subject <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "必须指定学科"));
+
+        if (request.Grade <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "必须指定年级"));
+
+        var hasImages = request.ImagePaths?.Count > 0;
+        var hasComments = !string.IsNullOrWhiteSpace(request.Comments);
+
+        if (!hasImages && !hasComments)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "错题图片和正文不能同时为空，至少需要提供一项"));
+
+        var mistake = new MistakeModel
+        {
+            StudentId = request.StudentId,
+            Subject = request.Subject,
+            Grade = request.Grade,
+            Date = DateTimeOffset.UtcNow,
+            Type = request.Type
+        };
+
+        var imagePaths = hasImages ? new List<string>(request.ImagePaths!) : (List<string>?)null;
+
+        try
+        {
+            var (createdMistake, _) = await _mistakeService.CreateMistakeAsync(mistake, imagePaths, request.Comments);
+
+            return new CreateMistakeResponse
+            {
+                Success = true,
+                MistakeId = createdMistake.Id.ToString()
+            };
+        }
+        catch (MistakeValidationException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+    }
+
     public override async Task<BoolResponse> UpdateMistake(UpdateMistakeRequest request, ServerCallContext context)
     {
-        var success = await _mistakeService.UpdateMistakeAsync(
-            Guid.Parse(request.MistakeId),
-            entity =>
-            {
-                entity.Subject = request.Subject > 0 ? request.Subject : entity.Subject;
-                entity.Grade = request.Grade > 0 ? request.Grade : entity.Grade;
-                entity.Type = request.Type > 0 ? request.Type : entity.Type;
-                if (!string.IsNullOrEmpty(request.QuestionId))
-                {
-                    entity.QuestionId = request.QuestionId;
-                }
-            },
-            detail =>
-            {
-                if (!string.IsNullOrEmpty(request.Comments))
-                {
-                    detail.Comments = request.Comments;
-                }
-            });
+        if (string.IsNullOrWhiteSpace(request.MistakeId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "缺少错题ID"));
 
-        return new BoolResponse { Success = success };
+        try
+        {
+            var success = await _mistakeService.UpdateMistakeAsync(
+                Guid.Parse(request.MistakeId),
+                entity =>
+                {
+                    entity.Subject = request.Subject > 0 ? request.Subject : entity.Subject;
+                    entity.Grade = request.Grade > 0 ? request.Grade : entity.Grade;
+                    entity.Type = request.Type > 0 ? request.Type : entity.Type;
+                    if (!string.IsNullOrEmpty(request.QuestionId))
+                    {
+                        entity.QuestionId = request.QuestionId;
+                    }
+                },
+                detail =>
+                {
+                    if (!string.IsNullOrEmpty(request.Comments))
+                    {
+                        detail.Comments = request.Comments;
+                    }
+                });
+
+            return new BoolResponse { Success = success };
+        }
+        catch (MistakeValidationException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
     }
 
     public override async Task<BoolResponse> MarkMistakeProcessed(MarkMistakeProcessedRequest request, ServerCallContext context)
@@ -106,32 +160,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         var success = await _mistakeService.MarkMistakeProcessedAsync(
             Guid.Parse(request.Id),
             request.QuestionId);
-        return new BoolResponse { Success = success };
-    }
-
-    public override async Task<BoolResponse> SplitMistake(SplitMistakeRequest request, ServerCallContext context)
-    {
-        var newMistakes = new List<(MistakeModel mistake, List<string>? imagePaths, string? comments)>();
-
-        foreach (var req in request.NewMistakes)
-        {
-            var entity = new MistakeModel
-            {
-                StudentId = req.StudentId,
-                Subject = req.Subject,
-                Grade = req.Grade,
-                Date = DateTimeOffset.UtcNow,
-                Type = req.Type
-            };
-            var imagePaths = req.ImagePaths?.Count > 0
-                ? new List<string>(req.ImagePaths)
-                : null;
-            var comments = req.Comments;
-
-            newMistakes.Add((entity, imagePaths, comments));
-        }
-
-        var success = await _mistakeService.SplitMistakeAsync(Guid.Parse(request.OriginalMistakeId), newMistakes);
         return new BoolResponse { Success = success };
     }
 
