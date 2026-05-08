@@ -120,7 +120,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 StudentId = req.StudentId,
                 Subject = req.Subject,
                 Grade = req.Grade,
-                Date = DateTime.UtcNow,
+                Date = DateTimeOffset.UtcNow,
                 Type = req.Type
             };
             var imagePaths = req.ImagePaths?.Count > 0
@@ -197,12 +197,12 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             StudentId = mistake.StudentId ?? string.Empty,
             Subject = mistake.Subject,
             Grade = mistake.Grade,
-            Date = mistake.Date == DateTime.MinValue ? string.Empty : mistake.Date.ToString("o"),
+            Date = mistake.Date == DateTimeOffset.MinValue ? string.Empty : mistake.Date.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
             Type = mistake.Type,
             QuestionId = mistake.QuestionId ?? string.Empty,
             Status = (MistakeStatus)mistake.Status,
-            CreatedAt = mistake.CreatedAt == DateTime.MinValue ? string.Empty : mistake.CreatedAt.ToString("o"),
-            UpdatedAt = mistake.UpdatedAt.HasValue ? mistake.UpdatedAt.Value.ToString("o") : string.Empty
+            CreatedAt = mistake.CreatedAt == DateTimeOffset.MinValue ? string.Empty : mistake.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            UpdatedAt = mistake.UpdatedAt.HasValue ? mistake.UpdatedAt.Value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'") : string.Empty
         };
     }
 }

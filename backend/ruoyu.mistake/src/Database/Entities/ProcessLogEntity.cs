@@ -21,7 +21,7 @@ public class ProcessLogEntity
     public string? Details { get; set; }
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     [ForeignKey("MistakeId")]
     public virtual MistakeEntity Mistake { get; set; } = null!;

@@ -8,5 +8,5 @@ public class ProcessLogModel
     public Guid MistakeId { get; set; } = Guid.Empty;
     public int Action { get; set; }
     public string? Details { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

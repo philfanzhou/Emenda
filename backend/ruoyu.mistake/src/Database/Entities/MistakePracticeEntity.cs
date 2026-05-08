@@ -22,7 +22,7 @@ public class MistakePracticeEntity
     public string StudentId { get; set; } = string.Empty;
 
     [Column("practice_date")]
-    public DateTime PracticeDate { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset PracticeDate { get; set; } = DateTimeOffset.UtcNow;
 
     [Column("image_paths")]
     public List<string> ImagePaths { get; set; } = new();

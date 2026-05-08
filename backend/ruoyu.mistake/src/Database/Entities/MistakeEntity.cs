@@ -23,7 +23,7 @@ public class MistakeEntity
     public int Grade { get; set; }
 
     [Column("date")]
-    public DateTime Date { get; set; }
+    public DateTimeOffset Date { get; set; }
 
     [Column("type")]
     public int Type { get; set; }
@@ -36,9 +36,9 @@ public class MistakeEntity
     public int Status { get; set; }
 
     [Column("created_at")]
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     [Column("updated_at")]
     [ConcurrencyCheck]
-    public DateTime? UpdatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
 }

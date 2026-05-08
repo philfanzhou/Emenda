@@ -169,7 +169,7 @@ public class MistakeDomainService
             var comments = item.comments;
 
             newMistake.Id = Guid.NewGuid();
-            newMistake.CreatedAt = DateTime.UtcNow;
+            newMistake.CreatedAt = DateTimeOffset.UtcNow;
             newMistake.Status = (int)MistakeStatus.Pending;
 
             await _mistakeRepository.AddAsync(newMistake);
@@ -190,7 +190,7 @@ public class MistakeDomainService
                 MistakeId = newMistake.Id,
                 Action = (int)ProcessAction.Created,
                 Details = $"Split from original mistake {originalMistakeId}",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTimeOffset.UtcNow
             };
             await _processLogRepository.AddAsync(processLog);
         }
@@ -232,7 +232,7 @@ public class MistakeDomainService
         }
 
         updateMistakeAction(mistake);
-        mistake.UpdatedAt = DateTime.UtcNow;
+        mistake.UpdatedAt = DateTimeOffset.UtcNow;
         await _unitOfWork.SaveChangesAsync();
         return true;
     }
@@ -243,7 +243,7 @@ public class MistakeDomainService
         if (mistake == null) return false;
 
         mistake.Status = (int)MistakeStatus.Processed;
-        mistake.UpdatedAt = DateTime.UtcNow;
+        mistake.UpdatedAt = DateTimeOffset.UtcNow;
         if (!string.IsNullOrEmpty(questionId))
         {
             mistake.QuestionId = questionId;
@@ -255,7 +255,7 @@ public class MistakeDomainService
             MistakeId = mistake.Id,
             Action = (int)ProcessAction.Analyzed,
             Details = "Mistake marked as processed",
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow
         };
         await _processLogRepository.AddAsync(processLog);
 
@@ -276,7 +276,7 @@ public class MistakeDomainService
     public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null)
     {
         practice.Id = Guid.NewGuid();
-        practice.PracticeDate = DateTime.UtcNow;
+        practice.PracticeDate = DateTimeOffset.UtcNow;
 
         if (imagePaths != null && imagePaths.Count > 0)
         {
@@ -291,7 +291,7 @@ public class MistakeDomainService
             MistakeId = practice.MistakeId,
             Action = (int)ProcessAction.Practiced,
             Details = "Student practiced mistake",
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow
         };
         await _processLogRepository.AddAsync(processLog);
 
@@ -319,7 +319,7 @@ public class MistakeDomainService
                 MistakeId = mistake.Id,
                 Action = (int)ProcessAction.Analyzed,
                 Details = $"Mistake analyzed as {typeName}",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTimeOffset.UtcNow
             };
             await _processLogRepository.AddAsync(processLog);
             await _unitOfWork.SaveChangesAsync();
@@ -344,7 +344,7 @@ public class MistakeDomainService
             MistakeId = mistakeId,
             Action = (int)action,
             Details = details,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow
         };
         await _processLogRepository.AddAsync(processLog);
         await _unitOfWork.SaveChangesAsync();

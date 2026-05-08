@@ -9,12 +9,12 @@ public class MistakeModel
     public string StudentId { get; set; } = string.Empty;
     public int Subject { get; set; }
     public int Grade { get; set; }
-    public DateTime Date { get; set; }
+    public DateTimeOffset Date { get; set; }
     public int Type { get; set; }
     public string? QuestionId { get; set; }
     public int Status { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? UpdatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
 }
 
 public class MistakeDetailModel
