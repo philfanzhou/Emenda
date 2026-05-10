@@ -56,18 +56,14 @@ message MistakeItemDto {
   int32 grade = 4;
   string source_upload_id = 5;
   repeated SourceRegion source_regions = 6;
-  string question_number = 7;
-  string question_text = 8;
-  string student_answer = 9;
-  double ai_confidence = 10;
-  ReviewStatus review_status = 11;
-  string reviewer_id = 12;
-  string reviewed_at = 13;
-  string review_comment = 14;
-  int32 type = 15;
-  string question_id = 16;
-  string created_at = 17;
-  string updated_at = 18;
+  ReviewStatus review_status = 7;
+  string reviewer_id = 8;
+  string reviewed_at = 9;
+  string review_comment = 10;
+  int32 type = 11;
+  string question_id = 12;
+  string created_at = 13;
+  string updated_at = 14;
 }
 
 message MistakePracticeDto {

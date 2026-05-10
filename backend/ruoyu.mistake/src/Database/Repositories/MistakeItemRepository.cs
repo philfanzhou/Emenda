@@ -41,10 +41,6 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.Grade = model.Grade;
         entity.SourceUploadId = model.SourceUploadId;
         entity.SourceRegions = MapSourceRegions(model.SourceRegions);
-        entity.QuestionNumber = model.QuestionNumber;
-        entity.QuestionText = model.QuestionText;
-        entity.StudentAnswer = model.StudentAnswer;
-        entity.AiConfidence = model.AiConfidence;
         entity.ReviewStatus = model.ReviewStatus;
         entity.ReviewerId = model.ReviewerId;
         entity.ReviewedAt = model.ReviewedAt;
@@ -153,10 +149,6 @@ public class MistakeItemRepository : IMistakeItemRepository
             Grade = model.Grade,
             SourceUploadId = model.SourceUploadId,
             SourceRegions = MapSourceRegions(model.SourceRegions),
-            QuestionNumber = model.QuestionNumber,
-            QuestionText = model.QuestionText,
-            StudentAnswer = model.StudentAnswer,
-            AiConfidence = model.AiConfidence,
             ReviewStatus = model.ReviewStatus,
             ReviewerId = model.ReviewerId,
             ReviewedAt = model.ReviewedAt,
@@ -190,10 +182,6 @@ public class MistakeItemRepository : IMistakeItemRepository
                     }
                     : null
             }).ToList() ?? new(),
-            QuestionNumber = entity.QuestionNumber,
-            QuestionText = entity.QuestionText,
-            StudentAnswer = entity.StudentAnswer,
-            AiConfidence = entity.AiConfidence,
             ReviewStatus = entity.ReviewStatus,
             ReviewerId = entity.ReviewerId,
             ReviewedAt = entity.ReviewedAt,

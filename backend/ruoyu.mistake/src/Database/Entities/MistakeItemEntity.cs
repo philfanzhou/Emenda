@@ -32,19 +32,6 @@ public class MistakeItemEntity
     [Required]
     public List<SourceRegionEntry> SourceRegions { get; set; } = new();
 
-    [Column("question_number")]
-    [MaxLength(20)]
-    public string? QuestionNumber { get; set; }
-
-    [Column("question_text")]
-    public string? QuestionText { get; set; }
-
-    [Column("student_answer")]
-    public string? StudentAnswer { get; set; }
-
-    [Column("ai_confidence")]
-    public double AiConfidence { get; set; }
-
     [Column("review_status")]
     public int ReviewStatus { get; set; }
 

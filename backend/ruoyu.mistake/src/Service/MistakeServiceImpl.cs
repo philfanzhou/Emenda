@@ -171,10 +171,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         Y2 = r.BoundingBox.Y2
                     }
                     : null
-            }).ToList(),
-            QuestionNumber = request.QuestionNumber,
-            QuestionText = request.QuestionText,
-            StudentAnswer = request.StudentAnswer
+            }).ToList()
         };
 
         try
@@ -317,10 +314,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             Subject = item.Subject,
             Grade = item.Grade,
             SourceUploadId = item.SourceUploadId ?? string.Empty,
-            QuestionNumber = item.QuestionNumber ?? string.Empty,
-            QuestionText = item.QuestionText ?? string.Empty,
-            StudentAnswer = item.StudentAnswer ?? string.Empty,
-            AiConfidence = item.AiConfidence,
             ReviewStatus = (ReviewStatus)item.ReviewStatus,
             ReviewerId = item.ReviewerId ?? string.Empty,
             ReviewedAt = item.ReviewedAt.HasValue
