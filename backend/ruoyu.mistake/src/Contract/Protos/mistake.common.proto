@@ -4,22 +4,23 @@ package ruoyu.study.mistake.v1;
 
 option csharp_namespace = "Ruoyu.Study.Mistake.Contract.Protos";
 
-// ========== 通用枚举 ==========
+enum ReviewStatus {
+  REVIEW_STATUS_UNSPECIFIED = 0;
+  REVIEW_STATUS_PENDING_REVIEW = 1;
+  REVIEW_STATUS_CONFIRMED = 2;
+  REVIEW_STATUS_REJECTED = 3;
+}
+
 enum ProcessAction {
   PROCESS_ACTION_UNSPECIFIED = 0;
   PROCESS_ACTION_CREATED = 1;
   PROCESS_ACTION_ANALYZED = 2;
-  PROCESS_ACTION_PRACTICED = 3;
-  PROCESS_ACTION_MASTERED = 4;
+  PROCESS_ACTION_REVIEW_CONFIRMED = 3;
+  PROCESS_ACTION_REVIEW_REJECTED = 4;
+  PROCESS_ACTION_PRACTICED = 5;
+  PROCESS_ACTION_MASTERED = 6;
 }
 
-enum MistakeStatus {
-  MISTAKE_STATUS_UNSPECIFIED = 0;
-  MISTAKE_STATUS_PENDING = 1;    // 未处理（学生上传，可以删除）
-  MISTAKE_STATUS_PROCESSED = 2;  // 已处理（系统或教师判定有效，不可删除）
-}
-
-// ========== 通用请求/响应 ==========
 message IdRequest {
   string id = 1;
 }
@@ -36,53 +37,60 @@ message PageMeta {
   int32 total_pages = 4;
 }
 
-// ========== 错题 DTO ==========
-message MistakeDto {
+message BoundingBox {
+  int32 x1 = 1;
+  int32 y1 = 2;
+  int32 x2 = 3;
+  int32 y2 = 4;
+}
+
+message MistakeItemDto {
   string id = 1;
   string student_id = 2;
   int32 subject = 3;
   int32 grade = 4;
-  string date = 5;
-  int32 type = 10;
-  string question_id = 11;              // 关联题库中的QuestionId
-  MistakeStatus status = 13;            // 错题状态
-  string created_at = 14;
-  string updated_at = 15;
+  string source_upload_id = 5;
+  string source_image_path = 6;
+  BoundingBox bounding_box = 7;
+  string question_number = 8;
+  string question_text = 9;
+  string student_answer = 10;
+  double ai_confidence = 11;
+  ReviewStatus review_status = 12;
+  string reviewer_id = 13;
+  string reviewed_at = 14;
+  string review_comment = 15;
+  int32 type = 16;
+  string question_id = 17;
+  string created_at = 18;
+  string updated_at = 19;
 }
 
-message MistakeDetailDto {
-  string mistake_id = 1;
-  repeated string original_images = 2;  // 原始上传图片素材
-  string comments = 3;
-}
-
-// ========== 错题练习记录 DTO ==========
 message MistakePracticeDto {
   string id = 1;
-  string mistake_id = 2;
+  string mistake_item_id = 2;
   string student_id = 3;
   string practice_date = 4;
-  repeated string image_paths = 5;      // 重答/举一反三的图片路径
+  repeated string image_paths = 5;
   string student_answer = 6;
   bool is_correct = 7;
   string comments = 8;
 }
 
-// ========== 列表响应 ==========
-message MistakeDtoList {
-  repeated MistakeDto mistakes = 1;
-}
-
-// ========== 分页响应 ==========
-message MistakePageResult {
-  repeated MistakeDto items = 1;
-  PageMeta page_meta = 2;
-}
-
 message ProcessLogDto {
   string id = 1;
-  string mistake_id = 2;
+  string mistake_item_id = 2;
   ProcessAction action = 3;
   string details = 4;
   string created_at = 5;
+}
+
+message PendingReviewUploadDto {
+  string source_upload_id = 1;
+  string student_id = 2;
+  int32 subject = 3;
+  int32 grade = 4;
+  int32 pending_count = 5;
+  int32 total_count = 6;
+  string earliest_created_at = 7;
 }

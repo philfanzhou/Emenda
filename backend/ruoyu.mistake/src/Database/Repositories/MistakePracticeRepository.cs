@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Mistake.Database.Entities;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Repositories;
-using Mapster;
 
 namespace Ruoyu.Study.Mistake.Database.Repositories;
 
@@ -21,25 +20,45 @@ public class MistakePracticeRepository : IMistakePracticeRepository
 
     public async Task AddAsync(MistakePracticeModel model)
     {
-        var entity = model.Adapt<MistakePracticeEntity>();
+        var entity = new MistakePracticeEntity
+        {
+            Id = model.Id,
+            MistakeItemId = model.MistakeItemId,
+            StudentId = model.StudentId,
+            PracticeDate = model.PracticeDate,
+            ImagePaths = model.ImagePaths,
+            StudentAnswer = model.StudentAnswer,
+            IsCorrect = model.IsCorrect,
+            Comments = model.Comments
+        };
         await _dbContext.MistakePractices.AddAsync(entity);
     }
 
-    public async Task<List<MistakePracticeModel>> GetByMistakeIdAsync(Guid mistakeId)
+    public async Task<List<MistakePracticeModel>> GetByMistakeItemIdAsync(Guid mistakeItemId)
     {
         var items = await _dbContext.MistakePractices
-            .Where(p => p.MistakeId == mistakeId)
+            .Where(p => p.MistakeItemId == mistakeItemId)
             .OrderBy(p => p.PracticeDate)
             .ToListAsync();
-        return items.Adapt<List<MistakePracticeModel>>();
+        return items.Select(e => new MistakePracticeModel
+        {
+            Id = e.Id,
+            MistakeItemId = e.MistakeItemId,
+            StudentId = e.StudentId,
+            PracticeDate = e.PracticeDate,
+            ImagePaths = e.ImagePaths,
+            StudentAnswer = e.StudentAnswer,
+            IsCorrect = e.IsCorrect,
+            Comments = e.Comments
+        }).ToList();
     }
 
-    public async Task RemoveByMistakeIdAsync(Guid mistakeId)
+    public async Task RemoveByMistakeItemIdAsync(Guid mistakeItemId)
     {
         var entities = await _dbContext.MistakePractices
-            .Where(p => p.MistakeId == mistakeId)
+            .Where(p => p.MistakeItemId == mistakeItemId)
             .ToListAsync();
-        
+
         if (entities.Count > 0)
         {
             _dbContext.MistakePractices.RemoveRange(entities);

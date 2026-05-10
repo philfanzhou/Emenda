@@ -12,9 +12,9 @@ public class MistakePracticeEntity
     [Column("id")]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    [Column("mistake_id")]
+    [Column("mistake_item_id")]
     [Required]
-    public Guid MistakeId { get; set; } = Guid.Empty;
+    public Guid MistakeItemId { get; set; } = Guid.Empty;
 
     [Column("student_id")]
     [Required]
@@ -36,6 +36,6 @@ public class MistakePracticeEntity
     [Column("comments")]
     public string? Comments { get; set; }
 
-    [ForeignKey("MistakeId")]
-    public virtual MistakeEntity Mistake { get; set; } = null!;
+    [ForeignKey("MistakeItemId")]
+    public virtual MistakeItemEntity MistakeItem { get; set; } = null!;
 }

@@ -7,7 +7,7 @@ namespace Ruoyu.Study.Mistake.Domain.Repositories;
 
 public interface IProcessLogRepository
 {
-    Task AddAsync(ProcessLogModel entity);
-    Task<List<ProcessLogModel>> GetByMistakeIdAsync(Guid mistakeId);
-    Task RemoveByMistakeIdAsync(Guid mistakeId);
+    Task AddAsync(ProcessLogModel model);
+    Task<List<ProcessLogModel>> GetByMistakeItemIdAsync(Guid mistakeItemId);
+    Task RemoveByMistakeItemIdAsync(Guid mistakeItemId);
 }

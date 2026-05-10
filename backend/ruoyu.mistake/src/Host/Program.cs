@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
@@ -40,15 +39,7 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 
-var ossOptions = builder.Configuration.GetSection("Oss").Get<OssOptions>() ?? new OssOptions();
-builder.Services.AddSingleton<IOssService>(new S3OssService(
-    ossOptions.Endpoint,
-    ossOptions.AccessKey,
-    ossOptions.SecretKey,
-    ossOptions.BucketName));
-
-builder.Services.AddScoped<IMistakeRepository, MistakeRepository>();
-builder.Services.AddScoped<IMistakeDetailRepository, MistakeDetailRepository>();
+builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

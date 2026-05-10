@@ -6,7 +6,7 @@ namespace Ruoyu.Study.Mistake.Domain.Models;
 public class MistakePracticeModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid MistakeId { get; set; } = Guid.Empty;
+    public Guid MistakeItemId { get; set; } = Guid.Empty;
     public string StudentId { get; set; } = string.Empty;
     public DateTimeOffset PracticeDate { get; set; } = DateTimeOffset.UtcNow;
     public List<string> ImagePaths { get; set; } = new();

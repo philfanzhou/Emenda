@@ -11,8 +11,8 @@ public class ProcessLogEntity
     [Column("id")]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    [Column("mistake_id")]
-    public Guid MistakeId { get; set; }
+    [Column("mistake_item_id")]
+    public Guid MistakeItemId { get; set; }
 
     [Column("action")]
     public int Action { get; set; }
@@ -23,6 +23,6 @@ public class ProcessLogEntity
     [Column("created_at")]
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    [ForeignKey("MistakeId")]
-    public virtual MistakeEntity Mistake { get; set; } = null!;
+    [ForeignKey("MistakeItemId")]
+    public virtual MistakeItemEntity MistakeItem { get; set; } = null!;
 }

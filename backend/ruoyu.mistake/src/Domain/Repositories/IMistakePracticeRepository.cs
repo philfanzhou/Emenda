@@ -7,7 +7,7 @@ namespace Ruoyu.Study.Mistake.Domain.Repositories;
 
 public interface IMistakePracticeRepository
 {
-    Task AddAsync(MistakePracticeModel entity);
-    Task<List<MistakePracticeModel>> GetByMistakeIdAsync(Guid mistakeId);
-    Task RemoveByMistakeIdAsync(Guid mistakeId);
+    Task AddAsync(MistakePracticeModel model);
+    Task<List<MistakePracticeModel>> GetByMistakeItemIdAsync(Guid mistakeItemId);
+    Task RemoveByMistakeItemIdAsync(Guid mistakeItemId);
 }

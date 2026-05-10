@@ -5,7 +5,7 @@ namespace Ruoyu.Study.Mistake.Domain.Models;
 public class ProcessLogModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid MistakeId { get; set; } = Guid.Empty;
+    public Guid MistakeItemId { get; set; } = Guid.Empty;
     public int Action { get; set; }
     public string? Details { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

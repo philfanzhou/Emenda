@@ -6,88 +6,107 @@ import "Protos/mistake.common.proto";
 
 option csharp_namespace = "Ruoyu.Study.Mistake.Contract.Protos";
 
-// ========== 错题本服务 ==========
 service MistakeGrpcService {
-  // === 错题管理 ===
-  rpc CreateMistake(CreateMistakeRequest) returns (CreateMistakeResponse);
-  rpc UpdateMistake(UpdateMistakeRequest) returns (BoolResponse);
-  rpc DeleteMistake(IdRequest) returns (BoolResponse);
-  rpc DeleteMistakeImage(DeleteMistakeImageRequest) returns (BoolResponse);
-  rpc GetMistake(GetMistakeRequest) returns (GetMistakeResponse);
-  rpc GetMistakeList(GetMistakeListRequest) returns (MistakePageResult);
-  rpc MarkMistakeProcessed(MarkMistakeProcessedRequest) returns (BoolResponse);
-  rpc ReturnMistake(ReturnMistakeRequest) returns (BoolResponse);
+  rpc SubmitMistakeUpload(SubmitMistakeUploadRequest) returns (SubmitMistakeUploadResponse);
 
-  // === 错题重答与举一反三 ===
+  rpc GetMistakeItem(IdRequest) returns (MistakeItemDto);
+  rpc GetMistakeItemsByUpload(GetMistakeItemsByUploadRequest) returns (MistakeItemListResponse);
+  rpc GetMistakeItemList(GetMistakeItemListRequest) returns (MistakeItemPageResult);
+  rpc GetPendingReviewUploads(GetPendingReviewUploadsRequest) returns (PendingReviewUploadListResponse);
+
+  rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (BoolResponse);
+  rpc AddMistakeItem(AddMistakeItemRequest) returns (MistakeItemDto);
+  rpc DeleteMistakeItem(IdRequest) returns (BoolResponse);
+  rpc CompleteUploadReview(CompleteUploadReviewRequest) returns (CompleteUploadReviewResponse);
+
   rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
   rpc GetMistakePractices(IdRequest) returns (MistakePracticeListResponse);
 
-  // === 错题分析 ===
   rpc AnalyzeMistakeType(AnalyzeMistakeRequest) returns (MistakeTypeResponse);
   rpc LogMistakeProcess(LogMistakeProcessRequest) returns (BoolResponse);
   rpc GetMistakeProcessHistory(IdRequest) returns (ProcessLogListResponse);
 }
 
-// ========== 错题请求 ==========
-message CreateMistakeRequest {
+message SubmitMistakeUploadRequest {
   string student_id = 1;
   int32 subject = 2;
   int32 grade = 3;
-  int32 type = 4;
-  repeated string image_paths = 5;
-  string comments = 6;
+  repeated string image_paths = 4;
+  string comments = 5;
+  string source_upload_id = 6;
 }
 
-message CreateMistakeResponse {
+message SubmitMistakeUploadResponse {
   bool success = 1;
   string error_message = 2;
-  string mistake_id = 3;
+  repeated string created_item_ids = 3;
 }
 
-message GetMistakeResponse {
-  MistakeDto mistake = 1;
-  MistakeDetailDto detail = 2;
+message GetMistakeItemsByUploadRequest {
+  string source_upload_id = 1;
 }
 
-message MarkMistakeProcessedRequest {
-  string id = 1;
-  string question_id = 2;
+message MistakeItemListResponse {
+  repeated MistakeItemDto items = 1;
 }
 
-message UpdateMistakeRequest {
-  string mistake_id = 1;
-  string comments = 2;
-  string question_id = 4;
-  int32 subject = 5;
-  int32 grade = 6;
-  int32 type = 7;
-}
-
-message DeleteMistakeImageRequest {
-  string mistake_id = 1;
-  string image_path = 2;
-}
-
-message GetMistakeRequest {
-  string mistake_id = 1;
-  string student_id = 2;
-}
-
-message GetMistakeListRequest {
+message GetMistakeItemListRequest {
   string student_id = 1;
   int32 subject = 2;
   int32 grade = 3;
-  int32 type = 4;
+  ReviewStatus review_status = 4;
   int32 page = 5;
   int32 size = 6;
-  string start_date = 7;
-  string end_date = 8;
-  MistakeStatus status = 9;
 }
 
-// ========== 重答请求 ==========
+message MistakeItemPageResult {
+  repeated MistakeItemDto items = 1;
+  PageMeta page_meta = 2;
+}
+
+message GetPendingReviewUploadsRequest {
+  int32 page = 1;
+  int32 size = 2;
+}
+
+message PendingReviewUploadListResponse {
+  repeated PendingReviewUploadDto uploads = 1;
+  PageMeta page_meta = 2;
+}
+
+message ReviewMistakeItemRequest {
+  string id = 1;
+  ReviewStatus review_status = 2;
+  string reviewer_id = 3;
+  string review_comment = 4;
+}
+
+message AddMistakeItemRequest {
+  string student_id = 1;
+  int32 subject = 2;
+  int32 grade = 3;
+  string source_upload_id = 4;
+  string source_image_path = 5;
+  BoundingBox bounding_box = 6;
+  string question_number = 7;
+  string question_text = 8;
+  string student_answer = 9;
+  string comments = 10;
+}
+
+message CompleteUploadReviewRequest {
+  string source_upload_id = 1;
+  string reviewer_id = 2;
+}
+
+message CompleteUploadReviewResponse {
+  bool success = 1;
+  string error_message = 2;
+  string source_upload_id = 3;
+}
+
 message AddMistakePracticeRequest {
-  string mistake_id = 1;
+  string mistake_item_id = 1;
   string student_id = 2;
   repeated string image_paths = 3;
   string student_answer = 4;
@@ -99,9 +118,8 @@ message MistakePracticeListResponse {
   repeated MistakePracticeDto practices = 1;
 }
 
-// ========== 分析请求 ==========
 message AnalyzeMistakeRequest {
-  string mistake_id = 1;
+  string mistake_item_id = 1;
   string content = 2;
   string correct_answer = 3;
   string student_answer = 4;
@@ -114,16 +132,10 @@ message MistakeTypeResponse {
 }
 
 message LogMistakeProcessRequest {
-  string mistake_id = 1;
+  string mistake_item_id = 1;
   string student_id = 2;
   ProcessAction action = 3;
   string details = 4;
-}
-
-message ReturnMistakeRequest {
-  string mistake_id = 1;
-  string student_id = 2;
-  string return_reason = 3;
 }
 
 message ProcessLogListResponse {
