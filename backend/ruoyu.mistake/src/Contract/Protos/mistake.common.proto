@@ -44,26 +44,30 @@ message BoundingBox {
   int32 y2 = 4;
 }
 
+message SourceRegion {
+  string source_image_path = 1;
+  BoundingBox bounding_box = 2;
+}
+
 message MistakeItemDto {
   string id = 1;
   string student_id = 2;
   int32 subject = 3;
   int32 grade = 4;
   string source_upload_id = 5;
-  string source_image_path = 6;
-  BoundingBox bounding_box = 7;
-  string question_number = 8;
-  string question_text = 9;
-  string student_answer = 10;
-  double ai_confidence = 11;
-  ReviewStatus review_status = 12;
-  string reviewer_id = 13;
-  string reviewed_at = 14;
-  string review_comment = 15;
-  int32 type = 16;
-  string question_id = 17;
-  string created_at = 18;
-  string updated_at = 19;
+  repeated SourceRegion source_regions = 6;
+  string question_number = 7;
+  string question_text = 8;
+  string student_answer = 9;
+  double ai_confidence = 10;
+  ReviewStatus review_status = 11;
+  string reviewer_id = 12;
+  string reviewed_at = 13;
+  string review_comment = 14;
+  int32 type = 15;
+  string question_id = 16;
+  string created_at = 17;
+  string updated_at = 18;
 }
 
 message MistakePracticeDto {

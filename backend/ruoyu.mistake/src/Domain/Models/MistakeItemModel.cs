@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Ruoyu.Study.Mistake.Domain.Models;
 
@@ -9,8 +10,7 @@ public class MistakeItemModel
     public int Subject { get; set; }
     public int Grade { get; set; }
     public string SourceUploadId { get; set; } = string.Empty;
-    public string SourceImagePath { get; set; } = string.Empty;
-    public BoundingBoxModel? BoundingBox { get; set; }
+    public List<SourceRegionModel> SourceRegions { get; set; } = new();
     public string? QuestionNumber { get; set; }
     public string? QuestionText { get; set; }
     public string? StudentAnswer { get; set; }
@@ -23,6 +23,12 @@ public class MistakeItemModel
     public string? QuestionId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
+}
+
+public class SourceRegionModel
+{
+    public string SourceImagePath { get; set; } = string.Empty;
+    public BoundingBoxModel? BoundingBox { get; set; }
 }
 
 public class BoundingBoxModel

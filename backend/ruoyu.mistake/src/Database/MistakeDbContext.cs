@@ -16,9 +16,19 @@ public class MistakeDbContext : DbContext
     public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        var sourceRegionComparer = new ValueComparer<List<SourceRegionEntry>>(
+            (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.SourceImagePath.GetHashCode(), v.BoundingBox != null ? HashCode.Combine(v.BoundingBox.X1, v.BoundingBox.Y1, v.BoundingBox.X2, v.BoundingBox.Y2) : 0)),
+            c => JsonSerializer.Deserialize<List<SourceRegionEntry>>(JsonSerializer.Serialize(c, JsonOptions), JsonOptions) ?? new());
 
         modelBuilder.Entity<MistakeItemEntity>(entity =>
         {
@@ -27,7 +37,18 @@ public class MistakeDbContext : DbContext
             entity.HasIndex(e => e.SourceUploadId);
             entity.HasIndex(e => e.ReviewStatus);
             entity.HasIndex(e => e.CreatedAt);
+
+            entity.Property(e => e.SourceRegions)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, JsonOptions),
+                    v => JsonSerializer.Deserialize<List<SourceRegionEntry>>(v, JsonOptions) ?? new())
+                .Metadata.SetValueComparer(sourceRegionComparer);
         });
+
+        var imagePathsComparer = new ValueComparer<List<string>>(
+            (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+            c => c.ToList());
 
         modelBuilder.Entity<MistakePracticeEntity>(entity =>
         {
@@ -39,11 +60,6 @@ public class MistakeDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.MistakeItemId)
                   .OnDelete(DeleteBehavior.Cascade);
-
-            var imagePathsComparer = new ValueComparer<List<string>>(
-                (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
-                c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                c => c.ToList());
 
             entity.Property(e => e.ImagePaths)
                 .HasConversion(

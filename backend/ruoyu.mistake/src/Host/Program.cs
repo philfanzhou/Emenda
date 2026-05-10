@@ -4,6 +4,7 @@ using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service;
+using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,12 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
     }
 
     options.UseNpgsql(connectionString);
+});
+
+var studentGrpcAddress = builder.Configuration["StudentService:Address"] ?? "http://localhost:5004";
+builder.Services.AddGrpcClient<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
+{
+    options.Address = new Uri(studentGrpcAddress);
 });
 
 builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();

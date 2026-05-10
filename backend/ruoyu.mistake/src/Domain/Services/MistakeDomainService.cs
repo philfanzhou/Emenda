@@ -13,6 +13,14 @@ public class MistakeValidationException : Exception
     public MistakeValidationException(string message) : base(message) { }
 }
 
+public class CompleteUploadReviewResult
+{
+    public bool Success { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? SourceUploadId { get; set; }
+    public string? StudentId { get; set; }
+}
+
 public class MistakeDomainService
 {
     private readonly IMistakeItemRepository _mistakeItemRepository;
@@ -46,30 +54,27 @@ public class MistakeDomainService
             throw new MistakeValidationException($"上传记录 {sourceUploadId} 已提交过错题，请勿重复提交");
         }
 
-        var items = new List<MistakeItemModel>();
-
-        foreach (var imagePath in imagePaths)
+        var item = new MistakeItemModel
         {
-            var item = new MistakeItemModel
+            Id = Guid.NewGuid(),
+            StudentId = studentId,
+            Subject = subject,
+            Grade = grade,
+            SourceUploadId = sourceUploadId,
+            SourceRegions = imagePaths.ConvertAll(p => new SourceRegionModel
             {
-                Id = Guid.NewGuid(),
-                StudentId = studentId,
-                Subject = subject,
-                Grade = grade,
-                SourceUploadId = sourceUploadId,
-                SourceImagePath = imagePath,
-                ReviewStatus = (int)ReviewStatus.PendingReview,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
+                SourceImagePath = p,
+                BoundingBox = null
+            }),
+            ReviewStatus = (int)ReviewStatus.PendingReview,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
 
-            await _mistakeItemRepository.AddAsync(item);
-            items.Add(item);
-
-            await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item created from upload");
-        }
-
+        await _mistakeItemRepository.AddAsync(item);
+        await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item created from upload");
         await _unitOfWork.SaveChangesAsync();
-        return items;
+
+        return new List<MistakeItemModel> { item };
     }
 
     public async Task<MistakeItemModel?> GetMistakeItemAsync(Guid id)
@@ -170,22 +175,35 @@ public class MistakeDomainService
         return true;
     }
 
-    public async Task<(bool success, string? errorMessage, string? sourceUploadId)> CompleteUploadReviewAsync(
+    public async Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(
         string sourceUploadId, string? reviewerId)
     {
         var pendingCount = await _mistakeItemRepository.CountPendingBySourceUploadIdAsync(sourceUploadId);
         if (pendingCount > 0)
         {
-            return (false, $"还有 {pendingCount} 条错题待审核，请先完成所有审核", null);
+            return new CompleteUploadReviewResult
+            {
+                Success = false,
+                ErrorMessage = $"还有 {pendingCount} 条错题待审核，请先完成所有审核"
+            };
         }
 
         var items = await _mistakeItemRepository.GetBySourceUploadIdAsync(sourceUploadId);
         if (items.Count == 0)
         {
-            return (false, "未找到该上传记录的错题", null);
+            return new CompleteUploadReviewResult
+            {
+                Success = false,
+                ErrorMessage = "未找到该上传记录的错题"
+            };
         }
 
-        return (true, null, sourceUploadId);
+        return new CompleteUploadReviewResult
+        {
+            Success = true,
+            SourceUploadId = sourceUploadId,
+            StudentId = items[0].StudentId
+        };
     }
 
     public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null)
@@ -310,8 +328,8 @@ public class MistakeDomainService
         if (string.IsNullOrWhiteSpace(item.SourceUploadId))
             errors.Add("缺少上传记录ID");
 
-        if (string.IsNullOrWhiteSpace(item.SourceImagePath))
-            errors.Add("缺少原始图片路径");
+        if (item.SourceRegions == null || item.SourceRegions.Count == 0)
+            errors.Add("至少需要一个图片区域");
 
         if (errors.Count > 0)
             throw new MistakeValidationException(string.Join("; ", errors));

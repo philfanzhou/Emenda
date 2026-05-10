@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -27,21 +28,9 @@ public class MistakeItemEntity
     [MaxLength(64)]
     public string SourceUploadId { get; set; } = string.Empty;
 
-    [Column("source_image_path")]
+    [Column("source_regions")]
     [Required]
-    public string SourceImagePath { get; set; } = string.Empty;
-
-    [Column("bbox_x1")]
-    public int? BboxX1 { get; set; }
-
-    [Column("bbox_y1")]
-    public int? BboxY1 { get; set; }
-
-    [Column("bbox_x2")]
-    public int? BboxX2 { get; set; }
-
-    [Column("bbox_y2")]
-    public int? BboxY2 { get; set; }
+    public List<SourceRegionEntry> SourceRegions { get; set; } = new();
 
     [Column("question_number")]
     [MaxLength(20)]
@@ -82,4 +71,18 @@ public class MistakeItemEntity
     [Column("updated_at")]
     [ConcurrencyCheck]
     public DateTimeOffset? UpdatedAt { get; set; }
+}
+
+public class SourceRegionEntry
+{
+    public string SourceImagePath { get; set; } = string.Empty;
+    public BoundingBoxEntry? BoundingBox { get; set; }
+}
+
+public class BoundingBoxEntry
+{
+    public int X1 { get; set; }
+    public int Y1 { get; set; }
+    public int X2 { get; set; }
+    public int Y2 { get; set; }
 }

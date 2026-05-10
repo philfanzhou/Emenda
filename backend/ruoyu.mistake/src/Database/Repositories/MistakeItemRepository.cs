@@ -5,8 +5,8 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Mistake.Database.Entities;
 using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Repositories;
+using Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Database.Repositories;
 
@@ -40,11 +40,7 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.Subject = model.Subject;
         entity.Grade = model.Grade;
         entity.SourceUploadId = model.SourceUploadId;
-        entity.SourceImagePath = model.SourceImagePath;
-        entity.BboxX1 = model.BoundingBox?.X1;
-        entity.BboxY1 = model.BoundingBox?.Y1;
-        entity.BboxX2 = model.BoundingBox?.X2;
-        entity.BboxY2 = model.BoundingBox?.Y2;
+        entity.SourceRegions = MapSourceRegions(model.SourceRegions);
         entity.QuestionNumber = model.QuestionNumber;
         entity.QuestionText = model.QuestionText;
         entity.StudentAnswer = model.StudentAnswer;
@@ -156,11 +152,7 @@ public class MistakeItemRepository : IMistakeItemRepository
             Subject = model.Subject,
             Grade = model.Grade,
             SourceUploadId = model.SourceUploadId,
-            SourceImagePath = model.SourceImagePath,
-            BboxX1 = model.BoundingBox?.X1,
-            BboxY1 = model.BoundingBox?.Y1,
-            BboxX2 = model.BoundingBox?.X2,
-            BboxY2 = model.BoundingBox?.Y2,
+            SourceRegions = MapSourceRegions(model.SourceRegions),
             QuestionNumber = model.QuestionNumber,
             QuestionText = model.QuestionText,
             StudentAnswer = model.StudentAnswer,
@@ -185,16 +177,19 @@ public class MistakeItemRepository : IMistakeItemRepository
             Subject = entity.Subject,
             Grade = entity.Grade,
             SourceUploadId = entity.SourceUploadId,
-            SourceImagePath = entity.SourceImagePath,
-            BoundingBox = entity.BboxX1.HasValue
-                ? new BoundingBoxModel
-                {
-                    X1 = entity.BboxX1!.Value,
-                    Y1 = entity.BboxY1!.Value,
-                    X2 = entity.BboxX2!.Value,
-                    Y2 = entity.BboxY2!.Value
-                }
-                : null,
+            SourceRegions = entity.SourceRegions?.Select(r => new SourceRegionModel
+            {
+                SourceImagePath = r.SourceImagePath ?? string.Empty,
+                BoundingBox = r.BoundingBox != null
+                    ? new BoundingBoxModel
+                    {
+                        X1 = r.BoundingBox.X1,
+                        Y1 = r.BoundingBox.Y1,
+                        X2 = r.BoundingBox.X2,
+                        Y2 = r.BoundingBox.Y2
+                    }
+                    : null
+            }).ToList() ?? new(),
             QuestionNumber = entity.QuestionNumber,
             QuestionText = entity.QuestionText,
             StudentAnswer = entity.StudentAnswer,
@@ -208,5 +203,22 @@ public class MistakeItemRepository : IMistakeItemRepository
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
+    }
+
+    private static List<SourceRegionEntry> MapSourceRegions(List<SourceRegionModel> regions)
+    {
+        return regions?.Select(r => new SourceRegionEntry
+        {
+            SourceImagePath = r.SourceImagePath ?? string.Empty,
+            BoundingBox = r.BoundingBox != null
+                ? new BoundingBoxEntry
+                {
+                    X1 = r.BoundingBox.X1,
+                    Y1 = r.BoundingBox.Y1,
+                    X2 = r.BoundingBox.X2,
+                    Y2 = r.BoundingBox.Y2
+                }
+                : null
+        }).ToList() ?? new();
     }
 }

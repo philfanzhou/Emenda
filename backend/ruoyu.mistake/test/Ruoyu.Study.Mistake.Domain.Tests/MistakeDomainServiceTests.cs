@@ -38,7 +38,7 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task SubmitMistakeUploadAsync_ShouldCreateOneItemPerImage()
+    public async Task SubmitMistakeUploadAsync_ShouldCreateItemWithSourceRegions()
     {
         var imagePaths = new List<string> { "img1.jpg", "img2.jpg" };
 
@@ -47,12 +47,12 @@ public class MistakeDomainServiceTests
         var items = await _service.SubmitMistakeUploadAsync(
             "student-1", 1, 3, imagePaths, null, "upload-1");
 
-        items.Should().HaveCount(2);
-        items[0].SourceImagePath.Should().Be("img1.jpg");
-        items[1].SourceImagePath.Should().Be("img2.jpg");
+        items.Should().HaveCount(1);
+        items[0].SourceRegions.Should().HaveCount(2);
+        items[0].SourceRegions[0].SourceImagePath.Should().Be("img1.jpg");
+        items[0].SourceRegions[0].BoundingBox.Should().BeNull();
+        items[0].SourceRegions[1].SourceImagePath.Should().Be("img2.jpg");
         items[0].ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
-        items[1].ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
-        _mockItemRepo.Verify(x => x.AddAsync(It.IsAny<MistakeItemModel>()), Times.Exactly(2));
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 
@@ -155,28 +155,63 @@ public class MistakeDomainServiceTests
     {
         _mockItemRepo.Setup(x => x.CountPendingBySourceUploadIdAsync("upload-1")).ReturnsAsync(2);
 
-        var (success, errorMessage, sourceUploadId) = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
+        var result = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
 
-        success.Should().BeFalse();
-        errorMessage.Should().Contain("2 条错题待审核");
-        sourceUploadId.Should().BeNull();
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("2 条错题待审核");
+        result.SourceUploadId.Should().BeNull();
     }
 
     [Fact]
-    public async Task CompleteUploadReviewAsync_WhenAllReviewed_ShouldReturnSuccess()
+    public async Task CompleteUploadReviewAsync_WhenAllReviewed_ShouldReturnSuccessWithStudentId()
     {
         _mockItemRepo.Setup(x => x.CountPendingBySourceUploadIdAsync("upload-1")).ReturnsAsync(0);
         _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1"))
             .ReturnsAsync(new List<MistakeItemModel>
             {
-                new() { Id = Guid.NewGuid(), SourceUploadId = "upload-1" }
+                new() { Id = Guid.NewGuid(), SourceUploadId = "upload-1", StudentId = "student-1" }
             });
 
-        var (success, errorMessage, sourceUploadId) = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
+        var result = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
 
-        success.Should().BeTrue();
-        errorMessage.Should().BeNull();
-        sourceUploadId.Should().Be("upload-1");
+        result.Success.Should().BeTrue();
+        result.ErrorMessage.Should().BeNull();
+        result.SourceUploadId.Should().Be("upload-1");
+        result.StudentId.Should().Be("student-1");
+    }
+
+    [Fact]
+    public async Task AddMistakeItemAsync_WithSourceRegions_ShouldSucceed()
+    {
+        var item = new MistakeItemModel
+        {
+            StudentId = "student-1",
+            Subject = 1,
+            Grade = 3,
+            SourceUploadId = "upload-1",
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new()
+                {
+                    SourceImagePath = "img1.jpg",
+                    BoundingBox = new BoundingBoxModel { X1 = 10, Y1 = 20, X2 = 100, Y2 = 200 }
+                },
+                new()
+                {
+                    SourceImagePath = "img2.jpg",
+                    BoundingBox = null
+                }
+            }
+        };
+
+        var result = await _service.AddMistakeItemAsync(item);
+
+        result.Id.Should().NotBe(Guid.Empty);
+        result.SourceRegions.Should().HaveCount(2);
+        result.SourceRegions[0].BoundingBox.Should().NotBeNull();
+        result.SourceRegions[1].BoundingBox.Should().BeNull();
+        result.ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
+        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 
     [Fact]

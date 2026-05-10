@@ -2,19 +2,28 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
+using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Service;
 
 public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly MistakeDomainService _mistakeService;
+    private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
+    private readonly ILogger<MistakeServiceImpl> _logger;
 
-    public MistakeServiceImpl(MistakeDomainService mistakeService)
+    public MistakeServiceImpl(
+        MistakeDomainService mistakeService,
+        StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
+        ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
+        _studentClient = studentClient;
+        _logger = logger;
     }
 
     public override async Task<SubmitMistakeUploadResponse> SubmitMistakeUpload(SubmitMistakeUploadRequest request, ServerCallContext context)
@@ -150,16 +159,19 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             Subject = request.Subject,
             Grade = request.Grade,
             SourceUploadId = request.SourceUploadId,
-            SourceImagePath = request.SourceImagePath,
-            BoundingBox = request.BoundingBox != null
-                ? new BoundingBoxModel
-                {
-                    X1 = request.BoundingBox.X1,
-                    Y1 = request.BoundingBox.Y1,
-                    X2 = request.BoundingBox.X2,
-                    Y2 = request.BoundingBox.Y2
-                }
-                : null,
+            SourceRegions = request.SourceRegions.Select(r => new SourceRegionModel
+            {
+                SourceImagePath = r.SourceImagePath,
+                BoundingBox = r.BoundingBox != null
+                    ? new BoundingBoxModel
+                    {
+                        X1 = r.BoundingBox.X1,
+                        Y1 = r.BoundingBox.Y1,
+                        X2 = r.BoundingBox.X2,
+                        Y2 = r.BoundingBox.Y2
+                    }
+                    : null
+            }).ToList(),
             QuestionNumber = request.QuestionNumber,
             QuestionText = request.QuestionText,
             StudentAnswer = request.StudentAnswer
@@ -189,17 +201,53 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         }
     }
 
-    public override async Task<CompleteUploadReviewResponse> CompleteUploadReview(CompleteUploadReviewRequest request, ServerCallContext context)
+    public override async Task<BoolResponse> CompleteUploadReview(CompleteUploadReviewRequest request, ServerCallContext context)
     {
-        var (success, errorMessage, sourceUploadId) = await _mistakeService.CompleteUploadReviewAsync(
-            request.SourceUploadId, request.ReviewerId);
-
-        return new CompleteUploadReviewResponse
+        try
         {
-            Success = success,
-            ErrorMessage = errorMessage ?? string.Empty,
-            SourceUploadId = sourceUploadId ?? string.Empty
-        };
+            var result = await _mistakeService.CompleteUploadReviewAsync(
+                request.SourceUploadId, request.ReviewerId);
+
+            if (!result.Success)
+            {
+                return new BoolResponse { Success = false, ErrorMessage = result.ErrorMessage };
+            }
+
+            try
+            {
+                var deleteResponse = await _studentClient.DeleteUploadRecordAsync(
+                    new StudentProto.DeleteUploadRecordRequest
+                    {
+                        RecordId = result.SourceUploadId,
+                        StudentId = result.StudentId
+                    });
+
+                if (deleteResponse.Success)
+                {
+                    _logger.LogInformation(
+                        "Upload record {RecordId} deleted after review completion",
+                        result.SourceUploadId);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Failed to delete upload record {RecordId} after review completion: {Error}",
+                        result.SourceUploadId, deleteResponse.ErrorMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Error deleting upload record {RecordId} after review completion",
+                    result.SourceUploadId);
+            }
+
+            return new BoolResponse { Success = true };
+        }
+        catch (MistakeValidationException ex)
+        {
+            return new BoolResponse { Success = false, ErrorMessage = ex.Message };
+        }
     }
 
     public override async Task<MistakePracticeDto> AddMistakePractice(AddMistakePracticeRequest request, ServerCallContext context)
@@ -269,7 +317,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             Subject = item.Subject,
             Grade = item.Grade,
             SourceUploadId = item.SourceUploadId ?? string.Empty,
-            SourceImagePath = item.SourceImagePath ?? string.Empty,
             QuestionNumber = item.QuestionNumber ?? string.Empty,
             QuestionText = item.QuestionText ?? string.Empty,
             StudentAnswer = item.StudentAnswer ?? string.Empty,
@@ -290,15 +337,25 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 : string.Empty
         };
 
-        if (item.BoundingBox != null)
+        foreach (var region in item.SourceRegions ?? new())
         {
-            dto.BoundingBox = new BoundingBox
+            var regionDto = new SourceRegion
             {
-                X1 = item.BoundingBox.X1,
-                Y1 = item.BoundingBox.Y1,
-                X2 = item.BoundingBox.X2,
-                Y2 = item.BoundingBox.Y2
+                SourceImagePath = region.SourceImagePath ?? string.Empty
             };
+
+            if (region.BoundingBox != null)
+            {
+                regionDto.BoundingBox = new BoundingBox
+                {
+                    X1 = region.BoundingBox.X1,
+                    Y1 = region.BoundingBox.Y1,
+                    X2 = region.BoundingBox.X2,
+                    Y2 = region.BoundingBox.Y2
+                };
+            }
+
+            dto.SourceRegions.Add(regionDto);
         }
 
         return dto;

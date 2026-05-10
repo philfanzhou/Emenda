@@ -17,7 +17,7 @@ service MistakeGrpcService {
   rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (BoolResponse);
   rpc AddMistakeItem(AddMistakeItemRequest) returns (MistakeItemDto);
   rpc DeleteMistakeItem(IdRequest) returns (BoolResponse);
-  rpc CompleteUploadReview(CompleteUploadReviewRequest) returns (CompleteUploadReviewResponse);
+  rpc CompleteUploadReview(CompleteUploadReviewRequest) returns (BoolResponse);
 
   rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
   rpc GetMistakePractices(IdRequest) returns (MistakePracticeListResponse);
@@ -86,23 +86,16 @@ message AddMistakeItemRequest {
   int32 subject = 2;
   int32 grade = 3;
   string source_upload_id = 4;
-  string source_image_path = 5;
-  BoundingBox bounding_box = 6;
-  string question_number = 7;
-  string question_text = 8;
-  string student_answer = 9;
-  string comments = 10;
+  repeated SourceRegion source_regions = 5;
+  string question_number = 6;
+  string question_text = 7;
+  string student_answer = 8;
+  string comments = 9;
 }
 
 message CompleteUploadReviewRequest {
   string source_upload_id = 1;
   string reviewer_id = 2;
-}
-
-message CompleteUploadReviewResponse {
-  bool success = 1;
-  string error_message = 2;
-  string source_upload_id = 3;
 }
 
 message AddMistakePracticeRequest {
