@@ -165,6 +165,7 @@ public class MistakeDomainService
         ValidateMistakeData(mistake, detail?.OriginalImages, detail?.Comments, "更新后的错题");
 
         mistake.UpdatedAt = DateTimeOffset.UtcNow;
+        await _mistakeRepository.UpdateAsync(mistake);
         await _unitOfWork.SaveChangesAsync();
         return true;
     }
@@ -191,6 +192,7 @@ public class MistakeDomainService
         };
         await _processLogRepository.AddAsync(processLog);
 
+        await _mistakeRepository.UpdateAsync(mistake);
         await _unitOfWork.SaveChangesAsync();
         return true;
     }
@@ -350,15 +352,11 @@ public class MistakeDomainService
         if (string.IsNullOrWhiteSpace(mistake.StudentId))
             errors.Add($"{prefix}缺少学生ID");
 
-        if (mistake.Subject <= 0)
-            errors.Add($"{prefix}必须指定学科");
-        else if (mistake.Subject > 9)
-            errors.Add($"{prefix}学科值无效（有效范围：1-9）");
+        if (mistake.Subject < 0 || mistake.Subject > 9)
+            errors.Add($"{prefix}学科值无效（有效范围：0-9）");
 
-        if (mistake.Grade <= 0)
-            errors.Add($"{prefix}必须指定年级");
-        else if (mistake.Grade > 12)
-            errors.Add($"{prefix}年级值无效（有效范围：1-12）");
+        if (mistake.Grade < 0 || mistake.Grade > 12)
+            errors.Add($"{prefix}年级值无效（有效范围：0-12）");
 
         var hasImages = imagePaths != null && imagePaths.Count > 0;
         var hasComments = !string.IsNullOrWhiteSpace(comments);

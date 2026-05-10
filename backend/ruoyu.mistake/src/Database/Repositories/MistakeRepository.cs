@@ -31,6 +31,23 @@ public class MistakeRepository : IMistakeRepository
         return entity?.Adapt<MistakeModel>();
     }
 
+    public async Task<bool> UpdateAsync(MistakeModel model)
+    {
+        var entity = await _dbContext.Mistakes.FindAsync(model.Id);
+        if (entity == null) return false;
+
+        entity.StudentId = model.StudentId;
+        entity.Subject = model.Subject;
+        entity.Grade = model.Grade;
+        entity.Type = model.Type;
+        entity.Status = model.Status;
+        entity.Date = model.Date;
+        entity.UpdatedAt = model.UpdatedAt;
+
+        _dbContext.Mistakes.Update(entity);
+        return true;
+    }
+
     public void Remove(MistakeModel model)
     {
         var tracked = _dbContext.Mistakes.Local.FirstOrDefault(e => e.Id == model.Id);

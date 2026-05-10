@@ -81,11 +81,11 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         if (string.IsNullOrWhiteSpace(request.StudentId))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "缺少学生ID"));
 
-        if (request.Subject <= 0)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "必须指定学科"));
+        if (request.Subject < 0 || request.Subject > 9)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "学科值无效（有效范围：0-9）"));
 
-        if (request.Grade <= 0)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "必须指定年级"));
+        if (request.Grade < 0 || request.Grade > 12)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "年级值无效（有效范围：0-12）"));
 
         var hasImages = request.ImagePaths?.Count > 0;
         var hasComments = !string.IsNullOrWhiteSpace(request.Comments);
