@@ -42,6 +42,7 @@ public class MistakeDbContext : DbContext
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, JsonOptions),
                     v => JsonSerializer.Deserialize<List<SourceRegionEntry>>(v, JsonOptions) ?? new())
+                .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(sourceRegionComparer);
         });
 
