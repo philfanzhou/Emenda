@@ -206,7 +206,7 @@ public static class DatabaseInitializer
             BEGIN
                 IF NOT EXISTS (
                     SELECT 1 FROM pg_constraint
-                    WHERE conname = 'FK_process_log_mistake_item_mistake_item_id'
+                    WHERE LOWER(conname) = 'fk_process_log_mistake_item_mistake_item_id'
                 ) THEN
                     ALTER TABLE process_log
                         ADD CONSTRAINT FK_process_log_mistake_item_mistake_item_id
@@ -234,7 +234,7 @@ public static class DatabaseInitializer
             BEGIN
                 IF NOT EXISTS (
                     SELECT 1 FROM pg_constraint
-                    WHERE conname = 'FK_mistake_practice_mistake_item_mistake_item_id'
+                    WHERE LOWER(conname) = 'fk_mistake_practice_mistake_item_mistake_item_id'
                 ) THEN
                     ALTER TABLE mistake_practice
                         ADD CONSTRAINT FK_mistake_practice_mistake_item_mistake_item_id
