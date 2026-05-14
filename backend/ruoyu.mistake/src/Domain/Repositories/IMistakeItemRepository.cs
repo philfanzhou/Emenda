@@ -16,4 +16,13 @@ public interface IMistakeItemRepository
     Task<(List<MistakeItemModel> Items, int TotalCount)> GetListAsync(string studentId, int subject, int grade, int reviewStatus, int page, int size);
     Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size);
     Task<int> CountPendingBySourceUploadIdAsync(string sourceUploadId);
+    Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync();
+}
+
+public class SourceUploadSummary
+{
+    public string SourceUploadId { get; set; } = string.Empty;
+    public string StudentId { get; set; } = string.Empty;
+    public bool HasPendingReview { get; set; }
+    public bool HasConfirmedOrRejected { get; set; }
 }

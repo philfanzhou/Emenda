@@ -139,6 +139,21 @@ public class MistakeItemRepository : IMistakeItemRepository
                           && m.ReviewStatus == (int)ReviewStatus.PendingReview);
     }
 
+    public async Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync()
+    {
+        return await _dbContext.MistakeItems
+            .GroupBy(m => new { m.SourceUploadId, m.StudentId })
+            .Select(g => new SourceUploadSummary
+            {
+                SourceUploadId = g.Key.SourceUploadId,
+                StudentId = g.Key.StudentId,
+                HasPendingReview = g.Any(x => x.ReviewStatus == (int)ReviewStatus.PendingReview),
+                HasConfirmedOrRejected = g.Any(x => x.ReviewStatus == (int)ReviewStatus.Confirmed
+                                                  || x.ReviewStatus == (int)ReviewStatus.Rejected)
+            })
+            .ToListAsync();
+    }
+
     private static MistakeItemEntity MapToEntity(MistakeItemModel model)
     {
         return new MistakeItemEntity

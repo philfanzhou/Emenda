@@ -3,6 +3,7 @@ using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
+using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Service;
 using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
@@ -51,6 +52,7 @@ builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<MistakeDomainService>();
+builder.Services.AddHostedService<DataConsistencyWorker>();
 
 var app = builder.Build();
 
