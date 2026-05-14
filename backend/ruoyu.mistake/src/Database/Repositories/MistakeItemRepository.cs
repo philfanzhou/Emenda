@@ -82,8 +82,8 @@ public class MistakeItemRepository : IMistakeItemRepository
     {
         var query = _dbContext.MistakeItems.Where(m => m.StudentId == studentId);
 
-        if (subject >= 0) query = query.Where(m => m.Subject == subject);
-        if (grade >= 0) query = query.Where(m => m.Grade == grade);
+        if (subject > 0) query = query.Where(m => m.Subject == subject);
+        if (grade > 0) query = query.Where(m => m.Grade == grade);
         if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
 
         var totalCount = await query.CountAsync();
