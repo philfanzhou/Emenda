@@ -12,61 +12,29 @@ using Ruoyu.Study.Mistake.Database;
 namespace Ruoyu.Study.Mistake.Database.Migrations
 {
     [DbContext(typeof(MistakeDbContext))]
-    [Migration("20260503021905_RemoveImageFingerprint")]
-    partial class RemoveImageFingerprint
+    [Migration("20260514051544_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.4")
+                .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeDetailEntity", b =>
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("Comments")
-                        .HasColumnType("text")
-                        .HasColumnName("comments");
-
-                    b.Property<Guid>("MistakeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("mistake_id");
-
-                    b.Property<string>("OriginalImages")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("original_images");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MistakeId")
-                        .IsUnique();
-
-                    b.ToTable("mistake_detail");
-                });
-
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("date");
 
                     b.Property<int>("Grade")
                         .HasColumnType("integer")
@@ -77,9 +45,33 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("character varying(36)")
                         .HasColumnName("question_id");
 
-                    b.Property<int>("Status")
+                    b.Property<string>("ReviewComment")
+                        .HasColumnType("text")
+                        .HasColumnName("review_comment");
+
+                    b.Property<int>("ReviewStatus")
                         .HasColumnType("integer")
-                        .HasColumnName("status");
+                        .HasColumnName("review_status");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<string>("ReviewerId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("reviewer_id");
+
+                    b.Property<string>("SourceRegions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("source_regions");
+
+                    b.Property<string>("SourceUploadId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("source_upload_id");
 
                     b.Property<string>("StudentId")
                         .IsRequired()
@@ -95,7 +87,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("type");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTimeOffset?>("UpdatedAt")
                         .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -104,17 +96,15 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("Date");
+                    b.HasIndex("ReviewStatus");
 
-                    b.HasIndex("Status");
+                    b.HasIndex("SourceUploadId");
 
                     b.HasIndex("StudentId");
 
-                    b.HasIndex("Type");
+                    b.HasIndex("StudentId", "Subject", "Grade", "ReviewStatus");
 
-                    b.HasIndex("StudentId", "Subject", "Grade", "Status");
-
-                    b.ToTable("mistake");
+                    b.ToTable("mistake_item");
                 });
 
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
@@ -137,11 +127,11 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_correct");
 
-                    b.Property<Guid>("MistakeId")
+                    b.Property<Guid>("MistakeItemId")
                         .HasColumnType("uuid")
-                        .HasColumnName("mistake_id");
+                        .HasColumnName("mistake_item_id");
 
-                    b.Property<DateTime>("PracticeDate")
+                    b.Property<DateTimeOffset>("PracticeDate")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("practice_date");
 
@@ -157,7 +147,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MistakeId");
+                    b.HasIndex("MistakeItemId");
 
                     b.HasIndex("PracticeDate");
 
@@ -177,7 +167,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("action");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
@@ -185,50 +175,39 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("text")
                         .HasColumnName("details");
 
-                    b.Property<Guid>("MistakeId")
+                    b.Property<Guid>("MistakeItemId")
                         .HasColumnType("uuid")
-                        .HasColumnName("mistake_id");
+                        .HasColumnName("mistake_item_id");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("MistakeId", "CreatedAt");
+                    b.HasIndex("MistakeItemId", "CreatedAt");
 
                     b.ToTable("process_log");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeDetailEntity", b =>
-                {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeEntity", "Mistake")
-                        .WithOne()
-                        .HasForeignKey("Ruoyu.Study.Mistake.Database.Entities.MistakeDetailEntity", "MistakeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Mistake");
-                });
-
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeEntity", "Mistake")
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
                         .WithMany()
-                        .HasForeignKey("MistakeId")
+                        .HasForeignKey("MistakeItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Mistake");
+                    b.Navigation("MistakeItem");
                 });
 
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeEntity", "Mistake")
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
                         .WithMany()
-                        .HasForeignKey("MistakeId")
+                        .HasForeignKey("MistakeItemId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Mistake");
+                    b.Navigation("MistakeItem");
                 });
 #pragma warning restore 612, 618
         }
