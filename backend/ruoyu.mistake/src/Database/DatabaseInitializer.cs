@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ruoyu.Study.Common.Database;
@@ -9,7 +10,65 @@ public static class DatabaseInitializer
     public static async Task InitializeAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILogger logger)
     {
         await MigrateOldSchemaAsync(context, logger);
+        await StampMigrationsIfTablesExistAsync(context, logger);
         await Common.Database.DatabaseInitializer.InitializeAsync(context, logger, GetTableCreationSql);
+    }
+
+    private static async Task StampMigrationsIfTablesExistAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILogger logger)
+    {
+        await context.Database.OpenConnectionAsync();
+        try
+        {
+            await using var checkCmd = context.Database.GetDbConnection().CreateCommand();
+            checkCmd.CommandText = @"
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'mistake_item'
+                )";
+            var tableExists = (bool)(await checkCmd.ExecuteScalarAsync())!;
+            if (!tableExists) return;
+
+            await using var historyCmd = context.Database.GetDbConnection().CreateCommand();
+            historyCmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                    ""MigrationId"" character varying(150) NOT NULL,
+                    ""ProductVersion"" character varying(32) NOT NULL,
+                    CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY (""MigrationId"")
+                )";
+            await historyCmd.ExecuteNonQueryAsync();
+
+            await using var checkStampCmd = context.Database.GetDbConnection().CreateCommand();
+            checkStampCmd.CommandText = @"
+                SELECT COUNT(*) FROM ""__EFMigrationsHistory"" 
+                WHERE ""MigrationId"" = '20260514051544_InitialCreate'";
+            var count = (long)(await checkStampCmd.ExecuteScalarAsync())!;
+            if (count > 0) return;
+
+            var productVersion = typeof(DbContext).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion ?? "8.0.0";
+
+            await using var insertCmd = context.Database.GetDbConnection().CreateCommand();
+            insertCmd.CommandText = @"
+                INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                VALUES (@mid, @pv)";
+            var midParam = insertCmd.CreateParameter();
+            midParam.ParameterName = "@mid";
+            midParam.Value = "20260514051544_InitialCreate";
+            insertCmd.Parameters.Add(midParam);
+            var pvParam = insertCmd.CreateParameter();
+            pvParam.ParameterName = "@pv";
+            pvParam.Value = productVersion;
+            insertCmd.Parameters.Add(pvParam);
+            await insertCmd.ExecuteNonQueryAsync();
+
+            logger.LogInformation("已将 InitialCreate 迁移标记为已应用");
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync();
+        }
     }
 
     private static async Task MigrateOldSchemaAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILogger logger)
