@@ -47,23 +47,6 @@ public static class DatabaseInitializer
                 END $$;";
             await dropOldFksCmd.ExecuteNonQueryAsync();
 
-            await using var dropOldIndexesCmd = context.Database.GetDbConnection().CreateCommand();
-            dropOldIndexesCmd.CommandText = @"
-                DO $$
-                DECLARE
-                    idx_record RECORD;
-                BEGIN
-                    FOR idx_record IN
-                        SELECT indexname
-                        FROM pg_indexes
-                        WHERE tablename = 'mistake'
-                        AND indexname != 'mistake_pkey'
-                    LOOP
-                        EXECUTE format('DROP INDEX IF EXISTS %I', idx_record.indexname);
-                    END LOOP;
-                END $$;";
-            await dropOldIndexesCmd.ExecuteNonQueryAsync();
-
             await using var renameCmd = context.Database.GetDbConnection().CreateCommand();
             renameCmd.CommandText = "ALTER TABLE mistake RENAME TO mistake_item";
             await renameCmd.ExecuteNonQueryAsync();
