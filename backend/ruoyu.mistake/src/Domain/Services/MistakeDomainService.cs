@@ -162,11 +162,6 @@ public class MistakeDomainService
         var item = await _mistakeItemRepository.GetByIdAsync(id);
         if (item == null) return false;
 
-        if (item.ReviewStatus == (int)ReviewStatus.Confirmed)
-        {
-            throw new MistakeValidationException("已确认的错题不能删除");
-        }
-
         await _mistakePracticeRepository.RemoveByMistakeItemIdAsync(id);
         await _processLogRepository.RemoveByMistakeItemIdAsync(id);
         await _mistakeItemRepository.DeleteAsync(id);
