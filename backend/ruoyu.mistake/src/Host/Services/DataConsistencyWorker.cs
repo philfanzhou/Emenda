@@ -59,6 +59,7 @@ public class DataConsistencyWorker : BackgroundService
                 m.Grade,
                 m.SourceUploadId,
                 m.ReviewStatus,
+                m.SourceRegions,
                 m.CreatedAt
             })
             .OrderBy(m => m.CreatedAt)
@@ -76,9 +77,20 @@ public class DataConsistencyWorker : BackgroundService
         {
             _logger.LogInformation(
                 "  MistakeItem: Id={Id}, StudentId={StudentId}, Subject={Subject}, Grade={Grade}, " +
-                "SourceUploadId={SourceUploadId}, ReviewStatus={ReviewStatus}, CreatedAt={CreatedAt}",
+                "SourceUploadId={SourceUploadId}, ReviewStatus={ReviewStatus}, " +
+                "SourceRegionsCount={SourceRegionsCount}, CreatedAt={CreatedAt}",
                 item.Id, item.StudentId, item.Subject, item.Grade,
-                item.SourceUploadId, item.ReviewStatus, item.CreatedAt);
+                item.SourceUploadId, item.ReviewStatus,
+                item.SourceRegions?.Count ?? 0, item.CreatedAt);
+
+            if (item.SourceRegions != null)
+            {
+                foreach (var region in item.SourceRegions)
+                {
+                    _logger.LogInformation("    Region: SourceImagePath={Path}, HasBoundingBox={HasBbox}",
+                        region.SourceImagePath, region.BoundingBox != null);
+                }
+            }
         }
 
         var invalidStatus = items.Where(i => i.ReviewStatus < 1 || i.ReviewStatus > 3).ToList();
