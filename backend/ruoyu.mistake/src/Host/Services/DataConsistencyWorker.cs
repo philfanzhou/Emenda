@@ -162,6 +162,7 @@ public class DataConsistencyWorker : BackgroundService
                     {
                         RecordId = summary.SourceUploadId,
                         StudentId = summary.StudentId,
+                        DeleteOssFiles = false,
                     };
 
                     var deleteResponse = await studentClient.DeleteUploadRecordAsync(deleteRequest, cancellationToken: cancellationToken);

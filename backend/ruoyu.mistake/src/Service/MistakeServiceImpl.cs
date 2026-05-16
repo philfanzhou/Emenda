@@ -216,7 +216,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                     new StudentProto.DeleteUploadRecordRequest
                     {
                         RecordId = result.SourceUploadId,
-                        StudentId = result.StudentId
+                        StudentId = result.StudentId,
+                        DeleteOssFiles = false,
                     });
 
                 if (deleteResponse.Success)
