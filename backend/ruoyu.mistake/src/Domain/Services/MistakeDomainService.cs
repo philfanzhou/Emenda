@@ -19,6 +19,7 @@ public class CompleteUploadReviewResult
     public string? ErrorMessage { get; set; }
     public string? SourceUploadId { get; set; }
     public string? StudentId { get; set; }
+    public List<MistakeItemModel> Items { get; set; } = new();
 }
 
 public class MistakeDomainService
@@ -170,6 +171,14 @@ public class MistakeDomainService
         return true;
     }
 
+    public async Task<bool> UpdateMistakeItemAsync(MistakeItemModel model)
+    {
+        var result = await _mistakeItemRepository.UpdateAsync(model);
+        if (result)
+            await _unitOfWork.SaveChangesAsync();
+        return result;
+    }
+
     public async Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(
         string sourceUploadId, string? reviewerId)
     {
@@ -197,7 +206,8 @@ public class MistakeDomainService
         {
             Success = true,
             SourceUploadId = sourceUploadId,
-            StudentId = items[0].StudentId
+            StudentId = items[0].StudentId,
+            Items = items
         };
     }
 

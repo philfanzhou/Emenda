@@ -14,15 +14,18 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly MistakeDomainService _mistakeService;
     private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
+    private readonly StudentProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _studentManagementClient;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         MistakeDomainService mistakeService,
         StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
+        StudentProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient studentManagementClient,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
         _studentClient = studentClient;
+        _studentManagementClient = studentManagementClient;
         _logger = logger;
     }
 
@@ -210,6 +213,64 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 return new BoolResponse { Success = false, ErrorMessage = result.ErrorMessage };
             }
 
+            var pathMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in result.Items)
+            {
+                bool updated = false;
+                foreach (var region in item.SourceRegions)
+                {
+                    if (string.IsNullOrWhiteSpace(region.SourceImagePath))
+                        continue;
+
+                    if (!region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (pathMapping.TryGetValue(region.SourceImagePath, out var cachedNewPath))
+                    {
+                        region.SourceImagePath = cachedNewPath;
+                        updated = true;
+                        continue;
+                    }
+
+                    try
+                    {
+                        var moveResponse = await _studentManagementClient.MoveOssObjectAsync(
+                            new StudentProto.MoveOssObjectRequest
+                            {
+                                SourcePath = region.SourceImagePath,
+                                DestBucket = StudentProto.OssBucket.Mistakes
+                            });
+
+                        if (moveResponse.Success)
+                        {
+                            pathMapping[region.SourceImagePath] = moveResponse.NewPath;
+                            region.SourceImagePath = moveResponse.NewPath;
+                            updated = true;
+                            _logger.LogInformation(
+                                "Migrated image from {OldPath} to {NewPath}",
+                                region.SourceImagePath, moveResponse.NewPath);
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "Failed to migrate image {Path}: {Error}",
+                                region.SourceImagePath, moveResponse.ErrorMessage);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Error migrating image {Path}",
+                            region.SourceImagePath);
+                    }
+                }
+
+                if (updated)
+                {
+                    await _mistakeService.UpdateMistakeItemAsync(item).ConfigureAwait(false);
+                }
+            }
+
             try
             {
                 var deleteResponse = await _studentClient.DeleteUploadRecordAsync(
@@ -217,7 +278,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                     {
                         RecordId = result.SourceUploadId,
                         StudentId = result.StudentId,
-                        DeleteOssFiles = false,
+                        DeleteOssFiles = true,
                     });
 
                 if (deleteResponse.Success)
