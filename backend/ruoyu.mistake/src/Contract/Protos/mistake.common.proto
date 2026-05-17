@@ -94,3 +94,9 @@ message PendingReviewUploadDto {
   int32 total_count = 6;
   string earliest_created_at = 7;
 }
+
+message Empty {}
+
+message GetAllReferencedImagePathsResponse {
+  repeated string image_paths = 1;
+}

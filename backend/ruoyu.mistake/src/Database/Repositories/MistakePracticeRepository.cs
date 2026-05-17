@@ -64,4 +64,20 @@ public class MistakePracticeRepository : IMistakePracticeRepository
             _dbContext.MistakePractices.RemoveRange(entities);
         }
     }
+
+    public async Task<List<MistakePracticeModel>> GetAllAsync()
+    {
+        var entities = await _dbContext.MistakePractices.ToListAsync();
+        return entities.Select(e => new MistakePracticeModel
+        {
+            Id = e.Id,
+            MistakeItemId = e.MistakeItemId,
+            StudentId = e.StudentId,
+            PracticeDate = e.PracticeDate,
+            ImagePaths = e.ImagePaths,
+            StudentAnswer = e.StudentAnswer,
+            IsCorrect = e.IsCorrect,
+            Comments = e.Comments
+        }).ToList();
+    }
 }

@@ -270,6 +270,33 @@ public class MistakeDomainService
         return await _processLogRepository.GetByMistakeItemIdAsync(mistakeItemId);
     }
 
+    public async Task<HashSet<string>> GetAllReferencedImagePathsAsync()
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var items = await _mistakeItemRepository.GetAllAsync();
+        foreach (var item in items)
+        {
+            foreach (var region in item.SourceRegions)
+            {
+                if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
+                    paths.Add(region.SourceImagePath);
+            }
+        }
+
+        var practices = await _mistakePracticeRepository.GetAllAsync();
+        foreach (var practice in practices)
+        {
+            foreach (var path in practice.ImagePaths)
+            {
+                if (!string.IsNullOrWhiteSpace(path))
+                    paths.Add(path);
+            }
+        }
+
+        return paths;
+    }
+
     private async Task AddProcessLogAsync(Guid mistakeItemId, ProcessAction action, string details)
     {
         var processLog = new ProcessLogModel

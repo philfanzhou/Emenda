@@ -154,6 +154,12 @@ public class MistakeItemRepository : IMistakeItemRepository
             .ToListAsync();
     }
 
+    public async Task<List<MistakeItemModel>> GetAllAsync()
+    {
+        var entities = await _dbContext.MistakeItems.ToListAsync();
+        return entities.Select(MapToModel).ToList();
+    }
+
     private static MistakeItemEntity MapToEntity(MistakeItemModel model)
     {
         return new MistakeItemEntity

@@ -306,6 +306,14 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return response;
     }
 
+    public override async Task<GetAllReferencedImagePathsResponse> GetAllReferencedImagePaths(Empty request, ServerCallContext context)
+    {
+        var paths = await _mistakeService.GetAllReferencedImagePathsAsync();
+        var response = new GetAllReferencedImagePathsResponse();
+        response.ImagePaths.AddRange(paths);
+        return response;
+    }
+
     private static MistakeItemDto MapMistakeItemDto(MistakeItemModel item)
     {
         var dto = new MistakeItemDto

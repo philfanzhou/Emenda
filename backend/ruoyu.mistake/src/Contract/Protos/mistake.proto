@@ -25,6 +25,7 @@ service MistakeGrpcService {
   rpc AnalyzeMistakeType(AnalyzeMistakeRequest) returns (MistakeTypeResponse);
   rpc LogMistakeProcess(LogMistakeProcessRequest) returns (BoolResponse);
   rpc GetMistakeProcessHistory(IdRequest) returns (ProcessLogListResponse);
+  rpc GetAllReferencedImagePaths(Empty) returns (GetAllReferencedImagePathsResponse);
 }
 
 message SubmitMistakeUploadRequest {

@@ -17,6 +17,7 @@ public interface IMistakeItemRepository
     Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size);
     Task<int> CountPendingBySourceUploadIdAsync(string sourceUploadId);
     Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync();
+    Task<List<MistakeItemModel>> GetAllAsync();
 }
 
 public class SourceUploadSummary
