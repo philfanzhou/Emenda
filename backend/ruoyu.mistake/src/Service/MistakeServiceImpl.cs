@@ -232,36 +232,37 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         continue;
                     }
 
+                    var oldPath = region.SourceImagePath;
                     try
                     {
                         var moveResponse = await _studentManagementClient.MoveOssObjectAsync(
                             new StudentProto.MoveOssObjectRequest
                             {
-                                SourcePath = region.SourceImagePath,
+                                SourcePath = oldPath,
                                 DestBucket = StudentProto.OssBucket.Mistakes
                             });
 
                         if (moveResponse.Success)
                         {
-                            pathMapping[region.SourceImagePath] = moveResponse.NewPath;
+                            pathMapping[oldPath] = moveResponse.NewPath;
                             region.SourceImagePath = moveResponse.NewPath;
                             updated = true;
                             _logger.LogInformation(
                                 "Migrated image from {OldPath} to {NewPath}",
-                                region.SourceImagePath, moveResponse.NewPath);
+                                oldPath, moveResponse.NewPath);
                         }
                         else
                         {
                             _logger.LogWarning(
                                 "Failed to migrate image {Path}: {Error}",
-                                region.SourceImagePath, moveResponse.ErrorMessage);
+                                oldPath, moveResponse.ErrorMessage);
                         }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex,
                             "Error migrating image {Path}",
-                            region.SourceImagePath);
+                            oldPath);
                     }
                 }
 
