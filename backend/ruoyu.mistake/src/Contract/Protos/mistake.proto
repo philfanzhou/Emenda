@@ -17,7 +17,7 @@ service MistakeGrpcService {
   rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (BoolResponse);
   rpc AddMistakeItem(AddMistakeItemRequest) returns (MistakeItemDto);
   rpc DeleteMistakeItem(IdRequest) returns (BoolResponse);
-  rpc CompleteUploadReview(CompleteUploadReviewRequest) returns (BoolResponse);
+  rpc CompleteUploadReview(CompleteUploadReviewRequest) returns (CompleteUploadReviewResponse);
 
   rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
   rpc GetMistakePractices(IdRequest) returns (MistakePracticeListResponse);
@@ -94,6 +94,12 @@ message AddMistakeItemRequest {
 message CompleteUploadReviewRequest {
   string source_upload_id = 1;
   string reviewer_id = 2;
+}
+
+message CompleteUploadReviewResponse {
+  bool success = 1;
+  string error_message = 2;
+  string student_id = 3;
 }
 
 message AddMistakePracticeRequest {

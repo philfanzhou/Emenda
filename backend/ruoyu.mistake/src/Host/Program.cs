@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Service;
-using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,16 +42,11 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
         options.UseSqlite(connectionString ?? "Data Source=data/sqlite/ruoyu_study_mistake.db");
 });
 
-var studentGrpcAddress = builder.Configuration["StudentService:Address"] ?? "http://localhost:5004";
-builder.Services.AddGrpcClient<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
+builder.Services.Configure<OssOptions>(builder.Configuration.GetSection("Oss"));
+builder.Services.AddScoped<IOssService, S3OssService>(sp =>
 {
-    options.Address = new Uri(studentGrpcAddress);
-});
-
-var studentManagementGrpcAddress = builder.Configuration["StudentManagementService:Address"] ?? "http://localhost:5005";
-builder.Services.AddGrpcClient<StudentProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient>(options =>
-{
-    options.Address = new Uri(studentManagementGrpcAddress);
+    var options = sp.GetRequiredService<IOptions<OssOptions>>().Value;
+    return new S3OssService(options.Endpoint, options.AccessKey, options.SecretKey, options.BucketName);
 });
 
 builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
@@ -59,7 +54,6 @@ builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<MistakeDomainService>();
-builder.Services.AddHostedService<DataConsistencyWorker>();
 
 var app = builder.Build();
 

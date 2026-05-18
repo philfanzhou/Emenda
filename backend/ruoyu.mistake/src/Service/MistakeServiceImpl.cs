@@ -3,29 +3,26 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
+using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
-using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Service;
 
 public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly MistakeDomainService _mistakeService;
-    private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
-    private readonly StudentProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient _studentManagementClient;
+    private readonly IOssService _ossService;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         MistakeDomainService mistakeService,
-        StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
-        StudentProto.StudentManagementGrpcService.StudentManagementGrpcServiceClient studentManagementClient,
+        IOssService ossService,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
-        _studentClient = studentClient;
-        _studentManagementClient = studentManagementClient;
+        _ossService = ossService;
         _logger = logger;
     }
 
@@ -201,7 +198,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         }
     }
 
-    public override async Task<BoolResponse> CompleteUploadReview(CompleteUploadReviewRequest request, ServerCallContext context)
+    public override async Task<CompleteUploadReviewResponse> CompleteUploadReview(CompleteUploadReviewRequest request, ServerCallContext context)
     {
         try
         {
@@ -210,7 +207,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
             if (!result.Success)
             {
-                return new BoolResponse { Success = false, ErrorMessage = result.ErrorMessage };
+                return new CompleteUploadReviewResponse { Success = false, ErrorMessage = result.ErrorMessage };
             }
 
             var pathMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -235,28 +232,18 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                     var oldPath = region.SourceImagePath;
                     try
                     {
-                        var moveResponse = await _studentManagementClient.MoveOssObjectAsync(
-                            new StudentProto.MoveOssObjectRequest
-                            {
-                                SourcePath = oldPath,
-                                DestBucket = StudentProto.OssBucket.Mistakes
-                            });
-
-                        if (moveResponse.Success)
-                        {
-                            pathMapping[oldPath] = moveResponse.NewPath;
-                            region.SourceImagePath = moveResponse.NewPath;
-                            updated = true;
-                            _logger.LogInformation(
-                                "Migrated image from {OldPath} to {NewPath}",
-                                oldPath, moveResponse.NewPath);
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                "Failed to migrate image {Path}: {Error}",
-                                oldPath, moveResponse.ErrorMessage);
-                        }
+                        var newPath = "mistakes" + oldPath.Substring("uploads".Length);
+                        
+                        await _ossService.CopyObjectAsync(oldPath, newPath);
+                        
+                        await _ossService.DeleteAsync(oldPath);
+                        
+                        pathMapping[oldPath] = newPath;
+                        region.SourceImagePath = newPath;
+                        updated = true;
+                        _logger.LogInformation(
+                            "Migrated image from {OldPath} to {NewPath}",
+                            oldPath, newPath);
                     }
                     catch (Exception ex)
                     {
@@ -272,41 +259,11 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 }
             }
 
-            try
-            {
-                var deleteResponse = await _studentClient.DeleteUploadRecordAsync(
-                    new StudentProto.DeleteUploadRecordRequest
-                    {
-                        RecordId = result.SourceUploadId,
-                        StudentId = result.StudentId,
-                        DeleteOssFiles = true,
-                    });
-
-                if (deleteResponse.Success)
-                {
-                    _logger.LogInformation(
-                        "Upload record {RecordId} deleted after review completion",
-                        result.SourceUploadId);
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "Failed to delete upload record {RecordId} after review completion: {Error}",
-                        result.SourceUploadId, deleteResponse.ErrorMessage);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Error deleting upload record {RecordId} after review completion",
-                    result.SourceUploadId);
-            }
-
-            return new BoolResponse { Success = true };
+            return new CompleteUploadReviewResponse { Success = true, StudentId = result.StudentId ?? "" };
         }
         catch (MistakeValidationException ex)
         {
-            return new BoolResponse { Success = false, ErrorMessage = ex.Message };
+            return new CompleteUploadReviewResponse { Success = false, ErrorMessage = ex.Message };
         }
     }
 

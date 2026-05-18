@@ -20,7 +20,6 @@
     <ProjectReference Include="..\Service\Ruoyu.Study.Mistake.Service.csproj" />
     <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
     <ProjectReference Include="..\Database\Ruoyu.Study.Mistake.Database.csproj" />
-    <ProjectReference Include="..\..\..\ruoyu.student\src\Contract\Ruoyu.Study.Student.Contract.csproj" />
   </ItemGroup>
 
 </Project>

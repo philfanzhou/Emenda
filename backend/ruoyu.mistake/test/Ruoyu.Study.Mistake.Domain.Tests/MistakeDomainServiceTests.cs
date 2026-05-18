@@ -111,7 +111,7 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task DeleteMistakeItemAsync_WhenConfirmed_ShouldThrow()
+    public async Task DeleteMistakeItemAsync_WhenConfirmed_ShouldDelete()
     {
         var itemId = Guid.NewGuid();
         var item = new MistakeItemModel
@@ -121,11 +121,15 @@ public class MistakeDomainServiceTests
         };
 
         _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.DeleteAsync(itemId)).ReturnsAsync(true);
 
-        var act = () => _service.DeleteMistakeItemAsync(itemId);
+        var result = await _service.DeleteMistakeItemAsync(itemId);
 
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*已确认的错题不能删除*");
+        result.Should().BeTrue();
+        _mockPracticeRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
+        _mockLogRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
+        _mockItemRepo.Verify(x => x.DeleteAsync(itemId), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 
     [Fact]
@@ -257,5 +261,106 @@ public class MistakeDomainServiceTests
         result.Should().NotBeNull();
         result.MistakeItemId.Should().Be(itemId);
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReviewMistakeItemAsync_WhenPending_ShouldReject()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            ReviewStatus = (int)ReviewStatus.PendingReview
+        };
+
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+
+        var result = await _service.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.Rejected, "teacher-1", "需要重新上传");
+
+        result.Should().BeTrue();
+        item.ReviewStatus.Should().Be((int)ReviewStatus.Rejected);
+        item.ReviewComment.Should().Be("需要重新上传");
+        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task CompleteUploadReviewAsync_WhenNoItems_ShouldReturnError()
+    {
+        _mockItemRepo.Setup(x => x.CountPendingBySourceUploadIdAsync("upload-1")).ReturnsAsync(0);
+        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1"))
+            .ReturnsAsync(new List<MistakeItemModel>());
+
+        var result = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("未找到该上传记录的错题");
+    }
+
+    [Fact]
+    public async Task GetAllReferencedImagePathsAsync_ShouldReturnAllPaths()
+    {
+        var items = new List<MistakeItemModel>
+        {
+            new()
+            {
+                SourceRegions = new List<SourceRegionModel>
+                {
+                    new() { SourceImagePath = "path1.jpg" },
+                    new() { SourceImagePath = "path2.jpg" }
+                }
+            }
+        };
+        var practices = new List<MistakePracticeModel>
+        {
+            new()
+            {
+                ImagePaths = new List<string> { "practice1.jpg" }
+            }
+        };
+
+        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(items);
+        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(practices);
+
+        var result = await _service.GetAllReferencedImagePathsAsync();
+
+        result.Should().HaveCount(3);
+        result.Should().Contain("path1.jpg");
+        result.Should().Contain("path2.jpg");
+        result.Should().Contain("practice1.jpg");
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemAsync_ShouldUpdateItem()
+    {
+        var item = new MistakeItemModel
+        {
+            Id = Guid.NewGuid(),
+            StudentId = "student-1"
+        };
+
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+
+        var result = await _service.UpdateMistakeItemAsync(item);
+
+        result.Should().BeTrue();
+        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetPendingReviewUploadsAsync_ShouldReturnPendingItems()
+    {
+        var expectedUploads = new List<PendingReviewUploadModel>
+        {
+            new() { StudentId = "student-1", SourceUploadId = "upload-1" }
+        };
+
+        _mockItemRepo.Setup(x => x.GetPendingReviewUploadsAsync(1, 10))
+            .ReturnsAsync((expectedUploads, 1));
+
+        var result = await _service.GetPendingReviewUploadsAsync(1, 10);
+
+        result.Uploads.Should().HaveCount(1);
+        result.TotalCount.Should().Be(1);
     }
 }

@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Domain\Ruoyu.Study.Mistake.Domain.csproj" />
-    <ProjectReference Include="..\..\..\ruoyu.student\src\Contract\Ruoyu.Study.Student.Contract.csproj" />
   </ItemGroup>
 
   <ItemGroup>
