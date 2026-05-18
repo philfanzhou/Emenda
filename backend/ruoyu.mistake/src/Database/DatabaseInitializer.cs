@@ -187,61 +187,85 @@ public static class DatabaseInitializer
 
     private static async Task EnsureColumnRenamesAsync(MistakeDbContext context)
     {
-        await using var fixProcessLogCmd = context.Database.GetDbConnection().CreateCommand();
-        fixProcessLogCmd.CommandText = @"
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'process_log' AND column_name = 'mistake_id'
-                ) THEN
-                    ALTER TABLE process_log RENAME COLUMN mistake_id TO mistake_item_id;
-                END IF;
-            END $$;";
-        await fixProcessLogCmd.ExecuteNonQueryAsync();
+        await using var checkTablesCmd = context.Database.GetDbConnection().CreateCommand();
+        checkTablesCmd.CommandText = @"
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'process_log'
+            ),
+            EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'mistake_practice'
+            )";
+        using var reader = await checkTablesCmd.ExecuteReaderAsync();
+        await reader.ReadAsync();
+        var processLogExists = reader.GetBoolean(0);
+        var practiceExists = reader.GetBoolean(1);
+        await reader.CloseAsync();
 
-        await using var addProcessLogFkCmd = context.Database.GetDbConnection().CreateCommand();
-        addProcessLogFkCmd.CommandText = @"
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint
-                    WHERE LOWER(conname) = 'fk_process_log_mistake_item_mistake_item_id'
-                ) THEN
-                    ALTER TABLE process_log
-                        ADD CONSTRAINT FK_process_log_mistake_item_mistake_item_id
-                        FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE;
-                END IF;
-            END $$;";
-        await addProcessLogFkCmd.ExecuteNonQueryAsync();
+        if (processLogExists)
+        {
+            await using var fixProcessLogCmd = context.Database.GetDbConnection().CreateCommand();
+            fixProcessLogCmd.CommandText = @"
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'process_log' AND column_name = 'mistake_id'
+                    ) THEN
+                        ALTER TABLE process_log RENAME COLUMN mistake_id TO mistake_item_id;
+                    END IF;
+                END $$;";
+            await fixProcessLogCmd.ExecuteNonQueryAsync();
 
-        await using var fixPracticeCmd = context.Database.GetDbConnection().CreateCommand();
-        fixPracticeCmd.CommandText = @"
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'mistake_practice' AND column_name = 'mistake_id'
-                ) THEN
-                    ALTER TABLE mistake_practice RENAME COLUMN mistake_id TO mistake_item_id;
-                END IF;
-            END $$;";
-        await fixPracticeCmd.ExecuteNonQueryAsync();
+            await using var addProcessLogFkCmd = context.Database.GetDbConnection().CreateCommand();
+            addProcessLogFkCmd.CommandText = @"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE LOWER(conname) = 'fk_process_log_mistake_item_mistake_item_id'
+                    ) THEN
+                        ALTER TABLE process_log
+                            ADD CONSTRAINT FK_process_log_mistake_item_mistake_item_id
+                            FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE;
+                    END IF;
+                END $$;";
+            await addProcessLogFkCmd.ExecuteNonQueryAsync();
+        }
 
-        await using var addPracticeFkCmd = context.Database.GetDbConnection().CreateCommand();
-        addPracticeFkCmd.CommandText = @"
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_constraint
-                    WHERE LOWER(conname) = 'fk_mistake_practice_mistake_item_mistake_item_id'
-                ) THEN
-                    ALTER TABLE mistake_practice
-                        ADD CONSTRAINT FK_mistake_practice_mistake_item_mistake_item_id
-                        FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE;
-                END IF;
-            END $$;";
-        await addPracticeFkCmd.ExecuteNonQueryAsync();
+        if (practiceExists)
+        {
+            await using var fixPracticeCmd = context.Database.GetDbConnection().CreateCommand();
+            fixPracticeCmd.CommandText = @"
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'mistake_practice' AND column_name = 'mistake_id'
+                    ) THEN
+                        ALTER TABLE mistake_practice RENAME COLUMN mistake_id TO mistake_item_id;
+                    END IF;
+                END $$;";
+            await fixPracticeCmd.ExecuteNonQueryAsync();
+
+            await using var addPracticeFkCmd = context.Database.GetDbConnection().CreateCommand();
+            addPracticeFkCmd.CommandText = @"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE LOWER(conname) = 'fk_mistake_practice_mistake_item_mistake_item_id'
+                    ) THEN
+                        ALTER TABLE mistake_practice
+                            ADD CONSTRAINT FK_mistake_practice_mistake_item_mistake_item_id
+                            FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE;
+                    END IF;
+                END $$;";
+            await addPracticeFkCmd.ExecuteNonQueryAsync();
+        }
     }
 
     private static string? GetTableCreationSql(string tableName)
