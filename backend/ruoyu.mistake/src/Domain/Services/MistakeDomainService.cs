@@ -49,10 +49,13 @@ public class MistakeDomainService
     {
         ValidateSubmitData(studentId, subject, grade, imagePaths, comments, sourceUploadId);
 
-        var alreadyExists = await _mistakeItemRepository.ExistsBySourceUploadIdAsync(sourceUploadId);
-        if (alreadyExists)
+        var existingItems = await _mistakeItemRepository.GetBySourceUploadIdAsync(sourceUploadId);
+        if (existingItems.Count > 0)
         {
-            throw new MistakeValidationException($"上传记录 {sourceUploadId} 已提交过错题，请勿重复提交");
+            _logger.LogInformation(
+                "Upload record {SourceUploadId} already has {Count} mistake items, skipping creation",
+                sourceUploadId, existingItems.Count);
+            return existingItems;
         }
 
         var item = new MistakeItemModel
