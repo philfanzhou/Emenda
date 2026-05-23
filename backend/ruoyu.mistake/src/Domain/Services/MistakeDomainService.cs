@@ -101,13 +101,13 @@ public class MistakeDomainService
         return await _mistakeItemRepository.GetListAsync(studentId, subject, grade, reviewStatus, page, size);
     }
 
-    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size)
+    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null)
     {
         if (page <= 0) page = 1;
         if (size <= 0) size = 10;
         if (size > 100) size = 100;
 
-        return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size);
+        return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size, subjects);
     }
 
     public async Task<bool> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? reviewComment)

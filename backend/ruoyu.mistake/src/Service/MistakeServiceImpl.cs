@@ -103,7 +103,13 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public override async Task<PendingReviewUploadListResponse> GetPendingReviewUploads(GetPendingReviewUploadsRequest request, ServerCallContext context)
     {
-        var (uploads, totalCount) = await _mistakeService.GetPendingReviewUploadsAsync(request.Page, request.Size);
+        List<int>? subjects = null;
+        if (request.Subjects.Count > 0)
+        {
+            subjects = new List<int>(request.Subjects);
+        }
+
+        var (uploads, totalCount) = await _mistakeService.GetPendingReviewUploadsAsync(request.Page, request.Size, subjects);
 
         var result = new PendingReviewUploadListResponse
         {

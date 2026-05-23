@@ -68,6 +68,7 @@ message MistakeItemPageResult {
 message GetPendingReviewUploadsRequest {
   int32 page = 1;
   int32 size = 2;
+  repeated int32 subjects = 3;
 }
 
 message PendingReviewUploadListResponse {

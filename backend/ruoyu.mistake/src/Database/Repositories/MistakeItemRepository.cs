@@ -96,10 +96,17 @@ public class MistakeItemRepository : IMistakeItemRepository
         return (items.Select(MapToModel).ToList(), totalCount);
     }
 
-    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size)
+    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null)
     {
-        var grouped = await _dbContext.MistakeItems
-            .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview)
+        var query = _dbContext.MistakeItems
+            .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview);
+
+        if (subjects != null && subjects.Count > 0)
+        {
+            query = query.Where(m => subjects.Contains(m.Subject));
+        }
+
+        var grouped = await query
             .GroupBy(m => new { m.SourceUploadId, m.StudentId, m.Subject, m.Grade })
             .Select(g => new
             {

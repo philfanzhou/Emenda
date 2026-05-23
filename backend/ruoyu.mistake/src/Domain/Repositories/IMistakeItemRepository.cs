@@ -14,7 +14,7 @@ public interface IMistakeItemRepository
     Task<List<MistakeItemModel>> GetBySourceUploadIdAsync(string sourceUploadId);
     Task<bool> ExistsBySourceUploadIdAsync(string sourceUploadId);
     Task<(List<MistakeItemModel> Items, int TotalCount)> GetListAsync(string studentId, int subject, int grade, int reviewStatus, int page, int size);
-    Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size);
+    Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null);
     Task<int> CountPendingBySourceUploadIdAsync(string sourceUploadId);
     Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync();
     Task<List<MistakeItemModel>> GetAllAsync();
