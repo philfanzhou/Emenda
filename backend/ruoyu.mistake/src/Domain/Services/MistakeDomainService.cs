@@ -331,11 +331,11 @@ public class MistakeDomainService
         if (string.IsNullOrWhiteSpace(studentId))
             errors.Add("缺少学生ID");
 
-        if (subject < 0 || subject > 9)
-            errors.Add("学科值无效（有效范围：0-9）");
+        if (subject <= 0 || subject > 9)
+            errors.Add("学科值无效（有效范围：1-9）");
 
-        if (grade < 0 || grade > 12)
-            errors.Add("年级值无效（有效范围：0-12）");
+        if (grade <= 0 || grade > 12)
+            errors.Add("年级值无效（有效范围：1-12）");
 
         if (string.IsNullOrWhiteSpace(sourceUploadId))
             errors.Add("缺少上传记录ID");

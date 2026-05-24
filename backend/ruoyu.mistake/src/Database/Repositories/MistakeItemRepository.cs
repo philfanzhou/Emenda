@@ -80,12 +80,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<(List<MistakeItemModel> Items, int TotalCount)> GetListAsync(
         string studentId, int subject, int grade, int reviewStatus, int page, int size)
     {
-        var query = _dbContext.MistakeItems.AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(studentId))
-        {
-            query = query.Where(m => m.StudentId == studentId);
-        }
+        var query = _dbContext.MistakeItems.Where(m => m.StudentId == studentId);
 
         if (subject > 0) query = query.Where(m => m.Subject == subject);
         if (grade > 0) query = query.Where(m => m.Grade == grade);
