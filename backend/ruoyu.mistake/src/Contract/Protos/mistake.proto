@@ -16,6 +16,7 @@ service MistakeGrpcService {
 
   rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (BoolResponse);
   rpc AddMistakeItem(AddMistakeItemRequest) returns (MistakeItemDto);
+  rpc UpdateMistakeItem(UpdateMistakeItemRequest) returns (MistakeItemDto);
   rpc DeleteMistakeItem(IdRequest) returns (BoolResponse);
   rpc CompleteUploadReview(CompleteUploadReviewRequest) returns (CompleteUploadReviewResponse);
 
@@ -90,6 +91,13 @@ message AddMistakeItemRequest {
   string source_upload_id = 4;
   repeated SourceRegion source_regions = 5;
   string comments = 6;
+}
+
+message UpdateMistakeItemRequest {
+  string id = 1;
+  string student_id = 2;
+  int32 subject = 3;
+  int32 grade = 4;
 }
 
 message CompleteUploadReviewRequest {

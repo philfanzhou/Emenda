@@ -191,6 +191,34 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         }
     }
 
+    public override async Task<MistakeItemDto> UpdateMistakeItem(UpdateMistakeItemRequest request, ServerCallContext context)
+    {
+        var item = await _mistakeService.GetMistakeItemAsync(Guid.Parse(request.Id));
+        if (item == null)
+            throw new RpcException(new Status(StatusCode.NotFound, "错题条目不存在"));
+
+        if (!string.IsNullOrWhiteSpace(request.StudentId))
+            item.StudentId = request.StudentId;
+        if (request.Subject > 0)
+            item.Subject = request.Subject;
+        if (request.Grade > 0)
+            item.Grade = request.Grade;
+
+        try
+        {
+            var success = await _mistakeService.UpdateMistakeItemAsync(item);
+            if (!success)
+                throw new RpcException(new Status(StatusCode.Internal, "更新失败"));
+
+            var updatedItem = await _mistakeService.GetMistakeItemAsync(Guid.Parse(request.Id));
+            return MapMistakeItemDto(updatedItem);
+        }
+        catch (MistakeValidationException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+    }
+
     public override async Task<BoolResponse> DeleteMistakeItem(IdRequest request, ServerCallContext context)
     {
         try
