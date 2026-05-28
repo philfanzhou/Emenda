@@ -143,13 +143,15 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
         try
         {
-            var success = await _mistakeService.ReviewMistakeItemAsync(
+            int? grade = request.Grade > 0 ? request.Grade : null;
+            var item = await _mistakeService.ReviewMistakeItemAsync(
                 Guid.Parse(request.Id),
                 (int)request.ReviewStatus,
                 request.ReviewerId,
-                request.ReviewComment);
+                request.ReviewComment,
+                grade);
 
-            return new BoolResponse { Success = success };
+            return new BoolResponse { Success = item != null };
         }
         catch (MistakeValidationException ex)
         {
@@ -211,6 +213,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 throw new RpcException(new Status(StatusCode.Internal, "更新失败"));
 
             var updatedItem = await _mistakeService.GetMistakeItemAsync(Guid.Parse(request.Id));
+            if (updatedItem == null)
+                throw new RpcException(new Status(StatusCode.NotFound, "错题条目不存在"));
             return MapMistakeItemDto(updatedItem);
         }
         catch (MistakeValidationException ex)

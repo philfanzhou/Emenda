@@ -110,10 +110,10 @@ public class MistakeDomainService
         return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size, subjects);
     }
 
-    public async Task<bool> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? reviewComment)
+    public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? reviewComment, int? grade = null)
     {
         var item = await _mistakeItemRepository.GetByIdAsync(id);
-        if (item == null) return false;
+        if (item == null) return null;
 
         if (item.ReviewStatus != (int)ReviewStatus.PendingReview)
         {
@@ -131,6 +131,11 @@ public class MistakeDomainService
         item.ReviewComment = reviewComment;
         item.UpdatedAt = DateTimeOffset.UtcNow;
 
+        if (grade.HasValue && grade.Value > 0 && grade.Value <= 12)
+        {
+            item.Grade = grade.Value;
+        }
+
         await _mistakeItemRepository.UpdateAsync(item);
 
         var action = reviewStatus == (int)ReviewStatus.Confirmed
@@ -143,7 +148,7 @@ public class MistakeDomainService
         await AddProcessLogAsync(item.Id, action, detail);
         await _unitOfWork.SaveChangesAsync();
 
-        return true;
+        return item;
     }
 
     public async Task<MistakeItemModel> AddMistakeItemAsync(MistakeItemModel item)

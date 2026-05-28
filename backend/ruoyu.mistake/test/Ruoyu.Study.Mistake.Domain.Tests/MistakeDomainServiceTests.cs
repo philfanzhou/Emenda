@@ -83,7 +83,7 @@ public class MistakeDomainServiceTests
         var result = await _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Confirmed, "teacher-1", "looks good");
 
-        result.Should().BeTrue();
+        result.Should().NotBeNull();
         item.ReviewStatus.Should().Be((int)ReviewStatus.Confirmed);
         item.ReviewerId.Should().Be("teacher-1");
         item.ReviewComment.Should().Be("looks good");
@@ -278,7 +278,7 @@ public class MistakeDomainServiceTests
         var result = await _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Rejected, "teacher-1", "需要重新上传");
 
-        result.Should().BeTrue();
+        result.Should().NotBeNull();
         item.ReviewStatus.Should().Be((int)ReviewStatus.Rejected);
         item.ReviewComment.Should().Be("需要重新上传");
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);

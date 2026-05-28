@@ -82,6 +82,7 @@ message ReviewMistakeItemRequest {
   ReviewStatus review_status = 2;
   string reviewer_id = 3;
   string review_comment = 4;
+  int32 grade = 5;
 }
 
 message AddMistakeItemRequest {
