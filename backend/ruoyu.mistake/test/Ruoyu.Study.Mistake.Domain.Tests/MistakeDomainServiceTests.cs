@@ -42,7 +42,7 @@ public class MistakeDomainServiceTests
     {
         var imagePaths = new List<string> { "img1.jpg", "img2.jpg" };
 
-        _mockItemRepo.Setup(x => x.ExistsBySourceUploadIdAsync("upload-1")).ReturnsAsync(false);
+        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel>());
 
         var items = await _service.SubmitMistakeUploadAsync(
             "student-1", 1, 3, imagePaths, null, "upload-1");
@@ -57,15 +57,22 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenAlreadyExists_ShouldThrow()
+    public async Task SubmitMistakeUploadAsync_WhenAlreadyExists_ShouldReturnExisting()
     {
-        _mockItemRepo.Setup(x => x.ExistsBySourceUploadIdAsync("upload-1")).ReturnsAsync(true);
+        var existingItem = new MistakeItemModel
+        {
+            Id = Guid.NewGuid(),
+            SourceUploadId = "upload-1",
+            StudentId = "student-1"
+        };
 
-        var act = () => _service.SubmitMistakeUploadAsync(
+        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel> { existingItem });
+
+        var items = await _service.SubmitMistakeUploadAsync(
             "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
 
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*已提交过错题*");
+        items.Should().HaveCount(1);
+        items[0].Id.Should().Be(existingItem.Id);
     }
 
     [Fact]
