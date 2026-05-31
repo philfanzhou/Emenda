@@ -110,7 +110,7 @@ public class MistakeDomainService
         return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size, subjects);
     }
 
-    public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? reviewComment, int? grade = null)
+    public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? reviewComment, int? grade = null, int? subject = null)
     {
         var item = await _mistakeItemRepository.GetByIdAsync(id);
         if (item == null) return null;
@@ -134,6 +134,11 @@ public class MistakeDomainService
         if (grade.HasValue && grade.Value > 0 && grade.Value <= 12)
         {
             item.Grade = grade.Value;
+        }
+
+        if (subject.HasValue && subject.Value > 0 && subject.Value <= 9)
+        {
+            item.Subject = subject.Value;
         }
 
         await _mistakeItemRepository.UpdateAsync(item);

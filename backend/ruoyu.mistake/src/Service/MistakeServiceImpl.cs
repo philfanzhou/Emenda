@@ -144,12 +144,14 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         try
         {
             int? grade = request.Grade > 0 ? request.Grade : null;
+            int? subject = request.Subject > 0 ? request.Subject : null;
             var item = await _mistakeService.ReviewMistakeItemAsync(
                 Guid.Parse(request.Id),
                 (int)request.ReviewStatus,
                 request.ReviewerId,
                 request.ReviewComment,
-                grade);
+                grade,
+                subject);
 
             return new BoolResponse { Success = item != null };
         }
