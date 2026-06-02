@@ -12,7 +12,7 @@ mistake_item (
     student_id          VARCHAR(36) NOT NULL,
     subject             INT NOT NULL,             -- 学科归属（错题条目级别）
     grade               INT NOT NULL,             -- 年级归属（错题条目级别）
-    source_upload_id    VARCHAR(36),              -- 来源上传记录 ID
+    source_upload_id    VARCHAR(36),              -- 来源上传记录 ID（可为 NULL，手动添加时无关联）
     source_regions      JSONB,                    -- 图片区域引用，JSON数组
     review_status       INT NOT NULL DEFAULT 1,   -- 审核状态：1=PendingReview, 2=Confirmed, 3=Rejected
     reviewer_id         VARCHAR(36),              -- 审核人 ID
@@ -38,9 +38,37 @@ mistake_practice (
 )
 ```
 
-**关键设计说明**：
+## 重要设计说明
+
+### `subject` / `grade` 在 mistake_item 级别，不在 image_upload_record 级别
 
 `subject` 和 `grade` 字段位于 `mistake_item` 表（业务实体级别），而非 `image_upload_record` 表（图片容器级别）。这允许同一上传记录中的不同图片被分配到不同学科/年级的错题条目。详见 [database-spec.md](../../../docs/database-spec.md) 中的"数据模型变更"章节。
+
+### 一组图片 = 一道错题
+
+一个 `mistake_item` 包含的 `source_regions` 数量等于该组内图片的数量。即：
+- 如果 VL 模型将上传的 3 张图片拆分为 `[[0,1], [2]]`，会创建 2 条 `mistake_item`：第 1 条引用 2 张图片，第 2 条引用 1 张图片。
+- 如果管理员手动分配 1 个 assignment 包含 3 张图片，会创建 1 条 `mistake_item` 包含 3 张图片。
+
+### `source_upload_id` 的语义
+
+- `source_upload_id` 关联到 `image_upload_record.id`（跨服务引用，无外键约束）。
+- 一条 `image_upload_record` 可对应 0..N 条 `mistake_item`（VL 自动拆分出 N 组或管理员分配 N 次）。
+- 同一 `source_upload_id` + 学生 + 学科 + 年级 的组合**不**强制唯一（`SubmitMistakeUpload` 是幂等的：已存在则返回现有列表）。
+
+### 审核完成后的清理
+
+`MistakeService.CompleteUploadReview` 流程（详见 [business-flows.md](../../../docs/business-flows.md) 第 3 节）：
+
+1. 校验 `source_upload_id` 下不存在 `PendingReview` 状态的 item。
+2. 对每条 `Confirmed` item：
+   - 复制 `uploads/{path}` → `mistakes/{path}`。
+   - 更新 `mistake_item.source_regions` 中的 `sourceImagePath` 为 `mistakes/...`。
+   - 删除 OSS 中 `uploads/{path}`。
+3. 对每条 `Rejected` item：不复制图片。
+4. **跨服务调用** `StudentLearningGrpcService.RemoveImagesFromRecord(recordId, studentId, imagePaths)`：
+   - Student 服务从 `image_upload_record.image_paths` 中移除被审核的图片。
+   - 如果移除后 `image_paths` 为空 → 整条 `image_upload_record` 自动删除（连带全部 `image_fingerprint` + OSS 文件）。
 
 ### 索引
 
@@ -59,7 +87,7 @@ CREATE INDEX idx_mistake_practice_student_id ON mistake_practice(student_id);
 ### 实体关系
 
 - 一个学生可以有多条错题条目（一对多）
-- 一条上传记录可以关联多条错题条目（通过 source_upload_id，一对多）
+- 一条上传记录可对应 0..N 条错题条目（通过 `source_upload_id`，跨服务一对多）
 - 一条错题条目可以有多条练习记录（一对多，级联删除）
 
 ## 对象存储 (MinIO)

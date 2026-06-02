@@ -45,17 +45,20 @@ public class MistakeDomainService
     }
 
     public async Task<List<MistakeItemModel>> SubmitMistakeUploadAsync(
-        string studentId, int subject, int grade, List<string> imagePaths, string? comments, string sourceUploadId)
+        string studentId, int subject, int grade, List<string> imagePaths, string? comments, string sourceUploadId, bool createEvenIfExists = false)
     {
         ValidateSubmitData(studentId, subject, grade, imagePaths, comments, sourceUploadId);
 
-        var existingItems = await _mistakeItemRepository.GetBySourceUploadIdAsync(sourceUploadId);
-        if (existingItems.Count > 0)
+        if (!createEvenIfExists)
         {
-            _logger.LogInformation(
-                "Upload record {SourceUploadId} already has {Count} mistake items, skipping creation",
-                sourceUploadId, existingItems.Count);
-            return existingItems;
+            var existingItems = await _mistakeItemRepository.GetBySourceUploadIdAsync(sourceUploadId);
+            if (existingItems.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Upload record {SourceUploadId} already has {Count} mistake items, skipping creation",
+                    sourceUploadId, existingItems.Count);
+                return existingItems;
+            }
         }
 
         var item = new MistakeItemModel

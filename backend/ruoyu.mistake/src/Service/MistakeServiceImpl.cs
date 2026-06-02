@@ -52,7 +52,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             var imagePaths = new List<string>(request.ImagePaths);
             var items = await _mistakeService.SubmitMistakeUploadAsync(
                 request.StudentId, request.Subject, request.Grade,
-                imagePaths, request.Comments, request.SourceUploadId);
+                imagePaths, request.Comments, request.SourceUploadId,
+                request.CreateEvenIfExists);
 
             var response = new SubmitMistakeUploadResponse { Success = true };
             response.CreatedItemIds.AddRange(items.Select(i => i.Id.ToString()));
@@ -256,7 +257,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
             var pathMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var migratedImagePaths = new List<string>();
-            
+            var imagePathsToRemoveFromRecord = new List<string>();
+
             foreach (var item in result.Items)
             {
                 bool updated = false;
@@ -265,8 +267,21 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                     if (string.IsNullOrWhiteSpace(region.SourceImagePath))
                         continue;
 
+                    if (!imagePathsToRemoveFromRecord.Contains(region.SourceImagePath, StringComparer.OrdinalIgnoreCase))
+                    {
+                        imagePathsToRemoveFromRecord.Add(region.SourceImagePath);
+                    }
+
                     if (!region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
                         continue;
+
+                    if (item.ReviewStatus != (int)ReviewStatus.Confirmed)
+                    {
+                        _logger.LogInformation(
+                            "Item {ItemId} is not Confirmed (status={Status}), will only remove from upload record, not migrate",
+                            item.Id, item.ReviewStatus);
+                        continue;
+                    }
 
                     if (pathMapping.TryGetValue(region.SourceImagePath, out var cachedNewPath))
                     {
@@ -279,11 +294,11 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                     try
                     {
                         var newPath = "mistakes" + oldPath.Substring("uploads".Length);
-                        
+
                         await _ossService.CopyObjectAsync(oldPath, newPath);
-                        
+
                         await _ossService.DeleteAsync(oldPath);
-                        
+
                         pathMapping[oldPath] = newPath;
                         region.SourceImagePath = newPath;
                         updated = true;
@@ -306,8 +321,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 }
             }
 
-            // Remove migrated images from upload record
-            if (migratedImagePaths.Count > 0 && !string.IsNullOrEmpty(result.StudentId))
+            // Remove processed images from upload record (both Confirmed and Rejected)
+            if (imagePathsToRemoveFromRecord.Count > 0 && !string.IsNullOrEmpty(result.StudentId))
             {
                 try
                 {
@@ -316,8 +331,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         RecordId = request.SourceUploadId,
                         StudentId = result.StudentId
                     };
-                    removeImagesRequest.ImagePaths.AddRange(migratedImagePaths);
-                    
+                    removeImagesRequest.ImagePaths.AddRange(imagePathsToRemoveFromRecord);
+
                     await _studentClient.RemoveImagesFromRecordAsync(removeImagesRequest);
                 }
                 catch (Exception ex)

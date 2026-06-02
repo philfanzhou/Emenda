@@ -36,6 +36,7 @@ message SubmitMistakeUploadRequest {
   repeated string image_paths = 4;
   string comments = 5;
   string source_upload_id = 6;
+  bool create_even_if_exists = 7;  // 即使 source_upload_id 已存在也创建新 item
 }
 
 message SubmitMistakeUploadResponse {
