@@ -7,6 +7,7 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
+using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Service;
 
@@ -14,15 +15,18 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly MistakeDomainService _mistakeService;
     private readonly IOssService _ossService;
+    private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         MistakeDomainService mistakeService,
         IOssService ossService,
+        StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
         _ossService = ossService;
+        _studentClient = studentClient;
         _logger = logger;
     }
 
@@ -251,6 +255,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             }
 
             var pathMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var migratedImagePaths = new List<string>();
+            
             foreach (var item in result.Items)
             {
                 bool updated = false;
@@ -281,6 +287,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         pathMapping[oldPath] = newPath;
                         region.SourceImagePath = newPath;
                         updated = true;
+                        migratedImagePaths.Add(oldPath);
                         _logger.LogInformation(
                             "Migrated image from {OldPath} to {NewPath}",
                             oldPath, newPath);
@@ -296,6 +303,26 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 if (updated)
                 {
                     await _mistakeService.UpdateMistakeItemAsync(item).ConfigureAwait(false);
+                }
+            }
+
+            // Remove migrated images from upload record
+            if (migratedImagePaths.Count > 0 && !string.IsNullOrEmpty(result.StudentId))
+            {
+                try
+                {
+                    var removeImagesRequest = new StudentProto.RemoveImagesFromRecordRequest
+                    {
+                        RecordId = request.SourceUploadId,
+                        StudentId = result.StudentId
+                    };
+                    removeImagesRequest.ImagePaths.AddRange(migratedImagePaths);
+                    
+                    await _studentClient.RemoveImagesFromRecordAsync(removeImagesRequest);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error removing images from upload record {RecordId}", request.SourceUploadId);
                 }
             }
 

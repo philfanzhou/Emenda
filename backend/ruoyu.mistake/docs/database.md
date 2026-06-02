@@ -6,49 +6,61 @@
 此数据库已与 `ruoyu_study_questionbank` 实现物理分离。
 
 ```sql
--- mistake 错题表
-mistake (
-    id              UUID PRIMARY KEY,
-    student_id      VARCHAR(36) NOT NULL,
-    subject         INT NOT NULL,
-    grade           INT NOT NULL,
-    date            TIMESTAMP WITH TIME ZONE NOT NULL,
-    type            INT NOT NULL,
-    question_id     VARCHAR(36),      -- 关联的题库ID，逻辑关联无外键
-    status          INT NOT NULL,     -- 状态：1=PENDING, 2=PROCESSED
-    created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
-    updated_at      TIMESTAMP WITH TIME ZONE
+-- mistake_item 错题条目表
+mistake_item (
+    id                  UUID PRIMARY KEY,
+    student_id          VARCHAR(36) NOT NULL,
+    subject             INT NOT NULL,             -- 学科归属（错题条目级别）
+    grade               INT NOT NULL,             -- 年级归属（错题条目级别）
+    source_upload_id    VARCHAR(36),              -- 来源上传记录 ID
+    source_regions      JSONB,                    -- 图片区域引用，JSON数组
+    review_status       INT NOT NULL DEFAULT 1,   -- 审核状态：1=PendingReview, 2=Confirmed, 3=Rejected
+    reviewer_id         VARCHAR(36),              -- 审核人 ID
+    reviewed_at         TIMESTAMP WITH TIME ZONE, -- 审核时间
+    review_comment      TEXT,                     -- 审核意见
+    type                INT NOT NULL DEFAULT 0,   -- 错题类型
+    question_id         VARCHAR(36),              -- 关联题库 ID
+    created_at          TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at          TIMESTAMP WITH TIME ZONE
 )
 
--- mistake_detail 错题详情表
-mistake_detail (
-    id              UUID PRIMARY KEY,
-    mistake_id      UUID NOT NULL REFERENCES mistake(id) ON DELETE CASCADE,
-    original_images JSONB,             -- 原始上传图片路径，JSON数组
-    comments        TEXT
-)
-
--- mistake_practice 错题重答与举一反三表
+-- mistake_practice 错题练习记录表
 mistake_practice (
     id              UUID PRIMARY KEY,
-    mistake_id      UUID NOT NULL REFERENCES mistake(id) ON DELETE CASCADE,
+    mistake_id      UUID NOT NULL REFERENCES mistake_item(id) ON DELETE CASCADE,
     student_id      VARCHAR(36) NOT NULL,
     practice_date   TIMESTAMP WITH TIME ZONE NOT NULL,
     image_paths     JSONB,             -- 学生重答上传的图片，JSON数组
     student_answer  TEXT,
     is_correct      BOOLEAN NOT NULL,
-    comments        TEXT
-)
-
--- process_log 错题处理日志表
-process_log (
-    id              UUID PRIMARY KEY,
-    mistake_id      UUID NOT NULL REFERENCES mistake(id) ON DELETE CASCADE,
-    action          INT NOT NULL,
-    details         TEXT,
+    comments        TEXT,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL
 )
 ```
+
+**关键设计说明**：
+
+`subject` 和 `grade` 字段位于 `mistake_item` 表（业务实体级别），而非 `image_upload_record` 表（图片容器级别）。这允许同一上传记录中的不同图片被分配到不同学科/年级的错题条目。详见 [database-spec.md](../../../docs/database-spec.md) 中的"数据模型变更"章节。
+
+### 索引
+
+```sql
+-- mistake_item 索引
+CREATE INDEX idx_mistake_item_student_id ON mistake_item(student_id);
+CREATE INDEX idx_mistake_item_source_upload_id ON mistake_item(source_upload_id);
+CREATE INDEX idx_mistake_item_review_status ON mistake_item(review_status);
+CREATE INDEX idx_mistake_item_subject_grade ON mistake_item(subject, grade);
+
+-- mistake_practice 索引
+CREATE INDEX idx_mistake_practice_mistake_id ON mistake_practice(mistake_id);
+CREATE INDEX idx_mistake_practice_student_id ON mistake_practice(student_id);
+```
+
+### 实体关系
+
+- 一个学生可以有多条错题条目（一对多）
+- 一条上传记录可以关联多条错题条目（通过 source_upload_id，一对多）
+- 一条错题条目可以有多条练习记录（一对多，级联删除）
 
 ## 对象存储 (MinIO)
 
