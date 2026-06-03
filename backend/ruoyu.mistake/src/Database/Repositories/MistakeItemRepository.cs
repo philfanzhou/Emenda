@@ -66,9 +66,9 @@ public class MistakeItemRepository : IMistakeItemRepository
     {
         var entities = await _dbContext.MistakeItems
             .Where(m => m.SourceUploadId == sourceUploadId)
-            .OrderBy(m => m.CreatedAt)
             .ToListAsync();
-        return entities.Select(MapToModel).ToList();
+        // 在客户端排序，因为 SQLite 不支持 DateTimeOffset 的 ORDER BY
+        return entities.OrderBy(m => m.CreatedAt).Select(MapToModel).ToList();
     }
 
     public async Task<bool> ExistsBySourceUploadIdAsync(string sourceUploadId)
@@ -106,7 +106,10 @@ public class MistakeItemRepository : IMistakeItemRepository
             query = query.Where(m => subjects.Contains(m.Subject));
         }
 
-        var grouped = await query
+        // 获取所有数据在客户端进行分组和聚合，因为 SQLite 不支持 DateTimeOffset 的 Min
+        var items = await query.ToListAsync();
+        
+        var grouped = items
             .GroupBy(m => new { m.SourceUploadId, m.StudentId, m.Subject, m.Grade })
             .Select(g => new
             {
@@ -118,7 +121,7 @@ public class MistakeItemRepository : IMistakeItemRepository
                 EarliestCreatedAt = g.Min(x => x.CreatedAt)
             })
             .OrderBy(x => x.EarliestCreatedAt)
-            .ToListAsync();
+            .ToList();
 
         var totalCount = grouped.Count;
         var paged = grouped

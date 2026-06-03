@@ -51,12 +51,21 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
         options.UseSqlite(connectionString ?? "Data Source=data/sqlite/ruoyu_study_mistake.db");
 });
 
-builder.Services.Configure<OssOptions>(builder.Configuration.GetSection("Oss"));
-builder.Services.AddScoped<IOssService, S3OssService>(sp =>
+var useLocalOss = Environment.GetEnvironmentVariable("USE_LOCAL_OSS") == "1";
+if (useLocalOss)
 {
-    var options = sp.GetRequiredService<IOptions<OssOptions>>().Value;
-    return new S3OssService(options.Endpoint, options.AccessKey, options.SecretKey, options.BucketName);
-});
+    var localPath = Environment.GetEnvironmentVariable("OSS_LOCAL_PATH") ?? "data/oss";
+    builder.Services.AddSingleton<IOssService>(new LocalFileOssService(localPath));
+}
+else
+{
+    builder.Services.Configure<OssOptions>(builder.Configuration.GetSection("Oss"));
+    builder.Services.AddScoped<IOssService, S3OssService>(sp =>
+    {
+        var options = sp.GetRequiredService<IOptions<OssOptions>>().Value;
+        return new S3OssService(options.Endpoint, options.AccessKey, options.SecretKey, options.BucketName);
+    });
+}
 
 builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
