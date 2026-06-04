@@ -101,6 +101,7 @@ message UpdateMistakeItemRequest {
   string student_id = 2;
   int32 subject = 3;
   int32 grade = 4;
+  repeated SourceRegion source_regions = 5;
 }
 
 message CompleteUploadReviewRequest {

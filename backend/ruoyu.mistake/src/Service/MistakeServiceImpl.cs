@@ -212,6 +212,22 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             item.Subject = request.Subject;
         if (request.Grade > 0)
             item.Grade = request.Grade;
+        if (request.SourceRegions.Count > 0)
+        {
+            item.SourceRegions = request.SourceRegions.Select(r => new SourceRegionModel
+            {
+                SourceImagePath = r.SourceImagePath,
+                BoundingBox = r.BoundingBox != null
+                    ? new BoundingBoxModel
+                    {
+                        X1 = r.BoundingBox.X1,
+                        Y1 = r.BoundingBox.Y1,
+                        X2 = r.BoundingBox.X2,
+                        Y2 = r.BoundingBox.Y2
+                    }
+                    : null
+            }).ToList();
+        }
 
         try
         {
