@@ -52,8 +52,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             var imagePaths = new List<string>(request.ImagePaths);
             var items = await _mistakeService.SubmitMistakeUploadAsync(
                 request.StudentId, request.Subject, request.Grade,
-                imagePaths, request.Comments, request.SourceUploadId,
-                request.CreateEvenIfExists);
+                imagePaths, request.Comments, request.SourceUploadId);
 
             var response = new SubmitMistakeUploadResponse { Success = true };
             response.CreatedItemIds.AddRange(items.Select(i => i.Id.ToString()));
