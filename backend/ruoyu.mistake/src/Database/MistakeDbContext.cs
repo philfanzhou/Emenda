@@ -32,6 +32,8 @@ public class MistakeDbContext : DbContext
 
         modelBuilder.Entity<MistakeItemEntity>(entity =>
         {
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
             entity.HasIndex(e => e.StudentId);
             entity.HasIndex(e => new { e.StudentId, e.Subject, e.Grade, e.ReviewStatus });
             entity.HasIndex(e => e.SourceUploadId);
@@ -53,6 +55,8 @@ public class MistakeDbContext : DbContext
 
         modelBuilder.Entity<MistakePracticeEntity>(entity =>
         {
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
             entity.HasIndex(e => e.MistakeItemId);
             entity.HasIndex(e => e.StudentId);
             entity.HasIndex(e => e.PracticeDate);
@@ -72,6 +76,8 @@ public class MistakeDbContext : DbContext
 
         modelBuilder.Entity<ProcessLogEntity>(entity =>
         {
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
             entity.HasIndex(e => new { e.MistakeItemId, e.CreatedAt });
             entity.HasIndex(e => e.CreatedAt);
 

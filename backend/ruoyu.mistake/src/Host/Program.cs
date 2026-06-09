@@ -6,13 +6,11 @@ using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service;
-using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var grpcPort = builder.Configuration.GetValue<int?>("Endpoints:Grpc") ?? 5006;
 var httpPort = builder.Configuration.GetValue<int?>("Endpoints:Http") ?? 5007;
-var studentGrpcAddress = builder.Configuration["StudentGrpcService:Address"] ?? "http://localhost:5005";
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -31,12 +29,6 @@ builder.Services.AddGrpc(options =>
 {
     options.MaxReceiveMessageSize = 100 * 1024 * 1024;
     options.MaxSendMessageSize = 100 * 1024 * 1024;
-});
-
-// Configure Student service gRPC client
-builder.Services.AddGrpcClient<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
-{
-    options.Address = new Uri(studentGrpcAddress);
 });
 
 var connectionString = builder.Configuration.GetConnectionString("Default");

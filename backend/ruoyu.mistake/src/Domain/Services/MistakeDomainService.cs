@@ -65,9 +65,14 @@ public class MistakeDomainService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
+        _logger.LogDebug("SubmitMistakeUploadAsync: Creating item with Id={ItemId}, studentId={StudentId}, subject={Subject}, grade={Grade}, sourceUploadId={SourceUploadId}, imagePaths={ImagePaths}",
+            item.Id, studentId, subject, grade, sourceUploadId, string.Join(" | ", imagePaths));
+
         await _mistakeItemRepository.AddAsync(item);
         await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item created from upload");
         await _unitOfWork.SaveChangesAsync();
+
+        _logger.LogDebug("SubmitMistakeUploadAsync: Saved item with Id={ItemId}", item.Id);
 
         return new List<MistakeItemModel> { item };
     }

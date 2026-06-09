@@ -14,7 +14,7 @@ service MistakeGrpcService {
   rpc GetMistakeItemList(GetMistakeItemListRequest) returns (MistakeItemPageResult);
   rpc GetPendingReviewUploads(GetPendingReviewUploadsRequest) returns (PendingReviewUploadListResponse);
 
-  rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (BoolResponse);
+  rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (ReviewMistakeItemResponse);
   rpc AddMistakeItem(AddMistakeItemRequest) returns (MistakeItemDto);
   rpc UpdateMistakeItem(UpdateMistakeItemRequest) returns (MistakeItemDto);
   rpc DeleteMistakeItem(IdRequest) returns (BoolResponse);
@@ -86,6 +86,14 @@ message ReviewMistakeItemRequest {
   int32 subject = 6;
 }
 
+message ReviewMistakeItemResponse {
+  bool success = 1;
+  string error_message = 2;
+  string source_upload_id = 3;
+  string student_id = 4;
+  repeated string removed_image_paths = 5;
+}
+
 message AddMistakeItemRequest {
   string student_id = 1;
   int32 subject = 2;
@@ -112,8 +120,8 @@ message CompleteUploadReviewResponse {
   bool success = 1;
   string error_message = 2;
   string student_id = 3;
+  repeated string removed_image_paths = 4;  // 需要从上传记录中移除的图片路径
 }
-
 message AddMistakePracticeRequest {
   string mistake_item_id = 1;
   string student_id = 2;

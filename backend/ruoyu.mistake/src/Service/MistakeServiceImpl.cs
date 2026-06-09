@@ -7,7 +7,6 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
-using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Service;
 
@@ -15,23 +14,23 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly MistakeDomainService _mistakeService;
     private readonly IOssService _ossService;
-    private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         MistakeDomainService mistakeService,
         IOssService ossService,
-        StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
         _ossService = ossService;
-        _studentClient = studentClient;
         _logger = logger;
     }
 
     public override async Task<SubmitMistakeUploadResponse> SubmitMistakeUpload(SubmitMistakeUploadRequest request, ServerCallContext context)
     {
+        _logger.LogDebug("SubmitMistakeUpload called: studentId={StudentId}, subject={Subject}, grade={Grade}, sourceUploadId={SourceUploadId}, imagePaths={ImagePaths}",
+            request.StudentId, request.Subject, request.Grade, request.SourceUploadId, string.Join(" | ", request.ImagePaths.Select((p, i) => $"[{i}]={p}")));
+
         if (string.IsNullOrWhiteSpace(request.StudentId))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "缺少学生ID"));
 
@@ -56,10 +55,15 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
             var response = new SubmitMistakeUploadResponse { Success = true };
             response.CreatedItemIds.AddRange(items.Select(i => i.Id.ToString()));
+
+            _logger.LogDebug("SubmitMistakeUpload success: created {ItemCount} items, ids={ItemIds}",
+                items.Count, string.Join(",", items.Select(i => i.Id.ToString())));
+
             return response;
         }
         catch (MistakeValidationException ex)
         {
+            _logger.LogWarning("SubmitMistakeUpload validation failed: {Message}", ex.Message);
             throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
         }
     }
@@ -140,7 +144,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return result;
     }
 
-    public override async Task<BoolResponse> ReviewMistakeItem(ReviewMistakeItemRequest request, ServerCallContext context)
+    public override async Task<ReviewMistakeItemResponse> ReviewMistakeItem(ReviewMistakeItemRequest request, ServerCallContext context)
     {
         if (request.ReviewStatus != ReviewStatus.Confirmed && request.ReviewStatus != ReviewStatus.Rejected)
             throw new RpcException(new Status(StatusCode.InvalidArgument, "审核结果只能是确认或驳回"));
@@ -157,7 +161,51 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 grade,
                 subject);
 
-            return new BoolResponse { Success = item != null };
+            if (item == null)
+                return new ReviewMistakeItemResponse { Success = false, ErrorMessage = "错题不存在" };
+
+            var removedPaths = new List<string>();
+
+            if (request.ReviewStatus == ReviewStatus.Confirmed)
+            {
+                // 逐条迁移当前这道题的图片：uploads/ → mistakes/
+                var updated = false;
+                foreach (var region in item.SourceRegions)
+                {
+                    if (string.IsNullOrWhiteSpace(region.SourceImagePath))
+                        continue;
+
+                    removedPaths.Add(region.SourceImagePath);
+
+                    if (!region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var oldPath = region.SourceImagePath;
+                    var newPath = "mistakes" + oldPath.Substring("uploads".Length);
+
+                    await _ossService.CopyObjectAsync(oldPath, newPath);
+                    await _ossService.DeleteAsync(oldPath);
+
+                    region.SourceImagePath = newPath;
+                    updated = true;
+
+                    _logger.LogDebug("ReviewMistakeItem: Migrated image from {OldPath} to {NewPath}", oldPath, newPath);
+                }
+
+                if (updated)
+                {
+                    await _mistakeService.UpdateMistakeItemAsync(item).ConfigureAwait(false);
+                }
+            }
+
+            var response = new ReviewMistakeItemResponse
+            {
+                Success = true,
+                SourceUploadId = item.SourceUploadId ?? string.Empty,
+                StudentId = item.StudentId ?? string.Empty
+            };
+            response.RemovedImagePaths.AddRange(removedPaths);
+            return response;
         }
         catch (MistakeValidationException ex)
         {
@@ -292,7 +340,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
                     if (item.ReviewStatus != (int)ReviewStatus.Confirmed)
                     {
-                        _logger.LogInformation(
+                        _logger.LogDebug(
                             "Item {ItemId} is not Confirmed (status={Status}), will only remove from upload record, not migrate",
                             item.Id, item.ReviewStatus);
                         continue;
@@ -318,7 +366,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         region.SourceImagePath = newPath;
                         updated = true;
                         migratedImagePaths.Add(oldPath);
-                        _logger.LogInformation(
+                        _logger.LogDebug(
                             "Migrated image from {OldPath} to {NewPath}",
                             oldPath, newPath);
                     }
@@ -336,27 +384,14 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 }
             }
 
-            // Remove processed images from upload record (both Confirmed and Rejected)
-            if (imagePathsToRemoveFromRecord.Count > 0 && !string.IsNullOrEmpty(result.StudentId))
+            var response = new CompleteUploadReviewResponse
             {
-                try
-                {
-                    var removeImagesRequest = new StudentProto.RemoveImagesFromRecordRequest
-                    {
-                        RecordId = request.SourceUploadId,
-                        StudentId = result.StudentId
-                    };
-                    removeImagesRequest.ImagePaths.AddRange(imagePathsToRemoveFromRecord);
+                Success = true,
+                StudentId = result.StudentId ?? ""
+            };
+            response.RemovedImagePaths.AddRange(imagePathsToRemoveFromRecord);
 
-                    await _studentClient.RemoveImagesFromRecordAsync(removeImagesRequest);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error removing images from upload record {RecordId}", request.SourceUploadId);
-                }
-            }
-
-            return new CompleteUploadReviewResponse { Success = true, StudentId = result.StudentId ?? "" };
+            return response;
         }
         catch (MistakeValidationException ex)
         {
