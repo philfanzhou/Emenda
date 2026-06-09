@@ -57,25 +57,6 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenAlreadyExists_ShouldReturnExisting()
-    {
-        var existingItem = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            SourceUploadId = "upload-1",
-            StudentId = "student-1"
-        };
-
-        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel> { existingItem });
-
-        var items = await _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
-
-        items.Should().HaveCount(1);
-        items[0].Id.Should().Be(existingItem.Id);
-    }
-
-    [Fact]
     public async Task ReviewMistakeItemAsync_WhenPending_ShouldConfirm()
     {
         var itemId = Guid.NewGuid();

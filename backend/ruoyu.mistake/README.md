@@ -2,19 +2,22 @@
 
 ## 1. 项目概述
 
-`Mistake` 是专为在线教育系统打造的错题管理微服务，专注于处理高频写入和追踪用户学习轨迹。它已从原 `QuestionBank` 中剥离，负责错题上传、举一反三重练、防删除机制及学习日志管理。
+`Mistake` 是专为在线教育系统打造的错题管理微服务，专注于处理高频写入和追踪用户学习轨迹。它已从原 `QuestionBank` 中剥离，负责错题上传、举一反三重练及学习日志管理。
 
 ## 2. 📚 文档导航
 
-- [数据库设计](docs/database.md) - 包含 PostgreSQL 错题记录、重答记录和日志的建表规范。
+- [设计文档](docs/Design.md) - 完整架构设计、数据模型、接口定义和关键流程
+- [需求文档](docs/Requirements.md) - 详细功能性和非功能性需求
+- [数据库设计](docs/database.md) - 包含 PostgreSQL 错题记录、重答记录和日志的建表规范
+- [编码规范](docs/DotNetCodingPolicy.md) - .NET 项目编码规范
 
 ## 3. 技术栈
 
 - **框架**: .NET 8 + gRPC
 - **数据库**: PostgreSQL (ruoyu_study_mistake)
 - **ORM**: Entity Framework Core 8.0 + Npgsql
-- **对象存储**: MinIO (S3 兼容)
-- **架构**: 垂直切片化演进中
+- **对象存储**: MinIO / SeaweedFS / LocalFile (S3 兼容接口)
+- **架构**: 清晰分层架构（Contract → Domain → Database → Service → Host）
 
 ## 4. 核心功能
 
@@ -22,10 +25,10 @@
 
 | 功能 | 说明 |
 |------|------|
-| 上传错题 | 学生以图片形式上传原始错题，初始状态为 PENDING |
-| 更新错题 | 系统或教师对错题进行判定和完善，状态更新为 PROCESSED |
-| 删除错题 | 仅允许删除未被系统或教师处理的初始记录 (PENDING 状态) |
-| 查询错题 | 根据学生ID获取错题列表，支持分页和时间范围过滤 |
+| 上传错题 | 学生以图片形式上传原始错题，初始状态为 PendingReview |
+| 更新错题 | 修改错题条目信息（学生、学科、年级、图片区域）|
+| 删除错题 | 删除任意状态的错题条目，自动级联删除关联的练习记录和处理日志 |
+| 查询错题 | 根据学生ID获取错题列表，支持分页和多条件过滤 |
 
 ### 4.2 错题重答与举一反三 (Mistake Practice)
 

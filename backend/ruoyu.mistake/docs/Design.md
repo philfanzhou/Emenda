@@ -67,16 +67,16 @@ Host --> Service --> Domain --> Contract
 | StudentId | string | 最大 36 字符, 必填 | 学生引用 |
 | Subject | int | 必填 | 学科编号 (1-9) |
 | Grade | int | 必填 | 年级编号 (1-12) |
-| SourceUploadId | string | 最大 36 字符 | 来源上传记录 ID（可为空，手动添加时无关联）|
+| SourceUploadId | string | 最大 64 字符, 必填 | 来源上传记录 ID |
 | SourceRegions | JSONB | | 图片区域引用，JSON 数组 |
 | ReviewStatus | int | 默认 1 | 审核状态：1=PendingReview, 2=Confirmed, 3=Rejected |
 | ReviewerId | string | 最大 36 字符 | 审核人 ID |
-| ReviewedAt | DateTime? | | 审核时间 |
+| ReviewedAt | DateTimeOffset? | | 审核时间 |
 | ReviewComment | string | | 审核意见 |
 | Type | int | 默认 0 | 错题类型 |
 | QuestionId | string | 最大 36 字符 | 关联题库 ID |
-| CreatedAt | DateTime | 必填 | 创建时间 |
-| UpdatedAt | DateTime? | | 最后更新时间 |
+| CreatedAt | DateTimeOffset | 必填 | 创建时间 |
+| UpdatedAt | DateTimeOffset? | | 最后更新时间 |
 
 ### 2.2 错题练习记录 (MistakePractice)
 
@@ -85,22 +85,21 @@ Host --> Service --> Domain --> Contract
 | Id | GUID | 主键 | 唯一标识符 |
 | MistakeItemId | GUID | 外键, 级联删除 | 关联的错题条目 |
 | StudentId | string | 最大 36 字符, 必填 | 学生引用 |
-| PracticeDate | DateTime | 必填 | 练习日期 |
+| PracticeDate | DateTimeOffset | 必填 | 练习日期 |
 | ImagePaths | JSONB | | 练习上传的图片路径 |
 | StudentAnswer | string | | 学生答案 |
 | IsCorrect | bool | 必填 | 是否正确 |
 | Comments | string | | 备注 |
-| CreatedAt | DateTime | 必填 | 创建时间 |
 
 ### 2.3 处理日志 (ProcessLog)
 
 | 字段 | 类型 | 约束 | 描述 |
 |------|------|------|------|
 | Id | GUID | 主键 | 唯一标识符 |
-| MistakeItemId | GUID | 外键 | 关联的错题条目 |
+| MistakeItemId | GUID | 外键, 级联删除 | 关联的错题条目 |
 | Action | int | 必填 | 操作类型枚举 |
 | Details | string | | 操作详情 |
-| CreatedAt | DateTime | 必填 | 创建时间 |
+| CreatedAt | DateTimeOffset | 必填 | 创建时间 |
 
 ### 2.4 实体关系
 
@@ -271,7 +270,7 @@ MistakeDomainService.DeleteMistakeItemAsync
 | ORM | Entity Framework Core 8.0 | Npgsql provider |
 | 数据库 | PostgreSQL | 单库 ruoyu_study_mistake |
 | 对象存储 | MinIO / SeaweedFS | S3 兼容接口 |
-| 测试 | xUnit + Moq | 单元测试 + Mock |
+| 测试 | xUnit + Moq + FluentAssertions | 单元测试 + Mock |
 
 ---
 
@@ -308,7 +307,7 @@ MistakeDomainService.DeleteMistakeItemAsync
 
 ### 7.2 配置
 
-- 数据库连接字符串：`ConnectionStrings:MistakeDb`
+- 数据库连接字符串：`ConnectionStrings:Default`
 - OSS 配置：通过 `IOssService` 接口注入（支持 MinIO / SeaweedFS / LocalFile）
 - Student 服务地址：gRPC 客户端配置
 

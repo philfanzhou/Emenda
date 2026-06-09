@@ -12,7 +12,7 @@ mistake_item (
     student_id          VARCHAR(36) NOT NULL,
     subject             INT NOT NULL,             -- 学科归属（错题条目级别）
     grade               INT NOT NULL,             -- 年级归属（错题条目级别）
-    source_upload_id    VARCHAR(36),              -- 来源上传记录 ID（可为 NULL，手动添加时无关联）
+    source_upload_id    VARCHAR(64) NOT NULL,     -- 来源上传记录 ID
     source_regions      JSONB,                    -- 图片区域引用，JSON数组
     review_status       INT NOT NULL DEFAULT 1,   -- 审核状态：1=PendingReview, 2=Confirmed, 3=Rejected
     reviewer_id         VARCHAR(36),              -- 审核人 ID
@@ -27,13 +27,21 @@ mistake_item (
 -- mistake_practice 错题练习记录表
 mistake_practice (
     id              UUID PRIMARY KEY,
-    mistake_id      UUID NOT NULL REFERENCES mistake_item(id) ON DELETE CASCADE,
+    mistake_item_id UUID NOT NULL REFERENCES mistake_item(id) ON DELETE CASCADE,
     student_id      VARCHAR(36) NOT NULL,
     practice_date   TIMESTAMP WITH TIME ZONE NOT NULL,
     image_paths     JSONB,             -- 学生重答上传的图片，JSON数组
     student_answer  TEXT,
     is_correct      BOOLEAN NOT NULL,
-    comments        TEXT,
+    comments        TEXT
+)
+
+-- process_log 处理日志表
+process_log (
+    id              UUID PRIMARY KEY,
+    mistake_item_id UUID NOT NULL REFERENCES mistake_item(id) ON DELETE CASCADE,
+    action          INT NOT NULL,                -- 操作类型：1=Created, 2=Analyzed, 3=ReviewConfirmed, 4=ReviewRejected, 5=Practiced, 6=Mastered
+    details         TEXT,                         -- 操作详情
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL
 )
 ```
@@ -54,7 +62,6 @@ mistake_practice (
 
 - `source_upload_id` 关联到 `image_upload_record.id`（跨服务引用，无外键约束）。
 - 一条 `image_upload_record` 可对应 0..N 条 `mistake_item`（VL 自动拆分出 N 组或管理员分配 N 次）。
-- 同一 `source_upload_id` + 学生 + 学科 + 年级 的组合**不**强制唯一（`SubmitMistakeUpload` 是幂等的：已存在则返回现有列表）。
 
 ### 审核完成后的清理
 
@@ -77,11 +84,17 @@ mistake_practice (
 CREATE INDEX idx_mistake_item_student_id ON mistake_item(student_id);
 CREATE INDEX idx_mistake_item_source_upload_id ON mistake_item(source_upload_id);
 CREATE INDEX idx_mistake_item_review_status ON mistake_item(review_status);
-CREATE INDEX idx_mistake_item_subject_grade ON mistake_item(subject, grade);
+CREATE INDEX idx_mistake_item_created_at ON mistake_item(created_at);
+CREATE INDEX idx_mistake_item_student_subject_grade_status ON mistake_item(student_id, subject, grade, review_status);
 
 -- mistake_practice 索引
-CREATE INDEX idx_mistake_practice_mistake_id ON mistake_practice(mistake_id);
+CREATE INDEX idx_mistake_practice_mistake_item_id ON mistake_practice(mistake_item_id);
 CREATE INDEX idx_mistake_practice_student_id ON mistake_practice(student_id);
+CREATE INDEX idx_mistake_practice_practice_date ON mistake_practice(practice_date);
+
+-- process_log 索引
+CREATE INDEX idx_process_log_mistake_item_id_created_at ON process_log(mistake_item_id, created_at);
+CREATE INDEX idx_process_log_created_at ON process_log(created_at);
 ```
 
 ### 实体关系
@@ -89,6 +102,7 @@ CREATE INDEX idx_mistake_practice_student_id ON mistake_practice(student_id);
 - 一个学生可以有多条错题条目（一对多）
 - 一条上传记录可对应 0..N 条错题条目（通过 `source_upload_id`，跨服务一对多）
 - 一条错题条目可以有多条练习记录（一对多，级联删除）
+- 一条错题条目可以有多条处理日志（一对多，级联删除）
 
 ## 对象存储 (MinIO)
 
