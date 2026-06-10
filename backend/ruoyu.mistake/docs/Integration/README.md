@@ -85,9 +85,9 @@ mistake 的数据库与存储层配置。
 
 | 文档 | 说明 |
 |------|------|
-| [SystemContext.md](../SystemContext.md) | 系统上下文与整体架构 |
-| [Integration.md](../Integration.md) | 集成关系总览 |
-| [KeyFlows.md](../KeyFlows.md) | 关键业务流程 |
-| [DataOwnership.md](../DataOwnership.md) | 数据所有权与职责划分 |
+| [SystemContext.md](../overview/SystemContext.md) | 系统上下文与整体架构 |
+| [Integration.md](../overview/Integration.md) | 集成关系总览 |
+| [KeyFlows.md](../overview/KeyFlows.md) | 关键业务流程 |
+| [DataOwnership.md](../overview/DataOwnership.md) | 数据所有权与职责划分 |
 | [Deployment.md](../Deployment.md) | 部署与运维 |
 | [Troubleshooting.md](../Troubleshooting.md) | 故障排查指南 |

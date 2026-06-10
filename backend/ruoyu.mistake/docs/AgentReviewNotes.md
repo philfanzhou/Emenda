@@ -3,33 +3,32 @@
 ## 1. 本轮任务范围
 
 为 ruoyu.mistake 项目基于现有代码优化 docs 目录，重点：
-- 修正上一轮文档生成中的编造内容（`RemoveImagesFromRecord`）
-- 修正断链和路径错误
-- 精简顶层文档，确保细节下沉到 feature 6 件套
-- 标注推断内容
+- 将根目录散落的总览类文档收拢到 `docs/overview/`
+- 将部署/排障/验证文档收拢到 `docs/development/`
+- 重写 `docs/README.md` 为纯入口导航
+- 修正所有因目录迁移产生的断链
 
 ## 2. 已完成的文档调整
 
-### 重大修正：RemoveImagesFromRecord 编造内容清除
+### 目录结构重组
 
-上一轮文档生成时错误地编造了 `StudentLearningGrpcService.RemoveImagesFromRecord` 这一 gRPC 调用，实际代码中不存在任何 gRPC client 注册或调用。本轮修正涉及：
+- **创建 `docs/overview/`** — 收拢 7 个总览类文档：SystemContext.md, Integration.md, KeyFlows.md, DataOwnership.md, Requirements.md, Design.md, DotNetCodingPolicy.md
+- **创建 `docs/development/`** — 收拢 3 个开发执行文档：Deployment.md, Troubleshooting.md, IntegrationVerification.md
+- **重写 `docs/README.md`** — 从长文档地图改为纯入口导航（6 个子目录入口 + 阅读建议）
+- **创建 `docs/overview/README.md`** — 总览文档索引
+- **创建 `docs/development/README.md`** — 开发执行文档索引
 
-- **SystemContext.md** — 删除下游依赖中的 ruoyu.student 小节，修正上下文图和服务边界
-- **Integration.md** — 删除 RemoveImagesFromRecord 集成条目和失败语义行
-- **KeyFlows.md** — 删除审核流程中 student 回调步骤
-- **Design.md** — 删除依赖关系图中的 StudentLearningGrpcServiceClient
-- **Integration/Student/** — 重写全部 6 件套，改为描述 student_id 只读引用
-- **Integration/README.md** — 修正 Student 集成描述
-- **Integration/Portals/04-TASKS.md** — 删除 StudentLearningGrpcServiceClient 注册任务
-- **Troubleshooting.md** — 删除 RemoveImagesFromRecord 相关故障排查条目
-- **IntegrationVerification.md** — 删除 RemoveImagesFromRecord 相关验证用例
-- **Deployment.md** — 删除 StudentGrpcService:Address 配置和联调步骤
-- **Requirements.md** — 删除"回调 student 清理引用"描述
+### 链接修正
 
-### 断链修正
+- **Requirements.md** — 16 处 `./modules/...` → `../modules/...`，4 处 `Integration/...` → `../Integration/...`
+- **Design.md** — 9 处 `./modules/...` → `../modules/...`，`./database/` → `../database/`，`./Integration/` → `../Integration/`
+- **docs/README.md** — 全部重写为入口导航
+- **Integration/README.md** — 4 处 `../Xxx.md` → `../overview/Xxx.md`
 
-- **Requirements.md** — 功能需求索引链接从旧路径（如 `MistakeDispatch/SubmitMistakeUpload/`）修正为 `./modules/MistakeDispatch/SubmitMistakeUpload/01-FEATURE.md`
-- **Design.md** — 详细设计索引链接从旧路径修正为 `./modules/.../03-DESIGN.md`，并展开为每个功能点的独立链接
+### 上一轮修正（保留记录）
+
+- 清除 RemoveImagesFromRecord 编造内容（11 个文件，56 处引用）
+- 修正 Requirements.md 和 Design.md 的断链
 
 ## 3. 待人工审核事项
 
@@ -72,8 +71,8 @@
 
 | 编号 | 内容 | 标注 | 位置 |
 |------|------|------|------|
-| E-01 | SystemContext.md 中上游调用方的角色划分（admin_portal/teacher_portal/user_portal） | [推断] | SystemContext.md 上游节 |
-| E-02 | AnalyzeMistakeType 的真正分析逻辑 | [待实现] | MistakeAnalysis/AnalyzeMistakeType/02-SPEC.md |
+| E-01 | SystemContext.md 中上游调用方的角色划分（admin_portal/teacher_portal/user_portal） | [推断] | overview/SystemContext.md 上游节 |
+| E-02 | AnalyzeMistakeType 的真正分析逻辑 | [待实现] | modules/MistakeAnalysis/AnalyzeMistakeType/02-SPEC.md |
 
 ## 5. 风险与后续建议
 
@@ -82,4 +81,3 @@
 3. **全表扫描性能**: GetAllReferencedImagePaths 加载全表到内存，数据量大时可能有性能问题
 4. **SQLite 兼容性**: 多处查询因 SQLite 不支持 DateTimeOffset 排序/聚合而在客户端处理，生产环境 PostgreSQL 不需要这些 workaround
 5. **文档与代码同步**: 建议在 CI 中加入文档链接检查，防止后续代码变更导致文档失效
-6. **上一轮编造内容遗留**: 虽然已清除 56 处 RemoveImagesFromRecord 引用，但建议人工抽查 Integration/Student/ 和 Troubleshooting.md 确认修正完整
