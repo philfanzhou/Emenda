@@ -372,4 +372,443 @@ public class MistakeDomainServiceTests
         result.Uploads.Should().HaveCount(1);
         result.TotalCount.Should().Be(1);
     }
+
+    // === SubmitMistakeUpload 补充测试 ===
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WhenStudentIdEmpty_ShouldThrow()
+    {
+        var act = () => _service.SubmitMistakeUploadAsync(
+            "", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*缺少学生ID*");
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WhenSubjectOutOfRange_ShouldThrow()
+    {
+        var act = () => _service.SubmitMistakeUploadAsync(
+            "student-1", 0, 3, new List<string> { "img.jpg" }, null, "upload-1");
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*学科值无效*");
+
+        var act2 = () => _service.SubmitMistakeUploadAsync(
+            "student-1", 10, 3, new List<string> { "img.jpg" }, null, "upload-1");
+
+        await act2.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*学科值无效*");
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WhenGradeOutOfRange_ShouldThrow()
+    {
+        var act = () => _service.SubmitMistakeUploadAsync(
+            "student-1", 1, 0, new List<string> { "img.jpg" }, null, "upload-1");
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*年级值无效*");
+
+        var act2 = () => _service.SubmitMistakeUploadAsync(
+            "student-1", 1, 13, new List<string> { "img.jpg" }, null, "upload-1");
+
+        await act2.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*年级值无效*");
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WhenSourceUploadIdEmpty_ShouldThrow()
+    {
+        var act = () => _service.SubmitMistakeUploadAsync(
+            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "");
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*缺少上传记录ID*");
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WhenImagePathsEmpty_ShouldThrow()
+    {
+        var act = () => _service.SubmitMistakeUploadAsync(
+            "student-1", 1, 3, new List<string>(), null, "upload-1");
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*至少需要提供一张图片*");
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WhenMultipleValidationErrors_ShouldMergeMessages()
+    {
+        var act = () => _service.SubmitMistakeUploadAsync(
+            "", 0, 0, new List<string>(), null, "");
+
+        var ex = await act.Should().ThrowAsync<MistakeValidationException>();
+        ex.Which.Message.Should().Contain("缺少学生ID");
+        ex.Which.Message.Should().Contain("学科值无效");
+        ex.Which.Message.Should().Contain("年级值无效");
+        ex.Which.Message.Should().Contain("缺少上传记录ID");
+        ex.Which.Message.Should().Contain("至少需要提供一张图片");
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_ShouldRecordProcessLogCreated()
+    {
+        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel>());
+
+        await _service.SubmitMistakeUploadAsync(
+            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
+
+        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
+            log.Action == (int)ProcessAction.Created &&
+            log.Details == "Mistake item created from upload")), Times.Once);
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WithComments_ShouldPassThrough()
+    {
+        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel>());
+
+        var items = await _service.SubmitMistakeUploadAsync(
+            "student-1", 1, 3, new List<string> { "img.jpg" }, "some comment", "upload-1");
+
+        items.Should().HaveCount(1);
+        items[0].SourceUploadId.Should().Be("upload-1");
+    }
+
+    // === GetMistakeItem 补充测试 ===
+
+    [Fact]
+    public async Task GetMistakeItemAsync_WhenExists_ShouldReturnItem()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel { Id = itemId, StudentId = "student-1" };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+
+        var result = await _service.GetMistakeItemAsync(itemId);
+
+        result.Should().NotBeNull();
+        result!.Id.Should().Be(itemId);
+    }
+
+    [Fact]
+    public async Task GetMistakeItemAsync_WhenNotExists_ShouldReturnNull()
+    {
+        var itemId = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+
+        var result = await _service.GetMistakeItemAsync(itemId);
+
+        result.Should().BeNull();
+    }
+
+    // === GetMistakeItemsByUpload 补充测试 ===
+
+    [Fact]
+    public async Task GetMistakeItemsByUploadAsync_ShouldReturnItems()
+    {
+        var items = new List<MistakeItemModel>
+        {
+            new() { Id = Guid.NewGuid(), SourceUploadId = "upload-1" },
+            new() { Id = Guid.NewGuid(), SourceUploadId = "upload-1" }
+        };
+        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(items);
+
+        var result = await _service.GetMistakeItemsByUploadAsync("upload-1");
+
+        result.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task GetMistakeItemsByUploadAsync_WhenNoItems_ShouldReturnEmptyList()
+    {
+        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel>());
+
+        var result = await _service.GetMistakeItemsByUploadAsync("upload-1");
+
+        result.Should().BeEmpty();
+    }
+
+    // === GetMistakeItemList 补充测试 ===
+
+    [Fact]
+    public async Task GetMistakeItemListAsync_ShouldClampPageAndSize()
+    {
+        var items = new List<MistakeItemModel>();
+        var totalCount = 0;
+        _mockItemRepo.Setup(x => x.GetListAsync("", 0, 0, 0, 1, 10))
+            .ReturnsAsync((items, totalCount));
+
+        await _service.GetMistakeItemListAsync("", 0, 0, 0, -1, -1);
+
+        _mockItemRepo.Verify(x => x.GetListAsync("", 0, 0, 0, 1, 10), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetMistakeItemListAsync_ShouldClampSizeTo100()
+    {
+        _mockItemRepo.Setup(x => x.GetListAsync("", 0, 0, 0, 1, 100))
+            .ReturnsAsync((new List<MistakeItemModel>(), 0));
+
+        await _service.GetMistakeItemListAsync("", 0, 0, 0, 1, 200);
+
+        _mockItemRepo.Verify(x => x.GetListAsync("", 0, 0, 0, 1, 100), Times.Once);
+    }
+
+    // === AnalyzeMistakeType 补充测试 ===
+
+    [Fact]
+    public async Task AnalyzeMistakeTypeAsync_WhenItemExists_ShouldReturnPlaceholderAndLog()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel { Id = itemId };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+
+        var result = await _service.AnalyzeMistakeTypeAsync(itemId);
+
+        result.Type.Should().Be(5);
+        result.TypeName.Should().Be("其他错误");
+        result.AnalysisReason.Should().Be("根据答案对比无法明确分类");
+        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
+            log.Action == (int)ProcessAction.Analyzed)), Times.Once);
+    }
+
+    [Fact]
+    public async Task AnalyzeMistakeTypeAsync_WhenItemNotExists_ShouldReturnPlaceholderWithoutLog()
+    {
+        var itemId = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+
+        var result = await _service.AnalyzeMistakeTypeAsync(itemId);
+
+        result.Type.Should().Be(5);
+        _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>()), Times.Never);
+    }
+
+    // === LogMistakeProcess 补充测试 ===
+
+    [Fact]
+    public async Task LogMistakeProcessAsync_WhenItemExists_ShouldReturnTrue()
+    {
+        var itemId = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(new MistakeItemModel { Id = itemId });
+
+        var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Mastered, "已掌握");
+
+        result.Should().BeTrue();
+        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
+            log.MistakeItemId == itemId &&
+            log.Action == (int)ProcessAction.Mastered &&
+            log.Details == "已掌握")), Times.Once);
+    }
+
+    [Fact]
+    public async Task LogMistakeProcessAsync_WhenItemNotExists_ShouldReturnFalse()
+    {
+        var itemId = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+
+        var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Mastered, "test");
+
+        result.Should().BeFalse();
+        _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>()), Times.Never);
+    }
+
+    // === GetMistakeProcessHistory 补充测试 ===
+
+    [Fact]
+    public async Task GetMistakeProcessHistoryAsync_ShouldReturnLogs()
+    {
+        var itemId = Guid.NewGuid();
+        var logs = new List<ProcessLogModel>
+        {
+            new() { Id = Guid.NewGuid(), MistakeItemId = itemId, Action = (int)ProcessAction.Created },
+            new() { Id = Guid.NewGuid(), MistakeItemId = itemId, Action = (int)ProcessAction.ReviewConfirmed }
+        };
+        _mockLogRepo.Setup(x => x.GetByMistakeItemIdAsync(itemId)).ReturnsAsync(logs);
+
+        var result = await _service.GetMistakeProcessHistoryAsync(itemId);
+
+        result.Should().HaveCount(2);
+    }
+
+    // === GetMistakePractices 补充测试 ===
+
+    [Fact]
+    public async Task GetPracticesAsync_ShouldReturnPractices()
+    {
+        var itemId = Guid.NewGuid();
+        var practices = new List<MistakePracticeModel>
+        {
+            new() { Id = Guid.NewGuid(), MistakeItemId = itemId }
+        };
+        _mockPracticeRepo.Setup(x => x.GetByMistakeItemIdAsync(itemId)).ReturnsAsync(practices);
+
+        var result = await _service.GetPracticesAsync(itemId);
+
+        result.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task GetPracticesAsync_WhenNoPractices_ShouldReturnEmptyList()
+    {
+        var itemId = Guid.NewGuid();
+        _mockPracticeRepo.Setup(x => x.GetByMistakeItemIdAsync(itemId)).ReturnsAsync(new List<MistakePracticeModel>());
+
+        var result = await _service.GetPracticesAsync(itemId);
+
+        result.Should().BeEmpty();
+    }
+
+    // === DeleteMistakeItem 补充测试 ===
+
+    [Fact]
+    public async Task DeleteMistakeItemAsync_WhenNotExists_ShouldReturnFalse()
+    {
+        var itemId = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+
+        var result = await _service.DeleteMistakeItemAsync(itemId);
+
+        result.Should().BeFalse();
+    }
+
+    // === ReviewMistakeItem 补充测试 ===
+
+    [Fact]
+    public async Task ReviewMistakeItemAsync_WhenInvalidStatus_ShouldThrow()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel { Id = itemId, ReviewStatus = (int)ReviewStatus.PendingReview };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+
+        var act = () => _service.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.PendingReview, "teacher-1", null);
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*审核结果只能是确认或驳回*");
+    }
+
+    [Fact]
+    public async Task ReviewMistakeItemAsync_WhenNotFound_ShouldReturnNull()
+    {
+        var itemId = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+
+        var result = await _service.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.Confirmed, "teacher-1", null);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ReviewMistakeItemAsync_ShouldUpdateGradeAndSubjectWhenProvided()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel { Id = itemId, ReviewStatus = (int)ReviewStatus.PendingReview, Grade = 3, Subject = 1 };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+
+        var result = await _service.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.Confirmed, "teacher-1", null, grade: 6, subject: 5);
+
+        result!.Grade.Should().Be(6);
+        result.Subject.Should().Be(5);
+    }
+
+    // === AddMistakeItem 补充测试 ===
+
+    [Fact]
+    public async Task AddMistakeItemAsync_WhenStudentIdEmpty_ShouldThrow()
+    {
+        var item = new MistakeItemModel
+        {
+            StudentId = "",
+            Subject = 1,
+            Grade = 3,
+            SourceUploadId = "upload-1",
+            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img.jpg" } }
+        };
+
+        var act = () => _service.AddMistakeItemAsync(item);
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*缺少学生ID*");
+    }
+
+    [Fact]
+    public async Task AddMistakeItemAsync_WhenSourceRegionsEmpty_ShouldThrow()
+    {
+        var item = new MistakeItemModel
+        {
+            StudentId = "student-1",
+            Subject = 1,
+            Grade = 3,
+            SourceUploadId = "upload-1",
+            SourceRegions = new List<SourceRegionModel>()
+        };
+
+        var act = () => _service.AddMistakeItemAsync(item);
+
+        await act.Should().ThrowAsync<MistakeValidationException>()
+            .WithMessage("*至少需要一个图片区域*");
+    }
+
+    // === GetAllReferencedImagePaths 补充测试 ===
+
+    [Fact]
+    public async Task GetAllReferencedImagePathsAsync_WhenNoData_ShouldReturnEmptySet()
+    {
+        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakeItemModel>());
+        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakePracticeModel>());
+
+        var result = await _service.GetAllReferencedImagePathsAsync();
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetAllReferencedImagePathsAsync_ShouldDeduplicatePaths()
+    {
+        var items = new List<MistakeItemModel>
+        {
+            new()
+            {
+                SourceRegions = new List<SourceRegionModel>
+                {
+                    new() { SourceImagePath = "path1.jpg" },
+                    new() { SourceImagePath = "path1.jpg" }
+                }
+            }
+        };
+        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(items);
+        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakePracticeModel>());
+
+        var result = await _service.GetAllReferencedImagePathsAsync();
+
+        result.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task GetAllReferencedImagePathsAsync_ShouldSkipEmptyPaths()
+    {
+        var items = new List<MistakeItemModel>
+        {
+            new()
+            {
+                SourceRegions = new List<SourceRegionModel>
+                {
+                    new() { SourceImagePath = "" },
+                    new() { SourceImagePath = "   " },
+                    new() { SourceImagePath = "valid.jpg" }
+                }
+            }
+        };
+        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(items);
+        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakePracticeModel>());
+
+        var result = await _service.GetAllReferencedImagePathsAsync();
+
+        result.Should().HaveCount(1);
+        result.Should().Contain("valid.jpg");
+    }
 }
