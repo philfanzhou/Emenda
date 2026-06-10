@@ -181,15 +181,22 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         continue;
 
                     var oldPath = region.SourceImagePath;
-                    var newPath = "mistakes" + oldPath.Substring("uploads".Length);
+                    try
+                    {
+                        var newPath = "mistakes" + oldPath.Substring("uploads".Length);
 
-                    await _ossService.CopyObjectAsync(oldPath, newPath);
-                    await _ossService.DeleteAsync(oldPath);
+                        await _ossService.CopyObjectAsync(oldPath, newPath);
+                        await _ossService.DeleteAsync(oldPath);
 
-                    region.SourceImagePath = newPath;
-                    updated = true;
+                        region.SourceImagePath = newPath;
+                        updated = true;
 
-                    _logger.LogDebug("ReviewMistakeItem: Migrated image from {OldPath} to {NewPath}", oldPath, newPath);
+                        _logger.LogDebug("ReviewMistakeItem: Migrated image from {OldPath} to {NewPath}", oldPath, newPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "ReviewMistakeItem: Error migrating image {Path}", oldPath);
+                    }
                 }
 
                 if (updated)
