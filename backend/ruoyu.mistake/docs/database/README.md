@@ -19,6 +19,29 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 
 详见 [relations.md](./relations.md)
 
+## 枚举值
+
+### ReviewStatus（mistake_item.review_status）
+
+| 值 | 名称 | 说明 |
+|----|------|------|
+| 0 | UNSPECIFIED | 未指定 |
+| 1 | PendingReview | 待审核 |
+| 2 | Confirmed | 已确认 |
+| 3 | Rejected | 已驳回 |
+
+### ProcessAction（process_log.action）
+
+| 值 | 名称 | 说明 |
+|----|------|------|
+| 0 | UNSPECIFIED | 未指定 |
+| 1 | Created | 创建错题 |
+| 2 | Analyzed | 分析 |
+| 3 | ReviewConfirmed | 审核确认 |
+| 4 | ReviewRejected | 审核驳回 |
+| 5 | Practiced | 练习 |
+| 6 | Mastered | 已掌握 |
+
 ## 迁移历史
 
 - **20260514051544_InitialCreate**: 初始创建三张表及所有索引
@@ -35,5 +58,6 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 旧表 `mistake` 已通过 `DatabaseInitializer.MigrateOldSchemaAsync` 迁移到 `mistake_item`，主要变更：
 - 表名 `mistake` → `mistake_item`
 - 列 `status` → `review_status`
+- 列 `mistake_id` → `mistake_item_id`（process_log / mistake_practice）
 - 新增 `source_upload_id`, `source_regions`, `reviewer_id`, `reviewed_at`, `review_comment`, `type`, `question_id`
 - 移除 `date`, `image_paths`, `fingerprint`

@@ -41,11 +41,10 @@ Integration/
 
 ### Student 集成
 
-mistake 与 `ruoyu.student` 模块之间的双向 gRPC 调用。
+mistake 与 `ruoyu.student` 模块之间的单向 gRPC 调用和数据引用。
 
-- **mistake → student**：在 `CompleteUploadReview` 中调用 `RemoveImagesFromRecord`，清理已审核上传的图片记录。
 - **student → mistake**：通过 `UploadAnalysisWorker` 和 `GrpcUploadDispatcher` 调用 `SubmitMistakeUpload`，提交错题上传。
-- **关键配置**：`StudentGrpcService:Address`
+- **mistake → student**：mistake 不调用 student 的任何 gRPC 接口，仅通过 `student_id` 字段只读引用学生数据，不校验学生是否存在。
 
 → 详见 [Student/](Student/)
 

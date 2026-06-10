@@ -4,9 +4,10 @@
 
 ```
 src/
-├── Contract/Protos/mistake.proto       # gRPC 定义: GetMistakeItemList RPC
-├── Service/MistakeServiceImpl.cs       # gRPC 实现: GetMistakeItemList handler
-├── Domain/Services/MistakeDomainService.cs  # 领域服务: GetMistakeItemListAsync
+├── Contract/Protos/mistake.proto              # gRPC 定义: GetMistakeItemList RPC
+├── Contract/Protos/mistake.common.proto       # 消息定义: PageMeta, ReviewStatus
+├── Service/MistakeServiceImpl.cs              # gRPC 实现: GetMistakeItemList handler
+├── Domain/Services/MistakeDomainService.cs    # 领域服务: GetMistakeItemListAsync
 ├── Domain/Repositories/IMistakeItemRepository.cs  # 仓储接口: GetListAsync
 └── Database/Repositories/MistakeItemRepository.cs  # 仓储实现: GetListAsync
 ```
@@ -68,9 +69,9 @@ MistakeItemRepository.GetListAsync:
   2. AND subject = @subject (if >0)
   3. AND grade = @grade (if >0)
   4. AND review_status = @reviewStatus (if >0)
-  5. ORDER BY created_at DESC
-  6. SKIP (page-1)*size, TAKE size
-  7. COUNT total
+  5. COUNT total
+  6. ORDER BY created_at DESC
+  7. SKIP (page-1)*size, TAKE size
 ```
 
 ## 依赖的数据库
@@ -86,3 +87,4 @@ MistakeItemRepository.GetListAsync:
 - **分页参数修正**：在 Domain Service 层统一处理，保证 Repository 不需要关心边界值
 - **复合索引**：`(student_id, subject, grade, review_status)` 覆盖常见查询组合
 - **SQLite 兼容**：排序在服务端完成（`OrderByDescending`），而非依赖 SQL 的 ORDER BY，因为 SQLite 对 DateTimeOffset 排序支持不一致
+- **totalPages 计算**：在 gRPC 层使用整数除法 `(totalCount + size - 1) / size`，向上取整

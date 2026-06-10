@@ -50,28 +50,6 @@
 
 **根治建议**：确保 portal 连接的是 mistake 的 gRPC 端口（HTTP/2），而非 HTTP 端口。
 
-### 1.3 mistake → student：RemoveImagesFromRecord 调用失败
-
-**典型症状**：`CompleteUploadReview` 返回 `Success=true`，但 student 侧上传记录中的图片未被清理。
-
-**常见日志特征**：
-- mistake 侧：`"Error removing images from upload record {RecordId}"`（`MistakeServiceImpl.cs` L355）
-
-**可能根因**：
-- student 服务不可用（进程未启动、网络不通）
-- `StudentGrpcService:Address` 配置错误（默认 `http://localhost:5005`）
-- student 侧 recordId 不存在（已被删除或 ID 不匹配）
-
-**排查步骤**：
-1. 确认 student 服务可达：`curl http://<student-host>:5007/`
-2. 检查 mistake 的 `StudentGrpcService:Address` 配置
-3. 查看 student 侧日志是否有 `RemoveImagesFromRecord` 请求记录
-4. 确认 `source_upload_id` 在 student 侧对应记录是否存在
-
-**临时绕过**：该调用失败不回滚、不阻塞，可后续手动调用 student 的 `RemoveImagesFromRecord` 补偿
-
-**根治建议**：确保 student 服务稳定可用；考虑增加重试机制或补偿任务。
-
 ---
 
 ## 2. 参数校验失败
@@ -199,27 +177,7 @@
 
 **根治建议**：在 `SubmitMistakeUploadAsync` 中增加幂等校验，或在数据库层加唯一约束。
 
-### 3.2 source_upload_id 关联的 image_upload_record 已被删除
-
-**典型症状**：`CompleteUploadReview` 返回 `Success=true`，但 `RemoveImagesFromRecord` 回调失败（student 侧找不到对应 record）。
-
-**常见日志特征**：
-- `"Error removing images from upload record {RecordId}"`（`MistakeServiceImpl.cs` L355）
-- student 侧：`"Record not found"`
-
-**可能根因**：
-- student 侧的 `image_upload_record` 已被其他流程删除（如用户主动删除、`RemoveImagesFromRecord` 清空后自动删除记录）
-- `source_upload_id` 与 student 侧 `recordId` 格式不一致
-
-**排查步骤**：
-1. 在 student 数据库中查询 `image_upload_record` 表确认记录是否存在
-2. 对比 mistake 侧 `source_upload_id` 与 student 侧 `record.id` 的值
-
-**临时绕过**：该失败不阻塞，可忽略
-
-**根治建议**：在 `CompleteUploadReview` 前增加对 student 侧记录存在性的预检查，或接受最终一致性。
-
-### 3.3 CompleteUploadReview 依赖 source_upload_id 查找关联 item
+### 3.2 CompleteUploadReview 依赖 source_upload_id 查找关联 item
 
 **典型症状**：`CompleteUploadReview` 返回 `"未找到该上传记录的错题"`，但错题实际存在。
 
@@ -267,37 +225,9 @@
 
 ---
 
-## 5. student 回调清理失败
+## 5. 数据库连接失败/初始化失败
 
-**典型症状**：`CompleteUploadReview` 返回 `Success=true`，但 student 侧 `image_upload_record` 中的图片未被移除，占用存储空间。
-
-**常见日志特征**：
-- `"Error removing images from upload record {RecordId}"`（`MistakeServiceImpl.cs` L355）
-
-**可能根因**：
-- student 服务不可用（进程未启动、网络不通）
-- `StudentGrpcService:Address` 配置错误（默认 `http://localhost:5005`）
-- student 侧 `recordId` 不存在（记录已被删除）
-- gRPC 调用超时
-
-**排查步骤**：
-1. 确认 student 服务可达：检查 `StudentGrpcService:Address` 配置
-2. 查看 student 侧日志是否有 `RemoveImagesFromRecord` 请求记录
-3. 在 student 数据库中查询对应 `image_upload_record` 是否存在
-4. 检查 mistake 侧 `result.StudentId` 是否为空（L340 条件：`!string.IsNullOrEmpty(result.StudentId)`）
-
-**临时绕过**：该调用失败仅 log error 不回滚（L353-356），可后续手动调用 student 的 `RemoveImagesFromRecord` 补偿
-
-**根治建议**：
-1. 增加重试机制（如 Polly 策略）
-2. 增加补偿任务：定期扫描 mistake_item 中已 CompleteUploadReview 但 student 侧图片未清理的记录
-3. 监控该日志出现频率，作为告警指标
-
----
-
-## 6. 数据库连接失败/初始化失败
-
-### 6.1 PostgreSQL 连接失败
+### 5.1 PostgreSQL 连接失败
 
 **典型症状**：服务启动时抛出 `NpgsqlException`，或运行时数据库操作超时。
 
@@ -322,7 +252,7 @@
 
 **根治建议**：确保 PostgreSQL 服务稳定运行，配置正确的连接字符串。
 
-### 6.2 SQLite 目录不存在
+### 5.2 SQLite 目录不存在
 
 **典型症状**：未配置 PostgreSQL 连接字符串时，服务启动报 SQLite 文件路径错误。
 
@@ -339,7 +269,7 @@
 
 **根治建议**：在 `Program.cs` 中启动前自动创建 SQLite 目录。
 
-### 6.3 旧表迁移失败
+### 5.3 旧表迁移失败
 
 **典型症状**：服务启动时 `DatabaseInitializer.InitializeAsync` 抛出 SQL 执行异常。
 
@@ -362,7 +292,7 @@
 
 **根治建议**：确保启动时无其他连接占用旧表；生产环境在部署前备份数据库。
 
-### 6.4 迁移 stamp 失败
+### 5.4 迁移 stamp 失败
 
 **典型症状**：服务每次启动都尝试执行 EF Core 迁移，或报 `__EFMigrationsHistory` 操作异常。
 
@@ -384,9 +314,9 @@
 
 ---
 
-## 7. OSS 配置错误
+## 6. OSS 配置错误
 
-### 7.1 S3OssService 初始化失败
+### 6.1 S3OssService 初始化失败
 
 **典型症状**：服务启动正常，但任何 OSS 操作（如 `CompleteUploadReview` 中的图片迁移）抛出异常。
 
@@ -409,7 +339,7 @@
 
 **根治建议**：确保 S3 兼容服务正常运行，配置正确的凭证。
 
-### 7.2 USE_LOCAL_OSS=1 但路径不可写
+### 6.2 USE_LOCAL_OSS=1 但路径不可写
 
 **典型症状**：设置 `USE_LOCAL_OSS=1` 后，OSS 操作报权限错误。
 
@@ -431,9 +361,9 @@
 
 ---
 
-## 8. 配置缺失或端口错误
+## 7. 配置缺失或端口错误
 
-### 8.1 Endpoints 配置缺失
+### 7.1 Endpoints 配置缺失
 
 **典型症状**：服务启动后无法从预期端口访问。
 
@@ -458,26 +388,7 @@
 
 **根治建议**：在 `appsettings.json` 中显式配置端口，避免依赖默认值。
 
-### 8.2 StudentGrpcService:Address 缺失
-
-**典型症状**：`CompleteUploadReview` 调用 student 的 `RemoveImagesFromRecord` 失败，连接 `localhost:5005` 被拒绝。
-
-**常见日志特征**：
-- `"Error removing images from upload record {RecordId}"`
-- 底层异常：`Grpc.Core.RpcException: Status(StatusCode="Unavailable", Detail="Connection refused")`
-
-**可能根因**：`StudentGrpcService:Address` 未配置，使用了默认值 `http://localhost:5005`，但 student 服务不在本机或端口不同
-
-**排查步骤**：
-1. 检查 `appsettings.json` 中 `StudentGrpcService:Address` 配置
-2. 确认 student 服务实际 gRPC 端口
-3. 测试连通性：`curl http://<student-address>/`
-
-**临时绕过**：在配置文件中添加正确的 `StudentGrpcService:Address`
-
-**根治建议**：部署时确保所有服务地址配置正确，使用环境变量或配置中心管理。
-
-### 8.3 ConnectionStrings:Default 缺失
+### 7.2 ConnectionStrings:Default 缺失
 
 **典型症状**：服务使用 SQLite 而非 PostgreSQL，数据未持久化或与预期不一致。
 
@@ -497,9 +408,9 @@
 
 ---
 
-## 9. 历史脏数据/路径格式异常
+## 8. 历史脏数据/路径格式异常
 
-### 9.1 source_regions 中路径不以 uploads/ 开头
+### 8.1 source_regions 中路径不以 uploads/ 开头
 
 **典型症状**：`CompleteUploadReview` 返回 `Success=true`，但部分图片的 `source_regions.SourceImagePath` 未被更新为 `mistakes/` 前缀。
 
@@ -521,7 +432,7 @@
 
 **根治建议**：在 `SubmitMistakeUpload` 和 `AddMistakeItem` 入口校验 `sourceImagePath` 格式，确保以 `uploads/` 开头。
 
-### 9.2 旧表 mistake 的数据迁移
+### 8.2 旧表 mistake 的数据迁移
 
 **典型症状**：从旧表 `mistake` 迁移后，部分字段值不符合预期。
 
@@ -553,7 +464,6 @@
 |--------|------|--------|------|
 | `Endpoints:Grpc` | appsettings.json | 5006 | gRPC (HTTP/2) 端口 |
 | `Endpoints:Http` | appsettings.json | 5007 | HTTP/1.1 端口 |
-| `StudentGrpcService:Address` | appsettings.json | http://localhost:5005 | student 服务 gRPC 地址 |
 | `ConnectionStrings:Default` | appsettings.json | SQLite | PostgreSQL 连接字符串 |
 | `Oss:Endpoint` | appsettings.json | localhost:8333 | S3 兼容 OSS 端点 |
 | `Oss:AccessKey` | appsettings.json | mock_access_key | OSS AccessKey |
@@ -569,7 +479,6 @@
 | `"Mistake gRPC host is running."` | Program.cs L86 | 服务正常启动 |
 | `"Migrated image from {OldPath} to {NewPath}"` | MistakeServiceImpl.cs L322 | OSS 图片迁移成功 |
 | `"Error migrating image {Path}"` | MistakeServiceImpl.cs L328 | OSS 图片迁移失败 |
-| `"Error removing images from upload record {RecordId}"` | MistakeServiceImpl.cs L355 | student 回调清理失败 |
 | `"检测到旧表 mistake，正在迁移到新表结构..."` | DatabaseInitializer.cs L98 | 旧表迁移开始 |
 | `"旧表迁移完成"` | DatabaseInitializer.cs L184 | 旧表迁移完成 |
 | `"已将 InitialCreate 迁移标记为已应用"` | DatabaseInitializer.cs L70 | 迁移 stamp 写入成功 |

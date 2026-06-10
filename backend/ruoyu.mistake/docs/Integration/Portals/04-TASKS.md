@@ -36,7 +36,6 @@
 ### gRPC 客户端注册
 - [ ] 配置 `MistakeService:GrpcUrl` = `http://localhost:5006`
 - [ ] 注册 `MistakeGrpcService.MistakeGrpcServiceClient` 到 DI
-- [ ] 注册 `StudentLearningGrpcService.StudentLearningGrpcServiceClient` 到 DI
 - [ ] 注册 `TeacherDbService` 到 DI
 
 ### MistakeController

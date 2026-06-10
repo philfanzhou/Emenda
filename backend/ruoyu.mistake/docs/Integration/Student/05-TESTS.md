@@ -51,65 +51,31 @@
 - **步骤**：调用 `GrpcMistakeSubmitter.SubmitMistakeUploadAsync`，`comments` 传 `null`
 - **预期**：正常处理，`comments` 被转为空字符串
 
-## 3. CompleteUploadReview 正常回调 student
+## 3. student_id 引用验证
 
-### TC-08: 审核完成后清理图片
+### TC-08: student_id 仅存储不校验
 
-- **前置条件**：student 和 mistake 服务均正常运行；存在已审核的上传记录
+- **前置条件**：mistake 服务正常运行
 - **步骤**：
-  1. 创建错题上传记录
-  2. 审核部分错题条目为 Confirmed，部分为 Rejected
-  3. 调用 `CompleteUploadReview`
+  1. 调用 `SubmitMistakeUpload`，传入一个不存在的 `studentId`（如 `nonexistent-student-id`）
 - **预期**：
-  - `RemoveImagesFromRecordAsync` 被调用
-  - 请求中包含 Confirmed 和 Rejected 条目关联的图片路径
-  - student 侧上传记录中对应图片被移除
-  - `CompleteUploadReview` 返回 `success=true`
+  - 创建成功，`success=true`
+  - mistake_item 表中 `student_id` 字段存储了传入的值
+  - mistake 不校验该 ID 是否对应有效学生
 
-### TC-09: 无需清理图片时不回调
+### TC-09: student_id 用于查询和分组
 
-- **前置条件**：错题条目无关联图片路径
+- **前置条件**：mistake 服务中存在多条错题记录
 - **步骤**：
-  1. 创建无图片的错题上传记录
-  2. 调用 `CompleteUploadReview`
+  1. 调用 `GetMistakeItemList`，按 `student_id` 筛选
+  2. 调用 `GetPendingReviewUploads`，确认结果按 `student_id` 分组
 - **预期**：
-  - `RemoveImagesFromRecordAsync` 未被调用
-  - `CompleteUploadReview` 返回 `success=true`
+  - 查询结果正确按 `student_id` 过滤
+  - 分组结果正确包含 `student_id` 字段
 
-### TC-10: studentId 为空时不回调
+## 4. source_upload_id 重复提交
 
-- **前置条件**：上传记录的 studentId 为空
-- **步骤**：调用 `CompleteUploadReview`
-- **预期**：
-  - `RemoveImagesFromRecordAsync` 未被调用（条件 `!string.IsNullOrEmpty(result.StudentId)` 不满足）
-  - `CompleteUploadReview` 返回 `success=true`
-
-## 4. student 不可用时 CompleteUploadReview 的行为
-
-### TC-11: student 服务完全不可用
-
-- **前置条件**：student 服务已停止；mistake 服务正常运行
-- **步骤**：
-  1. 创建错题上传记录并审核
-  2. 调用 `CompleteUploadReview`
-- **预期**：
-  - `RemoveImagesFromRecordAsync` 调用抛出异常
-  - 异常被 catch，仅 LogError
-  - `CompleteUploadReview` 仍返回 `success=true`
-  - mistake 侧审核状态已正确更新
-
-### TC-12: student 服务超时
-
-- **前置条件**：student 服务响应极慢
-- **步骤**：调用 `CompleteUploadReview`
-- **预期**：
-  - `RemoveImagesFromRecordAsync` 超时
-  - 异常被 catch，仅 LogError
-  - `CompleteUploadReview` 仍返回 `success=true`
-
-## 5. source_upload_id 重复提交
-
-### TC-13: 相同 sourceUploadId 重复调用
+### TC-10: 相同 sourceUploadId 重复调用
 
 - **步骤**：
   1. 使用 `sourceUploadId = "abc-123"` 调用 `SubmitMistakeUpload`，成功
@@ -119,7 +85,7 @@
   - 产生两批不同的 `created_item_ids`
   - 证明接口非幂等
 
-### TC-14: 不同 group 使用相同 sourceUploadId
+### TC-11: 不同 group 使用相同 sourceUploadId
 
 - **步骤**：VL 分析返回多个 group，所有 group 使用同一个 `record.Id.ToString()` 作为 `sourceUploadId`
 - **预期**：
@@ -127,9 +93,9 @@
   - 所有条目的 `source_upload_id` 相同
   - 不影响创建结果
 
-## 6. 超时场景
+## 5. 超时场景
 
-### TC-15: GrpcMistakeSubmitter 30 秒超时
+### TC-12: GrpcMistakeSubmitter 30 秒超时
 
 - **前置条件**：mistake 服务响应延迟超过 30 秒
 - **步骤**：
@@ -139,7 +105,7 @@
   - `UploadAnalysisWorker` 捕获异常并 LogError
   - 其他 group 继续处理
 
-### TC-16: 健康检查超时
+### TC-13: 健康检查超时
 
 - **前置条件**：mistake 服务 HTTP 端点响应超过 3 秒
 - **步骤**：调用 `IsMistakeServiceAvailableAsync()`
@@ -147,9 +113,9 @@
   - 3 秒后返回 `false`
   - LogDebug 记录健康检查失败
 
-## 7. 单 group 失败隔离
+## 6. 单 group 失败隔离
 
-### TC-17: 多 group 中部分提交失败
+### TC-14: 多 group 中部分提交失败
 
 - **前置条件**：VL 分析返回 3 个 group
 - **步骤**：

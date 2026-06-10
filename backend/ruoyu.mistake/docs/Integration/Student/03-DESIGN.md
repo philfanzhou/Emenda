@@ -1,6 +1,8 @@
 # 设计说明
 
-## 1. 双向调用架构图
+## 1. 单向调用架构图
+
+mistake 与 student 之间是单向 gRPC 调用：仅 student → mistake 方向存在 gRPC 通信。mistake 不调用 student 的任何 gRPC 接口，仅通过 `student_id` 字段只读引用学生数据。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -17,11 +19,6 @@
 │  │  (IUploadDispatcher) │     │  SubmitMistakeUpload       │──┼──┐
 │  │  + Health Check      │<────│                            │   │  │
 │  └──────────────────────┘     └────────────────────────────┘   │  │
-│                                                                 │  │
-│  ┌──────────────────────────────────────────────────────────┐   │  │
-│  │ StudentLearningGrpcService (Server)                      │   │  │
-│  │  RemoveImagesFromRecord <────────────────────────────────┼──┼──┤
-│  └──────────────────────────────────────────────────────────┘   │  │
 └─────────────────────────────────────────────────────────────────┘  │
                                                                      │
                               gRPC                                    │
@@ -34,13 +31,12 @@
 │  │  SubmitMistakeUpload <───────────────────────────────────┼──┼──┘
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                 │
-│  ┌──────────────────────┐     ┌────────────────────────────┐   │
-│  │ MistakeServiceImpl   │────>│ StudentLearningGrpcService │   │
-│  │  CompleteUploadReview│     │  Client                    │   │
-│  │                      │     │  RemoveImagesFromRecord    │───┼──┘
-│  └──────────────────────┘     └────────────────────────────┘   │
-│                                                                 │
-│  配置: StudentGrpcService:Address = http://localhost:5005       │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ 数据引用层                                                │   │
+│  │  mistake_item.student_id  ──只读引用──>  ruoyu.student   │   │
+│  │  mistake_practice.student_id ──只读引用──>  ruoyu.student│   │
+│  │  （无 gRPC 调用，无外键约束，不校验学生是否存在）         │   │
+│  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -134,50 +130,27 @@ DispatchToMistakeAsync(studentId, subject, grade, imagePaths, comments, sourceUp
       └── LogError + return false
 ```
 
-## 4. CompleteUploadReview 中回调 student 的流程
+## 4. student_id 引用设计
 
-### 4.1 触发条件
+### 4.1 引用方式
 
-`CompleteUploadReview` 执行过程中，当以下条件同时满足时触发回调：
+mistake 服务不注册任何 student gRPC 客户端，不调用 student 的任何 gRPC 方法。`student_id` 是只读引用字段，其数据来源于 student 服务调用 `SubmitMistakeUpload` 时传入的参数。
 
-1. `imagePathsToRemoveFromRecord.Count > 0`（存在需要清理的图片）
-2. `!string.IsNullOrEmpty(result.StudentId)`（studentId 非空）
+### 4.2 引用字段
 
-### 4.2 流程
+| 表 | 字段 | 语义 |
+|----|------|------|
+| `mistake_item` | `student_id` | 由 SubmitMistakeUpload 请求传入，mistake 仅存储 |
+| `mistake_practice` | `student_id` | 由 AddMistakePractice 请求传入，mistake 仅存储 |
 
-```
-CompleteUploadReview(request)
-  │
-  ├── ... 审核完成业务逻辑 ...
-  │
-  ├── 收集 imagePathsToRemoveFromRecord（Confirmed + Rejected 的图片）
-  │
-  ├── 条件判断: imagePathsToRemoveFromRecord.Count > 0 && studentId 非空
-  │   │
-  │   ├── 构建 RemoveImagesFromRecordRequest
-  │   │     ├── RecordId = request.SourceUploadId
-  │   │     ├── StudentId = result.StudentId
-  │   │     └── ImagePaths.AddRange(imagePathsToRemoveFromRecord)
-  │   │
-  │   ├── 调用 _studentClient.RemoveImagesFromRecordAsync(removeImagesRequest)
-  │   │
-  │   └── catch (Exception ex)
-  │       └── LogError("Error removing images from upload record {RecordId}")
-  │
-  └── return CompleteUploadReviewResponse { Success = true, StudentId = ... }
-```
+### 4.3 设计决策
 
-### 4.3 客户端注册
-
-```csharp
-// Program.cs
-var studentGrpcAddress = builder.Configuration["StudentGrpcService:Address"] ?? "http://localhost:5005";
-
-builder.Services.AddGrpcClient<StudentLearningGrpcService.StudentLearningGrpcServiceClient>(options =>
-{
-    options.Address = new Uri(studentGrpcAddress);
-});
-```
+| 决策 | 理由 |
+|------|------|
+| 不校验学生是否存在 | mistake 服务不应依赖 student 服务的可用性；`student_id` 是引用语义，非关联语义 |
+| 无外键约束 | mistake 与 student 使用不同数据库，无法跨库外键 |
+| 不注册 gRPC 客户端 | mistake 不需要主动查询 student 数据，避免不必要的耦合 |
+| 不回调 student | mistake 的核心业务流程不应因 student 服务不可用而受影响 |
 
 ## 5. 失败处理策略
 
@@ -188,17 +161,3 @@ builder.Services.AddGrpcClient<StudentLearningGrpcService.StudentLearningGrpcSer
 | 单个 group 提交失败 | catch 异常，LogError，继续处理下一个 group | 单 group 失败不应阻塞其他 group |
 | 所有 group 提交失败 | 记录日志，记录仍标记为 Completed | 分析流程本身已完成，错题创建是附加操作 |
 | mistake 服务不可用 | GrpcUploadDispatcher 返回 false | 调用方可据此决定是否降级 |
-
-### 5.2 mistake → student（RemoveImagesFromRecord）
-
-| 场景 | 处理方式 | 理由 |
-|------|----------|------|
-| student 回调失败 | 仅 LogError，不回滚 | **审核完成是业务关键节点**，不应因 student 临时不可用而回滚 |
-| student 服务不可用 | 同上 | 图片清理可后续手动处理 |
-
-### 5.3 不回滚的设计理由
-
-1. **业务关键性**：审核完成（`CompleteUploadReview`）是错题审核流程的终态确认，涉及多个 mistake_item 的状态变更和 OSS 图片迁移，回滚代价极高
-2. **副作用不可逆**：审核完成过程中已执行 OSS 图片迁移（`uploads/` → `mistakes/`），这些操作无法简单回滚
-3. **降级可接受**：图片未从 student 记录中清理是可接受的——记录仍为 Completed 状态，不影响业务流程；可后续手动或通过补偿机制清理
-4. **服务独立性**：mistake 服务不应因 student 服务的可用性而影响自身核心业务流程

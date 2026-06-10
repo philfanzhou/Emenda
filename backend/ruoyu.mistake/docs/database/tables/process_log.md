@@ -4,11 +4,11 @@
 
 | 字段名 | 类型 | 约束 | 默认值 | 说明 |
 |--------|------|------|--------|------|
-| `id` | `UUID` | PK, NOT NULL | — | 主键 |
-| `mistake_item_id` | `UUID` | NOT NULL, FK, INDEX | — | 关联错题ID |
-| `action` | `INT` | NOT NULL | — | 操作类型（枚举 ProcessAction） |
+| `id` | `UUID` | PK, NOT NULL | — | 主键，客户端生成（ValueGeneratedNever） |
+| `mistake_item_id` | `UUID` | NOT NULL, FK | — | 关联错题ID，见外键关系 |
+| `action` | `INT` | NOT NULL | — | 操作类型，见 ProcessAction 枚举 |
 | `details` | `TEXT` | NULL | — | 操作详情 |
-| `created_at` | `TIMESTAMPTZ` | NOT NULL, INDEX | — | 创建时间 |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | `now()` | 创建时间 |
 
 ## 索引
 
@@ -20,20 +20,31 @@
 
 ## 外键关系
 
-| 外键名 | 字段 | 引用表 | 删除行为 |
-|--------|------|--------|----------|
+| 外键名 | 字段 | 引用表.字段 | 删除行为 |
+|--------|------|-------------|----------|
 | `FK_process_log_mistake_item_mistake_item_id` | `mistake_item_id` | `mistake_item(id)` | CASCADE |
 
-## ProcessAction 枚举值
+## ProcessAction 枚举
 
 | 值 | 名称 | 说明 |
 |----|------|------|
-| 0 | Created | 创建错题 |
-| 1 | ReviewConfirmed | 审核确认 |
-| 2 | ReviewRejected | 审核驳回 |
-| 3 | Practiced | 练习 |
-| 4 | Analyzed | 分析 |
+| 0 | UNSPECIFIED | 未指定 |
+| 1 | Created | 创建错题 |
+| 2 | Analyzed | 分析 |
+| 3 | ReviewConfirmed | 审核确认 |
+| 4 | ReviewRejected | 审核驳回 |
+| 5 | Practiced | 练习 |
+| 6 | Mastered | 已掌握 |
+
+## 导航属性
+
+| 属性名 | 类型 | 说明 |
+|--------|------|------|
+| `MistakeItem` | `MistakeItemEntity` | 关联的错题条目 |
 
 ## 特殊说明
 
-- 代码位于：[ProcessLogEntity.cs](file://src/Database/Entities/ProcessLogEntity.cs)
+- `id` 由客户端生成，EF Core 配置为 `ValueGeneratedNever`
+- 删除关联的 [mistake_item](./mistake_item.md) 记录时，本表对应记录自动级联删除
+- 复合索引 `IX_process_log_mistake_item_id_created_at` 支持按错题查询日志并按时间排序
+- 实体关系：[relations.md](../relations.md)

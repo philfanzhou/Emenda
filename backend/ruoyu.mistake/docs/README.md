@@ -28,23 +28,24 @@
 
 ## 内部业务能力
 
-| 业务域 | 功能点 | 入口 | 状态 |
-|--------|--------|------|------|
-| MistakeManagement | GetMistakeItemList | [01-FEATURE](./modules/MistakeManagement/GetMistakeItemList/01-FEATURE.md) | 已完成 |
-| MistakeManagement | AddMistakeItem | — | 待创建 |
-| MistakeManagement | GetMistakeItem | — | 待创建 |
-| MistakeManagement | UpdateMistakeItem | — | 待创建 |
-| MistakeManagement | DeleteMistakeItem | — | 待创建 |
-| MistakeDispatch | SubmitMistakeUpload | — | 待创建 |
-| MistakeReview | ReviewMistakeItem | — | 待创建 |
-| MistakeReview | GetPendingReviewUploads | — | 待创建 |
-| MistakeReview | CompleteUploadReview | — | 待创建 |
-| MistakePractice | AddMistakePractice | — | 待创建 |
-| MistakePractice | GetMistakePractices | — | 待创建 |
-| MistakeProcessLogging | LogMistakeProcess | — | 待创建 |
-| MistakeProcessLogging | GetMistakeProcessHistory | — | 待创建 |
-| MistakeAnalysis | AnalyzeMistakeType | — | 待创建 |
-| ImagePathQuery | GetAllReferencedImagePaths | — | 待创建 |
+| 业务域 | 功能点 | 入口 |
+|--------|--------|------|
+| MistakeDispatch | SubmitMistakeUpload | [01-FEATURE](./modules/MistakeDispatch/SubmitMistakeUpload/01-FEATURE.md) |
+| MistakeReview | ReviewMistakeItem | [01-FEATURE](./modules/MistakeReview/ReviewMistakeItem/01-FEATURE.md) |
+| MistakeReview | GetPendingReviewUploads | [01-FEATURE](./modules/MistakeReview/GetPendingReviewUploads/01-FEATURE.md) |
+| MistakeReview | CompleteUploadReview | [01-FEATURE](./modules/MistakeReview/CompleteUploadReview/01-FEATURE.md) |
+| MistakeManagement | GetMistakeItem | [01-FEATURE](./modules/MistakeManagement/GetMistakeItem/01-FEATURE.md) |
+| MistakeManagement | GetMistakeItemsByUpload | [01-FEATURE](./modules/MistakeManagement/GetMistakeItemsByUpload/01-FEATURE.md) |
+| MistakeManagement | GetMistakeItemList | [01-FEATURE](./modules/MistakeManagement/GetMistakeItemList/01-FEATURE.md) |
+| MistakeManagement | AddMistakeItem | [01-FEATURE](./modules/MistakeManagement/AddMistakeItem/01-FEATURE.md) |
+| MistakeManagement | UpdateMistakeItem | [01-FEATURE](./modules/MistakeManagement/UpdateMistakeItem/01-FEATURE.md) |
+| MistakeManagement | DeleteMistakeItem | [01-FEATURE](./modules/MistakeManagement/DeleteMistakeItem/01-FEATURE.md) |
+| MistakePractice | AddMistakePractice | [01-FEATURE](./modules/MistakePractice/AddMistakePractice/01-FEATURE.md) |
+| MistakePractice | GetMistakePractices | [01-FEATURE](./modules/MistakePractice/GetMistakePractices/01-FEATURE.md) |
+| MistakeProcessLogging | LogMistakeProcess | [01-FEATURE](./modules/MistakeProcessLogging/LogMistakeProcess/01-FEATURE.md) |
+| MistakeProcessLogging | GetMistakeProcessHistory | [01-FEATURE](./modules/MistakeProcessLogging/GetMistakeProcessHistory/01-FEATURE.md) |
+| MistakeAnalysis | AnalyzeMistakeType | [01-FEATURE](./modules/MistakeAnalysis/AnalyzeMistakeType/01-FEATURE.md) |
+| ImagePathQuery | GetAllReferencedImagePaths | [01-FEATURE](./modules/ImagePathQuery/GetAllReferencedImagePaths/01-FEATURE.md) |
 
 完整索引见 [modules/README.md](./modules/README.md)
 

@@ -12,7 +12,7 @@
 |------|------|
 | **用例名称** | 正常创建错题 |
 | **目的** | 验证 student 服务通过 gRPC 调用 mistake 的 SubmitMistakeUpload 接口，能成功创建错题条目 |
-| **前置条件** | 1. mistake 服务已启动且 gRPC 端口可达<br>2. student 服务已启动<br>3. StudentGrpcService:Address 配置正确<br>4. 数据库连接正常 |
+| **前置条件** | 1. mistake 服务已启动且 gRPC 端口可达<br>2. student 服务已启动<br>3. 数据库连接正常 |
 | **输入** | studentId="student-001", subject=3, grade=7, imagePaths=["uploads/2026/test1.jpg"], comments="数学错题", sourceUploadId="upload-001" |
 | **操作步骤** | 1. student 服务通过 GrpcMistakeSubmitter 调用 SubmitMistakeUpload<br>2. 传入合法参数<br>3. 检查返回结果 |
 | **预期结果** | 1. 返回 success=true<br>2. created_item_ids 非空，包含至少一个有效 GUID<br>3. 数据库 mistake_item 表中新增一条记录，review_status=1(PendingReview)<br>4. process_log 表中新增一条 action=1(Created) 的日志 |
@@ -155,24 +155,12 @@
 | 项目 | 内容 |
 |------|------|
 | **用例名称** | 完成审核 |
-| **目的** | 验证 CompleteUploadReview 的完整流程：前提检查、OSS 迁移、路径更新、student 回调 |
-| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务可用<br>3. student 服务已启动<br>4. sourceUploadId 下所有错题均已审核（无 PendingReview）<br>5. Confirmed 错题的 sourceImagePath 以 "uploads/" 开头 |
+| **目的** | 验证 CompleteUploadReview 的完整流程：前提检查、OSS 迁移、路径更新 |
+| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务可用<br>3. sourceUploadId 下所有错题均已审核（无 PendingReview）<br>4. Confirmed 错题的 sourceImagePath 以 "uploads/" 开头 |
 | **输入** | sourceUploadId="upload-001", reviewerId="teacher-001" |
-| **操作步骤** | 1. 调用 CompleteUploadReview<br>2. 验证前提：无 PendingReview 条目<br>3. 验证 Confirmed 条目：OSS copy uploads/ → mistakes/，删除 uploads/，路径更新<br>4. 验证 Rejected 条目：不迁移<br>5. 验证回调 student.RemoveImagesFromRecord<br>6. 验证返回 success=true, studentId 非空 |
-| **预期结果** | 1. 返回 success=true<br>2. Confirmed 条目的 sourceImagePath 从 "uploads/xxx" 变为 "mistakes/xxx"<br>3. OSS 中 uploads/ 下原文件已删除，mistakes/ 下存在副本<br>4. Rejected 条目路径不变<br>5. student 服务 RemoveImagesFromRecord 被调用，传入所有已处理图片路径 |
-| **失败判断** | 返回 success=false；OSS 迁移未执行；路径未更新；student 回调未触发 |
-
-### TC-14 student 回调 RemoveImagesFromRecord 失败
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | student 回调 RemoveImagesFromRecord 失败 |
-| **目的** | 验证 CompleteUploadReview 中 student 回调失败时的容错行为 |
-| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务可用<br>3. student 服务不可达或 RemoveImagesFromRecord 接口异常 |
-| **输入** | sourceUploadId=有效值（所有条目已审核） |
-| **操作步骤** | 1. 停止 student 服务或模拟 RemoveImagesFromRecord 异常<br>2. 调用 CompleteUploadReview<br>3. 检查返回结果和日志 |
-| **预期结果** | 1. 仍然返回 success=true（不回滚）<br>2. 日志中包含 "Error removing images from upload record {RecordId}"<br>3. OSS 迁移和路径更新不受影响 |
-| **失败判断** | CompleteUploadReview 返回失败；OSS 迁移被中断；抛出未捕获异常 |
+| **操作步骤** | 1. 调用 CompleteUploadReview<br>2. 验证前提：无 PendingReview 条目<br>3. 验证 Confirmed 条目：OSS copy uploads/ → mistakes/，删除 uploads/，路径更新<br>4. 验证 Rejected 条目：不迁移<br>5. 验证返回 success=true, studentId 非空 |
+| **预期结果** | 1. 返回 success=true<br>2. Confirmed 条目的 sourceImagePath 从 "uploads/xxx" 变为 "mistakes/xxx"<br>3. OSS 中 uploads/ 下原文件已删除，mistakes/ 下存在副本<br>4. Rejected 条目路径不变 |
+| **失败判断** | 返回 success=false；OSS 迁移未执行；路径未更新 |
 
 ### TC-15 OSS 迁移失败 (单个图片)
 
@@ -180,10 +168,10 @@
 |------|------|
 | **用例名称** | OSS 迁移失败 — 单个图片 |
 | **目的** | 验证 CompleteUploadReview 中单个图片 OSS 迁移失败时不阻塞整体流程 |
-| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务部分可用（某张图片 copy 或 delete 失败）<br>3. student 服务已启动 |
+| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务部分可用（某张图片 copy 或 delete 失败） |
 | **输入** | sourceUploadId 下有 2 张图片，其中 1 张迁移会失败 |
 | **操作步骤** | 1. 模拟某张图片的 OSS CopyObjectAsync 或 DeleteAsync 抛出异常<br>2. 调用 CompleteUploadReview<br>3. 检查返回结果和日志 |
-| **预期结果** | 1. 返回 success=true<br>2. 日志中包含 "Error migrating image {Path}"<br>3. 失败图片的路径未更新，成功图片的路径正常更新<br>4. student 回调仍被触发 |
+| **预期结果** | 1. 返回 success=true<br>2. 日志中包含 "Error migrating image {Path}"<br>3. 失败图片的路径未更新，成功图片的路径正常更新 |
 | **失败判断** | 整体流程被中断；返回 success=false；成功图片的迁移也失败 |
 
 ### TC-16 OSS 完全不可用
@@ -192,10 +180,10 @@
 |------|------|
 | **用例名称** | OSS 完全不可用 |
 | **目的** | 验证 OSS 服务完全不可用时 CompleteUploadReview 的降级行为 |
-| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务不可达<br>3. student 服务已启动 |
+| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务不可达 |
 | **输入** | sourceUploadId=有效值（所有条目已审核） |
 | **操作步骤** | 1. 停止 OSS 服务或配置错误端点<br>2. 调用 CompleteUploadReview<br>3. 检查返回结果和日志 |
-| **预期结果** | 1. 返回 success=true<br>2. 所有图片迁移均失败，日志中每张图片均有 "Error migrating image" 记录<br>3. sourceImagePath 未更新（仍为 uploads/ 前缀）<br>4. student 回调仍被触发 |
+| **预期结果** | 1. 返回 success=true<br>2. 所有图片迁移均失败，日志中每张图片均有 "Error migrating image" 记录<br>3. sourceImagePath 未更新（仍为 uploads/ 前缀） |
 | **失败判断** | 返回 success=false；流程被中断；抛出未捕获异常 |
 
 ### TC-17 数据库初始化 (PostgreSQL)
@@ -221,18 +209,6 @@
 | **操作步骤** | 1. 不配置 ConnectionStrings:Default<br>2. 启动服务<br>3. 验证使用默认路径 data/sqlite/ruoyu_study_mistake.db<br>4. 验证表被创建<br>5. 验证不执行旧表迁移逻辑 |
 | **预期结果** | 1. 使用 SQLite 作为数据库<br>2. 表结构正确创建<br>3. 不执行 MigrateOldSchemaAsync 和 StampMigrationsIfTablesExistAsync |
 | **失败判断** | 服务启动失败；SQLite 目录不存在导致异常；表未创建 |
-
-### TC-19 配置缺失 (StudentGrpcService:Address)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 配置缺失 — StudentGrpcService:Address |
-| **目的** | 验证 StudentGrpcService:Address 配置缺失或错误时，mistake 服务启动正常但回调失败 |
-| **前置条件** | mistake 服务已启动 |
-| **输入** | StudentGrpcService:Address 未配置或配置为无效地址 |
-| **操作步骤** | 1. 不配置 StudentGrpcService:Address（使用默认值 http://localhost:5005）<br>2. student 服务不在 localhost:5005 运行<br>3. 执行 CompleteUploadReview<br>4. 检查日志和返回结果 |
-| **预期结果** | 1. 服务正常启动（默认值 http://localhost:5005）<br>2. CompleteUploadReview 返回 success=true<br>3. 日志中包含 "Error removing images from upload record"<br>4. OSS 迁移不受影响 |
-| **失败判断** | 服务启动失败；CompleteUploadReview 返回失败；OSS 迁移被中断 |
 
 ### TC-20 地址错误 (MistakeGrpcService:Address)
 
@@ -338,13 +314,13 @@
 
 ### 通过
 
-- 所有 27 个测试用例的预期结果全部满足
+- 所有 25 个测试用例的预期结果全部满足
 - gRPC 接口在合法输入下返回正确结果
 - 参数校验在非法输入下返回 InvalidArgument 且消息匹配
-- 跨服务调用（student ↔ mistake ↔ teacher_portal）链路完整
+- 跨服务调用（student → mistake、teacher_portal → mistake → student）链路完整
 - OSS 迁移在正常情况下路径更新正确
 - 数据库初始化在 PostgreSQL 和 SQLite 环境下均成功
-- 容错场景（回调失败、OSS 单图失败）不影响主流程返回 success=true
+- 容错场景（OSS 单图失败）不影响主流程返回 success=true
 
 ### 部分通过
 
@@ -366,24 +342,12 @@
 - PostgreSQL 连接失败且无 SQLite 降级路径
 - OSS 完全不可用时 CompleteUploadReview 抛出未捕获异常（非容错）
 - teacher_portal 无法连接 mistake 服务（MistakeGrpcService:Address 配置错误且无法修正）
-- student 回调失败导致 CompleteUploadReview 整体回滚（与设计不符）
 
 ---
 
 ## 3. 异常场景处理机制
 
-### 3.1 student 回调 RemoveImagesFromRecord 失败
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | student 服务不可达，或 RemoveImagesFromRecord 接口异常 |
-| **影响范围** | student 侧上传记录中的图片引用未被清理 |
-| **临时绕过方式** | 无需绕过，mistake 侧主流程不受影响，返回 success=true |
-| **是否允许降级** | 允许。仅记录日志，不回滚 |
-| **需要团队介入** | student 团队排查 RemoveImagesFromRecord 接口异常原因 |
-| **是否影响上线** | 不影响。设计上即为最终一致，可事后补调 |
-
-### 3.2 OSS 单图迁移失败
+### 3.1 OSS 单图迁移失败
 
 | 项目 | 说明 |
 |------|------|
@@ -394,7 +358,7 @@
 | **需要团队介入** | 基础设施团队排查 OSS 异常；mistake 团队事后手动迁移失败图片 |
 | **是否影响上线** | 不影响。可通过手动迁移修复 |
 
-### 3.3 OSS 完全不可用
+### 3.2 OSS 完全不可用
 
 | 项目 | 说明 |
 |------|------|
@@ -405,7 +369,7 @@
 | **需要团队介入** | 基础设施团队恢复 OSS 服务 |
 | **是否影响上线** | 视情况。若生产环境必须使用 S3 OSS 则阻塞；若可接受本地存储则不阻塞 |
 
-### 3.4 数据库初始化失败 — PostgreSQL 连接失败
+### 3.3 数据库初始化失败 — PostgreSQL 连接失败
 
 | 项目 | 说明 |
 |------|------|
@@ -416,7 +380,7 @@
 | **需要团队介入** | DBA 团队排查 PostgreSQL 连接问题 |
 | **是否影响上线** | 若生产环境必须使用 PostgreSQL 则阻塞 |
 
-### 3.5 数据库初始化失败 — 旧表迁移 SQL 异常
+### 3.4 数据库初始化失败 — 旧表迁移 SQL 异常
 
 | 项目 | 说明 |
 |------|------|
@@ -427,7 +391,7 @@
 | **需要团队介入** | DBA 团队手动迁移数据 |
 | **是否影响上线** | 阻塞，需修复后重新部署 |
 
-### 3.6 数据库初始化失败 — SQLite 目录不存在
+### 3.5 数据库初始化失败 — SQLite 目录不存在
 
 | 项目 | 说明 |
 |------|------|
@@ -438,18 +402,7 @@
 | **需要团队介入** | 运维团队创建目录 |
 | **是否影响上线** | 阻塞，但修复简单 |
 
-### 3.7 StudentGrpcService:Address 配置缺失/错误
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | 未配置 StudentGrpcService:Address，或配置为无效地址 |
-| **影响范围** | CompleteUploadReview 中 student 回调失败；默认值为 http://localhost:5005 |
-| **临时绕过方式** | 无需绕过，主流程不受影响（回调失败仅记日志） |
-| **是否允许降级** | 允许。回调失败不阻塞主流程 |
-| **需要团队介入** | student 团队确认服务地址；运维团队修正配置 |
-| **是否影响上线** | 不影响主流程上线，但需尽快修正配置以恢复完整功能 |
-
-### 3.8 MistakeGrpcService:Address 配置错误
+### 3.6 MistakeGrpcService:Address 配置错误
 
 | 项目 | 说明 |
 |------|------|
@@ -460,7 +413,7 @@
 | **需要团队介入** | 运维团队修正配置 |
 | **是否影响上线** | 阻塞 teacher_portal 的错题管理功能 |
 
-### 3.9 ConnectionStrings:Default 缺失
+### 3.7 ConnectionStrings:Default 缺失
 
 | 项目 | 说明 |
 |------|------|
@@ -477,7 +430,6 @@
 
 ```
 student ──(SubmitMistakeUpload)──→ mistake
-mistake ──(RemoveImagesFromRecord)──→ student
 mistake ──(CompleteUploadReview)──→ OSS
 
 teacher_portal ──(所有 MistakeGrpcService RPC)──→ mistake

@@ -24,7 +24,7 @@
 | **节点名称** | 配置准备 |
 | **前置条件** | 已获取部署环境信息（数据库连接串、OSS 凭证、student 服务地址） |
 | **输入条件** | appsettings.json 模板、环境变量清单 |
-| **操作步骤** | 1. 编辑 `appsettings.json`，填写 `ConnectionStrings:Default`<br>2. 编辑 `appsettings.json`，填写 `Oss` 节（Endpoint、AccessKey、SecretKey、BucketName）<br>3. 编辑 `appsettings.json`，填写 `StudentGrpcService:Address`<br>4. 如需自定义端口，设置 `Endpoints:Grpc` 和 `Endpoints:Http`<br>5. 如使用本地 OSS，设置环境变量 `USE_LOCAL_OSS=1`，可选设置 `OSS_LOCAL_PATH` |
+| **操作步骤** | 1. 编辑 `appsettings.json`，填写 `ConnectionStrings:Default`<br>2. 编辑 `appsettings.json`，填写 `Oss` 节（Endpoint、AccessKey、SecretKey、BucketName）<br>3. 如需自定义端口，设置 `Endpoints:Grpc` 和 `Endpoints:Http`<br>4. 如使用本地 OSS，设置环境变量 `USE_LOCAL_OSS=1`，可选设置 `OSS_LOCAL_PATH` |
 | **成功判定** | 所有必填配置项均有有效值；端口不与已有服务冲突 |
 | **失败后排查方向** | 1. 配置键拼写错误 → 对照 appsettings.json 结构检查<br>2. 端口冲突 → `netstat` 检查端口占用<br>3. 环境变量未生效 → 确认运行环境是否正确注入 |
 
@@ -38,9 +38,6 @@
   },
   "ConnectionStrings": {
     "Default": "Host=localhost;Port=5432;Database=ruoyu_study_mistake;Username=phil"
-  },
-  "StudentGrpcService": {
-    "Address": "http://localhost:5005"
   },
   "Oss": {
     "Endpoint": "localhost:8333",
@@ -140,35 +137,11 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 | 项目 | 内容 |
 |------|------|
 | **节点名称** | 依赖服务准备 |
-| **前置条件** | student 服务已部署 |
-| **输入条件** | student 服务的 gRPC 地址 |
-| **操作步骤** | 1. 确认 student 服务已启动并在 gRPC 端口（默认 5005）监听<br>2. 在 mistake 的 `appsettings.json` 中配置 `StudentGrpcService:Address` 指向 student 的 gRPC 地址<br>3. 确认各 portal 的 mistake 地址配置正确 |
-| **成功判定** | mistake 启动后，`CompleteUploadReview` 可成功回调 student 的 `RemoveImagesFromRecord` |
-| **失败后排查方向** | 1. student 地址不可达 → 检查地址配置、网络连通性<br>2. gRPC 调用超时 → 检查 student 是否在 HTTP/2 模式监听<br>3. 回调返回错误 → 查看 mistake 日志中的 gRPC 错误详情 |
-
-### 什么时候必须先启动 student
-
-**mistake 服务本身可以在 student 未启动时正常启动**。mistake 启动时不主动连接 student，仅在运行时 `CompleteUploadReview` 被调用时才会向 student 发起 gRPC 请求。
-
-但以下场景**必须确保 student 先启动且可达**：
-
-- 教师执行**审核完成**操作（`CompleteUploadReview`）时，mistake 需要回调 student 的 `RemoveImagesFromRecord`
-- 如果 student 不可达，`CompleteUploadReview` 会返回 `success=false`，审核完成流程中断
-
-**结论**：student 不需要在 mistake 之前启动，但在业务流程中需要保证 student 可达才能完成审核闭环。
-
-### student 地址配置错了会怎样
-
-`StudentGrpcService:Address` 配置错误时：
-
-| 错误类型 | 影响 | 表现 |
-|----------|------|------|
-| 地址不可达（网络不通） | `CompleteUploadReview` 调用 student 失败 | 返回 `success=false`，`error_message` 包含连接超时或拒绝信息 |
-| 端口错误 | gRPC 连接失败 | 同上，连接被拒绝 |
-| 指向非 gRPC 服务 | 协议不匹配 | gRPC 调用返回 INTERNAL 或 UNAVAILABLE 错误 |
-| 地址为空 | 使用默认值 `http://localhost:5005` | 如果 student 不在本机 5005 端口，则回调失败 |
-
-**注意**：student 地址错误**不影响** mistake 的启动和大部分功能，仅影响 `CompleteUploadReview` 中的 student 回调。
+| **前置条件** | 各 portal 服务已部署 |
+| **输入条件** | mistake 服务的 gRPC 地址 |
+| **操作步骤** | 1. 确认 mistake 服务已启动并在 gRPC 端口（默认 5006）监听<br>2. 确认各 portal 的 mistake 地址配置正确 |
+| **成功判定** | 各 portal 可正常调用 mistake 的 gRPC 接口 |
+| **失败后排查方向** | 1. portal 地址不可达 → 检查地址配置、网络连通性<br>2. gRPC 调用超时 → 检查 mistake 是否在 HTTP/2 模式监听<br>3. 调用返回错误 → 查看 portal 日志中的 gRPC 错误详情 |
 
 ### 各 portal 的 mistake 地址配置
 
@@ -249,9 +222,8 @@ curl http://<host>:5007/
 |------|---------|------|---------|
 | 1 | student → mistake 连通 | student 端触发上传，观察 mistake 日志是否收到 `SubmitMistakeUpload` | 检查 student 的 mistake 地址配置、gRPC 端口是否正确 |
 | 2 | portal → mistake 连通 | 通过 portal 页面查询错题列表，观察是否返回数据 | 检查 portal 的 mistake 地址配置 |
-| 3 | mistake → student 回调 | 执行 `CompleteUploadReview`，确认 student 的 `RemoveImagesFromRecord` 被调用 | 检查 mistake 的 `StudentGrpcService:Address` 配置 |
-| 4 | mistake → OSS 操作 | 执行 `CompleteUploadReview`，确认图片从 `uploads/` 迁移到 `mistakes/` | 检查 OSS 配置和桶权限 |
-| 5 | admin_portal OSS 审计 | 触发 `GetAllReferencedImagePaths`，确认返回图片路径列表 | 检查 admin_portal 的 mistake 地址配置 |
+| 3 | mistake → OSS 操作 | 执行 `CompleteUploadReview`，确认图片从 `uploads/` 迁移到 `mistakes/` | 检查 OSS 配置和桶权限 |
+| 4 | admin_portal OSS 审计 | 触发 `GetAllReferencedImagePaths`，确认返回图片路径列表 | 检查 admin_portal 的 mistake 地址配置 |
 
 ### 推荐联调顺序
 
@@ -260,7 +232,7 @@ student → mistake（SubmitMistakeUpload）
     ↓
 teacher_portal → mistake（GetPendingReviewUploads → ReviewMistakeItem）
     ↓
-teacher_portal → mistake → student + OSS（CompleteUploadReview）
+teacher_portal → mistake → OSS（CompleteUploadReview）
     ↓
 admin_portal → mistake（GetMistakeItemList、GetAllReferencedImagePaths）
     ↓
@@ -287,12 +259,11 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 | 1 | 服务存活 | `GET /` 健康检查 | 返回 200 | 检查进程状态、端口监听 |
 | 2 | 数据库连接 | 查询错题列表接口 | 正常返回数据 | 检查连接串、数据库状态 |
 | 3 | gRPC 端口可达 | portal 调用 mistake 接口 | 正常响应 | 检查 gRPC 端口、防火墙规则 |
-| 4 | student 回调正常 | 执行审核完成操作 | `CompleteUploadReview` 返回 `success=true` | 检查 `StudentGrpcService:Address`、student 服务状态 |
-| 5 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |
-| 6 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` | 存在 `20260514051544_InitialCreate` 记录 | 手动 stamp 或排查迁移日志 |
-| 7 | 旧表已迁移 | 检查 `mistake` 表是否存在 | 不存在（已重命名为 `mistake_item`） | 如仍存在，检查迁移日志是否跳过 |
-| 8 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 手动执行列重命名 SQL |
-| 9 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 手动添加外键约束 |
-| 10 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 手动创建缺失索引 |
-| 11 | gRPC 消息大小 | 上传含大量图片的错题 | 不超过 100MB 限制 | 如需更大限制，修改 `Program.cs` 中的消息大小配置 |
-| 12 | SQLite 文件位置（如适用） | 检查 `data/sqlite/ruoyu_study_mistake.db` | 文件存在且可读写 | 检查目录权限 |
+| 4 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |
+| 5 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` | 存在 `20260514051544_InitialCreate` 记录 | 手动 stamp 或排查迁移日志 |
+| 6 | 旧表已迁移 | 检查 `mistake` 表是否存在 | 不存在（已重命名为 `mistake_item`） | 如仍存在，检查迁移日志是否跳过 |
+| 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 手动执行列重命名 SQL |
+| 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 手动添加外键约束 |
+| 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 手动创建缺失索引 |
+| 10 | gRPC 消息大小 | 上传含大量图片的错题 | 不超过 100MB 限制 | 如需更大限制，修改 `Program.cs` 中的消息大小配置 |
+| 11 | SQLite 文件位置（如适用） | 检查 `data/sqlite/ruoyu_study_mistake.db` | 文件存在且可读写 | 检查目录权限 |
