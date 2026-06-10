@@ -3,30 +3,23 @@
 ## 1. 本轮任务范围
 
 为 ruoyu.mistake 项目基于现有代码优化 docs 目录，重点：
-- 将根目录散落的总览类文档收拢到 `docs/overview/`
-- 将部署/排障/验证文档收拢到 `docs/development/`
-- 重写 `docs/README.md` 为纯入口导航
-- 修正所有因目录迁移产生的断链
+- 增强 README 自解释能力（目录职责、功能点分布、下钻指引）
+- 修正 Integration/README.md 中的断链
+- 补充 overview/README.md 的"下一步"导航
 
 ## 2. 已完成的文档调整
 
-### 目录结构重组
+### 本轮调整
 
-- **创建 `docs/overview/`** — 收拢 7 个总览类文档：SystemContext.md, Integration.md, KeyFlows.md, DataOwnership.md, Requirements.md, Design.md, DotNetCodingPolicy.md
-- **创建 `docs/development/`** — 收拢 3 个开发执行文档：Deployment.md, Troubleshooting.md, IntegrationVerification.md
-- **重写 `docs/README.md`** — 从长文档地图改为纯入口导航（6 个子目录入口 + 阅读建议）
-- **创建 `docs/overview/README.md`** — 总览文档索引
-- **创建 `docs/development/README.md`** — 开发执行文档索引
+- **docs/README.md** — 新增"目录职责"表格（每个目录的职责和内容概要）和"功能点分布"表格（7 个业务域的核心能力），让 Agent 仅通过本文件就能知道各目录负责什么、功能点在哪里
+- **overview/README.md** — 新增"下钻目标"列和"下一步"节，让 Agent 读完总览后明确知道应进入哪个专题目录；补充"本目录不替代细节文档"声明
+- **Integration/README.md** — 修复 2 处断链：`../Deployment.md` → `../development/Deployment.md`，`../Troubleshooting.md` → `../development/Troubleshooting.md`
 
-### 链接修正
+### 历史调整（保留记录）
 
-- **Requirements.md** — 16 处 `./modules/...` → `../modules/...`，4 处 `Integration/...` → `../Integration/...`
-- **Design.md** — 9 处 `./modules/...` → `../modules/...`，`./database/` → `../database/`，`./Integration/` → `../Integration/`
-- **docs/README.md** — 全部重写为入口导航
-- **Integration/README.md** — 4 处 `../Xxx.md` → `../overview/Xxx.md`
-
-### 上一轮修正（保留记录）
-
+- 创建 `docs/overview/` — 收拢 7 个总览类文档
+- 创建 `docs/development/` — 收拢 3 个开发执行文档
+- 重写 `docs/README.md` 为纯入口导航
 - 清除 RemoveImagesFromRecord 编造内容（11 个文件，56 处引用）
 - 修正 Requirements.md 和 Design.md 的断链
 
