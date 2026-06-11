@@ -14,6 +14,10 @@ public class ProcessLogEntity
     [Column("mistake_item_id")]
     public Guid MistakeItemId { get; set; }
 
+    [Column("student_id")]
+    [MaxLength(36)]
+    public string? StudentId { get; set; }
+
     [Column("action")]
     public int Action { get; set; }
 

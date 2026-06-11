@@ -130,7 +130,7 @@
 
 ## 7. 风险与待人工审核事项
 
-1. **AnalyzeMistakeType 硬编码实现**: 当前返回 type=5 "其他错误"，未来需接入 VL 分析服务
+1. **AnalyzeMistakeType 硬编码实现**: 当前返回 type=5 "其他错误"，未来需接入 VL 分析服务 根据另外一份审核文档的要求来处理
 2. **LogMistakeProcess 的 studentId 参数**: Domain 层接收但未存储到 ProcessLog，可能需要确认是否为设计意图
 3. **AddMistakeItem 与 SubmitMistakeUpload 的验证范围差异**: subject 0-9 vs 1-9, grade 0-12 vs 1-12，这是有意设计（AddMistakeItem 允许 0 表示"未指定"）
 4. **CompleteUploadReview 的非事务性图片迁移**: OSS 操作不具备事务性，已通过 try-catch 保证单图失败不阻塞

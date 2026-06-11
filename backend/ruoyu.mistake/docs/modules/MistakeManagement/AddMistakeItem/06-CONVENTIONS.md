@@ -34,7 +34,7 @@
 | 触发条件 | 错误消息 | gRPC StatusCode |
 |----------|---------|-----------------|
 | studentId 为空 | 缺少学生ID | InvalidArgument |
-| subject < 0 或 > 9 | 学科值无效（有效范围：0-9） | InvalidArgument |
+| subject < 1 或 > 9 | 学科值无效（有效范围：1-9） | InvalidArgument |
 | grade < 0 或 > 12 | 年级值无效（有效范围：0-12） | InvalidArgument |
 | sourceUploadId 为空 | 缺少上传记录ID | InvalidArgument |
 | sourceRegions 为空 | 至少需要一个图片区域 | InvalidArgument |

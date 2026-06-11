@@ -31,6 +31,7 @@
 - **已查阅的代码**: MistakeDomainService.cs, mistake.proto
 - **为什么仍无法完全确认**: 无法确定这是"待实现的占位逻辑"还是"有意为之的 MVP 策略"
 - **建议人工如何复核**: 确认产品路线图中错题分析的优先级和时间表
+目前来说这个点的价值不大，如果检查了其他地方没有依赖可以从文档和代码移除。
 
 ### 3.2 LogMistakeProcess 的 studentId 参数未使用
 
@@ -38,6 +39,7 @@
 - **已查阅的代码**: MistakeDomainService.cs, ProcessLogModel.cs
 - **为什么仍无法完全确认**: ProcessLogModel 没有 StudentId 字段，但 proto 定义了该参数
 - **建议人工如何复核**: 确认是否需要在 process_log 表中增加 student_id 字段
+需要增加。
 
 ### 3.3 AddMistakeItem 与 SubmitMistakeUpload 的验证范围差异
 
@@ -45,6 +47,7 @@
 - **已查阅的代码**: MistakeDomainService.cs (ValidateSubmitData vs ValidateMistakeItemData)
 - **为什么仍无法完全确认**: 可能是有意设计（手动添加允许未指定学科），也可能是遗漏
 - **建议人工如何复核**: 确认业务规则是否允许手动添加时学科为0
+不允许，这是错误，手动添加更不能没有学科
 
 ### 3.4 UpdateMistakeItem 的部分更新语义在 gRPC 层
 
@@ -52,6 +55,9 @@
 - **已查阅的代码**: MistakeServiceImpl.cs
 - **为什么仍无法完全确认**: 这违反了"胖领域服务"的设计模式，但可能是为了保持 Domain Service 的通用性
 - **建议人工如何复核**: 确认是否应将部分更新逻辑下沉到 Domain Service
+需要下沉。
+
+
 
 ### 3.5 CompleteUploadReview 的非事务性图片迁移
 
@@ -59,6 +65,7 @@
 - **已查阅的代码**: MistakeServiceImpl.cs
 - **为什么仍无法完全确认**: 这可能导致图片迁移不完整但数据库状态已更新
 - **建议人工如何复核**: 评估是否需要引入补偿机制或重试队列
+我需要更多的信息来评估此问题，这个方法的调用路径是什么？
 
 ## 4. 证据不足但已落盘的内容
 

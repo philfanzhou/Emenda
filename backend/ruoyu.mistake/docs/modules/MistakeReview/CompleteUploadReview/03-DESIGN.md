@@ -97,3 +97,46 @@ MistakeDomainService.CompleteUploadReviewAsync:
 - **pathMapping 缓存**：同一图片可能被多条错题引用，使用 `Dictionary<string, string>` 缓存已迁移路径，避免重复 OSS 操作
 - **OSS 失败容错**：单个图片迁移失败仅记录 Error 日志，不中断整体流程，不影响其他图片的迁移
 - **removedImagePaths 语义**：包含所有错题的图片路径（无论是否迁移），供调用方从上传记录中移除
+
+## 完整调用路径
+
+```
+Client
+  │  CompleteUploadReviewRequest { sourceUploadId, reviewerId }
+  │
+  ▼
+MistakeServiceImpl.CompleteUploadReview(request)
+  │
+  ▼
+MistakeDomainService.CompleteUploadReviewAsync(sourceUploadId, reviewerId)
+  │  1. CountPendingBySourceUploadIdAsync(sourceUploadId)
+  │     └─ pendingCount > 0 → return { Success=false, ErrorMessage="还有 N 条错题待审核..." }
+  │  2. GetBySourceUploadIdAsync(sourceUploadId)
+  │     └─ items.Count == 0 → return { Success=false, ErrorMessage="未找到该上传记录的错题" }
+  │  3. return { Success=true, SourceUploadId, StudentId=items[0].StudentId, Items }
+  │
+  ▼
+MistakeServiceImpl (继续处理 result.Items):
+  │  4. 遍历 result.Items:
+  │     a. 遍历 item.SourceRegions:
+  │        - 收集所有图片路径到 imagePathsToRemoveFromRecord
+  │        - 若路径不以 "uploads/" 开头 → 跳过迁移
+  │        - 若 item 非 Confirmed → 仅移除记录，不迁移
+  │        - 若 pathMapping 已缓存 → 使用缓存路径
+  │        - 否则执行 OSS Copy + Delete，更新 region.SourceImagePath
+  │     b. 若有更新 → 调用 MistakeDomainService.UpdateMistakeItemAsync(item)
+  │
+  ▼
+MistakeDomainService.UpdateMistakeItemAsync(item)
+  │  5. IMistakeItemRepository.UpdateAsync(model)
+  │  6. IUnitOfWork.SaveChangesAsync()
+  │
+  ▼
+MistakeServiceImpl:
+  │  7. 返回 CompleteUploadReviewResponse { Success=true, StudentId, RemovedImagePaths }
+  │
+  ▼
+Client ← CompleteUploadReviewResponse
+```
+
+> **注意**：OSS 图片迁移（Copy + Delete）与数据库更新不在同一事务中。OSS 操作失败仅记日志不中断，数据库更新通过 `IUnitOfWork.SaveChangesAsync()` 提交。如需更强一致性，建议引入补偿机制。

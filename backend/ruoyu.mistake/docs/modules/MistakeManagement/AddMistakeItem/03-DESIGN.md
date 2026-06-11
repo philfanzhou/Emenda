@@ -67,7 +67,7 @@ MistakeServiceImpl.AddMistakeItem(request)
 MistakeDomainService.AddMistakeItemAsync(item)
   │  2. ValidateMistakeItemData(item)
   │     ├─ studentId 非空
-  │     ├─ subject 0-9
+  │     ├─ subject 1-9
   │     ├─ grade 0-12
   │     ├─ sourceUploadId 非空
   │     └─ sourceRegions 非空
@@ -99,6 +99,6 @@ Client ← MistakeItemDto
 ## 关键设计决策
 
 1. **验证在领域层执行**：`ValidateMistakeItemData` 在 `MistakeDomainService` 中实现，gRPC 层仅做 proto→model 映射，保证领域逻辑内聚。
-2. **验证范围差异**：`AddMistakeItem` 的 subject 范围为 0-9（允许 0），而 `SubmitMistakeUpload` 为 1-9，因为手动添加场景允许占位值。
+2. **验证范围差异**：`AddMistakeItem` 的 subject 范围为 1-9（不允许 0），与 `SubmitMistakeUpload` 一致，手动添加场景同样要求指定有效学科。
 3. **ProcessLog 与主表在同一事务**：通过 `IUnitOfWork.SaveChangesAsync()` 统一提交，保证数据一致性。
 4. **SourceRegions 存储为 JSONB**：使用 PostgreSQL 的 jsonb 类型存储，支持灵活的区域数据结构。

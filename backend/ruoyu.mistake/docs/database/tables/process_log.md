@@ -6,6 +6,7 @@
 |--------|------|------|--------|------|
 | `id` | `UUID` | PK, NOT NULL | — | 主键，客户端生成（ValueGeneratedNever） |
 | `mistake_item_id` | `UUID` | NOT NULL, FK | — | 关联错题ID，见外键关系 |
+| `student_id` | `VARCHAR(36)` | NULL | — | 学生ID，来自关联错题或请求参数 |
 | `action` | `INT` | NOT NULL | — | 操作类型，见 ProcessAction 枚举 |
 | `details` | `TEXT` | NULL | — | 操作详情 |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | `now()` | 创建时间 |
@@ -17,6 +18,7 @@
 | `PK_process_log` | `id` | 主键 |
 | `IX_process_log_mistake_item_id_created_at` | `mistake_item_id, created_at` | 复合 |
 | `IX_process_log_created_at` | `created_at` | 普通 |
+| `IX_process_log_student_id` | `student_id` | 普通 |
 
 ## 外键关系
 

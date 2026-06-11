@@ -24,6 +24,7 @@ public class ProcessLogRepository : IProcessLogRepository
         {
             Id = model.Id,
             MistakeItemId = model.MistakeItemId,
+            StudentId = model.StudentId,
             Action = model.Action,
             Details = model.Details,
             CreatedAt = model.CreatedAt
@@ -41,6 +42,7 @@ public class ProcessLogRepository : IProcessLogRepository
         {
             Id = e.Id,
             MistakeItemId = e.MistakeItemId,
+            StudentId = e.StudentId,
             Action = e.Action,
             Details = e.Details,
             CreatedAt = e.CreatedAt

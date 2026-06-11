@@ -27,6 +27,8 @@ public override async Task<MistakeItemDto> UpdateMistakeItem(UpdateMistakeItemRe
 
 ```csharp
 // MistakeDomainService.cs
+public async Task<MistakeItemModel?> UpdateMistakeItemPartialAsync(Guid id, string? studentId = null, int? subject = null, int? grade = null, List<SourceRegionModel>? sourceRegions = null)
+
 public async Task<bool> UpdateMistakeItemAsync(MistakeItemModel model)
 ```
 
@@ -56,26 +58,28 @@ MistakeServiceImpl.UpdateMistakeItem(request)
   │  1. GetMistakeItemAsync(Guid.Parse(request.Id))
   │     └─ null → RpcException(NotFound, "错题条目不存在")
   │
-  │  2. 部分更新逻辑（gRPC 层）:
-  │     ├─ studentId 非空 → item.StudentId = request.StudentId
-  │     ├─ subject > 0   → item.Subject = request.Subject
-  │     ├─ grade > 0     → item.Grade = request.Grade
-  │     └─ sourceRegions.Count > 0 → item.SourceRegions = 映射后的列表
+  ▼
+MistakeDomainService.UpdateMistakeItemPartialAsync(id, studentId, subject, grade, sourceRegions)
+  │  2. IMistakeItemRepository.GetByIdAsync(id)
+  │     └─ null → return null
+  │  3. 部分更新逻辑（Domain Service 层）:
+  │     ├─ studentId 非空 → item.StudentId = studentId
+  │     ├─ subject > 0   → item.Subject = subject.Value
+  │     ├─ grade > 0     → item.Grade = grade.Value
+  │     └─ sourceRegions.Count > 0 → item.SourceRegions = sourceRegions
+  │  4. item.UpdatedAt = UtcNow
   │
   ▼
-MistakeDomainService.UpdateMistakeItemAsync(item)
-  │  3. IMistakeItemRepository.UpdateAsync(model)
-  │     ├─ 查找 Entity
-  │     ├─ 逐字段赋值
-  │     └─ DbContext.Update(entity) → 返回 true/false
-  │  4. IUnitOfWork.SaveChangesAsync()
+IMistakeItemRepository.UpdateAsync(item)
+  │  5. 查找 Entity
+  │  6. 逐字段赋值
+  │  7. DbContext.Update(entity) → 返回 true/false
+  │  8. IUnitOfWork.SaveChangesAsync()
   │
   ▼
 MistakeServiceImpl:
-  │  5. success == false → RpcException(Internal, "更新失败")
-  │  6. GetMistakeItemAsync(id) 重新查询
-  │     └─ null → RpcException(NotFound)
-  │  7. MapMistakeItemDto(updatedItem)
+  │  9. result == null → RpcException(Internal, "更新失败")
+  │  10. MapMistakeItemDto(result)
   │
   ▼
 Client ← MistakeItemDto
@@ -83,7 +87,7 @@ Client ← MistakeItemDto
 
 ## 关键设计决策
 
-1. **部分更新在 gRPC 层实现**：字段选择逻辑放在 `MistakeServiceImpl`，领域服务仅负责持久化，保持领域服务职责单一。
+1. **部分更新在 Domain Service 层实现**：字段选择逻辑已从 `MistakeServiceImpl` 下沉到 `MistakeDomainService.UpdateMistakeItemPartialAsync`，gRPC 层仅做参数提取和 proto→领域类型映射，保证领域逻辑内聚。
 2. **更新后重新查询**：为确保返回数据与数据库一致，更新成功后重新查询而非直接返回内存中的 model。
 3. **UpdatedAt 的 ConcurrencyCheck**：`MistakeItemEntity.UpdatedAt` 标注了 `[ConcurrencyCheck]`，用于乐观并发控制。
 4. **SourceRegions 整体替换**：当请求中包含 source_regions 时，整体替换而非合并，简化实现。

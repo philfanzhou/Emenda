@@ -43,7 +43,7 @@ Task AddAsync(ProcessLogModel model);
 
 ```csharp
 // MistakeDomainService.cs (private)
-private async Task AddProcessLogAsync(Guid mistakeItemId, ProcessAction action, string details)
+private async Task AddProcessLogAsync(Guid mistakeItemId, ProcessAction action, string details, string? studentId = null)
 ```
 
 ## 依赖的数据库表
@@ -71,10 +71,11 @@ MistakeDomainService.LogMistakeProcessAsync(mistakeItemId, studentId, action, de
   │     └─ null → return false
   │
   ▼
-AddProcessLogAsync(mistakeItemId, action, details)
+AddProcessLogAsync(mistakeItemId, action, details, studentId)
   │  4. 创建 ProcessLogModel:
   │     ├─ Id = Guid.NewGuid()
   │     ├─ MistakeItemId = mistakeItemId
+  │     ├─ StudentId = studentId
   │     ├─ Action = (int)action
   │     ├─ Details = details
   │     └─ CreatedAt = DateTimeOffset.UtcNow
@@ -97,7 +98,7 @@ Client ← BoolResponse
 
 ## 关键设计决策
 
-1. **studentId 未使用**：`LogMistakeProcessAsync` 接受 `studentId` 参数但当前未存储到 ProcessLog 中，预留扩展空间。
+1. **studentId 已存储**：`LogMistakeProcessAsync` 接受 `studentId` 参数并存储到 ProcessLog 的 `StudentId` 字段中，便于按学生查询操作日志。
 2. **复用 AddProcessLogAsync**：内部使用与 AddMistakeItem/AddPractice 相同的 `AddProcessLogAsync` 方法，保证日志格式一致。
 3. **不存在时返回 false**：与 DeleteMistakeItem 一致，不抛异常，返回布尔值表示操作结果。
 4. **Action 存储为 int**：ProcessLogModel.Action 为 int 类型，对应 ProcessAction 枚举的整数值。

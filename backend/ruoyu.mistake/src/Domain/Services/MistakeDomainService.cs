@@ -69,7 +69,7 @@ public class MistakeDomainService
             item.Id, studentId, subject, grade, sourceUploadId, string.Join(" | ", imagePaths));
 
         await _mistakeItemRepository.AddAsync(item);
-        await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item created from upload");
+        await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item created from upload", studentId);
         await _unitOfWork.SaveChangesAsync();
 
         _logger.LogDebug("SubmitMistakeUploadAsync: Saved item with Id={ItemId}", item.Id);
@@ -146,7 +146,7 @@ public class MistakeDomainService
             ? "Mistake item confirmed"
             : "Mistake item rejected";
 
-        await AddProcessLogAsync(item.Id, action, detail);
+        await AddProcessLogAsync(item.Id, action, detail, item.StudentId);
         await _unitOfWork.SaveChangesAsync();
 
         return item;
@@ -161,7 +161,7 @@ public class MistakeDomainService
         item.CreatedAt = DateTimeOffset.UtcNow;
 
         await _mistakeItemRepository.AddAsync(item);
-        await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item manually added by teacher");
+        await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item manually added by teacher", item.StudentId);
         await _unitOfWork.SaveChangesAsync();
 
         return item;
@@ -178,6 +178,29 @@ public class MistakeDomainService
         await _unitOfWork.SaveChangesAsync();
 
         return true;
+    }
+
+    public async Task<MistakeItemModel?> UpdateMistakeItemPartialAsync(Guid id, string? studentId = null, int? subject = null, int? grade = null, List<SourceRegionModel>? sourceRegions = null)
+    {
+        var item = await _mistakeItemRepository.GetByIdAsync(id);
+        if (item == null) return null;
+
+        if (!string.IsNullOrWhiteSpace(studentId))
+            item.StudentId = studentId;
+        if (subject.HasValue && subject.Value > 0)
+            item.Subject = subject.Value;
+        if (grade.HasValue && grade.Value > 0)
+            item.Grade = grade.Value;
+        if (sourceRegions != null && sourceRegions.Count > 0)
+            item.SourceRegions = sourceRegions;
+
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var result = await _mistakeItemRepository.UpdateAsync(item);
+        if (result)
+            await _unitOfWork.SaveChangesAsync();
+
+        return result ? item : null;
     }
 
     public async Task<bool> UpdateMistakeItemAsync(MistakeItemModel model)
@@ -242,7 +265,7 @@ public class MistakeDomainService
         }
 
         await _mistakePracticeRepository.AddAsync(practice);
-        await AddProcessLogAsync(item.Id, ProcessAction.Practiced, "Student practiced mistake");
+        await AddProcessLogAsync(item.Id, ProcessAction.Practiced, "Student practiced mistake", item.StudentId);
         await _unitOfWork.SaveChangesAsync();
 
         return practice;
@@ -262,7 +285,7 @@ public class MistakeDomainService
         var item = await _mistakeItemRepository.GetByIdAsync(mistakeItemId);
         if (item != null)
         {
-            await AddProcessLogAsync(item.Id, ProcessAction.Analyzed, $"Mistake analyzed as {typeName}");
+            await AddProcessLogAsync(item.Id, ProcessAction.Analyzed, $"Mistake analyzed as {typeName}", item.StudentId);
             await _unitOfWork.SaveChangesAsync();
         }
 
@@ -279,7 +302,7 @@ public class MistakeDomainService
         var item = await _mistakeItemRepository.GetByIdAsync(mistakeItemId);
         if (item == null) return false;
 
-        await AddProcessLogAsync(mistakeItemId, action, details);
+        await AddProcessLogAsync(mistakeItemId, action, details, studentId);
         await _unitOfWork.SaveChangesAsync();
         return true;
     }
@@ -316,12 +339,13 @@ public class MistakeDomainService
         return paths;
     }
 
-    private async Task AddProcessLogAsync(Guid mistakeItemId, ProcessAction action, string details)
+    private async Task AddProcessLogAsync(Guid mistakeItemId, ProcessAction action, string details, string? studentId = null)
     {
         var processLog = new ProcessLogModel
         {
             Id = Guid.NewGuid(),
             MistakeItemId = mistakeItemId,
+            StudentId = studentId,
             Action = (int)action,
             Details = details,
             CreatedAt = DateTimeOffset.UtcNow
@@ -360,11 +384,11 @@ public class MistakeDomainService
         if (string.IsNullOrWhiteSpace(item.StudentId))
             errors.Add("缺少学生ID");
 
-        if (item.Subject < 0 || item.Subject > 9)
-            errors.Add("学科值无效（有效范围：0-9）");
+        if (item.Subject <= 0 || item.Subject > 9)
+            errors.Add("学科值无效（有效范围：1-9）");
 
-        if (item.Grade < 0 || item.Grade > 12)
-            errors.Add("年级值无效（有效范围：0-12）");
+        if (item.Grade <= 0 || item.Grade > 12)
+            errors.Add("年级值无效（有效范围：1-12）");
 
         if (string.IsNullOrWhiteSpace(item.SourceUploadId))
             errors.Add("缺少上传记录ID");

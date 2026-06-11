@@ -19,6 +19,7 @@
 系统创建 `ProcessLogModel` 并保存：
 - `Id` = `Guid.NewGuid()`
 - `MistakeItemId` = 请求中的 mistake_item_id
+- `StudentId` = 请求中的 student_id
 - `Action` = 请求中的 ProcessAction 枚举值
 - `Details` = 请求中的 details 字符串
 - `CreatedAt` = `DateTimeOffset.UtcNow`

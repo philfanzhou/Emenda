@@ -80,6 +80,7 @@ public class MistakeDbContext : DbContext
 
             entity.HasIndex(e => new { e.MistakeItemId, e.CreatedAt });
             entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.StudentId);
 
             entity.HasOne(e => e.MistakeItem)
                   .WithMany()

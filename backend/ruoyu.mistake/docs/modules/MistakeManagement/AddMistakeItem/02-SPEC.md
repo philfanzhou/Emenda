@@ -18,7 +18,7 @@
 
 系统验证以下规则：
 - `student_id` 非空
-- `subject` 范围 0-9
+- `subject` 范围 1-9
 - `grade` 范围 0-12
 - `source_upload_id` 非空
 - `source_regions` 非空（至少包含一个图片区域）

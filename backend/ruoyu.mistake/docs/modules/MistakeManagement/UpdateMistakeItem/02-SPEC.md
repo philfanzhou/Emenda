@@ -16,7 +16,7 @@
 
 ### FR-02 部分更新字段
 
-系统仅更新请求中非空/非零的字段：
+系统仅更新请求中非空/非零的字段（部分更新逻辑在 Domain Service 的 `UpdateMistakeItemPartialAsync` 中执行）：
 - `student_id`：非空时更新
 - `subject`：大于 0 时更新
 - `grade`：大于 0 时更新
@@ -65,5 +65,5 @@
 
 ## 测试策略
 
-- 单元测试：验证领域服务 `UpdateMistakeItemAsync` 的更新逻辑
-- 集成测试：验证 gRPC 层的部分更新语义和错误转换
+- 单元测试：验证领域服务 `UpdateMistakeItemPartialAsync` 的部分更新逻辑
+- 集成测试：验证 gRPC 层的参数提取和错误转换
