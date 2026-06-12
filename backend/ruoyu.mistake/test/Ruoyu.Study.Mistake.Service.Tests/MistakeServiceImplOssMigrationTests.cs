@@ -206,7 +206,7 @@ public class MistakeServiceImplOssMigrationTests
     }
 
     [Fact]
-    public async Task ReviewMistakeItem_WhenOssDeleteFails_ShouldNotUpdatePath()
+    public async Task ReviewMistakeItem_WhenOssDeleteFails_ShouldStillUpdatePath()
     {
         var itemId = Guid.NewGuid();
         var item = new MistakeItemModel
@@ -242,8 +242,8 @@ public class MistakeServiceImplOssMigrationTests
 
         // Flow should still succeed
         result.Success.Should().BeTrue();
-        // Path NOT updated because the entire try block (copy+delete+path update) failed
-        item.SourceRegions[0].SourceImagePath.Should().Be("uploads/student-1/img1.jpg");
+        // Path IS updated because Copy succeeded (Delete failure only logs warning)
+        item.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/img1.jpg");
     }
 
     // === CompleteUploadReview OSS Migration Tests ===
@@ -471,5 +471,50 @@ public class MistakeServiceImplOssMigrationTests
 
         result.Success.Should().BeTrue();
         item.SourceRegions[0].SourceImagePath.Should().Be("uploads/student-1/img1.jpg");
+    }
+
+    [Fact]
+    public async Task CompleteUploadReview_WhenOssDeleteFails_ShouldStillUpdatePath()
+    {
+        var item = new MistakeItemModel
+        {
+            Id = Guid.NewGuid(),
+            StudentId = "student-1",
+            SourceUploadId = "upload-1",
+            ReviewStatus = (int)ReviewStatus.Confirmed,
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "uploads/student-1/img1.jpg" }
+            }
+        };
+
+        _mockDomainService.Setup(x => x.CompleteUploadReviewAsync("upload-1", "teacher-1"))
+            .ReturnsAsync(new CompleteUploadReviewResult
+            {
+                Success = true,
+                SourceUploadId = "upload-1",
+                StudentId = "student-1",
+                Items = new List<MistakeItemModel> { item }
+            });
+        _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
+            .ReturnsAsync(true);
+
+        _mockOssService.Setup(x => x.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        // Delete fails
+        _mockOssService.Setup(x => x.DeleteAsync("uploads/student-1/img1.jpg"))
+            .ThrowsAsync(new Exception("Delete failed"));
+
+        var request = new CompleteUploadReviewRequest
+        {
+            SourceUploadId = "upload-1",
+            ReviewerId = "teacher-1"
+        };
+
+        var result = await _service.CompleteUploadReview(request, CreateTestContext());
+
+        result.Success.Should().BeTrue();
+        // Path IS updated because Copy succeeded (Delete failure only logs warning)
+        item.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/img1.jpg");
     }
 }

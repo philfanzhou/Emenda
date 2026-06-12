@@ -181,21 +181,30 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         continue;
 
                     var oldPath = region.SourceImagePath;
+                    var newPath = "mistakes" + oldPath.Substring("uploads".Length);
                     try
                     {
-                        var newPath = "mistakes" + oldPath.Substring("uploads".Length);
-
                         await _ossService.CopyObjectAsync(oldPath, newPath);
-                        await _ossService.DeleteAsync(oldPath);
 
+                        // Copy 成功后即可更新路径，Delete 失败不影响路径更新
                         region.SourceImagePath = newPath;
                         updated = true;
+
+                        try
+                        {
+                            await _ossService.DeleteAsync(oldPath);
+                        }
+                        catch (Exception delEx)
+                        {
+                            // Delete 失败仅记录日志，不影响路径更新
+                            _logger.LogWarning(delEx, "ReviewMistakeItem: Failed to delete source image {Path} after copy, but copy succeeded", oldPath);
+                        }
 
                         _logger.LogDebug("ReviewMistakeItem: Migrated image from {OldPath} to {NewPath}", oldPath, newPath);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "ReviewMistakeItem: Error migrating image {Path}", oldPath);
+                        _logger.LogError(ex, "ReviewMistakeItem: Error copying image {Path}, path not updated", oldPath);
                     }
                 }
 
@@ -359,12 +368,22 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
                         await _ossService.CopyObjectAsync(oldPath, newPath);
 
-                        await _ossService.DeleteAsync(oldPath);
-
+                        // Copy 成功后即可更新路径和缓存，Delete 失败不影响路径更新
                         pathMapping[oldPath] = newPath;
                         region.SourceImagePath = newPath;
                         updated = true;
                         migratedImagePaths.Add(oldPath);
+
+                        try
+                        {
+                            await _ossService.DeleteAsync(oldPath);
+                        }
+                        catch (Exception delEx)
+                        {
+                            // Delete 失败仅记录日志，不影响路径更新
+                            _logger.LogWarning(delEx, "CompleteUploadReview: Failed to delete source image {Path} after copy, but copy succeeded", oldPath);
+                        }
+
                         _logger.LogDebug(
                             "Migrated image from {OldPath} to {NewPath}",
                             oldPath, newPath);
@@ -372,7 +391,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                     catch (Exception ex)
                     {
                         _logger.LogError(ex,
-                            "Error migrating image {Path}",
+                            "Error copying image {Path}, path not updated",
                             oldPath);
                     }
                 }

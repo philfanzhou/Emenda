@@ -47,8 +47,9 @@ CompleteUploadReview(reviewId, confirmedItems, rejectedItems)
 │  │  │  └─ 未缓存 → 执行迁移
 │  │  │     ├─ newPath = "mistakes" + oldPath.Substring("uploads".Length)
 │  │  │     ├─ ossService.CopyObjectAsync(oldPath, newPath)
-│  │  │     ├─ ossService.DeleteAsync(oldPath)
-│  │  │     └─ pathMapping[oldPath] = newPath
+│  │  │     ├─ 更新 region.SourceImagePath = newPath
+│  │  │     ├─ pathMapping[oldPath] = newPath
+│  │  │     └─ ossService.DeleteAsync(oldPath) ← 失败仅记录 Warning，不影响路径更新
 │  │  └─ 更新 item 中的图片路径为 newPath
 │  └─ 持久化 mistake_item
 │
@@ -77,16 +78,23 @@ string newPath = "mistakes" + oldPath.Substring("uploads".Length);
 
 ## 失败处理策略
 
-### 单个图片迁移失败
+### Copy 失败
 
 - 捕获异常后记录日志，不抛出、不阻塞
-- 该图片路径不会被更新到 `pathMapping` 缓存
+- 该图片路径不会被更新，保留 `uploads/` 前缀
 - 其他图片继续正常迁移
 - 审核完成状态照常保存
 
-### OSS 不可用
+### Copy 成功但 Delete 失败
 
-- `CopyObjectAsync` 或 `DeleteAsync` 抛出异常
+- Delete 异常被单独捕获，仅记录 Warning 日志
+- 图片路径**已更新**为 `mistakes/` 前缀（因为 Copy 已成功，目标文件已存在）
+- OSS 中同时存在 `uploads/` 和 `mistakes/` 的副本（源文件未被删除）
+- 不影响业务流程，残留的 `uploads/` 副本可由 OssAuditWorker 清理
+
+### OSS 完全不可用
+
+- `CopyObjectAsync` 抛出异常
 - 所有图片迁移失败，但审核完成状态不会回滚
 - 结果：mistake_item 中的图片路径仍指向 `uploads/` 前缀
 - 需人工介入修复或重新触发迁移
@@ -96,6 +104,8 @@ string newPath = "mistakes" + oldPath.Substring("uploads".Length);
 | 决策 | 原因 |
 |------|------|
 | 单个失败不阻塞 | 审核完成是业务关键操作，图片可后续修复 |
+| Copy 成功即更新路径 | 目标文件已存在，路径应指向新位置；残留源文件由审计清理 |
+| Delete 失败仅记录 Warning | 源文件残留不影响业务，可由 OssAuditWorker 清理 |
 | 不回滚审核状态 | 审核状态变更涉及多方通知，回滚代价高 |
 | 全量返回引用路径 | 审计场景需要完整数据集，分页增加调用复杂度 |
 
