@@ -748,4 +748,176 @@ public class MistakeDomainServiceTests
         result.Should().HaveCount(1);
         result.Should().Contain("valid.jpg");
     }
+
+    // === UpdateMistakeItemPartial 补充测试 ===
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenItemNotFound_ShouldReturnNull()
+    {
+        var itemId = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId, studentId: "new-student");
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenOnlyStudentIdProvided_ShouldUpdateOnlyStudentId()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "old-student",
+            Subject = 3,
+            Grade = 5
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId, studentId: "new-student");
+
+        result.Should().NotBeNull();
+        result!.StudentId.Should().Be("new-student");
+        result.Subject.Should().Be(3);
+        result.Grade.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenOnlySubjectProvided_ShouldUpdateOnlySubject()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            Subject = 3,
+            Grade = 5
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId, subject: 7);
+
+        result.Should().NotBeNull();
+        result!.StudentId.Should().Be("student-1");
+        result.Subject.Should().Be(7);
+        result.Grade.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenOnlyGradeProvided_ShouldUpdateOnlyGrade()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            Subject = 3,
+            Grade = 5
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId, grade: 10);
+
+        result.Should().NotBeNull();
+        result!.StudentId.Should().Be("student-1");
+        result.Subject.Should().Be(3);
+        result.Grade.Should().Be(10);
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenSourceRegionsProvided_ShouldReplaceAll()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            Subject = 3,
+            Grade = 5,
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "old.jpg" }
+            }
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+
+        var newRegions = new List<SourceRegionModel>
+        {
+            new() { SourceImagePath = "new1.jpg" },
+            new() { SourceImagePath = "new2.jpg" }
+        };
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId, sourceRegions: newRegions);
+
+        result.Should().NotBeNull();
+        result!.SourceRegions.Should().HaveCount(2);
+        result.SourceRegions[0].SourceImagePath.Should().Be("new1.jpg");
+        result.SourceRegions[1].SourceImagePath.Should().Be("new2.jpg");
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenNoFieldsProvided_ShouldNotModifyFields()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            Subject = 3,
+            Grade = 5
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId);
+
+        result.Should().NotBeNull();
+        result!.StudentId.Should().Be("student-1");
+        result.Subject.Should().Be(3);
+        result.Grade.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenSubjectZero_ShouldNotUpdateSubject()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            Subject = 3,
+            Grade = 5
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId, subject: 0);
+
+        result.Should().NotBeNull();
+        result!.Subject.Should().Be(3); // Not updated because subject=0 is ignored
+    }
+
+    [Fact]
+    public async Task UpdateMistakeItemPartialAsync_WhenUpdateFails_ShouldReturnNull()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            Subject = 3,
+            Grade = 5
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(false);
+
+        var result = await _service.UpdateMistakeItemPartialAsync(itemId, studentId: "new-student");
+
+        result.Should().BeNull();
+    }
 }
