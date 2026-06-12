@@ -102,5 +102,10 @@
 ## 7. 风险与待人工复核事项
 
 1. **ProcessLog student_id 迁移**: 新增了 student_id 列，但未生成 EF Core 迁移文件。生产部署前需要执行 `dotnet ef migrations add AddStudentIdToProcessLog` 并应用迁移
+这里应该修改代码，参考之前的都会程序启动就自动执行数据库升级的啊。
+
 2. **CompleteUploadReview 非事务性风险**: OSS 操作与数据库更新不在同一事务中，OSS 失败仅记日志不中断。如果需要更强一致性，建议引入补偿机制
+这里需要给我更多信息，比如调用上下文是什么，然后再来判断
+
 3. **AnalyzeMistakeType 占位实现**: 当前硬编码返回"其他错误"，有 gRPC 测试工具依赖，暂不移除。未来接入真实分析服务时需更新
+哪个测试工具？我不记得有啥 gRPC 测试工具了呢？把细节再描述清楚。
