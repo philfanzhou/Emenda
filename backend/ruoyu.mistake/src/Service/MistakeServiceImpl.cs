@@ -12,12 +12,12 @@ namespace Ruoyu.Study.Mistake.Service;
 
 public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
-    private readonly MistakeDomainService _mistakeService;
+    private readonly IMistakeDomainService _mistakeService;
     private readonly IOssService _ossService;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
-        MistakeDomainService mistakeService,
+        IMistakeDomainService mistakeService,
         IOssService ossService,
         ILogger<MistakeServiceImpl> logger)
     {

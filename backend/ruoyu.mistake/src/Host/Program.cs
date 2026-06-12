@@ -63,7 +63,7 @@ builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
-builder.Services.AddScoped<MistakeDomainService>();
+builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
 
 var app = builder.Build();
 

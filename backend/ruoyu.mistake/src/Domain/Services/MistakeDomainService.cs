@@ -22,7 +22,7 @@ public class CompleteUploadReviewResult
     public List<MistakeItemModel> Items { get; set; } = new();
 }
 
-public class MistakeDomainService
+public class MistakeDomainService : IMistakeDomainService
 {
     private readonly IMistakeItemRepository _mistakeItemRepository;
     private readonly IMistakePracticeRepository _mistakePracticeRepository;
