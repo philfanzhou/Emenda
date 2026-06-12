@@ -42,32 +42,72 @@ public static class DatabaseInitializer
                 )";
             await historyCmd.ExecuteNonQueryAsync();
 
+            var productVersion = typeof(DbContext).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion ?? "8.0.0";
+
+            // Stamp InitialCreate if tables already exist
             await using var checkStampCmd = context.Database.GetDbConnection().CreateCommand();
             checkStampCmd.CommandText = @"
                 SELECT COUNT(*) FROM ""__EFMigrationsHistory"" 
                 WHERE ""MigrationId"" = '20260514051544_InitialCreate'";
             var count = (long)(await checkStampCmd.ExecuteScalarAsync())!;
-            if (count > 0) return;
+            if (count == 0)
+            {
+                await using var insertCmd = context.Database.GetDbConnection().CreateCommand();
+                insertCmd.CommandText = @"
+                    INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                    VALUES (@mid, @pv)";
+                var midParam = insertCmd.CreateParameter();
+                midParam.ParameterName = "@mid";
+                midParam.Value = "20260514051544_InitialCreate";
+                insertCmd.Parameters.Add(midParam);
+                var pvParam = insertCmd.CreateParameter();
+                pvParam.ParameterName = "@pv";
+                pvParam.Value = productVersion;
+                insertCmd.Parameters.Add(pvParam);
+                await insertCmd.ExecuteNonQueryAsync();
 
-            var productVersion = typeof(DbContext).Assembly
-                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-                .InformationalVersion ?? "8.0.0";
+                logger.LogInformation("已将 InitialCreate 迁移标记为已应用");
+            }
 
-            await using var insertCmd = context.Database.GetDbConnection().CreateCommand();
-            insertCmd.CommandText = @"
-                INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
-                VALUES (@mid, @pv)";
-            var midParam = insertCmd.CreateParameter();
-            midParam.ParameterName = "@mid";
-            midParam.Value = "20260514051544_InitialCreate";
-            insertCmd.Parameters.Add(midParam);
-            var pvParam = insertCmd.CreateParameter();
-            pvParam.ParameterName = "@pv";
-            pvParam.Value = productVersion;
-            insertCmd.Parameters.Add(pvParam);
-            await insertCmd.ExecuteNonQueryAsync();
+            // Stamp AddStudentIdToProcessLog if student_id column already exists in process_log
+            await using var checkStudentIdCmd = context.Database.GetDbConnection().CreateCommand();
+            checkStudentIdCmd.CommandText = @"
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = 'process_log'
+                    AND column_name = 'student_id'
+                )";
+            var studentIdExists = (bool)(await checkStudentIdCmd.ExecuteScalarAsync())!;
 
-            logger.LogInformation("已将 InitialCreate 迁移标记为已应用");
+            if (studentIdExists)
+            {
+                await using var checkStamp2Cmd = context.Database.GetDbConnection().CreateCommand();
+                checkStamp2Cmd.CommandText = @"
+                    SELECT COUNT(*) FROM ""__EFMigrationsHistory""
+                    WHERE ""MigrationId"" = '20260612030015_AddStudentIdToProcessLog'";
+                var count2 = (long)(await checkStamp2Cmd.ExecuteScalarAsync())!;
+                if (count2 == 0)
+                {
+                    await using var insertStamp2Cmd = context.Database.GetDbConnection().CreateCommand();
+                    insertStamp2Cmd.CommandText = @"
+                        INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                        VALUES (@mid, @pv)";
+                    var midParam2 = insertStamp2Cmd.CreateParameter();
+                    midParam2.ParameterName = "@mid";
+                    midParam2.Value = "20260612030015_AddStudentIdToProcessLog";
+                    insertStamp2Cmd.Parameters.Add(midParam2);
+                    var pvParam2 = insertStamp2Cmd.CreateParameter();
+                    pvParam2.ParameterName = "@pv";
+                    pvParam2.Value = productVersion;
+                    insertStamp2Cmd.Parameters.Add(pvParam2);
+                    await insertStamp2Cmd.ExecuteNonQueryAsync();
+
+                    logger.LogInformation("已将 AddStudentIdToProcessLog 迁移标记为已应用");
+                }
+            }
         }
         finally
         {

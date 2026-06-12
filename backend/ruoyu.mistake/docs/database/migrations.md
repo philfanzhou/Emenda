@@ -48,6 +48,38 @@
 | `image_paths` | 旧版本图片路径，已被 `source_regions` (JSONB) 替代 |
 | `fingerprint` | 图片指纹字段，已移除 |
 
+## 20260612030015_AddStudentIdToProcessLog
+
+**日期**: 2026-06-12
+**类型**: 增量迁移
+
+### 变更内容
+
+1. **process_log** — 新增 `student_id` 列 (`VARCHAR(36)`, NULL) 及索引 `IX_process_log_student_id`
+2. **mistake_practice** — `image_paths` 列类型从 `text` 改为 `jsonb`
+
+### 幂等性问题与 stamp 机制
+
+此迁移存在与 `EnsureColumnRenamesAsync` 的竞态问题：
+
+- `DatabaseInitializer.EnsureColumnRenamesAsync` 在启动时通过 `IF NOT EXISTS` 幂等地添加 `student_id` 列
+- 但 `StampMigrationsIfTablesExistAsync` 只标记了 `InitialCreate`，未标记此迁移
+- 导致 `MigrateAsync` 认为此迁移未应用，尝试执行 `ALTER TABLE ADD COLUMN student_id` → 列已存在 → 42701 错误
+
+**修复方案**：在 `StampMigrationsIfTablesExistAsync` 中增加对此迁移的检测：当 `process_log` 表已存在 `student_id` 列时，自动将 `20260612030015_AddStudentIdToProcessLog` 标记为已应用。
+
+### 新增列
+
+| 列名 | 类型 | 所在表 |
+|------|------|--------|
+| `student_id` | `VARCHAR(36)` NULL | process_log |
+
+### 类型变更
+
+| 列名 | 旧类型 | 新类型 | 所在表 |
+|------|--------|--------|--------|
+| `image_paths` | `text` | `jsonb` | mistake_practice |
+
 ## 相关文档
 
 - [表结构文档](./tables/)

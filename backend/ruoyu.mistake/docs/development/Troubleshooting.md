@@ -312,6 +312,32 @@
 
 **根治建议**：确保数据库用户有创建表和插入数据的权限。
 
+### 5.5 迁移列已存在导致启动失败
+
+**典型症状**：服务启动时报 `42701: column "student_id" of relation "process_log" already exists`，服务崩溃。
+
+**常见日志特征**：
+- `Failed executing DbCommand ... ALTER TABLE process_log ADD student_id character varying(36)`
+- `Npgsql.PostgresException: 42701: column "student_id" of relation "process_log" already exists`
+
+**可能根因**：
+- `EnsureColumnRenamesAsync` 在启动时已通过 `IF NOT EXISTS` 安全地添加了 `student_id` 列
+- `StampMigrationsIfTablesExistAsync` 只标记了 `InitialCreate`，未标记 `AddStudentIdToProcessLog` 迁移
+- `MigrateAsync` 发现该迁移为 pending，尝试执行 `ALTER TABLE ADD COLUMN`，但列已存在
+
+**排查步骤**：
+1. 查询 `SELECT * FROM "__EFMigrationsHistory"` 确认是否缺少 `20260612030015_AddStudentIdToProcessLog` 记录
+2. 查询 `SELECT column_name FROM information_schema.columns WHERE table_name = 'process_log' AND column_name = 'student_id'` 确认列是否已存在
+3. 如果列已存在但迁移未标记，说明 stamp 逻辑未覆盖此迁移
+
+**临时绕过**：手动插入迁移 stamp：
+```sql
+INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
+```
+
+**根治建议**：确保 `StampMigrationsIfTablesExistAsync` 中包含对 `AddStudentIdToProcessLog` 迁移的检测逻辑，当 `student_id` 列已存在时自动标记该迁移为已应用。
+
 ---
 
 ## 6. OSS 配置错误
