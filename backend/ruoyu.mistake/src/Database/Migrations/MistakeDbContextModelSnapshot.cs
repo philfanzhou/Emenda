@@ -25,7 +25,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -107,7 +106,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -117,7 +115,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
                     b.Property<string>("ImagePaths")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("jsonb")
                         .HasColumnName("image_paths");
 
                     b.Property<bool>("IsCorrect")
@@ -156,7 +154,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -176,9 +173,16 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("mistake_item_id");
 
+                    b.Property<string>("StudentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("student_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("StudentId");
 
                     b.HasIndex("MistakeItemId", "CreatedAt");
 
