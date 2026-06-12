@@ -83,6 +83,7 @@ message ProcessLogDto {
   ProcessAction action = 3;
   string details = 4;
   string created_at = 5;
+  string student_id = 6;
 }
 
 message PendingReviewUploadDto {

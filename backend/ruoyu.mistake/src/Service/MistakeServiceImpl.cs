@@ -555,7 +555,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             Details = log.Details ?? string.Empty,
             CreatedAt = log.CreatedAt == DateTimeOffset.MinValue
                 ? string.Empty
-                : log.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
+                : log.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
+            StudentId = log.StudentId ?? string.Empty
         };
     }
 }
