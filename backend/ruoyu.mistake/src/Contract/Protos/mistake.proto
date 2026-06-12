@@ -23,7 +23,6 @@ service MistakeGrpcService {
   rpc AddMistakePractice(AddMistakePracticeRequest) returns (MistakePracticeDto);
   rpc GetMistakePractices(IdRequest) returns (MistakePracticeListResponse);
 
-  rpc AnalyzeMistakeType(AnalyzeMistakeRequest) returns (MistakeTypeResponse);
   rpc LogMistakeProcess(LogMistakeProcessRequest) returns (BoolResponse);
   rpc GetMistakeProcessHistory(IdRequest) returns (ProcessLogListResponse);
   rpc GetAllReferencedImagePaths(Empty) returns (GetAllReferencedImagePathsResponse);
@@ -133,19 +132,6 @@ message AddMistakePracticeRequest {
 
 message MistakePracticeListResponse {
   repeated MistakePracticeDto practices = 1;
-}
-
-message AnalyzeMistakeRequest {
-  string mistake_item_id = 1;
-  string content = 2;
-  string correct_answer = 3;
-  string student_answer = 4;
-}
-
-message MistakeTypeResponse {
-  int32 type = 1;
-  string type_name = 2;
-  string analysis_reason = 3;
 }
 
 message LogMistakeProcessRequest {

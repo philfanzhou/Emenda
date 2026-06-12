@@ -264,21 +264,6 @@ public class Form1 : Form
         };
         grpInfo.Controls.Add(btnDelete);
         tab.Controls.Add(grpInfo);
-
-        y += 120;
-        var grpAi = new GroupBox { Text = "高阶功能 (Advanced & AI)", Location = new Point(20, y), Size = new Size(500, 100) };
-        var btnAnalyze = new Button { Text = "🧠 请求 AI 分析错误类型 (Analyze)", Location = new Point(20, 30), Width = 250, Height = 40, BackColor = Color.Lavender };
-        btnAnalyze.Click += async (s, e) => {
-            try {
-                Log($"[AnalyzeMistakeType] 正在分析错题 ID: {txtMistakeId.Text} ...");
-                var getRes = await _client.GetMistakeAsync(new GetMistakeRequest { MistakeId = txtMistakeId.Text, StudentId = txtStudentId.Text });
-                var req = new AnalyzeMistakeRequest { MistakeId = txtMistakeId.Text, Content = getRes.Content, CorrectAnswer = getRes.CorrectAnswer, StudentAnswer = getRes.StudentAnswer };
-                var res = await _client.AnalyzeMistakeTypeAsync(req);
-                Log($"[AnalyzeMistakeType] ✅ 分析结果: {res.TypeName} | 原因: {res.AnalysisReason}");
-            } catch(Exception ex) { Log($"[AnalyzeMistakeType] ❌ 错误: {ex.Message}"); }
-        };
-        grpAi.Controls.Add(btnAnalyze);
-        tab.Controls.Add(grpAi);
     }
 
     private void Log(string message)

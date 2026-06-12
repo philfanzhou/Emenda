@@ -276,27 +276,6 @@ public class MistakeDomainService
         return await _mistakePracticeRepository.GetByMistakeItemIdAsync(mistakeItemId);
     }
 
-    public async Task<MistakeTypeResponse> AnalyzeMistakeTypeAsync(Guid mistakeItemId)
-    {
-        var type = 5;
-        var typeName = "其他错误";
-        var analysisReason = "根据答案对比无法明确分类";
-
-        var item = await _mistakeItemRepository.GetByIdAsync(mistakeItemId);
-        if (item != null)
-        {
-            await AddProcessLogAsync(item.Id, ProcessAction.Analyzed, $"Mistake analyzed as {typeName}", item.StudentId);
-            await _unitOfWork.SaveChangesAsync();
-        }
-
-        return new MistakeTypeResponse
-        {
-            Type = type,
-            TypeName = typeName,
-            AnalysisReason = analysisReason
-        };
-    }
-
     public async Task<bool> LogMistakeProcessAsync(Guid mistakeItemId, string studentId, ProcessAction action, string details)
     {
         var item = await _mistakeItemRepository.GetByIdAsync(mistakeItemId);

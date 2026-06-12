@@ -7,7 +7,7 @@
 | 目录 | 职责 | 内容概要 |
 |------|------|----------|
 | [overview/](./overview/README.md) | 服务级总览 | 系统上下文、集成矩阵、关键流程、数据主责、需求摘要、架构概述、代码规范 |
-| [modules/](./modules/README.md) | 内部业务能力 | 7 个业务域、16 个功能点，每个功能点 6 件套（FEATURE/SPEC/DESIGN/TASKS/TESTS/CONVENTIONS） |
+| [modules/](./modules/README.md) | 内部业务能力 | 6 个业务域、15 个功能点，每个功能点 6 件套（FEATURE/SPEC/DESIGN/TASKS/TESTS/CONVENTIONS） |
 | [Integration/](./Integration/README.md) | 外部系统交互 | Student 数据引用、OSS 图片迁移、Portal 接口分配、Storage 数据库配置 |
 | [database/](./database/README.md) | 数据库唯一事实源 | 3 张表（mistake_item/mistake_practice/process_log）的字段、索引、关系、迁移 |
 | [development/](./development/README.md) | 开发执行支持 | 部署说明、故障排查、集成验证 |
@@ -15,7 +15,7 @@
 
 ## 功能点分布
 
-本服务 16 个功能点按业务域分布在 [modules/](./modules/README.md) 中：
+本服务 15 个功能点按业务域分布在 [modules/](./modules/README.md) 中：
 
 | 业务域 | 功能点数 | 核心能力 |
 |--------|---------|----------|
@@ -24,7 +24,6 @@
 | MistakeManagement | 6 | 增删改查错题条目 |
 | MistakePractice | 2 | 练习记录增查 |
 | MistakeProcessLogging | 2 | 处理日志增查 |
-| MistakeAnalysis | 1 | 错题类型分析（占位实现） |
 | ImagePathQuery | 1 | 引用图片路径查询 |
 
 ## 阅读建议

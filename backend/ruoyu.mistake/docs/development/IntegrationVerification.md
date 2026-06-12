@@ -284,18 +284,6 @@
 
 > **补充验证：** 对 PendingReview 或 Rejected 状态的错题调用 AddMistakePractice，应返回 InvalidArgument "只能对已确认的错题进行练习"。
 
-### TC-26 错题类型分析 (AnalyzeMistakeType)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 错题类型分析 |
-| **目的** | 验证 AnalyzeMistakeType 返回分析结果并记录日志 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 存在一条错题记录 |
-| **输入** | mistakeItemId=有效错题ID |
-| **操作步骤** | 1. 调用 AnalyzeMistakeType<br>2. 验证返回 MistakeTypeResponse<br>3. 验证 process_log 新增 action=2(Analyzed) |
-| **预期结果** | 1. 返回 type=5, type_name="其他错误", analysis_reason 非空<br>2. process_log 新增 Analyzed 记录 |
-| **失败判断** | 返回异常；type_name 为空；无 Analyzed 日志 |
-
 ### TC-27 处理日志记录与查询
 
 | 项目 | 内容 |

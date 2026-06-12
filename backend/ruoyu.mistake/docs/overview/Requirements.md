@@ -7,7 +7,7 @@
 - 支持教师逐条审核 + 整批完成审核流程，审核时可修正科目/年级
 - 审核完成后自动迁移 OSS 图片（uploads/ → mistakes/）
 - 支持错题练习记录追踪，仅已确认错题可添加练习
-- 支持错题类型分析和处理过程日志
+- 支持错题处理过程日志
 - 支持 OSS 垃圾清理审计（GetAllReferencedImagePaths）
 - 双数据库模式：PostgreSQL（生产）/ SQLite（开发）
 - 双 OSS 模式：S3OssService（生产）/ LocalFileOssService（开发，USE_LOCAL_OSS=1）
@@ -31,7 +31,6 @@
 | MistakePractice | 查询练习记录 | [modules/MistakePractice/GetMistakePractices/](../modules/MistakePractice/GetMistakePractices/01-FEATURE.md) |
 | MistakeProcessLogging | 记录处理日志 | [modules/MistakeProcessLogging/LogMistakeProcess/](../modules/MistakeProcessLogging/LogMistakeProcess/01-FEATURE.md) |
 | MistakeProcessLogging | 查询处理历史 | [modules/MistakeProcessLogging/GetMistakeProcessHistory/](../modules/MistakeProcessLogging/GetMistakeProcessHistory/01-FEATURE.md) |
-| MistakeAnalysis | 分析错题类型 | [modules/MistakeAnalysis/AnalyzeMistakeType/](../modules/MistakeAnalysis/AnalyzeMistakeType/01-FEATURE.md) |
 | ImagePathQuery | 获取所有引用图片路径 | [modules/ImagePathQuery/GetAllReferencedImagePaths/](../modules/ImagePathQuery/GetAllReferencedImagePaths/01-FEATURE.md) |
 
 ## 外部集成需求

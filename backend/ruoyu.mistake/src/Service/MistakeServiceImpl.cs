@@ -432,11 +432,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return response;
     }
 
-    public override async Task<MistakeTypeResponse> AnalyzeMistakeType(AnalyzeMistakeRequest request, ServerCallContext context)
-    {
-        return await _mistakeService.AnalyzeMistakeTypeAsync(Guid.Parse(request.MistakeItemId));
-    }
-
     public override async Task<BoolResponse> LogMistakeProcess(LogMistakeProcessRequest request, ServerCallContext context)
     {
         var success = await _mistakeService.LogMistakeProcessAsync(

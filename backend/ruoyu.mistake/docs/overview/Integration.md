@@ -16,13 +16,12 @@
 | 10 | CompleteUploadReview | gRPC | 入 | teacher_portal | 完成整批审核 |
 | 11 | AddMistakePractice | gRPC | 入 | — | 添加练习记录 |
 | 12 | GetMistakePractices | gRPC | 入 | — | 查询练习记录 |
-| 13 | AnalyzeMistakeType | gRPC | 入 | — | 分析错题类型 |
-| 14 | LogMistakeProcess | gRPC | 入 | — | 记录处理日志 |
-| 15 | GetMistakeProcessHistory | gRPC | 入 | — | 查询处理历史 |
-| 16 | GetAllReferencedImagePaths | gRPC | 入 | admin_portal | 获取所有引用图片路径（OSS审计） |
-| 17 | IOssService.CopyObject | S3 API | 出 | MinIO/SeaweedFS | 图片迁移：uploads/ → mistakes/ |
-| 18 | IOssService.DeleteObject | S3 API | 出 | MinIO/SeaweedFS | 迁移后删除 uploads/ 下的原图 |
-| 19 | EF Core (Npgsql/Sqlite) | 数据库 | 出 | PostgreSQL/SQLite | 所有数据持久化操作 |
+| 13 | LogMistakeProcess | gRPC | 入 | — | 记录处理日志 |
+| 14 | GetMistakeProcessHistory | gRPC | 入 | — | 查询处理历史 |
+| 15 | GetAllReferencedImagePaths | gRPC | 入 | admin_portal | 获取所有引用图片路径（OSS审计） |
+| 16 | IOssService.CopyObject | S3 API | 出 | MinIO/SeaweedFS | 图片迁移：uploads/ → mistakes/ |
+| 17 | IOssService.DeleteObject | S3 API | 出 | MinIO/SeaweedFS | 迁移后删除 uploads/ 下的原图 |
+| 18 | EF Core (Npgsql/Sqlite) | 数据库 | 出 | PostgreSQL/SQLite | 所有数据持久化操作 |
 
 ## 失败语义总结
 

@@ -41,13 +41,7 @@ ruoyu.mistake 分为以下业务域：
 | [LogMistakeProcess](./MistakeProcessLogging/LogMistakeProcess/01-FEATURE.md) | `MistakeProcessLogging/LogMistakeProcess` | 记录处理动作 |
 | [GetMistakeProcessHistory](./MistakeProcessLogging/GetMistakeProcessHistory/01-FEATURE.md) | `MistakeProcessLogging/GetMistakeProcessHistory` | 查询处理历史 |
 
-## 6. MistakeAnalysis — 错题分析
-
-| 功能名 | 功能ID | 说明 |
-|--------|--------|------|
-| [AnalyzeMistakeType](./MistakeAnalysis/AnalyzeMistakeType/01-FEATURE.md) | `MistakeAnalysis/AnalyzeMistakeType` | 分析错题类型（当前为占位实现） |
-
-## 7. ImagePathQuery — 图片路径查询
+## 6. ImagePathQuery — 图片路径查询
 
 | 功能名 | 功能ID | 说明 |
 |--------|--------|------|

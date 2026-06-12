@@ -555,36 +555,6 @@ public class MistakeDomainServiceTests
         _mockItemRepo.Verify(x => x.GetListAsync("", 0, 0, 0, 1, 100), Times.Once);
     }
 
-    // === AnalyzeMistakeType 补充测试 ===
-
-    [Fact]
-    public async Task AnalyzeMistakeTypeAsync_WhenItemExists_ShouldReturnPlaceholderAndLog()
-    {
-        var itemId = Guid.NewGuid();
-        var item = new MistakeItemModel { Id = itemId };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-
-        var result = await _service.AnalyzeMistakeTypeAsync(itemId);
-
-        result.Type.Should().Be(5);
-        result.TypeName.Should().Be("其他错误");
-        result.AnalysisReason.Should().Be("根据答案对比无法明确分类");
-        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
-            log.Action == (int)ProcessAction.Analyzed)), Times.Once);
-    }
-
-    [Fact]
-    public async Task AnalyzeMistakeTypeAsync_WhenItemNotExists_ShouldReturnPlaceholderWithoutLog()
-    {
-        var itemId = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
-
-        var result = await _service.AnalyzeMistakeTypeAsync(itemId);
-
-        result.Type.Should().Be(5);
-        _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>()), Times.Never);
-    }
-
     // === LogMistakeProcess 补充测试 ===
 
     [Fact]
