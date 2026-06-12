@@ -224,6 +224,24 @@ public static class DatabaseInitializer
                 END $$;";
             await fixProcessLogCmd.ExecuteNonQueryAsync();
 
+            await using var addStudentIdCmd = context.Database.GetDbConnection().CreateCommand();
+            addStudentIdCmd.CommandText = @"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'process_log' AND column_name = 'student_id'
+                    ) THEN
+                        ALTER TABLE process_log ADD COLUMN student_id character varying(36) NULL;
+                    END IF;
+                END $$;";
+            await addStudentIdCmd.ExecuteNonQueryAsync();
+
+            await using var addStudentIdIndexCmd = context.Database.GetDbConnection().CreateCommand();
+            addStudentIdIndexCmd.CommandText = @"
+                CREATE INDEX IF NOT EXISTS IX_process_log_student_id ON process_log (student_id);";
+            await addStudentIdIndexCmd.ExecuteNonQueryAsync();
+
             await using var addProcessLogFkCmd = context.Database.GetDbConnection().CreateCommand();
             addProcessLogFkCmd.CommandText = @"
                 DO $$
@@ -322,6 +340,7 @@ public static class DatabaseInitializer
                 CREATE TABLE IF NOT EXISTS process_log (
                     id uuid NOT NULL,
                     mistake_item_id uuid NOT NULL,
+                    student_id character varying(36) NULL,
                     action integer NOT NULL,
                     details text NULL,
                     created_at timestamp with time zone NOT NULL,
@@ -330,7 +349,8 @@ public static class DatabaseInitializer
                         FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS IX_process_log_mistake_item_id_created_at ON process_log (mistake_item_id, created_at);
-                CREATE INDEX IF NOT EXISTS IX_process_log_created_at ON process_log (created_at);",
+                CREATE INDEX IF NOT EXISTS IX_process_log_created_at ON process_log (created_at);
+                CREATE INDEX IF NOT EXISTS IX_process_log_student_id ON process_log (student_id);",
 
             _ => null
         };

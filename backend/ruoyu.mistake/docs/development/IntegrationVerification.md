@@ -313,7 +313,7 @@
 ### 部分通过
 
 - 核心流程（创建、审核、完成审核）全部通过，但存在以下情况：
-  - 非核心接口（如 AnalyzeMistakeType、GetAllReferencedImagePaths）返回结果与预期有偏差但不影响主流程
+  - 非核心接口（如 GetAllReferencedImagePaths）返回结果与预期有偏差但不影响主流程
   - 容错场景日志消息与预期不完全匹配，但功能行为正确
   - 分页边界值（如 total_pages 计算）存在微小偏差
   - teacher_portal 级联操作（驳回后删除、确认后 CompleteUploadReview）偶发失败但可重试成功

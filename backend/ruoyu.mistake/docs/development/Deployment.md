@@ -11,7 +11,7 @@
 | gRPC 端口 | HTTP/2 | 接收所有 gRPC 调用（student、admin_portal、teacher_portal、user_portal） | `Endpoints:Grpc` | 5006 |
 | HTTP 端口 | HTTP/1 | 健康检查（`GET /`） | `Endpoints:Http` | 5007 |
 
-**gRPC 端口**承载全部业务接口，包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等 16 个 RPC 方法。
+**gRPC 端口**承载全部业务接口，包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等 15 个 RPC 方法。
 
 **HTTP 端口**仅用于健康检查，`GET /` 返回 `"Mistake gRPC host is running."`。student 服务的 `GrpcUploadDispatcher` 通过此端点判断 mistake 服务是否可用。
 
@@ -90,6 +90,15 @@ SQLite 未配置连接字符串时，默认路径为 `data/sqlite/ruoyu_study_mi
 
 SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创建表结构。
 
+### SQLite 兼容性已知限制
+
+> **设计决策**：以下 workaround 是已知且有意为之的，生产环境使用 PostgreSQL 不受影响。
+
+| 位置 | 限制 | Workaround | 影响 |
+|------|------|-----------|------|
+| `MistakeItemRepository.GetPendingReviewUploadsAsync` | SQLite 不支持 `DateTimeOffset` 的 `Min` 聚合 | 在客户端执行分组和聚合 | 开发环境下数据量大时性能较低，生产 PostgreSQL 不受影响 |
+| `MistakeItemRepository.GetListAsync` | SQLite 不支持 `DateTimeOffset` 的 `ORDER BY` | 在客户端排序 | 开发环境下分页排序在客户端完成，生产 PostgreSQL 在数据库端排序 |
+
 ### 数据库不存在或迁移失败时怎么判断
 
 | 现象 | 原因 | 判断方法 |
@@ -120,15 +129,14 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 |------|-----------|------|
 | `SubmitMistakeUpload` | 不受影响 | 仅创建数据库记录，不操作 OSS |
 | `GetMistakeItem` / `GetMistakeItemList` | 不受影响 | 仅读取数据库 |
-| `ReviewMistakeItem` | 不受影响 | 仅更新数据库审核状态 |
-| `CompleteUploadReview` | **受影响** | 需要将图片从 `uploads/` 复制到 `mistakes/`，然后删除 `uploads/` 原图。OSS 不可用时此操作会失败，审核完成流程中断 |
+| `ReviewMistakeItem` | 不受影响 | 仅更新数据库审核状态；审核确认后的图片迁移失败不阻塞审核状态更新，路径保留 uploads/ 前缀 |
+| `CompleteUploadReview` | **部分受影响** | 需要将图片从 `uploads/` 复制到 `mistakes/`，然后删除 `uploads/` 原图。OSS 不可用时 Copy 失败，图片路径不更新；Copy 成功但 Delete 失败时路径仍会更新为 mistakes/ 前缀 |
 | `GetAllReferencedImagePaths` | 不受影响 | 仅读取数据库中的路径字符串 |
 | `AddMistakeItem` / `UpdateMistakeItem` / `DeleteMistakeItem` | 不受影响 | 仅操作数据库 |
 | `AddMistakePractice` / `GetMistakePractices` | 不受影响 | 仅操作数据库 |
-| `AnalyzeMistakeType` | 不受影响 | 仅操作数据库 |
 | `LogMistakeProcess` / `GetMistakeProcessHistory` | 不受影响 | 仅操作数据库 |
 
-**结论**：OSS 不可用时，错题的创建、查询、审核状态变更等核心功能正常，但**审核完成后的图片迁移流程不可用**。教师无法完成整批审核的最终确认步骤。
+**结论**：OSS 不可用时，错题的创建、查询、审核状态变更等核心功能正常。图片迁移（Copy）失败时不阻塞审核流程，路径保留 `uploads/` 前缀待后续重试；Copy 成功但 Delete 失败时路径更新为 `mistakes/` 前缀，残留源文件可由 OssAuditWorker 清理。
 
 ---
 
