@@ -11,4 +11,5 @@ public interface IMistakePracticeRepository
     Task<List<MistakePracticeModel>> GetByMistakeItemIdAsync(Guid mistakeItemId);
     Task RemoveByMistakeItemIdAsync(Guid mistakeItemId);
     Task<List<MistakePracticeModel>> GetAllAsync();
+    Task<List<string>> GetAllPracticeImagePathsAsync();
 }

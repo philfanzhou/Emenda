@@ -309,27 +309,10 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task GetAllReferencedImagePathsAsync_ShouldReturnAllPaths()
     {
-        var items = new List<MistakeItemModel>
-        {
-            new()
-            {
-                SourceRegions = new List<SourceRegionModel>
-                {
-                    new() { SourceImagePath = "path1.jpg" },
-                    new() { SourceImagePath = "path2.jpg" }
-                }
-            }
-        };
-        var practices = new List<MistakePracticeModel>
-        {
-            new()
-            {
-                ImagePaths = new List<string> { "practice1.jpg" }
-            }
-        };
-
-        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(items);
-        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(practices);
+        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
+            .ReturnsAsync(new List<string> { "path1.jpg", "path2.jpg" });
+        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
+            .ReturnsAsync(new List<string> { "practice1.jpg" });
 
         var result = await _service.GetAllReferencedImagePathsAsync();
 
@@ -728,8 +711,10 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task GetAllReferencedImagePathsAsync_WhenNoData_ShouldReturnEmptySet()
     {
-        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakeItemModel>());
-        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakePracticeModel>());
+        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
+            .ReturnsAsync(new List<string>());
+        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
+            .ReturnsAsync(new List<string>());
 
         var result = await _service.GetAllReferencedImagePathsAsync();
 
@@ -739,19 +724,10 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task GetAllReferencedImagePathsAsync_ShouldDeduplicatePaths()
     {
-        var items = new List<MistakeItemModel>
-        {
-            new()
-            {
-                SourceRegions = new List<SourceRegionModel>
-                {
-                    new() { SourceImagePath = "path1.jpg" },
-                    new() { SourceImagePath = "path1.jpg" }
-                }
-            }
-        };
-        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(items);
-        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakePracticeModel>());
+        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
+            .ReturnsAsync(new List<string> { "path1.jpg", "path1.jpg" });
+        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
+            .ReturnsAsync(new List<string>());
 
         var result = await _service.GetAllReferencedImagePathsAsync();
 
@@ -761,20 +737,11 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task GetAllReferencedImagePathsAsync_ShouldSkipEmptyPaths()
     {
-        var items = new List<MistakeItemModel>
-        {
-            new()
-            {
-                SourceRegions = new List<SourceRegionModel>
-                {
-                    new() { SourceImagePath = "" },
-                    new() { SourceImagePath = "   " },
-                    new() { SourceImagePath = "valid.jpg" }
-                }
-            }
-        };
-        _mockItemRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(items);
-        _mockPracticeRepo.Setup(x => x.GetAllAsync()).ReturnsAsync(new List<MistakePracticeModel>());
+        // Repository layer already filters empty/whitespace paths, so only valid paths reach Domain
+        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
+            .ReturnsAsync(new List<string> { "valid.jpg" });
+        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
+            .ReturnsAsync(new List<string>());
 
         var result = await _service.GetAllReferencedImagePathsAsync();
 

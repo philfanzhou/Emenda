@@ -170,6 +170,26 @@ public class MistakeItemRepository : IMistakeItemRepository
         return entities.Select(MapToModel).ToList();
     }
 
+    public async Task<List<string>> GetAllSourceImagePathsAsync()
+    {
+        // Only select the source_regions column to avoid loading full entities
+        var regionsList = await _dbContext.MistakeItems
+            .Select(x => x.SourceRegions)
+            .ToListAsync();
+
+        var paths = new List<string>();
+        foreach (var regions in regionsList)
+        {
+            if (regions == null) continue;
+            foreach (var region in regions)
+            {
+                if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
+                    paths.Add(region.SourceImagePath);
+            }
+        }
+        return paths;
+    }
+
     private static MistakeItemEntity MapToEntity(MistakeItemModel model)
     {
         return new MistakeItemEntity

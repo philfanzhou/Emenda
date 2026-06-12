@@ -18,6 +18,7 @@ public interface IMistakeItemRepository
     Task<int> CountPendingBySourceUploadIdAsync(string sourceUploadId);
     Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync();
     Task<List<MistakeItemModel>> GetAllAsync();
+    Task<List<string>> GetAllSourceImagePathsAsync();
 }
 
 public class SourceUploadSummary

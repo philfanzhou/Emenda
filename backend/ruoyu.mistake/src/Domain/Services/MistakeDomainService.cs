@@ -295,24 +295,16 @@ public class MistakeDomainService : IMistakeDomainService
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var items = await _mistakeItemRepository.GetAllAsync();
-        foreach (var item in items)
+        var itemPaths = await _mistakeItemRepository.GetAllSourceImagePathsAsync();
+        foreach (var path in itemPaths)
         {
-            foreach (var region in item.SourceRegions)
-            {
-                if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
-                    paths.Add(region.SourceImagePath);
-            }
+            paths.Add(path);
         }
 
-        var practices = await _mistakePracticeRepository.GetAllAsync();
-        foreach (var practice in practices)
+        var practicePaths = await _mistakePracticeRepository.GetAllPracticeImagePathsAsync();
+        foreach (var path in practicePaths)
         {
-            foreach (var path in practice.ImagePaths)
-            {
-                if (!string.IsNullOrWhiteSpace(path))
-                    paths.Add(path);
-            }
+            paths.Add(path);
         }
 
         return paths;
