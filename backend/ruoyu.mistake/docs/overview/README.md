@@ -12,7 +12,6 @@
 | [DataOwnership.md](./DataOwnership.md) | 数据主责、引用边界、双写禁区 | [database/](../database/) |
 | [Requirements.md](./Requirements.md) | 服务级需求概述 | [modules/](../modules/) |
 | [Design.md](./Design.md) | 服务级架构概述 | [modules/](../modules/) |
-| [共享 .NET 编码规范](../../../../.agent/rules/dotnet-coding-policy.md) | 仓库级共享 .NET 编码规范 | — |
 
 ## 阅读建议
 
@@ -20,7 +19,6 @@
 2. **查集成**: Integration.md → [Integration/](../Integration/) 目录
 3. **查数据**: DataOwnership.md → [database/](../database/) 目录
 4. **查需求**: Requirements.md → [modules/](../modules/) 目录
-5. **查规范**: [共享 .NET 编码规范](../../../../.agent/rules/dotnet-coding-policy.md)
 
 ## 下一步
 
