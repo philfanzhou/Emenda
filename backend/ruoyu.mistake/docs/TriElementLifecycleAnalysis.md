@@ -52,8 +52,8 @@ OSS 路径归属（参见 [DataOwnership.md](./DataOwnership.md)）：
 | 教师手动添加 | - | `AddMistakeItem` | - | 不动 OSS |
 | 单条审核 | - | `ReviewMistakeItem` | - | **确认时迁移 `uploads/` → `mistakes/`** |
 | 批量审核 | - | `BatchReview` | - | 同上 |
-| 完成整批审核 | - | `CompleteUploadReview` | `LegacyClean` 中调 | **统一迁移 + 清理** |
-| 退回 | - | `ReturnMistake` | - | 不动 OSS |
+| 完成整批审核 | - | ~~`CompleteUploadReview`~~（新流程下不需要，待废弃） | `LegacyClean` 中调 | **统一迁移 + 清理** |
+| 驳回（退回） | - | `ReturnMistake`（即审核驳回，删除 item + 标记录 Returned） | - | 不动 OSS |
 | 删除 | ~~`DeleteMistake`~~（学生不应能删除未确认错题，待清除） | 驳回后自动删 | - | **不清理 OSS** |
 | 更新 | - | - | `UpdateMistakeItem` | - |
 | 图片迁移 | - | - | `MigrateImages` | `uploads/` → `mistakes/` |
@@ -319,22 +319,26 @@ UploadRecord（含多张图片）
 
 当前 Rejected 后只改状态，删除 MistakeItem 由 Controller 做。应将删除逻辑下沉到 gRPC 服务层，使 `ReviewMistakeItem` 成为完整的单条审核操作。
 
-### 改动 2：新增"上传记录状态检查" gRPC 方法
+### 改动 2：~~新增"上传记录状态检查" gRPC 方法~~ → 不需要新增方法
 
-在 student 服务中新增 `FinalizeUploadRecordAfterReview` gRPC 方法，接收 `recordId` + `studentId` + `hasPendingMistakeItems`，内部执行 4.4 节的状态检查：
-- 无图片 → 删除记录
-- 有图片 + 无待审核 → 标记退回
-- 有图片 + 有待审核 → 不动
+~~原方案：在 student 服务中新增 `FinalizeUploadRecordAfterReview` gRPC 方法。~~
 
-参数 `hasPendingMistakeItems` 由 mistake 服务在审核后查询并传入。这样 student 服务不需要反向调用 mistake 服务，依赖方向保持单向：mistake → student。
+**修正**：不需要新增方法。审核通过时，mistake 服务直接调 student 服务已有的 `RemoveImagesFromRecord`（移除图片路径，student 服务内部自行决定是否删除记录）。审核驳回时，mistake 服务自行检查剩余 item，无待审核则调 student 服务已有的 `MarkUploadRecordAsReturned`。student 服务不需要感知 MistakeItem，依赖方向保持单向：mistake → student。
 
-### 改动 3：`ReviewMistakeItem` gRPC 方法增加审核后的状态检查编排
+### 改动 3：`ReviewMistakeItem` gRPC 方法增加审核后的完整编排
 
-审核完一条后（不管是通过还是驳回），在 gRPC 服务层统一编排：
-1. Confirmed → 迁移 OSS + 从 UploadRecord 移除图片路径
-2. Rejected → 删除 MistakeItem
+审核完一条后，在 gRPC 服务层统一编排：
+
+**通过时**：
+1. 迁移 OSS + 更新路径（已有逻辑）
+2. 调 student 服务 `RemoveImagesFromRecord`（移除图片路径，student 内部无图片则删记录）
 3. 查询该 UploadRecord 下是否还有 PendingReview 的 MistakeItem
-4. 调用 student 服务的 `FinalizeUploadRecordAfterReview`
+4. 若无待审核 item 且记录未被删除，调 student 服务 `MarkUploadRecordAsReturned`
+
+**驳回时**：
+1. 删除 MistakeItem（改动1 下沉的逻辑）
+2. 查询该 UploadRecord 下是否还有 PendingReview 的 MistakeItem
+3. 若无待审核 item，调 student 服务 `MarkUploadRecordAsReturned`
 
 这样教师端和管理端 Controller 只需调用 `ReviewMistakeItem`，不需要再做任何跨服务编排。
 
@@ -409,4 +413,4 @@ Pending → Processing → UnderReview → 删除（审核通过，图片全部�
 改动 7（LegacyClean 标注定位变化）
 ```
 
-改动 6 可以独立实施，不依赖其他改动。改动 1-3 有顺序依赖：先下沉驳回删除（1），再新增状态检查方法（2），最后在 ReviewMistakeItem 中编排完整流程（3）。改动 4 和 5 是清理工作，在 1-3 完成后实施。
+改动 6 可以独立实施，不依赖其他改动。改动 1-3 有顺序依赖：先下沉驳回删除（1），改动 2 不需要新增方法（复用已有方法），最后在 ReviewMistakeItem 中编排完整流程（3）。改动 4 和 5 是清理工作，在 1-3 完成后实施。
