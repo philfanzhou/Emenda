@@ -2,7 +2,7 @@
 
 ## 功能概述
 
-教师对学生提交的待审核错题进行审核，确认有效错题或驳回无效错题。确认审核时自动迁移图片存储路径。
+教师对学生提交的待审核错题进行审核，确认有效错题或驳回无效错题。确认审核时自动迁移图片存储路径并调用学生服务移除上传记录中的图片引用；驳回审核时删除该错题条目。审核后自动检查该上传记录下是否还有待审核条目，若无则标记上传记录为已退回。
 
 ## 用户故事
 
@@ -19,6 +19,9 @@
 - [x] FR-07: Confirmed 时迁移图片：uploads/ → mistakes/（OSS Copy+Delete）
 - [x] FR-08: 收集所有 SourceImagePath 到 removed_image_paths 返回
 - [x] FR-09: 迁移后更新 MistakeItemModel 的 SourceImagePath 并持久化
+- [x] FR-10: Confirmed 时调用学生服务 RemoveImagesFromRecord，从上传记录移除已迁移图片引用
+- [x] FR-11: Rejected 时删除该 MistakeItem
+- [x] FR-12: 审核后检查该 sourceUploadId 下是否还有 PendingReview 状态的条目，若无则调用学生服务 MarkUploadRecordAsReturned
 
 ## 验收标准
 
@@ -88,14 +91,48 @@
 - **When** 调用 ReviewMistakeItemAsync
 - **Then** 返回 null，gRPC 层返回 success=false，error_message="错题不存在"
 
+### AC-FR-10: Confirmed 时调用学生服务移除图片引用
+
+- **Given** 审核结果为 Confirmed，图片迁移已完成
+- **When** gRPC 层处理后审核编排
+- **Then** 调用 StudentLearningGrpcServiceClient.RemoveImagesFromRecord(sourceUploadId, removedImagePaths)
+
+- **Given** RemoveImagesFromRecord 调用失败
+- **When** gRPC 层捕获异常
+- **Then** 记录 error 日志，审核状态已持久化不受影响
+
+### AC-FR-11: Rejected 时删除 MistakeItem
+
+- **Given** 审核结果为 Rejected
+- **When** gRPC 层处理后审核编排
+- **Then** 删除该 MistakeItem 记录
+
+### AC-FR-12: 无待审核条目时标记上传记录为已退回
+
+- **Given** 审核完成后，该 sourceUploadId 下无 PendingReview 状态的条目
+- **When** gRPC 层检查剩余待审核条目
+- **Then** 调用 StudentLearningGrpcServiceClient.MarkUploadRecordAsReturned(sourceUploadId)
+
+- **Given** 审核完成后，该 sourceUploadId 下仍有 PendingReview 状态的条目
+- **When** gRPC 层检查剩余待审核条目
+- **Then** 不调用 MarkUploadRecordAsReturned
+
+- **Given** MarkUploadRecordAsReturned 调用失败
+- **When** gRPC 层捕获异常
+- **Then** 记录 error 日志，审核状态已持久化不受影响
+
 ## 非功能需求
 
 - NFR-01: 图片迁移操作需保证原子性（Copy 成功后才 Delete）
 - NFR-02: 迁移失败不应影响审核状态的更新
 - NFR-03: OSS 操作失败需记录错误日志
+- NFR-04: 学生服务 gRPC 调用（RemoveImagesFromRecord / MarkUploadRecordAsReturned）失败不应影响审核状态的更新，需记录错误日志
+- NFR-05: 后审核编排步骤（OSS迁移 → student回调）不具备事务性，审核状态持久化后不因外部依赖失败而回滚
 
 ## 测试策略
 
 - 单元测试覆盖领域服务 `MistakeDomainService.ReviewMistakeItemAsync`
 - 覆盖确认、驳回、重复审核三种场景
 - gRPC 层图片迁移逻辑由集成测试覆盖
+- gRPC 层后审核编排逻辑（RemoveImagesFromRecord、MarkUploadRecordAsReturned）由集成测试覆盖
+- 覆盖驳回时删除 MistakeItem 的场景

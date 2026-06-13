@@ -13,6 +13,8 @@ using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Xunit;
 
+using Ruoyu.Study.Student.Contract.Protos;
+
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
 /// <summary>
@@ -24,6 +26,7 @@ public class MistakeServiceImplOssMigrationTests
     private readonly Mock<IMistakeDomainService> _mockDomainService;
     private readonly Mock<IOssService> _mockOssService;
     private readonly Mock<ILogger<MistakeServiceImpl>> _mockLogger;
+    private readonly Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient> _mockStudentClient;
     private readonly MistakeServiceImpl _service;
 
     public MistakeServiceImplOssMigrationTests()
@@ -31,10 +34,12 @@ public class MistakeServiceImplOssMigrationTests
         _mockDomainService = new Mock<IMistakeDomainService>();
         _mockOssService = new Mock<IOssService>();
         _mockLogger = new Mock<ILogger<MistakeServiceImpl>>();
+        _mockStudentClient = new Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
 
         _service = new MistakeServiceImpl(
             _mockDomainService.Object,
             _mockOssService.Object,
+            _mockStudentClient.Object,
             _mockLogger.Object);
     }
 

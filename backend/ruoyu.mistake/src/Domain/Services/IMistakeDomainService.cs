@@ -18,6 +18,7 @@ public interface IMistakeDomainService
     Task<bool> DeleteMistakeItemAsync(Guid id);
     Task<MistakeItemModel?> UpdateMistakeItemPartialAsync(Guid id, string? studentId = null, int? subject = null, int? grade = null, List<SourceRegionModel>? sourceRegions = null);
     Task<bool> UpdateMistakeItemAsync(MistakeItemModel model);
+    [Obsolete("目标流程中不存在独立的 CompleteUploadReview 步骤。仅保留供 LegacyClean 运维兜底使用。")]
     Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(string sourceUploadId, string? reviewerId);
     Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null);
     Task<List<MistakePracticeModel>> GetPracticesAsync(Guid mistakeItemId);

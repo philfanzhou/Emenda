@@ -1,5 +1,9 @@
 # 完成上传审核 (CompleteUploadReview)
 
+> ⚠️ **此功能已废弃。** 目标流程中不存在独立的 CompleteUploadReview 步骤，每条审核通过时立即迁移。仅保留供 LegacyClean 运维兜底使用。
+
+## 状态: Deprecated
+
 ## 一句话概括
 
 完成一次上传记录的全部审核，将已确认错题的图片从 uploads/ 迁移至 mistakes/，并返回需从上传记录中移除的图片路径。

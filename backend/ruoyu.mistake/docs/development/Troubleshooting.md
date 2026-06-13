@@ -139,6 +139,8 @@
 
 ### 2.5 CompleteUploadReview 业务校验
 
+> **注意**: CompleteUploadReview 已废弃，仅保留供 LegacyClean 运维兜底。正常流程中不再使用此接口。
+
 **典型症状**：调用 `CompleteUploadReview` 返回 `Success=false`。
 
 **常见日志特征**：
@@ -179,6 +181,8 @@
 
 ### 3.2 CompleteUploadReview 依赖 source_upload_id 查找关联 item
 
+> **注意**: CompleteUploadReview 已废弃，仅保留供 LegacyClean 运维兜底。
+
 **典型症状**：`CompleteUploadReview` 返回 `"未找到该上传记录的错题"`，但错题实际存在。
 
 **常见日志特征**：`"未找到该上传记录的错题"`（`MistakeDomainService.cs` L206）
@@ -198,6 +202,8 @@
 ---
 
 ## 4. CompleteUploadReview 中 OSS 迁移失败
+
+> **注意**: CompleteUploadReview 已废弃（标记 `[Obsolete]`），仅保留供 LegacyClean 运维兜底。正常审核流程中，图片迁移由 ReviewMistakeItem 逐条审核时即时处理。
 
 **典型症状**：`CompleteUploadReview` 返回 `Success=true`，但部分图片未从 `uploads/` 迁移到 `mistakes/`，`source_regions` 中路径仍为 `uploads/` 前缀。
 
@@ -481,6 +487,58 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 **临时绕过**：手动执行 SQL 修正列名或补充默认值
 
 **根治建议**：迁移完成后验证数据完整性，特别是 `source_upload_id` 为空的记录需手动补充。
+
+---
+
+## 9. 审核后上传记录状态未更新
+
+### 9.1 审核确认后上传记录中仍保留已迁移图片
+
+**典型症状**：ReviewMistakeItem 确认审核成功，但学生服务的上传记录中仍显示已迁移的图片。
+
+**常见日志特征**：
+- `"Error calling RemoveImagesFromRecord"`（MistakeServiceImpl.cs）
+- 审核成功但无 RemoveImagesFromRecord 调用日志
+
+**可能根因**：
+- 学生服务 gRPC 不可用，RemoveImagesFromRecord 调用失败
+- source_upload_id 为空字符串（旧数据），导致调用参数无效
+- 学生服务内部错误
+
+**排查步骤**：
+1. 查看 mistake 服务日志中是否有 RemoveImagesFromRecord 调用失败的 error 日志
+2. 确认学生服务是否正常运行
+3. 检查 source_upload_id 值是否有效（非空、格式正确）
+4. 确认学生服务侧 RemoveImagesFromRecord 的处理逻辑
+
+**临时绕过**：手动调用学生服务 API 移除图片引用
+
+**根治建议**：增加补偿任务，定期扫描已确认但上传记录未清理的图片引用并重试。
+
+### 9.2 全部审核完成后上传记录未标记为已退回
+
+**典型症状**：某上传记录下所有错题均已审核（无 PendingReview 条目），但上传记录状态仍为 UnderReview（原 Completed），未变为 Returned。
+
+**常见日志特征**：
+- `"Error calling MarkUploadRecordAsReturned"`（MistakeServiceImpl.cs）
+- 审核成功但无 MarkUploadRecordAsReturned 调用日志
+
+**可能根因**：
+- 学生服务 gRPC 不可用，MarkUploadRecordAsReturned 调用失败
+- source_upload_id 为空字符串（旧数据），导致调用参数无效
+- 仍有 PendingReview 状态的条目（其他错题尚未审核），不满足调用条件
+
+**排查步骤**：
+1. 调用 `GetMistakeItemsByUpload(sourceUploadId)` 确认该上传下是否仍有 PendingReview 条目
+2. 若无 PendingReview 条目但未标记，查看 mistake 服务日志中是否有 MarkUploadRecordAsReturned 调用失败的 error 日志
+3. 确认学生服务是否正常运行
+4. 检查 source_upload_id 值是否有效
+
+**临时绕过**：手动调用学生服务 API 标记上传记录为已退回
+
+**根治建议**：增加补偿任务，定期扫描无待审核条目但未标记为已退回的上传记录并重试。
+
+> **设计说明**: 审核后编排（RemoveImagesFromRecord、MarkUploadRecordAsReturned）由 mistake 服务的 gRPC 层直接调用，不再由 teacher_portal Controller 协调。这些调用失败不影响审核状态的持久化，但需通过补偿机制保证最终一致性。
 
 ---
 

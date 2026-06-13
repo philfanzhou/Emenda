@@ -13,7 +13,7 @@
 ├─────────────────────────────────────────────────┤
 │  Service — gRPC 服务实现                         │
 │  MistakeServiceImpl: 请求/响应映射、输入验证、     │
-│  跨服务调用协调 (OSS)                             │
+│  审核后编排 (OSS迁移 + student gRPC回调)           │
 ├─────────────────────────────────────────────────┤
 │  Domain — 领域模型与业务逻辑                      │
 │  MistakeDomainService, Models, 仓储接口           │
@@ -52,6 +52,7 @@ Host ──▶ Service ──▶ Domain ──▶ Contract
 
 外部依赖:
   Service ──▶ IOssService (S3OssService / LocalFileOssService)
+  Service ──▶ StudentLearningGrpcServiceClient (RemoveImagesFromRecord, MarkUploadRecordAsReturned)
   Host ──▶ MistakeDbContext (PostgreSQL / SQLite)
 ```
 
@@ -60,7 +61,7 @@ Host ──▶ Service ──▶ Domain ──▶ Contract
 | 功能域 | 详细设计 |
 |--------|----------|
 | MistakeDispatch | [SubmitMistakeUpload](../modules/MistakeDispatch/SubmitMistakeUpload/03-DESIGN.md) |
-| MistakeReview | [ReviewMistakeItem](../modules/MistakeReview/ReviewMistakeItem/03-DESIGN.md) · [GetPendingReviewUploads](../modules/MistakeReview/GetPendingReviewUploads/03-DESIGN.md) · [CompleteUploadReview](../modules/MistakeReview/CompleteUploadReview/03-DESIGN.md) |
+| MistakeReview | [ReviewMistakeItem](../modules/MistakeReview/ReviewMistakeItem/03-DESIGN.md) · [GetPendingReviewUploads](../modules/MistakeReview/GetPendingReviewUploads/03-DESIGN.md) · ~~[CompleteUploadReview](../modules/MistakeReview/CompleteUploadReview/03-DESIGN.md)~~ *(已废弃)* |
 | MistakeManagement | [GetMistakeItem](../modules/MistakeManagement/GetMistakeItem/03-DESIGN.md) · [GetMistakeItemsByUpload](../modules/MistakeManagement/GetMistakeItemsByUpload/03-DESIGN.md) · [GetMistakeItemList](../modules/MistakeManagement/GetMistakeItemList/03-DESIGN.md) · [AddMistakeItem](../modules/MistakeManagement/AddMistakeItem/03-DESIGN.md) · [UpdateMistakeItem](../modules/MistakeManagement/UpdateMistakeItem/03-DESIGN.md) · [DeleteMistakeItem](../modules/MistakeManagement/DeleteMistakeItem/03-DESIGN.md) |
 | MistakePractice | [AddMistakePractice](../modules/MistakePractice/AddMistakePractice/03-DESIGN.md) · [GetMistakePractices](../modules/MistakePractice/GetMistakePractices/03-DESIGN.md) |
 | MistakeProcessLogging | [LogMistakeProcess](../modules/MistakeProcessLogging/LogMistakeProcess/03-DESIGN.md) · [GetMistakeProcessHistory](../modules/MistakeProcessLogging/GetMistakeProcessHistory/03-DESIGN.md) |

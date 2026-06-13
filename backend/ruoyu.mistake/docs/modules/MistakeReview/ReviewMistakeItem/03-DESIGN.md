@@ -5,7 +5,8 @@
 ```
 src/Contract/Protos/mistake.proto            # RPC 和 message 定义
 src/Contract/Protos/mistake.common.proto     # 公共枚举（ReviewStatus, ProcessAction）
-src/Service/MistakeServiceImpl.cs            # gRPC 服务实现（含图片迁移逻辑）
+src/Service/MistakeServiceImpl.cs            # gRPC 服务实现（含图片迁移 + 后审核编排逻辑）
+src/Service/StudentLearningGrpcServiceClient.cs  # 学生服务 gRPC 客户端（RemoveImagesFromRecord, MarkUploadRecordAsReturned）
 src/Domain/Services/MistakeDomainService.cs  # 领域服务
 src/Domain/Models/MistakeItemModel.cs        # 领域模型
 src/Domain/Models/ProcessLogModel.cs         # ProcessLog 模型
@@ -60,12 +61,22 @@ public async Task<MistakeItemModel?> ReviewMistakeItemAsync(
 // IMistakeItemRepository
 Task<MistakeItemModel?> GetByIdAsync(Guid id);
 Task<bool> UpdateAsync(MistakeItemModel model);
+Task<bool> DeleteAsync(Guid id);
+Task<List<MistakeItemModel>> GetBySourceUploadIdAsync(string sourceUploadId);
 
 // IProcessLogRepository
 Task AddAsync(ProcessLogModel model);
 
 // IUnitOfWork
 Task<int> SaveChangesAsync();
+```
+
+### 学生服务 gRPC 客户端
+
+```csharp
+// StudentLearningGrpcServiceClient
+Task RemoveImagesFromRecord(string sourceUploadId, IEnumerable<string> imagePaths);
+Task MarkUploadRecordAsReturned(string sourceUploadId);
 ```
 
 ## 依赖的数据库表/字段
@@ -120,7 +131,7 @@ MistakeDomainService.ReviewMistakeItemAsync()
     └──► IUnitOfWork.SaveChangesAsync()
     │
     ▼ 返回 MistakeItemModel
-MistakeServiceImpl (gRPC 层后续处理)
+MistakeServiceImpl (gRPC 层后审核编排)
     │
     │  if (Confirmed):
     │    3. 遍历 SourceRegions
@@ -130,6 +141,15 @@ MistakeServiceImpl (gRPC 层后续处理)
     │         b. OSS Delete: uploads/xxx
     │         c. 更新 region.SourceImagePath = newPath
     │    4. 若有迁移 → UpdateMistakeItemAsync(item)
+    │    5. 调用 StudentLearningGrpcServiceClient.RemoveImagesFromRecord(sourceUploadId, removedPaths)
+    │
+    │  if (Rejected):
+    │    3. 删除该 MistakeItem (IMistakeItemRepository.DeleteAsync)
+    │
+    │  (Confirmed 和 Rejected 共用):
+    │    6. 查询该 sourceUploadId 下是否还有 PendingReview 状态的条目
+    │       - 若无 → 调用 StudentLearningGrpcServiceClient.MarkUploadRecordAsReturned(sourceUploadId)
+    │       - 若有 → 不调用
     │
     ▼
 返回 ReviewMistakeItemResponse
@@ -138,12 +158,18 @@ MistakeServiceImpl (gRPC 层后续处理)
 
 ## 关键设计决策
 
-1. **审核与迁移分离**: 领域层只负责审核状态更新和 ProcessLog 记录；图片迁移由 gRPC 层负责，因为 OSS 操作属于基础设施关注点，不属于领域逻辑。
+1. **审核与后审核编排分离**: 领域层只负责审核状态更新和 ProcessLog 记录；图片迁移、学生服务回调等后审核编排由 gRPC 层负责，因为 OSS 操作和跨服务调用属于基础设施关注点，不属于领域逻辑。
 
-2. **removed_image_paths 语义**: 返回所有 SourceImagePath（不仅是迁移的），用于调用方从上传记录中移除这些图片引用。即使图片不以 `uploads/` 开头，也会被收集到 removed_image_paths。
+2. **编排从 Controller 下沉到 gRPC 层**: 原先由 teacher_portal Controller 负责的跨服务编排（调用 CompleteUploadReview、RemoveImagesFromRecord、MarkUploadRecordAsReturned）已下沉到 mistake 服务的 gRPC 层。好处：(a) 减少门户层的跨服务协调复杂度；(b) 审核后编排逻辑内聚在 mistake 服务，portal 只需调用 ReviewMistakeItem 即可；(c) 避免 portal 与 student 服务的直接耦合。
 
-3. **可选字段处理**: grade 和 subject 在 gRPC 层判断 `> 0` 才传入领域层，领域层判断 `> 0 && <= 范围上限` 才更新。两层协作确保无效值被忽略。
+3. **removed_image_paths 语义**: 返回所有 SourceImagePath（不仅是迁移的），用于调用方从上传记录中移除这些图片引用。即使图片不以 `uploads/` 开头，也会被收集到 removed_image_paths。注意：现在 gRPC 层已直接调用 RemoveImagesFromRecord，removed_image_paths 仍保留在响应中供调用方参考，但 portal 不再需要据此自行调用 student 服务。
 
-4. **图片迁移路径规则**: `uploads/xxx` → `mistakes/xxx`，仅替换前缀 "uploads" 为 "mistakes"，保留后续路径结构。
+4. **可选字段处理**: grade 和 subject 在 gRPC 层判断 `> 0` 才传入领域层，领域层判断 `> 0 && <= 范围上限` 才更新。两层协作确保无效值被忽略。
 
-5. **审核幂等性**: 不支持重复审核。已审核（Confirmed 或 Rejected）的条目再次审核会抛出 MistakeValidationException。
+5. **图片迁移路径规则**: `uploads/xxx` → `mistakes/xxx`，仅替换前缀 "uploads" 为 "mistakes"，保留后续路径结构。
+
+6. **审核幂等性**: 不支持重复审核。已审核（Confirmed 或 Rejected）的条目再次审核会抛出 MistakeValidationException。
+
+7. **驳回删除 MistakeItem**: Rejected 时直接删除该 MistakeItem，而非仅标记状态。因为驳回的错题不应保留在系统中，学生需要重新上传。
+
+8. **无待审核条目时自动标记上传记录**: 审核完成后检查该 sourceUploadId 下是否还有 PendingReview 条目，若无则调用 MarkUploadRecordAsReturned。这替代了原先 CompleteUploadReview 的功能，使审核流程在逐条审核时即时完成。

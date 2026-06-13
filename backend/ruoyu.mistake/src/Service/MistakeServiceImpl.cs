@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,7 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
+using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Service;
 
@@ -14,15 +16,18 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly IMistakeDomainService _mistakeService;
     private readonly IOssService _ossService;
+    private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         IMistakeDomainService mistakeService,
         IOssService ossService,
+        StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
         _ossService = ossService;
+        _studentClient = studentClient;
         _logger = logger;
     }
 
@@ -212,6 +217,31 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 {
                     await _mistakeService.UpdateMistakeItemAsync(item).ConfigureAwait(false);
                 }
+
+                // 审核通过：从上传记录中移除已迁移的图片路径
+                if (removedPaths.Count > 0 && !string.IsNullOrWhiteSpace(item.SourceUploadId) && !string.IsNullOrWhiteSpace(item.StudentId))
+                {
+                    try
+                    {
+                        var removeReq = new StudentProto.RemoveImagesFromRecordRequest
+                        {
+                            RecordId = item.SourceUploadId,
+                            StudentId = item.StudentId
+                        };
+                        removeReq.ImagePaths.AddRange(removedPaths);
+                        await _studentClient.RemoveImagesFromRecordAsync(removeReq);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "ReviewMistakeItem: Failed to remove images from upload record, SourceUploadId: {Id}", item.SourceUploadId);
+                    }
+                }
+            }
+            else if (request.ReviewStatus == ReviewStatus.Rejected)
+            {
+                // 驳回后删除 MistakeItem 记录（级联删除关联的 practice 和 process_log）
+                await _mistakeService.DeleteMistakeItemAsync(item.Id);
+                _logger.LogInformation("ReviewMistakeItem: Rejected and deleted MistakeItem {ItemId}", item.Id);
             }
 
             var response = new ReviewMistakeItemResponse
@@ -221,6 +251,64 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 StudentId = item.StudentId ?? string.Empty
             };
             response.RemovedImagePaths.AddRange(removedPaths);
+
+            // 审核后编排：检查该 UploadRecord 下是否还有待审核的 MistakeItem
+            if (!string.IsNullOrWhiteSpace(item.SourceUploadId))
+            {
+                try
+                {
+                    var remainingItems = await _mistakeService.GetMistakeItemsByUploadAsync(item.SourceUploadId);
+                    var hasPending = remainingItems.Any(i => i.ReviewStatus == (int)ReviewStatus.PendingReview);
+
+                    if (!hasPending)
+                    {
+                        // 无待审核 item
+                        if (request.ReviewStatus == ReviewStatus.Confirmed)
+                        {
+                            // 通过时：RemoveImagesFromRecord 已在上方调用
+                            // 这里检查记录是否仍存在，若存在则标记退回
+                            try
+                            {
+                                await _studentClient.MarkUploadRecordAsReturnedAsync(
+                                    new StudentProto.MarkUploadRecordAsReturnedRequest
+                                    {
+                                        RecordId = item.SourceUploadId,
+                                        StudentId = item.StudentId ?? string.Empty,
+                                        Comments = "所有错题已审核处理完毕"
+                                    });
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "ReviewMistakeItem: Failed to mark upload record as returned after all items reviewed, SourceUploadId: {Id}", item.SourceUploadId);
+                            }
+                        }
+                        else if (request.ReviewStatus == ReviewStatus.Rejected)
+                        {
+                            // 驳回时：图片仍在 uploads/ 下，不需要移除
+                            // 标记上传记录为已退回
+                            try
+                            {
+                                await _studentClient.MarkUploadRecordAsReturnedAsync(
+                                    new StudentProto.MarkUploadRecordAsReturnedRequest
+                                    {
+                                        RecordId = item.SourceUploadId,
+                                        StudentId = item.StudentId ?? string.Empty,
+                                        Comments = "所有错题已驳回"
+                                    });
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "ReviewMistakeItem: Failed to mark upload record as returned after rejection, SourceUploadId: {Id}", item.SourceUploadId);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "ReviewMistakeItem: Failed to check remaining items for SourceUploadId: {Id}", item.SourceUploadId);
+                }
+            }
+
             return response;
         }
         catch (MistakeValidationException ex)
@@ -314,6 +402,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         }
     }
 
+    [Obsolete("目标流程中不存在独立的 CompleteUploadReview 步骤，每条审核通过时立即迁移。仅保留供 LegacyClean 运维兜底使用。")]
     public override async Task<CompleteUploadReviewResponse> CompleteUploadReview(CompleteUploadReviewRequest request, ServerCallContext context)
     {
         try

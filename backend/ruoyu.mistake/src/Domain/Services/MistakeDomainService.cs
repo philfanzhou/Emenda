@@ -211,6 +211,7 @@ public class MistakeDomainService : IMistakeDomainService
         return result;
     }
 
+    [Obsolete("目标流程中不存在独立的 CompleteUploadReview 步骤。仅保留供 LegacyClean 运维兜底使用。")]
     public async Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(
         string sourceUploadId, string? reviewerId)
     {

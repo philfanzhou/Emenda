@@ -6,6 +6,7 @@ using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service;
+using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -64,6 +65,33 @@ builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
+
+// Student Learning gRPC client（用于审核后编排：RemoveImagesFromRecord / MarkUploadRecordAsReturned）
+builder.Services.AddSingleton(sp =>
+{
+    var grpcUrl = builder.Configuration["StudentLearningService:GrpcUrl"]
+                  ?? builder.Configuration["StudentService:GrpcUrl"]
+                  ?? "http://localhost:5005";
+    var logger = sp.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Connecting to Student Learning gRPC: {Url}", grpcUrl);
+
+    var handler = new SocketsHttpHandler
+    {
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        MaxConnectionsPerServer = 10,
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        EnableMultipleHttp2Connections = true,
+    };
+
+    var channel = Grpc.Net.Client.GrpcChannel.ForAddress(grpcUrl, new Grpc.Net.Client.GrpcChannelOptions
+    {
+        HttpHandler = handler,
+        MaxRetryAttempts = 3,
+    });
+
+    return new StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient(channel);
+});
 
 var app = builder.Build();
 
