@@ -31,30 +31,30 @@ OSS 路径归属（参见 [DataOwnership.md](./DataOwnership.md)）：
 
 | 操作 | 学生端 | 教师端 | 管理端 | OSS 影响 |
 |------|--------|--------|--------|---------|
-| 创建（上传图片） | `UploadImages` / `UploadImagesByPaths` | - | - | 写 `uploads/` |
+| 创建（上传图片） | ~~`UploadImages`~~（未使用，待清除）/ `UploadImagesByPaths` | - | - | 写 `uploads/` |
 | 追加图片 | `AppendImagesToRecord` | - | - | 写 `uploads/` |
 | 删除整条记录 | `DeleteUploadRecord` | - | `AdminDeleteUploadRecord` | 删 `uploads/` |
 | 删除单张图片 | `RemoveImageFromRecord` | - | `RemoveImageFromRecord` | 删 `uploads/` |
 | 批量移除图片 | - | `RemoveImagesFromRecord`（审核确认后） | `AdminRemoveImagesFromRecord` | 删 `uploads/` |
-| 标记完成 | `MarkUploadRecordCompleted`（管理员分配后） | - | `AdminCompleteUploadReview` | - |
-| 标记退回 | - | `MarkUploadRecordAsReturned`（驳回后） | - | - |
-| 审核后删除 | - | `DeleteUploadRecordAfterReview`（确认后） | `LegacyClean` 中也调 | 条件删（无图片时） |
-| 旋转图片 | `RotateUploadImage` | - | `RotateUploadImage` | 覆写 `uploads/` |
-| 重置状态 | `ResetUploadRecordStatus` | - | `ResetUploadRecordStatus` | - |
-| 创建退回记录 | `CreateReturnedRecord`（驳回后重新入库） | - | - | 不新建 OSS，引用已有路径 |
+| 标记审核中 | `MarkUploadRecordCompleted`（→ 重命名为 `MarkUploadRecordUnderReview`，管理员分配后） | - | `AdminCompleteUploadReview`（→ 重命名） | - |
+| 标记退回 | - | ~~`MarkUploadRecordAsReturned`~~（教师端 Controller 不再直接调用，改由 mistake 服务 gRPC 层在审核编排中调用） | - | - |
+| 审核后删除 | - | ~~`DeleteUploadRecordAfterReview`~~（新流程下由 `RemoveImagesFromRecord` 内部处理，待废弃） | `LegacyClean` 中也调 | 条件删（无图片时） |
+| 旋转图片 | `RotateUploadImage`（仅管理端调用） | - | `RotateUploadImage` | 覆写 `uploads/` |
+| 重置状态 | `ResetUploadRecordStatus`（仅管理端调用） | - | `ResetUploadRecordStatus` | - |
+| ~~创建退回记录~~ | ~~`CreateReturnedRecord`~~（新流程下不需要：驳回后原记录直接标 Returned，无需新建记录；待清除） | - | - | - |
 | 分配为错题 | - | - | `AssignUploadRecord` | 不动 OSS |
 
 ### 2.2 对 MistakeItem 的操作
 
 | 操作 | 学生端 | 教师端 | 管理端 | OSS 影响 |
 |------|--------|--------|--------|---------|
-| 创建（提交） | - | - | `SubmitMistakeUpload`（分配时） | 不动 OSS |
+| 创建（提交） | - | - | `SubmitMistakeUpload`（VL 分析自动提交 / 管理员手动分配） | 不动 OSS |
 | 教师手动添加 | - | `AddMistakeItem` | - | 不动 OSS |
 | 单条审核 | - | `ReviewMistakeItem` | - | **确认时迁移 `uploads/` → `mistakes/`** |
 | 批量审核 | - | `BatchReview` | - | 同上 |
 | 完成整批审核 | - | `CompleteUploadReview` | `LegacyClean` 中调 | **统一迁移 + 清理** |
 | 退回 | - | `ReturnMistake` | - | 不动 OSS |
-| 删除 | `DeleteMistake`（仅未确认） | 驳回后自动删 | - | **不清理 OSS** |
+| 删除 | ~~`DeleteMistake`~~（学生不应能删除未确认错题，待清除） | 驳回后自动删 | - | **不清理 OSS** |
 | 更新 | - | - | `UpdateMistakeItem` | - |
 | 图片迁移 | - | - | `MigrateImages` | `uploads/` → `mistakes/` |
 
@@ -165,70 +165,248 @@ OSS 路径归属（参见 [DataOwnership.md](./DataOwnership.md)）：
 
 但如果学生删除了这条退回的记录，又通过 `CreateReturnedRecord` 重新创建——新记录的 `ImagePaths` 可能指向 `mistakes/` 下的路径（如果之前有图片被迁移过），也可能指向 `uploads/` 下的路径。这个方法不校验路径前缀，直接存储。
 
-## 4. 修改方向
+## 4. 目标流程
 
-### 方向 A：引入"图片所有权"状态机
+### 4.1 核心原则
 
-为 OSS 文件定义明确的所有权阶段：
+1. **审核是逐条即时处理的**：每审核一条 MistakeItem，立即完成该条的所有后续操作（OSS 迁移、路径清理），不存在"先批量审核、再统一完成"的两阶段
+2. **不存在独立的 CompleteUploadReview 步骤**：当前代码中的 `CompleteUploadReview` 不符合目标流程，应废弃
+3. **student 服务不需要感知 MistakeItem**：审核通过时，mistake 服务调 student 服务的 `RemoveImagesFromRecord` 移除图片，student 服务内部自行决定是否删除记录；审核驳回时，mistake 服务自行检查剩余 item，无待审核则调 `MarkUploadRecordAsReturned`
+
+### 4.2 审核通过流程
+
+教师审核一条 MistakeItem 为 Confirmed 时，按顺序执行：
 
 ```
-staging/  →  uploads/  →  mistakes/  →  (删除)
-(临时)       (归UploadRecord)  (归MistakeItem)
+1. 更新 MistakeItem.ReviewStatus = Confirmed
+2. 迁移 OSS：该 item 所有图片 uploads/ → mistakes/
+3. 更新 MistakeItem.SourceRegions 中的路径为 mistakes/ 前缀
+4. 调 student 服务 RemoveImagesFromRecord：移除该 item 包含的图片路径
+   → student 服务内部：移除图片路径，若无剩余图片则删除 UploadRecord
+5. 检查该 UploadRecord 下是否还有 PendingReview 的 MistakeItem
+   → 若无待审核 item 且记录未被删除，调 student 服务 MarkUploadRecordAsReturned
 ```
 
-规则：
-- 图片在 `uploads/` 时，所有权归 UploadRecord，只有 student 服务可以删除
-- 图片在 `mistakes/` 时，所有权归 MistakeItem，只有 mistake 服务可以删除
-- **所有权转移是原子的**：迁移成功 + 路径更新 = 所有权转移完成
-- 所有权转移后，原持有者（UploadRecord）必须移除引用
+注意：
+- 步骤 2-3 是原子的：迁移成功 + 路径更新 = 所有权转移完成
+- 步骤 4 中 `RemoveImagesFromRecordAsync` 会尝试删除 `uploads/` 下的 OSS 文件（此时图片已迁移到 `mistakes/`，旧文件已不存在，可安全忽略）
+- 步骤 4 的返回值 `RecordDeleted` 指示记录是否已被自动删除
+- 步骤 5 由 mistake 服务执行，student 服务不需要知道 MistakeItem 的存在
 
-这样每个服务只删除自己拥有所有权的文件，不会误删。
+### 4.3 审核驳回流程
 
-### 方向 B：审核两阶段分离
+教师审核一条 MistakeItem 为 Rejected 时，按顺序执行：
 
-**阶段 1：逐条审核**（`ReviewMistakeItem`）
-- 只修改 `ReviewStatus`，不做 OSS 迁移
-- MistakeItem 的 `SourceImagePath` 仍然指向 `uploads/`
+```
+1. 更新 MistakeItem.ReviewStatus = Rejected
+2. 删除该 MistakeItem 记录（级联删除关联的 practice 和 process_log）
+3. 不动 OSS 文件，不调 student 服务
+4. 检查该 UploadRecord 下是否还有 PendingReview 的 MistakeItem
+   → 若无待审核 item，调 student 服务 MarkUploadRecordAsReturned
+```
 
-**阶段 2：完成审核**（`CompleteUploadReview`）
-- 统一迁移所有 Confirmed item 的图片 `uploads/` → `mistakes/`
-- 统一删除所有 Rejected item 的 MistakeItem 记录
-- 从 UploadRecord 移除所有已迁移/已删除的图片引用
-- 如果 UploadRecord 无剩余图片，删除 UploadRecord
+注意：
+- 驳回的 MistakeItem 引用的图片仍在 `uploads/` 下，所有权仍归 UploadRecord，不需要迁移或删除
+- 删除 MistakeItem 记录后，这些图片只被 UploadRecord 引用，不会产生双重引用问题
+- 驳回不调 `RemoveImagesFromRecord`，因为图片不需要从记录中移除
 
-好处：
-- OSS 操作集中在一个点，不存在中间状态
-- 学生在审核期间删除上传记录的图片 → 可以在完成审核时检测到路径无效并跳过
-- 不再需要 `LegacyClean`
+### 4.4 上传记录状态检查
 
-### 方向 C：MistakeItem 删除时清理 mistakes/ 下的 OSS
+审核后的状态检查由 mistake 服务在 gRPC 层统一编排，分两部分：
 
-当前 `DeleteMistakeItemAsync` 只删数据库记录。应该：
-- 如果 `SourceImagePath` 以 `mistakes/` 开头 → 删除 OSS 文件
-- 如果以 `uploads/` 开头 → 不删除（所有权归 UploadRecord）
+**通过时**：`RemoveImagesFromRecord` 内部处理
+```
+移除图片路径后：
+├─ 无剩余图片 → 删除 UploadRecord（student 服务内部逻辑，无需 mistake 感知）
+└─ 有剩余图片 → 保留记录
+```
 
-### 方向 D：Assign 后锁定 UploadRecord
+**通过/驳回后**：mistake 服务检查剩余 MistakeItem
+```
+查询该 UploadRecord 下是否还有 PendingReview 的 MistakeItem：
+├─ 有待审核 item → 不动（审核仍在进行中）
+└─ 无待审核 item 且记录未被删除 → 调 MarkUploadRecordAsReturned
+```
 
-管理端 `AssignUploadRecord` 后，应该将 UploadRecord 状态改为"已分配/审核中"，禁止学生端删除或修改该记录及其图片。这可以通过在 `DeleteUploadRecordAsync` / `RemoveImageFromRecordAsync` 中增加状态检查来实现（当前已有 Processing 状态的检查，可以扩展）。
+### 4.5 完整流程图
 
-### 方向 E：统一跨服务编排逻辑
+```
+UploadRecord（含多张图片）
+        │
+        ▼ 系统自动识别 / 管理员分配
+   创建 MistakeItem(s) → 分配给教师审核
+        │
+        ▼ 教师逐条审核
+   ┌─────┴─────┐
+   │            │
+ Confirmed    Rejected
+   │            │
+ ①改状态       ①改状态
+ ②迁移 OSS     ②删 MistakeItem
+   uploads/→mistakes/   （不动 OSS、不调 student）
+ ③更新路径
+ ④RemoveImagesFromRecord
+   （student 内部：无图片→删记录）
+   │            │
+   └─────┬──────┘
+         ▼
+   ⑤检查剩余 PendingReview 的 MistakeItem
+   ├─ 有待审核 → 不动
+   └─ 无待审核 + 记录仍在 → MarkUploadRecordAsReturned
+```
 
-当前教师端 Controller 和管理端 Controller 各自手写了一套跨服务编排。建议：
+## 5. 当前代码与目标流程的差异
 
-在 mistake 服务中新增一个 `CompleteUploadReviewWithCleanup` gRPC 方法，内部编排：
-1. 迁移 Confirmed items 的图片
-2. 删除 Rejected items
-3. 调用 student 服务的 `RemoveImagesFromRecord` + `DeleteUploadRecordAfterReview`
-4. 返回结果
+### 5.1 `ReviewMistakeItem` gRPC 实现
 
-这样教师端和管理端都只需调这一个方法，消除重复。
+**当前行为**（[MistakeServiceImpl.cs:147-230](../src/Service/MistakeServiceImpl.cs)）：
+- Confirmed 时：改状态 + 迁移 OSS + 更新路径 + 返回 RemovedImagePaths ✅
+- Rejected 时：只改状态，不删 MistakeItem ❌（删除由 Controller 层做）
 
-## 5. 优先级建议
+**目标行为**：
+- Confirmed 时：改状态 + 迁移 OSS + 更新路径 + 返回 RemovedImagePaths ✅（当前已正确）
+- Rejected 时：改状态 + 删除 MistakeItem 记录（应从 Controller 下沉到 gRPC 服务层）
 
-| 优先级 | 方向 | 理由 |
-|--------|------|------|
-| **P0** | B. 审核两阶段分离 | 消除中间状态不一致，是其他改动的基础 |
-| **P0** | D. Assign 后锁定 UploadRecord | 防止学生端误删正在审核的图片 |
-| **P1** | A. 图片所有权状态机 | 为所有删除操作提供判断依据 |
-| **P1** | E. 统一跨服务编排 | 消除重复代码，减少出错概率 |
-| **P2** | C. 删除时清理 mistakes/ | 防止孤儿文件，但不影响功能正确性 |
+### 5.2 审核后的上传记录状态检查
+
+**当前行为**：
+- Confirmed 后：Controller 调 `RemoveImagesFromRecord` + `DeleteUploadRecordAfterReview`
+  - `DeleteUploadRecordAfterReview` 只检查"是否还有图片"，不检查"是否还有待审核 MistakeItem" ❌
+  - 如果有图片但没有待审核 MistakeItem，不会标记退回 ❌
+- Rejected 后：Controller 检查 `remainingItems.Count == 0` → 标记退回
+  - 只检查 MistakeItem 数量，不检查 UploadRecord 是否还有图片 ❌
+  - 如果没有图片了，应该删除 UploadRecord 而不是标记退回 ❌
+
+**目标行为**：
+- 通过时：mistake 服务调 `RemoveImagesFromRecord`（student 内部无图片则删记录），再检查剩余 item 决定是否调 `MarkUploadRecordAsReturned`
+- 驳回时：mistake 服务检查剩余 item，无待审核则调 `MarkUploadRecordAsReturned`
+- 不需要新增 gRPC 方法，复用已有的 `RemoveImagesFromRecord` 和 `MarkUploadRecordAsReturned`
+
+### 5.3 `CompleteUploadReview`
+
+**当前行为**（[MistakeServiceImpl.cs:317-418](../src/Service/MistakeServiceImpl.cs)）：
+- 存在一个独立的"完成审核"步骤，内部做 OSS 迁移 + 清理
+- 与 `ReviewMistakeItem` 中的迁移逻辑重复
+
+**目标行为**：
+- 目标流程中不存在独立的 CompleteUploadReview 步骤
+- 每条审核通过时立即迁移，不需要二次迁移
+- 此方法应废弃或重定义
+
+### 5.4 `LegacyClean`
+
+**当前行为**（[OssUploadRecordController.cs:410-503](../../../../admin_portal/backend/Controllers/OssUploadRecordController.cs)）：
+- 管理端手动触发的清理接口，编排逻辑与教师端审核后逻辑重复
+
+**目标行为**：
+- 如果每次审核后都正确执行状态检查，不应遗留需要 LegacyClean 的场景
+- 此接口可保留为运维兜底，但不应是正常流程的一部分
+
+### 5.5 跨服务编排逻辑重复
+
+**当前行为**：
+- 教师端 `ReviewItem`（[MistakeController.cs:539-677](../../../../teacher_portal/backend/Controllers/MistakeController.cs)）和 `BatchReview`（[MistakeController.cs:216-393](../../../../teacher_portal/backend/Controllers/MistakeController.cs)）各自手写编排逻辑
+- 管理端 `LegacyClean` 也有一套几乎相同的编排
+- 三处逻辑应一致但细节不同
+
+**目标行为**：
+- 审核后的完整编排（改状态 + OSS 迁移 + 路径清理 + 状态检查）应下沉到 mistake 服务的 gRPC 层
+- Controller 只负责权限校验和调用 gRPC，不编排跨服务逻辑
+
+## 6. 改动项
+
+### 改动 1：`ReviewMistakeItem` gRPC 方法增加驳回后的 MistakeItem 删除
+
+当前 Rejected 后只改状态，删除 MistakeItem 由 Controller 做。应将删除逻辑下沉到 gRPC 服务层，使 `ReviewMistakeItem` 成为完整的单条审核操作。
+
+### 改动 2：新增"上传记录状态检查" gRPC 方法
+
+在 student 服务中新增 `FinalizeUploadRecordAfterReview` gRPC 方法，接收 `recordId` + `studentId` + `hasPendingMistakeItems`，内部执行 4.4 节的状态检查：
+- 无图片 → 删除记录
+- 有图片 + 无待审核 → 标记退回
+- 有图片 + 有待审核 → 不动
+
+参数 `hasPendingMistakeItems` 由 mistake 服务在审核后查询并传入。这样 student 服务不需要反向调用 mistake 服务，依赖方向保持单向：mistake → student。
+
+### 改动 3：`ReviewMistakeItem` gRPC 方法增加审核后的状态检查编排
+
+审核完一条后（不管是通过还是驳回），在 gRPC 服务层统一编排：
+1. Confirmed → 迁移 OSS + 从 UploadRecord 移除图片路径
+2. Rejected → 删除 MistakeItem
+3. 查询该 UploadRecord 下是否还有 PendingReview 的 MistakeItem
+4. 调用 student 服务的 `FinalizeUploadRecordAfterReview`
+
+这样教师端和管理端 Controller 只需调用 `ReviewMistakeItem`，不需要再做任何跨服务编排。
+
+### 改动 4：简化 Controller 层
+
+教师端 `ReviewItem` 和 `BatchReview` 中，删除所有审核后的跨服务编排代码（`RemoveImagesFromRecord`、`DeleteUploadRecordAfterReview`、`MarkUploadRecordAsReturned`、`GetMistakeItemsByUpload`），这些逻辑已下沉到 gRPC 服务层。
+
+### 改动 5：废弃 `CompleteUploadReview`
+
+**调用方调查结果**：
+- 教师端 `MistakeController.CompleteReview`（`POST /api/mistake/complete-review`）— 后端暴露了 HTTP 端点，但前端代码中**未找到**对该接口的实际调用
+- 管理端 `OssUploadRecordController.LegacyClean`（`POST /api/oss-upload-record/legacy-clean/{id}`）— 仅用于遗留数据清理
+
+**处理方案**：
+- 目标流程中不存在独立的 CompleteUploadReview 步骤，每条审核通过时立即迁移
+- 教师端 `CompleteReview` 端点标记为废弃，前端未使用，可安全移除
+- 管理端 `LegacyClean` 保留为运维兜底工具，但不再是正常流程的一部分
+- `MistakeServiceImpl.CompleteUploadReview` 和 `MistakeDomainService.CompleteUploadReviewAsync` 标记为废弃
+- 相关测试随代码变更同步更新
+
+### 改动 6：重命名 `Completed` 状态为 `UnderReview`，Assign 后锁定 UploadRecord
+
+UploadRecord 不存在"已完成"终态——处理完毕就是删除或退回。当前 `Completed = 3` 的实际含义是"已分配给 MistakeItem，正在等待教师审核"，应重命名为 `UnderReview`。
+
+**目标 `UploadStatus` 枚举值**：
+
+| 值 | 当前名称 | 目标名称 | 含义 |
+|----|---------|---------|------|
+| 1 | Pending | Pending | 待处理 |
+| 2 | Processing | Processing | VL 分析处理中（外部分析服务设置） |
+| 3 | Completed | **UnderReview** | 审核中（Assign 后标记，图片已分配给 MistakeItem） |
+| 4 | Failed | Failed | 处理失败 |
+| 5 | Returned | Returned | 已退回（审核驳回后退回给学生） |
+
+UploadRecord 的生命周期：
+
+```
+Pending → Processing → UnderReview → 删除（审核通过，图片全部迁移）
+                                     → Returned（审核驳回，退回给学生）
+```
+
+**代码变更**：
+- `UploadStatus.Completed` → `UploadStatus.UnderReview`（枚举值不变，只改名称）
+- `MarkUploadRecordCompletedAsync` → `MarkUploadRecordUnderReviewAsync`
+- `AdminCompleteUploadReview` gRPC 方法 → 重命名
+- 所有引用 `Completed` 状态的代码同步更新
+
+**锁定逻辑**：
+- 当前 `DeleteUploadRecordAsync`、`RemoveImageFromRecordAsync`、`RemoveImagesFromRecordAsync`、`AppendImagesToRecordAsync` 只检查 `Processing` 状态时拒绝操作
+- 将 `UnderReview`（原 Completed）也加入拒绝条件：当 UploadRecord 处于 `UnderReview` 状态时，禁止学生端删除记录、删除/追加图片
+- 审核全部处理完毕后，由 mistake 服务 gRPC 层编排决定是删除记录（通过 `RemoveImagesFromRecord`）还是标记退回（通过 `MarkUploadRecordAsReturned`），不再由学生端操作
+
+### 改动 7：处理 `LegacyClean`
+
+此接口在目标流程中不应被正常触发。保留为运维兜底，但应在文档中标注其定位变化。
+
+## 7. 依赖关系
+
+改动之间的依赖顺序：
+
+```
+改动 6（Assign 后锁定）  ← 可独立实施，优先级最高
+        │
+改动 1（驳回后删除下沉）
+        │
+改动 2（不需要新增方法，复用 RemoveImagesFromRecord + MarkUploadRecordAsReturned）
+        │
+改动 3（ReviewMistakeItem 增加编排）
+        │
+改动 4（简化 Controller）+ 改动 5（废弃 CompleteUploadReview）
+        │
+改动 7（LegacyClean 标注定位变化）
+```
+
+改动 6 可以独立实施，不依赖其他改动。改动 1-3 有顺序依赖：先下沉驳回删除（1），再新增状态检查方法（2），最后在 ReviewMistakeItem 中编排完整流程（3）。改动 4 和 5 是清理工作，在 1-3 完成后实施。
