@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
@@ -76,6 +77,18 @@ builder.Services.AddSingleton(sp =>
 });
 
 var app = builder.Build();
+
+app.Logger.LogInformation("Mistake Service starting");
+app.Logger.LogInformation("Endpoints: gRPC={GrpcPort}, HTTP={HttpPort}", grpcPort, httpPort);
+if (isPostgreSql && !string.IsNullOrEmpty(connectionString))
+{
+    var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };
+    app.Logger.LogInformation("Database: PostgreSQL {Host}:{Port}/{Database}", csb["Host"], csb.TryGetValue("Port", out var dbPort) ? dbPort : "5432", csb["Database"]);
+}
+else
+{
+    app.Logger.LogInformation("Database: SQLite");
+}
 
 using (var scope = app.Services.CreateScope())
 {
