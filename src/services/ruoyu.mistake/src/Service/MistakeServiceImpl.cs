@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
+using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
@@ -11,15 +12,18 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly IMistakeDomainService _mistakeService;
     private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
+    private readonly IOssService _ossService;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         IMistakeDomainService mistakeService,
         StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
+        IOssService ossService,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
         _studentClient = studentClient;
+        _ossService = ossService;
         _logger = logger;
     }
 
@@ -585,20 +589,21 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
         try
         {
-            var studentRequest = new StudentProto.GetPresignedUrlRequest
-            {
-                ObjectPath = request.ObjectPath,
-                ExpirySeconds = expirySeconds,
-                Size = size
-            };
+            var exists = await _ossService.ObjectExistsAsync(request.ObjectPath).ConfigureAwait(false);
+            if (!exists)
+                throw new RpcException(new Status(StatusCode.NotFound, $"Object not found: {request.ObjectPath}"));
 
-            var studentResponse = await _studentClient.GetPresignedUrlAsync(studentRequest);
-
-            return new PresignedUrlResponse
+            // 原图请求：直接返回
+            if (size == "full")
             {
-                Url = studentResponse.Url,
-                ExpirySeconds = studentResponse.ExpirySeconds
-            };
+                var url = await _ossService.GetPresignedUrlAsync(request.ObjectPath, expirySeconds).ConfigureAwait(false);
+                return new PresignedUrlResponse { Url = url, ExpirySeconds = expirySeconds };
+            }
+
+            // 缩略图请求：使用 ThumbnailHelper
+            var (thumbnailUrl, expiry) = await ThumbnailHelper.GetOrGenerateThumbnailAsync(
+                request.ObjectPath, size, _ossService, expirySeconds, _logger).ConfigureAwait(false);
+            return new PresignedUrlResponse { Url = thumbnailUrl, ExpirySeconds = expiry };
         }
         catch (RpcException) { throw; }
         catch (Exception ex)

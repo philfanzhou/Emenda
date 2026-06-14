@@ -42,6 +42,10 @@ docker run -d \
   -e Endpoints__Grpc="${GRPC_PORT}" \
   -e Endpoints__Http="${HTTP_PORT}" \
   -e ConnectionStrings__Default="${CONNECTION_STRING}" \
+  -e Oss__Endpoint="${OSS_ENDPOINT}" \
+  -e Oss__AccessKey="${OSS_ACCESS_KEY}" \
+  -e Oss__SecretKey="${OSS_SECRET_KEY}" \
+  -e Oss__BucketName="${OSS_BUCKET}" \
   -e StudentService__GrpcUrl="http://${STUDENT_GRPC_ADDR}" \
   "$IMAGE_NAME"
 

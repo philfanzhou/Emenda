@@ -1,5 +1,7 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
@@ -48,6 +50,15 @@ builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
+
+// OSS 服务（Mistake 直连，允许前缀：mistakes/）
+builder.Services.AddSingleton<IOssService>(sp =>
+{
+    var ossConfig = new OssOptions();
+    builder.Configuration.GetSection("Oss").Bind(ossConfig);
+    return new S3OssService(ossConfig.Endpoint, ossConfig.AccessKey, ossConfig.SecretKey, ossConfig.BucketName,
+        new[] { "mistakes/" });
+});
 
 // Student Learning gRPC client（用于审核后编排：RemoveImagesFromRecord / MarkUploadRecordAsReturned）
 builder.Services.AddSingleton(sp =>

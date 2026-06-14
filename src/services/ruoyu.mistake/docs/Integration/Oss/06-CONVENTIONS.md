@@ -56,6 +56,20 @@
 - 调用方需评估数据量对内存和性能的影响
 - 未来如数据量增长，需考虑分页或流式返回
 
+## GetPresignedUrl 约定（oss-path-autonomy）
+
+### 直连 OSS
+
+- Mistake 恢复直连 OSS，`GetPresignedUrl` 直接调用 `IOssService` + `ThumbnailHelper`
+- 不再代理到 Student gRPC `GetPresignedUrl`
+- 路径前缀校验仅允许 `mistakes/`
+
+### 缩略图路径约定
+
+- 缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`
+- 示例：原图 `mistakes/2025/06/14/def/image.jpg` → 缩略图 `mistakes/2025/06/14/def/image_small.jpg`
+- `IOssService.DeleteAsync` 自动清理关联缩略图，无需手动处理
+
 ## 配置约定
 
 - 生产环境必须配置 `Oss:Endpoint`、`Oss:AccessKey`、`Oss:SecretKey`、`Oss:BucketName`

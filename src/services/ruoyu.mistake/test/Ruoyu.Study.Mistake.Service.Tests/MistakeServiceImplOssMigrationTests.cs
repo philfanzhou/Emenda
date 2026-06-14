@@ -7,6 +7,7 @@ using Grpc.Core;
 using Grpc.Core.Testing;
 using Microsoft.Extensions.Logging;
 using Moq;
+using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
@@ -27,6 +28,7 @@ public class MistakeServiceImplOssMigrationTests
     private readonly Mock<IMistakeDomainService> _mockDomainService;
     private readonly Mock<ILogger<MistakeServiceImpl>> _mockLogger;
     private readonly Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient> _mockStudentClient;
+    private readonly Mock<IOssService> _mockOssService;
     private readonly MistakeServiceImpl _service;
 
     public MistakeServiceImplOssMigrationTests()
@@ -34,10 +36,12 @@ public class MistakeServiceImplOssMigrationTests
         _mockDomainService = new Mock<IMistakeDomainService>();
         _mockLogger = new Mock<ILogger<MistakeServiceImpl>>();
         _mockStudentClient = new Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+        _mockOssService = new Mock<IOssService>();
 
         _service = new MistakeServiceImpl(
             _mockDomainService.Object,
             _mockStudentClient.Object,
+            _mockOssService.Object,
             _mockLogger.Object);
     }
 
@@ -671,26 +675,11 @@ public class MistakeServiceImplOssMigrationTests
 
     // === GetPresignedUrl Tests ===
 
-    private void SetupGetPresignedUrlAsync(string url = "http://presigned-url", int expirySeconds = 3600)
-    {
-        _mockStudentClient
-            .Setup(x => x.GetPresignedUrlAsync(
-                It.IsAny<StudentProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(new AsyncUnaryCall<StudentProto.PresignedUrlResponse>(
-                Task.FromResult(new StudentProto.PresignedUrlResponse { Url = url, ExpirySeconds = expirySeconds }),
-                Task.FromResult(new Metadata()),
-                () => Status.DefaultSuccess,
-                () => new Metadata(),
-                () => { }));
-    }
-
     [Fact]
-    public async Task GetPresignedUrl_FullSize_ReturnsUrlFromStudentService()
+    public async Task GetPresignedUrl_FullSize_ReturnsPresignedUrlFromOssService()
     {
-        SetupGetPresignedUrlAsync("http://original-url", 3600);
+        _mockOssService.Setup(x => x.ObjectExistsAsync("mistakes/test/image.jpg")).ReturnsAsync(true);
+        _mockOssService.Setup(x => x.GetPresignedUrlAsync("mistakes/test/image.jpg", 3600)).ReturnsAsync("http://original-url");
 
         var request = new MistakeGetPresignedUrlRequest
         {
@@ -707,7 +696,8 @@ public class MistakeServiceImplOssMigrationTests
     [Fact]
     public async Task GetPresignedUrl_EmptySize_DefaultsToFull()
     {
-        SetupGetPresignedUrlAsync("http://original-url", 3600);
+        _mockOssService.Setup(x => x.ObjectExistsAsync("mistakes/test/image.jpg")).ReturnsAsync(true);
+        _mockOssService.Setup(x => x.GetPresignedUrlAsync("mistakes/test/image.jpg", 3600)).ReturnsAsync("http://original-url");
 
         var request = new MistakeGetPresignedUrlRequest
         {
@@ -722,13 +712,18 @@ public class MistakeServiceImplOssMigrationTests
     }
 
     [Fact]
-    public async Task GetPresignedUrl_ThumbnailSize_PassesSizeToStudentService()
+    public async Task GetPresignedUrl_ThumbnailCached_ReturnsCachedThumbnailUrl()
     {
-        SetupGetPresignedUrlAsync("http://thumbnail-url", 3600);
+        var objectPath = "mistakes/test/image.jpg";
+        var thumbnailPath = "mistakes/test/image_small.jpg";
+
+        _mockOssService.Setup(x => x.ObjectExistsAsync(objectPath)).ReturnsAsync(true);
+        _mockOssService.Setup(x => x.ObjectExistsAsync(thumbnailPath)).ReturnsAsync(true);
+        _mockOssService.Setup(x => x.GetPresignedUrlAsync(thumbnailPath, 3600)).ReturnsAsync("http://thumbnail-url");
 
         var request = new MistakeGetPresignedUrlRequest
         {
-            ObjectPath = "mistakes/test/image.jpg",
+            ObjectPath = objectPath,
             Size = "small"
         };
 
@@ -736,28 +731,34 @@ public class MistakeServiceImplOssMigrationTests
 
         response.Url.Should().Be("http://thumbnail-url");
         response.ExpirySeconds.Should().Be(3600);
-        _mockStudentClient.Verify(x => x.GetPresignedUrlAsync(
-            It.Is<StudentProto.GetPresignedUrlRequest>(r => r.Size == "small"),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
-            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task GetPresignedUrl_WhenStudentServiceFails_ThrowsRpcException()
+    public async Task GetPresignedUrl_ObjectNotFound_ThrowsNotFound()
     {
-        _mockStudentClient
-            .Setup(x => x.GetPresignedUrlAsync(
-                It.IsAny<StudentProto.GetPresignedUrlRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Throws(new RpcException(new Status(StatusCode.Internal, "Student service unavailable")));
+        _mockOssService.Setup(x => x.ObjectExistsAsync("mistakes/test/nonexistent.jpg")).ReturnsAsync(false);
+
+        var request = new MistakeGetPresignedUrlRequest
+        {
+            ObjectPath = "mistakes/test/nonexistent.jpg",
+            Size = "full"
+        };
+
+        var act = () => _service.GetPresignedUrl(request, CreateTestContext());
+
+        await act.Should().ThrowAsync<RpcException>()
+            .Where(ex => ex.StatusCode == StatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetPresignedUrl_OssServiceThrows_ThrowsInternalError()
+    {
+        _mockOssService.Setup(x => x.ObjectExistsAsync("mistakes/test/image.jpg")).ThrowsAsync(new Exception("OSS connection failed"));
 
         var request = new MistakeGetPresignedUrlRequest
         {
             ObjectPath = "mistakes/test/image.jpg",
-            Size = "small"
+            Size = "full"
         };
 
         var act = () => _service.GetPresignedUrl(request, CreateTestContext());

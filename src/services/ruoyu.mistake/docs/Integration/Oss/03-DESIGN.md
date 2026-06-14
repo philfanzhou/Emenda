@@ -13,6 +13,10 @@
 │  │     MigrateImagesToMistake│                           │
 │  │     替代直接 OSS 操作）   │                           │
 │  │                           │                           │
+│  ├─ GetPresignedUrl()        │                           │
+│  │  └─ 直连 IOssService +   │                           │
+│  │     ThumbnailHelper       │                           │
+│  │     (oss-path-autonomy)   │                           │
 │  └──────── Student gRPC ─────┘                          │
 │             │                                           │
 └─────────────┼───────────────────────────────────────────┘
@@ -20,10 +24,11 @@
      ┌────────┴────────┐
      │                 │
 ┌────▼─────┐    ┌──────▼──────┐
-│Student    │   │Student       │
-│MigrateImag│   │GetPresignedUrl│
-│esToMistake│   │(供 BFF 调用) │
-└───────────┘   └──────────────┘
+│Student    │   │IOssService  │
+│MigrateImag│   │(Mistake直连)│
+│esToMistake│   │+Thumbnail   │
+└───────────┘   │Helper       │
+                └─────────────┘
                           ▲
                           │
 ┌─────────────────────────┼─────────────────────────────┐
@@ -33,12 +38,12 @@
 │  ├─ 调用 Mistake.GetAllReferencedImagePaths            │
 │  ├─ 调用 Student.GetRegisteredOssPaths                 │
 │  └─ 交叉比对 → 僵尸对象检测                            │
-└────────────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────────────┘
 ```
 
-> **重要变更**：Mistake 服务不再直接操作 OSS（CopyObject/DeleteObject），改为通过 Student gRPC `MigrateImagesToMistake` 代理。Mistake 服务不再持有 OSS 凭证。
+> **重要变更（oss-path-autonomy）**：Mistake 服务恢复直连 OSS。`GetPresignedUrl` 直接调用 `IOssService` + `ThumbnailHelper`，不再代理到 Student gRPC。路径前缀校验仅允许 `mistakes/`。`IOssService.DeleteAsync` 自动清理关联缩略图。
 
-> **⚠️ 架构偏差 — GetPresignedUrl**：当前 `MistakeServiceImpl.GetPresignedUrl` 仍直接使用 `IOssService` 生成预签名 URL 和缩略图，这是架构偏差。按 spec 目标，Mistake 不应持有 OSS 凭证，`GetPresignedUrl` 应改为调用 Student gRPC `GetPresignedUrl`，由 Student 服务代理 OSS 操作。此改进已记录为 oss-refactoring 遗留项 Task R.1。
+> **图片迁移仍通过 Student gRPC**：Mistake 服务不再直接操作 OSS 的 CopyObject/DeleteObject，图片迁移仍通过 Student gRPC `MigrateImagesToMistake` 代理。
 
 ## ReviewMistakeItem 中的迁移流程
 
@@ -104,7 +109,7 @@ ReviewMistakeItem(id, reviewStatus, reviewerId, ...)
 | 单个失败不阻塞 | 审核完成是业务关键操作，图片可后续修复 |
 | 迁移成功即更新路径 | 目标文件已存在，路径应指向新位置 |
 | 不回滚审核状态 | 审核状态变更涉及多方通知，回滚代价高 |
-| 不直接操作 OSS | Mistake 服务不持有 OSS 凭证，通过 Student gRPC 代理 |
+| 不直接操作 OSS（迁移） | Mistake 图片迁移通过 Student gRPC 代理，但 GetPresignedUrl 直连 IOssService（oss-path-autonomy 正式决策） |
 
 ## OssAuditWorker 审计流程
 

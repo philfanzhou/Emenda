@@ -41,6 +41,13 @@ Mistake 模块通过 `IOssService` 接口与 OSS（对象存储服务）集成�
 
 通过配置切换，开发环境无需部署 MinIO 即可本地调试。
 
-## 架构偏差：GetPresignedUrl 直接使用 IOssService
+## oss-path-autonomy 变更：Mistake 恢复直连 OSS
 
-当前 `MistakeServiceImpl.GetPresignedUrl` 仍直接使用 `IOssService` 生成预签名 URL 和缩略图（包括下载原图、ImageSharp 缩放、上传缩略图到 OSS 等操作），这是架构偏差。按 spec 目标，Mistake 不应持有 OSS 凭证，`GetPresignedUrl` 应改为调用 Student gRPC `GetPresignedUrl`，由 Student 服务代理所有 OSS 操作。此改进已记录为 oss-refactoring 遗留项 Task R.1。
+Mistake 服务恢复直连 OSS，不再通过 Student gRPC 代理 `GetPresignedUrl`。具体变更：
+
+- `GetPresignedUrl` 改为直接调用 `IOssService` + `ThumbnailHelper`，不再代理到 Student gRPC
+- 路径前缀校验：Mistake 允许 `mistakes/` 前缀
+- `IOssService.DeleteAsync` 自动清理关联缩略图，无需手动处理
+- 缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`
+
+> **旧架构（已废弃）**：此前 `GetPresignedUrl` 被标记为架构偏差，计划改为调用 Student gRPC `GetPresignedUrl`。oss-path-autonomy 变更后，Mistake 恢复直连 OSS 为正式架构决策。
