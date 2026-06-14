@@ -38,6 +38,8 @@
 
 > **重要变更**：Mistake 服务不再直接操作 OSS（CopyObject/DeleteObject），改为通过 Student gRPC `MigrateImagesToMistake` 代理。Mistake 服务不再持有 OSS 凭证。
 
+> **⚠️ 架构偏差 — GetPresignedUrl**：当前 `MistakeServiceImpl.GetPresignedUrl` 仍直接使用 `IOssService` 生成预签名 URL 和缩略图，这是架构偏差。按 spec 目标，Mistake 不应持有 OSS 凭证，`GetPresignedUrl` 应改为调用 Student gRPC `GetPresignedUrl`，由 Student 服务代理 OSS 操作。此改进已记录为 oss-refactoring 遗留项 Task R.1。
+
 ## ReviewMistakeItem 中的迁移流程
 
 代码位置：`MistakeServiceImpl.cs`

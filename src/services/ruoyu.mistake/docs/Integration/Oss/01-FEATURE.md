@@ -40,3 +40,7 @@ Mistake 模块通过 `IOssService` 接口与 OSS（对象存储服务）集成�
 | LocalFileOssService | 基于本地文件系统 | 开发环境 |
 
 通过配置切换，开发环境无需部署 MinIO 即可本地调试。
+
+## 架构偏差：GetPresignedUrl 直接使用 IOssService
+
+当前 `MistakeServiceImpl.GetPresignedUrl` 仍直接使用 `IOssService` 生成预签名 URL 和缩略图（包括下载原图、ImageSharp 缩放、上传缩略图到 OSS 等操作），这是架构偏差。按 spec 目标，Mistake 不应持有 OSS 凭证，`GetPresignedUrl` 应改为调用 Student gRPC `GetPresignedUrl`，由 Student 服务代理所有 OSS 操作。此改进已记录为 oss-refactoring 遗留项 Task R.1。

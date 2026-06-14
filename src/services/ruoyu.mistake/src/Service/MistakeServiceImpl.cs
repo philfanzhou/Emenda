@@ -1,16 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Processing;
 using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Service;
@@ -18,18 +10,15 @@ namespace Ruoyu.Study.Mistake.Service;
 public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly IMistakeDomainService _mistakeService;
-    private readonly IOssService _ossService;
     private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         IMistakeDomainService mistakeService,
-        IOssService ossService,
         StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
-        _ossService = ossService;
         _studentClient = studentClient;
         _logger = logger;
     }
@@ -596,61 +585,20 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
         try
         {
-            var exists = await _ossService.ObjectExistsAsync(request.ObjectPath).ConfigureAwait(false);
-            if (!exists)
-                throw new RpcException(new Status(StatusCode.NotFound, $"Object not found: {request.ObjectPath}"));
-
-            // 原图请求：直接返回
-            if (size == "full")
+            var studentRequest = new StudentProto.GetPresignedUrlRequest
             {
-                var url = await _ossService.GetPresignedUrlAsync(request.ObjectPath, expirySeconds).ConfigureAwait(false);
-                return new PresignedUrlResponse { Url = url, ExpirySeconds = expirySeconds };
-            }
+                ObjectPath = request.ObjectPath,
+                ExpirySeconds = expirySeconds,
+                Size = size
+            };
 
-            // 缩略图请求：检查缓存 → 生成 → 返回
-            var thumbnailPath = GetThumbnailPath(request.ObjectPath, size);
+            var studentResponse = await _studentClient.GetPresignedUrlAsync(studentRequest);
 
-            if (await _ossService.ObjectExistsAsync(thumbnailPath).ConfigureAwait(false))
+            return new PresignedUrlResponse
             {
-                var cachedUrl = await _ossService.GetPresignedUrlAsync(thumbnailPath, expirySeconds).ConfigureAwait(false);
-                return new PresignedUrlResponse { Url = cachedUrl, ExpirySeconds = expirySeconds };
-            }
-
-            // 缓存未命中：生成缩略图
-            try
-            {
-                var maxPixel = size switch
-                {
-                    "medium" => 800,
-                    "small" => 400,
-                    "thumbnail" => 200,
-                    _ => 800
-                };
-
-                using var originalStream = await _ossService.DownloadAsync(request.ObjectPath).ConfigureAwait(false);
-                using var image = await Image.LoadAsync(originalStream).ConfigureAwait(false);
-
-                image.Mutate(x => x.Resize(new ResizeOptions
-                {
-                    Size = new Size(maxPixel, maxPixel),
-                    Mode = ResizeMode.Max
-                }));
-
-                using var thumbnailStream = new MemoryStream();
-                await image.SaveAsJpegAsync(thumbnailStream).ConfigureAwait(false);
-                thumbnailStream.Position = 0;
-
-                await _ossService.UploadAsync(thumbnailStream, Path.GetFileName(thumbnailPath), "image/jpeg", OssBucket.Mistakes, Path.GetDirectoryName(thumbnailPath)?.Replace("\\", "/")).ConfigureAwait(false);
-
-                var thumbnailUrl = await _ossService.GetPresignedUrlAsync(thumbnailPath, expirySeconds).ConfigureAwait(false);
-                return new PresignedUrlResponse { Url = thumbnailUrl, ExpirySeconds = expirySeconds };
-            }
-            catch (Exception thumbEx)
-            {
-                _logger.LogWarning(thumbEx, "GetPresignedUrl: thumbnail generation failed for {Path}, size={Size}, falling back to original", request.ObjectPath, size);
-                var fallbackUrl = await _ossService.GetPresignedUrlAsync(request.ObjectPath, expirySeconds).ConfigureAwait(false);
-                return new PresignedUrlResponse { Url = fallbackUrl, ExpirySeconds = expirySeconds };
-            }
+                Url = studentResponse.Url,
+                ExpirySeconds = studentResponse.ExpirySeconds
+            };
         }
         catch (RpcException) { throw; }
         catch (Exception ex)
@@ -658,19 +606,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             _logger.LogError(ex, "GetPresignedUrl: failed for path {Path}", request.ObjectPath);
             throw new RpcException(new Status(StatusCode.Internal, $"Failed to generate presigned URL: {ex.Message}"));
         }
-    }
-
-    private static string GetThumbnailPath(string objectPath, string size)
-    {
-        var pathWithoutPrefix = objectPath;
-        var slashIndex = objectPath.IndexOf('/');
-        if (slashIndex > 0)
-            pathWithoutPrefix = objectPath[(slashIndex + 1)..];
-
-        var ext = Path.GetExtension(pathWithoutPrefix);
-        var pathWithoutExt = pathWithoutPrefix[..^ext.Length];
-
-        return $"thumbnails/{pathWithoutExt}_{size}.jpg";
     }
 
     private static MistakeItemDto MapMistakeItemDto(MistakeItemModel item)
