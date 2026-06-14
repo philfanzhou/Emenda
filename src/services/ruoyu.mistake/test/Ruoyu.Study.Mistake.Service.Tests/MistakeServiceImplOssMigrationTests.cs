@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -8,12 +7,9 @@ using Grpc.Core;
 using Grpc.Core.Testing;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
 
 using Ruoyu.Study.Student.Contract.Protos;
@@ -29,7 +25,6 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 public class MistakeServiceImplOssMigrationTests
 {
     private readonly Mock<IMistakeDomainService> _mockDomainService;
-    private readonly Mock<IOssService> _mockOssService;
     private readonly Mock<ILogger<MistakeServiceImpl>> _mockLogger;
     private readonly Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient> _mockStudentClient;
     private readonly MistakeServiceImpl _service;
@@ -37,13 +32,11 @@ public class MistakeServiceImplOssMigrationTests
     public MistakeServiceImplOssMigrationTests()
     {
         _mockDomainService = new Mock<IMistakeDomainService>();
-        _mockOssService = new Mock<IOssService>();
         _mockLogger = new Mock<ILogger<MistakeServiceImpl>>();
         _mockStudentClient = new Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
 
         _service = new MistakeServiceImpl(
             _mockDomainService.Object,
-            _mockOssService.Object,
             _mockStudentClient.Object,
             _mockLogger.Object);
     }
@@ -676,28 +669,32 @@ public class MistakeServiceImplOssMigrationTests
         item.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/img1.jpg");
     }
 
-    // === GetPresignedUrl Thumbnail Tests ===
+    // === GetPresignedUrl Tests ===
 
-    private static Stream CreateTestImageStream(int width = 100, int height = 100)
+    private void SetupGetPresignedUrlAsync(string url = "http://presigned-url", int expirySeconds = 3600)
     {
-        using var image = new Image<Rgb24>(width, height);
-        var stream = new MemoryStream();
-        image.SaveAsJpeg(stream);
-        stream.Position = 0;
-        return stream;
+        _mockStudentClient
+            .Setup(x => x.GetPresignedUrlAsync(
+                It.IsAny<StudentProto.GetPresignedUrlRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(new AsyncUnaryCall<StudentProto.PresignedUrlResponse>(
+                Task.FromResult(new StudentProto.PresignedUrlResponse { Url = url, ExpirySeconds = expirySeconds }),
+                Task.FromResult(new Metadata()),
+                () => Status.DefaultSuccess,
+                () => new Metadata(),
+                () => { }));
     }
 
     [Fact]
-    public async Task GetPresignedUrl_FullSize_ReturnsOriginalUrl()
+    public async Task GetPresignedUrl_FullSize_ReturnsUrlFromStudentService()
     {
-        var objectPath = "mistakes/test/image.jpg";
-
-        _mockOssService.Setup(x => x.ObjectExistsAsync(objectPath)).ReturnsAsync(true);
-        _mockOssService.Setup(x => x.GetPresignedUrlAsync(objectPath, 3600)).ReturnsAsync("http://original-url");
+        SetupGetPresignedUrlAsync("http://original-url", 3600);
 
         var request = new MistakeGetPresignedUrlRequest
         {
-            ObjectPath = objectPath,
+            ObjectPath = "mistakes/test/image.jpg",
             Size = "full"
         };
 
@@ -705,20 +702,16 @@ public class MistakeServiceImplOssMigrationTests
 
         response.Url.Should().Be("http://original-url");
         response.ExpirySeconds.Should().Be(3600);
-        _mockOssService.Verify(x => x.DownloadAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task GetPresignedUrl_EmptySize_ReturnsOriginalUrl()
+    public async Task GetPresignedUrl_EmptySize_DefaultsToFull()
     {
-        var objectPath = "mistakes/test/image.jpg";
-
-        _mockOssService.Setup(x => x.ObjectExistsAsync(objectPath)).ReturnsAsync(true);
-        _mockOssService.Setup(x => x.GetPresignedUrlAsync(objectPath, 3600)).ReturnsAsync("http://original-url");
+        SetupGetPresignedUrlAsync("http://original-url", 3600);
 
         var request = new MistakeGetPresignedUrlRequest
         {
-            ObjectPath = objectPath,
+            ObjectPath = "mistakes/test/image.jpg",
             Size = ""
         };
 
@@ -726,22 +719,16 @@ public class MistakeServiceImplOssMigrationTests
 
         response.Url.Should().Be("http://original-url");
         response.ExpirySeconds.Should().Be(3600);
-        _mockOssService.Verify(x => x.DownloadAsync(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task GetPresignedUrl_ThumbnailCached_ReturnsCachedUrl()
+    public async Task GetPresignedUrl_ThumbnailSize_PassesSizeToStudentService()
     {
-        var objectPath = "mistakes/test/image.jpg";
-        var thumbnailPath = "thumbnails/test/image_small.jpg";
-
-        _mockOssService.Setup(x => x.ObjectExistsAsync(objectPath)).ReturnsAsync(true);
-        _mockOssService.Setup(x => x.ObjectExistsAsync(thumbnailPath)).ReturnsAsync(true);
-        _mockOssService.Setup(x => x.GetPresignedUrlAsync(thumbnailPath, 3600)).ReturnsAsync("http://thumbnail-url");
+        SetupGetPresignedUrlAsync("http://thumbnail-url", 3600);
 
         var request = new MistakeGetPresignedUrlRequest
         {
-            ObjectPath = objectPath,
+            ObjectPath = "mistakes/test/image.jpg",
             Size = "small"
         };
 
@@ -749,55 +736,48 @@ public class MistakeServiceImplOssMigrationTests
 
         response.Url.Should().Be("http://thumbnail-url");
         response.ExpirySeconds.Should().Be(3600);
-        _mockOssService.Verify(x => x.DownloadAsync(It.IsAny<string>()), Times.Never);
+        _mockStudentClient.Verify(x => x.GetPresignedUrlAsync(
+            It.Is<StudentProto.GetPresignedUrlRequest>(r => r.Size == "small"),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task GetPresignedUrl_ThumbnailNotCached_GeneratesAndReturnsThumbnailUrl()
+    public async Task GetPresignedUrl_WhenStudentServiceFails_ThrowsRpcException()
     {
-        var objectPath = "mistakes/test/image.jpg";
-        var thumbnailPath = "thumbnails/test/image_small.jpg";
-
-        _mockOssService.Setup(x => x.ObjectExistsAsync(objectPath)).ReturnsAsync(true);
-        _mockOssService.Setup(x => x.ObjectExistsAsync(thumbnailPath)).ReturnsAsync(false);
-        _mockOssService.Setup(x => x.DownloadAsync(objectPath)).ReturnsAsync(CreateTestImageStream());
-        _mockOssService.Setup(x => x.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), OssBucket.Mistakes, It.IsAny<string>()))
-            .ReturnsAsync("thumbnails/test/image_small.jpg");
-        _mockOssService.Setup(x => x.GetPresignedUrlAsync(thumbnailPath, 3600)).ReturnsAsync("http://thumbnail-url");
+        _mockStudentClient
+            .Setup(x => x.GetPresignedUrlAsync(
+                It.IsAny<StudentProto.GetPresignedUrlRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Throws(new RpcException(new Status(StatusCode.Internal, "Student service unavailable")));
 
         var request = new MistakeGetPresignedUrlRequest
         {
-            ObjectPath = objectPath,
+            ObjectPath = "mistakes/test/image.jpg",
             Size = "small"
         };
 
-        var response = await _service.GetPresignedUrl(request, CreateTestContext());
+        var act = () => _service.GetPresignedUrl(request, CreateTestContext());
 
-        response.Url.Should().Be("http://thumbnail-url");
-        response.ExpirySeconds.Should().Be(3600);
-        _mockOssService.Verify(x => x.UploadAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), OssBucket.Mistakes, It.IsAny<string>()), Times.Once);
+        await act.Should().ThrowAsync<RpcException>()
+            .Where(ex => ex.StatusCode == StatusCode.Internal);
     }
 
     [Fact]
-    public async Task GetPresignedUrl_ThumbnailGenerationFails_FallsBackToOriginal()
+    public async Task GetPresignedUrl_EmptyObjectPath_ThrowsInvalidArgument()
     {
-        var objectPath = "mistakes/test/image.jpg";
-        var thumbnailPath = "thumbnails/test/image_small.jpg";
-
-        _mockOssService.Setup(x => x.ObjectExistsAsync(objectPath)).ReturnsAsync(true);
-        _mockOssService.Setup(x => x.ObjectExistsAsync(thumbnailPath)).ReturnsAsync(false);
-        _mockOssService.Setup(x => x.DownloadAsync(objectPath)).ThrowsAsync(new Exception("Download failed"));
-        _mockOssService.Setup(x => x.GetPresignedUrlAsync(objectPath, 3600)).ReturnsAsync("http://original-url");
-
         var request = new MistakeGetPresignedUrlRequest
         {
-            ObjectPath = objectPath,
-            Size = "small"
+            ObjectPath = "",
+            Size = "full"
         };
 
-        var response = await _service.GetPresignedUrl(request, CreateTestContext());
+        var act = () => _service.GetPresignedUrl(request, CreateTestContext());
 
-        response.Url.Should().Be("http://original-url");
-        response.ExpirySeconds.Should().Be(3600);
+        await act.Should().ThrowAsync<RpcException>()
+            .Where(ex => ex.StatusCode == StatusCode.InvalidArgument);
     }
 }

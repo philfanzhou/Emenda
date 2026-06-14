@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
-using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
@@ -43,22 +41,6 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
     else
         options.UseSqlite(connectionString ?? "Data Source=data/sqlite/ruoyu_study_mistake.db");
 });
-
-var useLocalOss = Environment.GetEnvironmentVariable("USE_LOCAL_OSS") == "1";
-if (useLocalOss)
-{
-    var localPath = Environment.GetEnvironmentVariable("OSS_LOCAL_PATH") ?? "data/oss";
-    builder.Services.AddSingleton<IOssService>(new LocalFileOssService(localPath));
-}
-else
-{
-    builder.Services.Configure<OssOptions>(builder.Configuration.GetSection("Oss"));
-    builder.Services.AddScoped<IOssService, S3OssService>(sp =>
-    {
-        var options = sp.GetRequiredService<IOptions<OssOptions>>().Value;
-        return new S3OssService(options.Endpoint, options.AccessKey, options.SecretKey, options.BucketName);
-    });
-}
 
 builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
