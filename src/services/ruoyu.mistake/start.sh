@@ -7,7 +7,8 @@ IMAGE_NAME="ruoyu.study.mistake:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-mistake"
 NETWORK_NAME="ruoyu-net"
 
-#GRPC_PORT="10893"
+GRPC_PORT="5006"
+HTTP_PORT="5007"
 
 DB_HOST="ruoyu-postgres"
 DB_PORT="5432"
@@ -38,8 +39,8 @@ docker run -d \
   --restart unless-stopped \
   --network "$NETWORK_NAME" \
   -e TZ=Asia/Shanghai \
-  -e Endpoints__Grpc="5006" \
-  -e Endpoints__Http="5007" \
+  -e Endpoints__Grpc="${GRPC_PORT}" \
+  -e Endpoints__Http="${HTTP_PORT}" \
   -e ConnectionStrings__Default="${CONNECTION_STRING}" \
   -e Oss__Endpoint="${OSS_ENDPOINT}" \
   -e Oss__AccessKey="${OSS_ACCESS_KEY}" \
