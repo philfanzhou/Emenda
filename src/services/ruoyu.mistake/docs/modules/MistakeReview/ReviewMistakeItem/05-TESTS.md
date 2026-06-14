@@ -42,7 +42,10 @@
 | 可选 subject 更新（无效值被忽略） | 验证 subject<=0 或 >9 不更新 | 中 |
 | ProcessLog 记录验证（Confirmed） | 验证 Action=ReviewConfirmed, details="Mistake item confirmed" | 中 |
 | ProcessLog 记录验证（Rejected） | 验证 Action=ReviewRejected, details="Mistake item rejected" | 中 |
-| gRPC 层图片迁移逻辑 | Confirmed 时 uploads/→mistakes/ 的 Copy+Delete | 中 |
+| gRPC 层图片迁移逻辑 | Confirmed 时通过 Student gRPC MigrateImagesToMistake 迁移 uploads/→mistakes/ | 中 |
 | gRPC 层非 uploads/ 前缀图片不迁移 | 验证路径前缀判断 | 低 |
 | gRPC 屙 removed_image_paths 收集 | 验证所有 SourceImagePath 被收集 | 低 |
+| gRPC 层 MigrateImagesToMistake 调用失败时容错 | 记录 Error 日志，路径不变 | 中 |
+| Rejected 时调用 DeleteMistakeItemAsync 删除记录 | 验证 Rejected 状态的条目被删除 | 中 |
+| 审核后编排 - 无待审核条目时调用 MarkUploadRecordAsReturned | 验证所有条目审核完毕后通知 Student 服务 | 中 |
 | gRPC 层审核状态验证 | 非 Confirmed/Rejected 直接返回 InvalidArgument | 低 |

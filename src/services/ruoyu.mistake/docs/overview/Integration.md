@@ -20,7 +20,7 @@
 | 14 | GetMistakeProcessHistory | gRPC | 入 | — | 查询处理历史 |
 | 15 | GetAllReferencedImagePaths | gRPC | 入 | admin_portal | 获取所有引用图片路径（OSS审计） |
 | 16 | StudentLearningGrpcServiceClient.MigrateImagesToMistake | gRPC | 出 | ruoyu.student | 图片迁移：uploads/ → mistakes/（替代直接 OSS CopyObject+DeleteObject） |
-| 17 | GetPresignedUrl | gRPC | 入 | user_portal, teacher_portal | 生成 mistakes/ 路径图片的预签名 URL |
+| 17 | GetPresignedUrl | gRPC | 入 | user_portal, teacher_portal | 生成 mistakes/ 路径图片的预签名 URL；支持缩略图生成（当 `size` 参数不为空且不为 `full` 时触发）：尺寸映射 `full`=原图, `medium`=800px, `small`=400px, `thumbnail`=200px；缩放模式 `ResizeMode.Max`（保持宽高比，长边不超过指定像素）；缓存路径 `thumbnails/{原路径去掉前缀}_{size}.jpg`（示例：原图 `mistakes/2025/06/14/def/image.jpg` → 缩略图 `thumbnails/2025/06/14/def/image_small.jpg`）；缓存命中直接返回预签名 URL，缓存未命中则下载原图 → SixLabors.ImageSharp 缩放 → 上传到 OSS → 返回预签名 URL；降级策略：缩略图生成失败时返回原图 URL + Warning 日志 |
 | 18 | StudentLearningGrpcServiceClient.RemoveImagesFromRecord | gRPC | 出 | ruoyu.student | 审核确认时从上传记录移除已迁移图片 |
 | 19 | StudentLearningGrpcServiceClient.MarkUploadRecordAsReturned | gRPC | 出 | ruoyu.student | 上传记录下无待审核条目时标记为已退回 |
 | 20 | EF Core (Npgsql/Sqlite) | 数据库 | 出 | PostgreSQL/SQLite | 所有数据持久化操作 |

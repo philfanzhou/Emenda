@@ -152,6 +152,7 @@ message ProcessLogListResponse {
 message GetPresignedUrlRequest {
   string object_path = 1;
   int32 expiry_seconds = 2;  // 默认 3600
+  string size = 3;           // full/small/thumbnail/medium
 }
 
 message PresignedUrlResponse {

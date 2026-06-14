@@ -67,11 +67,11 @@
 
 - **Given**: Rejected 错题包含 `uploads/` 前缀图片
 - **When**: CompleteUploadReview gRPC handler 执行
-- **Then**: 不执行 OSS Copy/Delete，图片路径加入 removedImagePaths
+- **Then**: 不执行 Student gRPC MigrateImagesToMistake，图片路径加入 removedImagePaths
 
-### UT-11: OSS Copy 失败时容错
+### UT-11: MigrateImagesToMistake gRPC 调用失败时容错
 
-- **Given**: OSS CopyObjectAsync 抛出异常
+- **Given**: MigrateImagesToMistake gRPC 调用抛出异常
 - **When**: CompleteUploadReview gRPC handler 执行
 - **Then**: 记录 Error 日志，继续处理其他图片，最终返回 Success=true
 
