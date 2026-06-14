@@ -25,7 +25,6 @@ service MistakeGrpcService {
 
   rpc LogMistakeProcess(LogMistakeProcessRequest) returns (BoolResponse);
   rpc GetMistakeProcessHistory(IdRequest) returns (ProcessLogListResponse);
-  rpc GetAllReferencedImagePaths(Empty) returns (GetAllReferencedImagePathsResponse);
 
   // OSS 代理接口（供 BFF 层调用，避免 BFF 直接持有 OSS 凭证）
   rpc GetPresignedUrl(GetPresignedUrlRequest) returns (PresignedUrlResponse);

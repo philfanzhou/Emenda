@@ -307,22 +307,6 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task GetAllReferencedImagePathsAsync_ShouldReturnAllPaths()
-    {
-        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
-            .ReturnsAsync(new List<string> { "path1.jpg", "path2.jpg" });
-        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
-            .ReturnsAsync(new List<string> { "practice1.jpg" });
-
-        var result = await _service.GetAllReferencedImagePathsAsync();
-
-        result.Should().HaveCount(3);
-        result.Should().Contain("path1.jpg");
-        result.Should().Contain("path2.jpg");
-        result.Should().Contain("practice1.jpg");
-    }
-
-    [Fact]
     public async Task UpdateMistakeItemAsync_ShouldUpdateItem()
     {
         var item = new MistakeItemModel
@@ -704,49 +688,6 @@ public class MistakeDomainServiceTests
 
         await act.Should().ThrowAsync<MistakeValidationException>()
             .WithMessage("*至少需要一个图片区域*");
-    }
-
-    // === GetAllReferencedImagePaths 补充测试 ===
-
-    [Fact]
-    public async Task GetAllReferencedImagePathsAsync_WhenNoData_ShouldReturnEmptySet()
-    {
-        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
-            .ReturnsAsync(new List<string>());
-        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
-            .ReturnsAsync(new List<string>());
-
-        var result = await _service.GetAllReferencedImagePathsAsync();
-
-        result.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetAllReferencedImagePathsAsync_ShouldDeduplicatePaths()
-    {
-        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
-            .ReturnsAsync(new List<string> { "path1.jpg", "path1.jpg" });
-        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
-            .ReturnsAsync(new List<string>());
-
-        var result = await _service.GetAllReferencedImagePathsAsync();
-
-        result.Should().HaveCount(1);
-    }
-
-    [Fact]
-    public async Task GetAllReferencedImagePathsAsync_ShouldSkipEmptyPaths()
-    {
-        // Repository layer already filters empty/whitespace paths, so only valid paths reach Domain
-        _mockItemRepo.Setup(x => x.GetAllSourceImagePathsAsync())
-            .ReturnsAsync(new List<string> { "valid.jpg" });
-        _mockPracticeRepo.Setup(x => x.GetAllPracticeImagePathsAsync())
-            .ReturnsAsync(new List<string>());
-
-        var result = await _service.GetAllReferencedImagePathsAsync();
-
-        result.Should().HaveCount(1);
-        result.Should().Contain("valid.jpg");
     }
 
     // === UpdateMistakeItemPartial 补充测试 ===

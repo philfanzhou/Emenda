@@ -24,5 +24,4 @@ public interface IMistakeDomainService
     Task<List<MistakePracticeModel>> GetPracticesAsync(Guid mistakeItemId);
     Task<bool> LogMistakeProcessAsync(Guid mistakeItemId, string studentId, ProcessAction action, string details);
     Task<List<ProcessLogModel>> GetMistakeProcessHistoryAsync(Guid mistakeItemId);
-    Task<HashSet<string>> GetAllReferencedImagePathsAsync();
 }

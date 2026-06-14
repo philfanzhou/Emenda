@@ -97,7 +97,3 @@ message PendingReviewUploadDto {
 }
 
 message Empty {}
-
-message GetAllReferencedImagePathsResponse {
-  repeated string image_paths = 1;
-}

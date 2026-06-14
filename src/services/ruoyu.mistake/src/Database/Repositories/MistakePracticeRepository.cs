@@ -80,24 +80,4 @@ public class MistakePracticeRepository : IMistakePracticeRepository
             Comments = e.Comments
         }).ToList();
     }
-
-    public async Task<List<string>> GetAllPracticeImagePathsAsync()
-    {
-        // Only select the image_paths column to avoid loading full entities
-        var imagePathsList = await _dbContext.MistakePractices
-            .Select(x => x.ImagePaths)
-            .ToListAsync();
-
-        var paths = new List<string>();
-        foreach (var imagePaths in imagePathsList)
-        {
-            if (imagePaths == null) continue;
-            foreach (var path in imagePaths)
-            {
-                if (!string.IsNullOrWhiteSpace(path))
-                    paths.Add(path);
-            }
-        }
-        return paths;
-    }
 }

@@ -583,14 +583,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         return response;
     }
 
-    public override async Task<GetAllReferencedImagePathsResponse> GetAllReferencedImagePaths(Empty request, ServerCallContext context)
-    {
-        var paths = await _mistakeService.GetAllReferencedImagePathsAsync();
-        var response = new GetAllReferencedImagePathsResponse();
-        response.ImagePaths.AddRange(paths);
-        return response;
-    }
-
     public override async Task<PresignedUrlResponse> GetPresignedUrl(GetPresignedUrlRequest request, ServerCallContext context)
     {
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
