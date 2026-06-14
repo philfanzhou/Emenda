@@ -13,7 +13,8 @@
 ├─────────────────────────────────────────────────┤
 │  Service — gRPC 服务实现                         │
 │  MistakeServiceImpl: 请求/响应映射、输入验证、     │
-│  审核后编排 (OSS迁移 + student gRPC回调)           │
+│  审核后编排 (Student gRPC MigrateImagesToMistake + │
+│  student gRPC回调)                                │
 ├─────────────────────────────────────────────────┤
 │  Domain — 领域模型与业务逻辑                      │
 │  MistakeDomainService, Models, 仓储接口           │
@@ -51,8 +52,7 @@ Host ──▶ Service ──▶ Domain ──▶ Contract
   └──────────▶ Database ──▶ Domain ──▶ Contract
 
 外部依赖:
-  Service ──▶ IOssService (S3OssService / LocalFileOssService)
-  Service ──▶ StudentLearningGrpcServiceClient (RemoveImagesFromRecord, MarkUploadRecordAsReturned)
+  Service ──▶ StudentLearningGrpcServiceClient (MigrateImagesToMistake, RemoveImagesFromRecord, MarkUploadRecordAsReturned)
   Host ──▶ MistakeDbContext (PostgreSQL / SQLite)
 ```
 

@@ -26,6 +26,9 @@ service MistakeGrpcService {
   rpc LogMistakeProcess(LogMistakeProcessRequest) returns (BoolResponse);
   rpc GetMistakeProcessHistory(IdRequest) returns (ProcessLogListResponse);
   rpc GetAllReferencedImagePaths(Empty) returns (GetAllReferencedImagePathsResponse);
+
+  // OSS 代理接口（供 BFF 层调用，避免 BFF 直接持有 OSS 凭证）
+  rpc GetPresignedUrl(GetPresignedUrlRequest) returns (PresignedUrlResponse);
 }
 
 message SubmitMistakeUploadRequest {
@@ -143,4 +146,16 @@ message LogMistakeProcessRequest {
 
 message ProcessLogListResponse {
   repeated ProcessLogDto logs = 1;
+}
+
+// ========== OSS Proxy Messages ==========
+
+message GetPresignedUrlRequest {
+  string object_path = 1;
+  int32 expiry_seconds = 2;  // 默认 3600
+}
+
+message PresignedUrlResponse {
+  string url = 1;
+  int32 expiry_seconds = 2;
 }

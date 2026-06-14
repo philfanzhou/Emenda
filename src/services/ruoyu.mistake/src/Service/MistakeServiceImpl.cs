@@ -174,7 +174,10 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             if (request.ReviewStatus == ReviewStatus.Confirmed)
             {
                 // 逐条迁移当前这道题的图片：uploads/ → mistakes/
+                // 通过 Student gRPC MigrateImagesToMistake 接口迁移，避免跨服务直接操作 OSS
                 var updated = false;
+                var pathsToMigrate = new List<string>();
+
                 foreach (var region in item.SourceRegions)
                 {
                     if (string.IsNullOrWhiteSpace(region.SourceImagePath))
@@ -182,34 +185,45 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
                     removedPaths.Add(region.SourceImagePath);
 
-                    if (!region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
-                        continue;
+                    if (region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        pathsToMigrate.Add(region.SourceImagePath);
+                    }
+                }
 
-                    var oldPath = region.SourceImagePath;
-                    var newPath = "mistakes" + oldPath.Substring("uploads".Length);
+                if (pathsToMigrate.Count > 0)
+                {
                     try
                     {
-                        await _ossService.CopyObjectAsync(oldPath, newPath);
+                        var migrateRequest = new StudentProto.MigrateImagesToMistakeRequest();
+                        migrateRequest.SourcePaths.AddRange(pathsToMigrate);
+                        var migrateResponse = await _studentClient.MigrateImagesToMistakeAsync(migrateRequest);
 
-                        // Copy 成功后即可更新路径，Delete 失败不影响路径更新
-                        region.SourceImagePath = newPath;
-                        updated = true;
-
-                        try
+                        foreach (var result in migrateResponse.Results)
                         {
-                            await _ossService.DeleteAsync(oldPath);
-                        }
-                        catch (Exception delEx)
-                        {
-                            // Delete 失败仅记录日志，不影响路径更新
-                            _logger.LogWarning(delEx, "ReviewMistakeItem: Failed to delete source image {Path} after copy, but copy succeeded", oldPath);
-                        }
+                            if (result.Success)
+                            {
+                                // 更新 MistakeItem 中的路径引用
+                                foreach (var region in item.SourceRegions)
+                                {
+                                    if (region.SourceImagePath == result.SourcePath)
+                                    {
+                                        region.SourceImagePath = result.NewPath;
+                                        updated = true;
+                                    }
+                                }
 
-                        _logger.LogDebug("ReviewMistakeItem: Migrated image from {OldPath} to {NewPath}", oldPath, newPath);
+                                _logger.LogDebug("ReviewMistakeItem: Migrated image from {OldPath} to {NewPath}", result.SourcePath, result.NewPath);
+                            }
+                            else
+                            {
+                                _logger.LogError("ReviewMistakeItem: Failed to migrate image {Path}: {Error}", result.SourcePath, result.ErrorMessage);
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "ReviewMistakeItem: Error copying image {Path}, path not updated", oldPath);
+                        _logger.LogError(ex, "ReviewMistakeItem: Error calling MigrateImagesToMistake for {Count} paths", pathsToMigrate.Count);
                     }
                 }
 
@@ -419,9 +433,10 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             var migratedImagePaths = new List<string>();
             var imagePathsToRemoveFromRecord = new List<string>();
 
+            // 收集需要迁移的路径
+            var pathsToMigrate = new List<string>();
             foreach (var item in result.Items)
             {
-                bool updated = false;
                 foreach (var region in item.SourceRegions)
                 {
                     if (string.IsNullOrWhiteSpace(region.SourceImagePath))
@@ -432,7 +447,51 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         imagePathsToRemoveFromRecord.Add(region.SourceImagePath);
                     }
 
-                    if (!region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
+                    if (region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+                        && item.ReviewStatus == (int)ReviewStatus.Confirmed
+                        && !pathsToMigrate.Contains(region.SourceImagePath, StringComparer.OrdinalIgnoreCase))
+                    {
+                        pathsToMigrate.Add(region.SourceImagePath);
+                    }
+                }
+            }
+
+            // 通过 Student gRPC MigrateImagesToMistake 接口批量迁移
+            if (pathsToMigrate.Count > 0)
+            {
+                try
+                {
+                    var migrateRequest = new StudentProto.MigrateImagesToMistakeRequest();
+                    migrateRequest.SourcePaths.AddRange(pathsToMigrate);
+                    var migrateResponse = await _studentClient.MigrateImagesToMistakeAsync(migrateRequest);
+
+                    foreach (var migrateResult in migrateResponse.Results)
+                    {
+                        if (migrateResult.Success)
+                        {
+                            pathMapping[migrateResult.SourcePath] = migrateResult.NewPath;
+                            migratedImagePaths.Add(migrateResult.SourcePath);
+                            _logger.LogDebug("CompleteUploadReview: Migrated {OldPath} -> {NewPath}", migrateResult.SourcePath, migrateResult.NewPath);
+                        }
+                        else
+                        {
+                            _logger.LogError("CompleteUploadReview: Failed to migrate {Path}: {Error}", migrateResult.SourcePath, migrateResult.ErrorMessage);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "CompleteUploadReview: Error calling MigrateImagesToMistake");
+                }
+            }
+
+            // 更新 MistakeItem 中的路径引用
+            foreach (var item in result.Items)
+            {
+                bool updated = false;
+                foreach (var region in item.SourceRegions)
+                {
+                    if (string.IsNullOrWhiteSpace(region.SourceImagePath))
                         continue;
 
                     if (item.ReviewStatus != (int)ReviewStatus.Confirmed)
@@ -447,41 +506,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                     {
                         region.SourceImagePath = cachedNewPath;
                         updated = true;
-                        continue;
-                    }
-
-                    var oldPath = region.SourceImagePath;
-                    try
-                    {
-                        var newPath = "mistakes" + oldPath.Substring("uploads".Length);
-
-                        await _ossService.CopyObjectAsync(oldPath, newPath);
-
-                        // Copy 成功后即可更新路径和缓存，Delete 失败不影响路径更新
-                        pathMapping[oldPath] = newPath;
-                        region.SourceImagePath = newPath;
-                        updated = true;
-                        migratedImagePaths.Add(oldPath);
-
-                        try
-                        {
-                            await _ossService.DeleteAsync(oldPath);
-                        }
-                        catch (Exception delEx)
-                        {
-                            // Delete 失败仅记录日志，不影响路径更新
-                            _logger.LogWarning(delEx, "CompleteUploadReview: Failed to delete source image {Path} after copy, but copy succeeded", oldPath);
-                        }
-
-                        _logger.LogDebug(
-                            "Migrated image from {OldPath} to {NewPath}",
-                            oldPath, newPath);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex,
-                            "Error copying image {Path}, path not updated",
-                            oldPath);
                     }
                 }
 
@@ -565,6 +589,38 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         var response = new GetAllReferencedImagePathsResponse();
         response.ImagePaths.AddRange(paths);
         return response;
+    }
+
+    public override async Task<PresignedUrlResponse> GetPresignedUrl(GetPresignedUrlRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.ObjectPath))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "object_path is required"));
+
+        var expirySeconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
+
+        try
+        {
+            var exists = await _ossService.ObjectExistsAsync(request.ObjectPath).ConfigureAwait(false);
+            if (!exists)
+                throw new RpcException(new Status(StatusCode.NotFound, $"Object not found: {request.ObjectPath}"));
+
+            var url = await _ossService.GetPresignedUrlAsync(request.ObjectPath, expirySeconds).ConfigureAwait(false);
+
+            return new PresignedUrlResponse
+            {
+                Url = url,
+                ExpirySeconds = expirySeconds
+            };
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetPresignedUrl: failed for path {Path}", request.ObjectPath);
+            throw new RpcException(new Status(StatusCode.Internal, $"Failed to generate presigned URL: {ex.Message}"));
+        }
     }
 
     private static MistakeItemDto MapMistakeItemDto(MistakeItemModel item)

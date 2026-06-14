@@ -77,6 +77,7 @@ Task<int> SaveChangesAsync();
 // StudentLearningGrpcServiceClient
 Task RemoveImagesFromRecord(string sourceUploadId, IEnumerable<string> imagePaths);
 Task MarkUploadRecordAsReturned(string sourceUploadId);
+Task<MigrateImagesToMistakeResponse> MigrateImagesToMistakeAsync(IEnumerable<string> sourcePaths);
 ```
 
 ## 依赖的数据库表/字段
@@ -136,12 +137,12 @@ MistakeServiceImpl (gRPC 层后审核编排)
     │  if (Confirmed):
     │    3. 遍历 SourceRegions
     │       - 收集所有 SourceImagePath → removedPaths
-    │       - 若以 "uploads/" 开头:
-    │         a. OSS Copy: uploads/xxx → mistakes/xxx
-    │         b. OSS Delete: uploads/xxx
-    │         c. 更新 region.SourceImagePath = newPath
-    │    4. 若有迁移 → UpdateMistakeItemAsync(item)
-    │    5. 调用 StudentLearningGrpcServiceClient.RemoveImagesFromRecord(sourceUploadId, removedPaths)
+    │       - 若以 "uploads/" 开头: 收集到 sourcePaths
+    │    4. 若 sourcePaths 非空:
+    │       - 调用 StudentLearningGrpcServiceClient.MigrateImagesToMistakeAsync(sourcePaths)
+    │       - 遍历迁移结果: 成功 → 更新 region.SourceImagePath = newPath
+    │    5. 若有迁移 → UpdateMistakeItemAsync(item)
+    │    6. 调用 StudentLearningGrpcServiceClient.RemoveImagesFromRecord(sourceUploadId, removedPaths)
     │
     │  if (Rejected):
     │    3. 删除该 MistakeItem (IMistakeItemRepository.DeleteAsync)
@@ -166,7 +167,7 @@ MistakeServiceImpl (gRPC 层后审核编排)
 
 4. **可选字段处理**: grade 和 subject 在 gRPC 层判断 `> 0` 才传入领域层，领域层判断 `> 0 && <= 范围上限` 才更新。两层协作确保无效值被忽略。
 
-5. **图片迁移路径规则**: `uploads/xxx` → `mistakes/xxx`，仅替换前缀 "uploads" 为 "mistakes"，保留后续路径结构。
+5. **图片迁移路径规则**: `uploads/xxx` → `mistakes/xxx`，由 Student 服务 `MigrateImagesToMistake` 处理，Mistake 服务根据返回结果更新路径。
 
 6. **审核幂等性**: 不支持重复审核。已审核（Confirmed 或 Rejected）的条目再次审核会抛出 MistakeValidationException。
 

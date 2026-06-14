@@ -19,8 +19,8 @@
 | 13 | LogMistakeProcess | gRPC | 入 | — | 记录处理日志 |
 | 14 | GetMistakeProcessHistory | gRPC | 入 | — | 查询处理历史 |
 | 15 | GetAllReferencedImagePaths | gRPC | 入 | admin_portal | 获取所有引用图片路径（OSS审计） |
-| 16 | IOssService.CopyObject | S3 API | 出 | MinIO/SeaweedFS | 图片迁移：uploads/ → mistakes/ |
-| 17 | IOssService.DeleteObject | S3 API | 出 | MinIO/SeaweedFS | 迁移后删除 uploads/ 下的原图 |
+| 16 | StudentLearningGrpcServiceClient.MigrateImagesToMistake | gRPC | 出 | ruoyu.student | 图片迁移：uploads/ → mistakes/（替代直接 OSS CopyObject+DeleteObject） |
+| 17 | GetPresignedUrl | gRPC | 入 | user_portal, teacher_portal | 生成 mistakes/ 路径图片的预签名 URL |
 | 18 | StudentLearningGrpcServiceClient.RemoveImagesFromRecord | gRPC | 出 | ruoyu.student | 审核确认时从上传记录移除已迁移图片 |
 | 19 | StudentLearningGrpcServiceClient.MarkUploadRecordAsReturned | gRPC | 出 | ruoyu.student | 上传记录下无待审核条目时标记为已退回 |
 | 20 | EF Core (Npgsql/Sqlite) | 数据库 | 出 | PostgreSQL/SQLite | 所有数据持久化操作 |
@@ -31,19 +31,17 @@
 
 | 外部系统 | 失败场景 | 降级策略 | 影响范围 |
 |----------|----------|----------|----------|
-| **OSS** (CopyObject) | ReviewMistakeItem 确认时单图 copy 失败 | catch 后 log error，继续处理下一张图 | 该图片未迁移到 mistakes/，source_regions 路径未更新 |
-| **OSS** (DeleteObject) | 迁移后删除 uploads/ 原图失败 | catch 后 log error，继续 | uploads/ 和 mistakes/ 两处均存在文件，产生冗余但不影响业务 |
+| **Student** (MigrateImagesToMistake) | ReviewMistakeItem 确认时迁移图片失败 | catch 后 log error，继续处理下一张图 | 该图片未迁移到 mistakes/，source_regions 路径未更新 |
 | **Student** (RemoveImagesFromRecord) | ReviewMistakeItem 确认后调用失败 | catch 后 log error，审核状态已持久化不受影响 | 上传记录中仍保留已迁移图片引用，需人工或补偿任务清理 |
 | **Student** (MarkUploadRecordAsReturned) | 无待审核条目时标记上传记录失败 | catch 后 log error，审核状态已持久化不受影响 | 上传记录状态未更新为已退回，需人工或补偿任务处理 |
 | **PostgreSQL/SQLite** | 数据库操作失败 | EF Core 抛异常，gRPC 返回 INTERNAL 状态码 | 整个请求失败，调用方可重试 |
 
 ### 关键风险：ReviewMistakeItem 的非事务性
 
-ReviewMistakeItem 涉及多步外部操作（OSS copy → OSS delete → student RemoveImagesFromRecord → student MarkUploadRecordAsReturned），**不具备事务性**：
+ReviewMistakeItem 涉及多步外部操作（Student MigrateImagesToMistake → student RemoveImagesFromRecord → student MarkUploadRecordAsReturned），**不具备事务性**：
 
-1. OSS copy 成功但 delete 失败 → 两处均存在文件（冗余，不影响正确性）
-2. 部分图片 copy 成功部分失败 → 已迁移图片路径已更新，未迁移图片路径未更新
-3. OSS 迁移成功但 student gRPC 调用失败 → 审核状态已持久化，但上传记录未更新（需补偿）
+1. 部分图片迁移成功部分失败 → 已迁移图片路径已更新，未迁移图片路径未更新
+2. 图片迁移成功但 student gRPC 调用失败 → 审核状态已持久化，但上传记录未更新（需补偿）
 
 **设计原则**: 审核状态持久化是业务关键节点，不因外部依赖临时不可用而回滚。调用方需设计补偿机制。
 
