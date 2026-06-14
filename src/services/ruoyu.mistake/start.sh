@@ -6,7 +6,6 @@ IMAGE_TAG="20260501"
 IMAGE_NAME="ruoyu.study.mistake:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-mistake"
 NETWORK_NAME="ruoyu-net"
-
 GRPC_PORT="5006"
 HTTP_PORT="5007"
 
@@ -24,7 +23,6 @@ OSS_SECRET_KEY="seaweedfs_admin"
 OSS_BUCKET="ruoyu-study"
 
 docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"
-
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
     echo "Container is already running, stopping it..."
     docker stop "$CONTAINER_NAME"
