@@ -22,3 +22,29 @@
 - **HR-05: CompleteUploadReview 标记 Obsolete 但未删除**
   - **来源**：三元素生命周期重构（AgentGeneralChangeAudit）
   - **说明**：LegacyClean 仍依赖 CompleteUploadReview，当前仅标记 Obsolete，后续版本可考虑移除。
+
+- **HR-06: OSS 迁移与 DB 更新不在同一事务（P0）**
+  - **来源**：代码审查（CodeReview）
+  - **位置**：`MistakeServiceImpl`
+  - **说明**：`CompleteUploadReview` 中 OSS 文件迁移与数据库状态更新不在同一事务内，若 DB 更新失败，OSS 侧文件已迁移但 DB 仍指向旧路径，导致数据不一致。建议将 OSS 迁移与 DB 更新纳入同一事务或引入补偿机制。
+
+- **HR-07: RemoveImagesFromRecord 向 OSS 传递迁移前路径（P0）**
+  - **来源**：代码审查（CodeReview）
+  - **位置**：`MistakeServiceImpl.RemoveImagesFromRecord`
+  - **说明**：该方法将迁移前的旧路径传给 OSS 删除接口，而非迁移后的新路径，导致 OSS 侧无法正确删除已迁移的文件。需在删除前将路径映射为迁移后的 OSS 路径。
+
+- **HR-08: 多处方法存在 N+1 查询问题（P1）**
+  - **来源**：代码审查（CodeReview）
+  - **说明**：多个方法在循环内逐条查询数据库，存在 N+1 查询性能问题。建议批量预加载关联数据或使用 JOIN 查询替代逐条访问。
+
+- **HR-09: 代码中存在中文注释与消息（P1）**
+  - **来源**：代码审查（CodeReview）
+  - **说明**：业务代码与异常消息中存在中文，与项目整体英文规范不一致。建议统一为英文注释与消息，或按项目约定处理国际化。
+
+- **HR-10: 同一文件中定义多个类型（P1）**
+  - **来源**：代码审查（CodeReview）
+  - **说明**：部分文件包含多个类型定义（如服务类与辅助类混放），不符合单一职责原则，影响可维护性。建议拆分为独立文件。
+
+- **HR-11: 死代码（P2）**
+  - **来源**：代码审查（CodeReview）
+  - **说明**：存在未被调用的方法、未使用的字段或已注释掉的代码块，建议清理以减少维护负担。
