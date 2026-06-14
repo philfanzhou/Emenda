@@ -137,3 +137,61 @@
 **预期结果**：
 - 正确识别出僵尸对象
 - 僵尸对象不在 Mistake 和 Student 的引用路径中
+
+## 图片迁移路径计算 UT
+
+测试文件：`test/Ruoyu.Study.Mistake.Domain.Tests/ImagePathMigrationTests.cs`、`test/Ruoyu.Study.Mistake.Service.Tests/MistakeServiceImplOssMigrationTests.cs`
+
+### TC-PATH-01 路径替换 — uploads/ → mistakes/ 前缀替换
+
+- **Given**：`SourceRegion.SourceImagePath = "uploads/2025/06/abc.jpg"`
+- **When**：执行路径迁移计算
+- **Then**：新路径为 `"mistakes/2025/06/abc.jpg"`（仅替换前缀 `uploads` → `mistakes`，路径其余部分保持不变）
+
+### TC-PATH-02 路径替换 — 含子目录结构
+
+- **Given**：`SourceRegion.SourceImagePath = "uploads/student-1/2026/05/03/record/upload_0.jpg"`
+- **When**：执行路径迁移计算
+- **Then**：新路径为 `"mistakes/student-1/2026/05/03/record/upload_0.jpg"`
+
+### TC-PATH-03 路径去重 — 同一路径被多个 confirmed item 引用
+
+- **Given**：两个 confirmed item 的 SourceRegion 引用相同路径 `"uploads/student-1/img1.jpg"`
+- **When**：调用 CompleteUploadReview
+- **Then**：`MigrateImagesToMistakeAsync` 仅被调用一次（pathsToMigrate 列表去重），两个 item 的路径均更新为 `"mistakes/student-1/img1.jpg"`
+
+### TC-PATH-04 路径去重 — 大小写不敏感
+
+- **Given**：一个 item 引用 `"uploads/Student-1/img1.jpg"`，另一个引用 `"uploads/student-1/img1.jpg"`
+- **When**：执行路径迁移
+- **Then**：路径按大小写敏感处理（OSS 路径区分大小写），两条路径均被迁移
+
+### TC-PATH-05 特殊字符处理 — 路径含空格
+
+- **Given**：`SourceRegion.SourceImagePath = "uploads/2025/06/my image.jpg"`
+- **When**：执行路径迁移计算
+- **Then**：新路径为 `"mistakes/2025/06/my image.jpg"`（空格保留，不做编码）
+
+### TC-PATH-06 特殊字符处理 — 路径含中文字符
+
+- **Given**：`SourceRegion.SourceImagePath = "uploads/2025/06/错题图片.jpg"`
+- **When**：执行路径迁移计算
+- **Then**：新路径为 `"mistakes/2025/06/错题图片.jpg"`（中文字符保留）
+
+### TC-PATH-07 特殊字符处理 — 路径含 URL 编码字符
+
+- **Given**：`SourceRegion.SourceImagePath = "uploads/2025/06/image%20test.jpg"`
+- **When**：执行路径迁移计算
+- **Then**：新路径为 `"mistakes/2025/06/image%20test.jpg"`（编码字符原样保留）
+
+### TC-PATH-08 非 uploads 前缀路径不迁移
+
+- **Given**：`SourceRegion.SourceImagePath = "mistakes/2025/06/already_migrated.jpg"`（已迁移路径）
+- **When**：执行路径迁移
+- **Then**：该路径不被加入 pathsToMigrate 列表，不触发 CopyObjectAsync
+
+### TC-PATH-09 空路径和空白路径跳过
+
+- **Given**：`SourceRegion.SourceImagePath = ""` 或 `"   "` 或 `null`
+- **When**：执行路径迁移
+- **Then**：该路径被跳过，不触发任何 OSS 操作

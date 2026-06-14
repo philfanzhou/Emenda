@@ -57,7 +57,7 @@ builder.Services.AddSingleton<IOssService>(sp =>
     var ossConfig = new OssOptions();
     builder.Configuration.GetSection("Oss").Bind(ossConfig);
     return new S3OssService(ossConfig.Endpoint, ossConfig.AccessKey, ossConfig.SecretKey, ossConfig.BucketName,
-        new[] { "mistakes/" });
+        new[] { "mistakes/" }, ossConfig.PublicEndpoint);
 });
 
 // Student Learning gRPC client（用于审核后编排：RemoveImagesFromRecord / MarkUploadRecordAsReturned）

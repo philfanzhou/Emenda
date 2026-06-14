@@ -45,6 +45,8 @@
 
 > **图片迁移仍通过 Student gRPC**：Mistake 服务不再直接操作 OSS 的 CopyObject/DeleteObject，图片迁移仍通过 Student gRPC `MigrateImagesToMistake` 代理。
 
+> **oss-nginx-proxy 变更**：`OssOptions.PublicEndpoint` 非空时，`GetPresignedUrlAsync` 替换预签名 URL 的 scheme+host 为 `{PublicEndpoint}/oss`，前端通过 Nginx 反向代理访问 OSS，无需直连内部 SeaweedFS。
+
 ## ReviewMistakeItem 中的迁移流程
 
 代码位置：`MistakeServiceImpl.cs`

@@ -102,6 +102,9 @@ Mistake 服务恢复直连 OSS，`GetPresignedUrl` 直接调用 `IOssService` + 
 | Oss:AccessKey | 访问密钥 | `minioadmin` |
 | Oss:SecretKey | 密钥 | `minioadmin` |
 | Oss:BucketName | 存储桶名称 | `ruoyu-study` |
+| Oss:PublicEndpoint | 公共访问端点（可选） | `https://admin.example.com` |
+
+> `Oss:PublicEndpoint` 非空时，`GetPresignedUrlAsync` 生成的预签名 URL 会将 scheme+host 替换为 `{PublicEndpoint}/oss`，保留原始 path 和 query string（含签名参数）。前端通过 Nginx `/oss/` 反向代理访问 OSS 对象。
 
 ### 开发模式（LocalFileOssService）
 
