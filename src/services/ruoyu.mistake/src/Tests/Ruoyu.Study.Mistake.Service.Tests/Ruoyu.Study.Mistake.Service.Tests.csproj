@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Service\Ruoyu.Study.Mistake.Service.csproj" />
+    <ProjectReference Include="..\..\Service\Ruoyu.Study.Mistake.Service.csproj" />
   </ItemGroup>
 
 </Project>
