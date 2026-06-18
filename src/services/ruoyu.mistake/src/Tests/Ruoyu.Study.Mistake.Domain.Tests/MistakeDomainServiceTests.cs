@@ -42,8 +42,6 @@ public class MistakeDomainServiceTests
     {
         var imagePaths = new List<string> { "img1.jpg", "img2.jpg" };
 
-        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel>());
-
         var items = await _service.SubmitMistakeUploadAsync(
             "student-1", 1, 3, imagePaths, null, "upload-1");
 
@@ -65,8 +63,6 @@ public class MistakeDomainServiceTests
             SourceUploadId = "upload-1",
             StudentId = "student-1"
         };
-
-        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel> { existingItem });
 
         var items = await _service.SubmitMistakeUploadAsync(
             "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
@@ -421,8 +417,6 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task SubmitMistakeUploadAsync_ShouldRecordProcessLogCreated()
     {
-        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel>());
-
         await _service.SubmitMistakeUploadAsync(
             "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
 
@@ -434,8 +428,6 @@ public class MistakeDomainServiceTests
     [Fact]
     public async Task SubmitMistakeUploadAsync_WithComments_ShouldPassThrough()
     {
-        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1")).ReturnsAsync(new List<MistakeItemModel>());
-
         var items = await _service.SubmitMistakeUploadAsync(
             "student-1", 1, 3, new List<string> { "img.jpg" }, "some comment", "upload-1");
 
