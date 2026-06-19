@@ -14,6 +14,7 @@
 - [ ] FR-06: 参数校验：page<=0→1, size<=0→10, size>100→100
 - [ ] FR-07: 返回 `PageMeta` 包含 page/size/totalCount/totalPages
 - [ ] FR-08: 结果按 `created_at` 降序排列
+- [ ] FR-09: BFF 层不返回 `review_status` 字段（错题本中所有错题均为 Confirmed 状态，状态信息多余）
 
 ## 验收标准
 
