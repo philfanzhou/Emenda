@@ -426,13 +426,24 @@ public class MistakeDomainServiceTests
     }
 
     [Fact]
-    public async Task SubmitMistakeUploadAsync_WithComments_ShouldPassThrough()
+    public async Task SubmitMistakeUploadAsync_WithRootCause_ShouldStoreRootCause()
     {
         var items = await _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string> { "img.jpg" }, "some comment", "upload-1");
+            "student-1", 1, 3, new List<string> { "img.jpg" }, "概念混淆：混淆了通分和约分规则", "upload-1");
 
         items.Should().HaveCount(1);
         items[0].SourceUploadId.Should().Be("upload-1");
+        items[0].RootCause.Should().Be("概念混淆：混淆了通分和约分规则");
+    }
+
+    [Fact]
+    public async Task SubmitMistakeUploadAsync_WithNullRootCause_ShouldStoreNull()
+    {
+        var items = await _service.SubmitMistakeUploadAsync(
+            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
+
+        items.Should().HaveCount(1);
+        items[0].RootCause.Should().BeNull();
     }
 
     // === GetMistakeItem 补充测试 ===
