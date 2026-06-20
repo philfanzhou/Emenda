@@ -18,5 +18,5 @@ public class VlImageGroup
     public List<int> ImageIndices { get; set; } = new();
     public int Subject { get; set; }
     public int Grade { get; set; }
-    public string Description { get; set; } = string.Empty;
+    public string RootCause { get; set; } = string.Empty;
 }

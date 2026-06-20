@@ -45,9 +45,9 @@ public class MistakeDomainService : IMistakeDomainService
     }
 
     public async Task<List<MistakeItemModel>> SubmitMistakeUploadAsync(
-        string studentId, int subject, int grade, List<string> imagePaths, string? comments, string sourceUploadId)
+        string studentId, int subject, int grade, List<string> imagePaths, string? rootCause, string sourceUploadId)
     {
-        ValidateSubmitData(studentId, subject, grade, imagePaths, comments, sourceUploadId);
+        ValidateSubmitData(studentId, subject, grade, imagePaths, rootCause, sourceUploadId);
 
         var item = new MistakeItemModel
         {
@@ -106,7 +106,7 @@ public class MistakeDomainService : IMistakeDomainService
         return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size, subjects);
     }
 
-    public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? reviewComment, int? grade = null, int? subject = null)
+    public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null)
     {
         var item = await _mistakeItemRepository.GetByIdAsync(id);
         if (item == null) return null;
@@ -124,7 +124,7 @@ public class MistakeDomainService : IMistakeDomainService
         item.ReviewStatus = reviewStatus;
         item.ReviewerId = reviewerId;
         item.ReviewedAt = DateTimeOffset.UtcNow;
-        item.ReviewComment = reviewComment;
+        item.RootCause = rootCause;
         item.UpdatedAt = DateTimeOffset.UtcNow;
 
         if (grade.HasValue && grade.Value > 0 && grade.Value <= 12)
@@ -307,7 +307,7 @@ public class MistakeDomainService : IMistakeDomainService
     }
 
     private static void ValidateSubmitData(
-        string studentId, int subject, int grade, List<string> imagePaths, string? comments, string sourceUploadId)
+        string studentId, int subject, int grade, List<string> imagePaths, string? rootCause, string sourceUploadId)
     {
         var errors = new List<string>();
 

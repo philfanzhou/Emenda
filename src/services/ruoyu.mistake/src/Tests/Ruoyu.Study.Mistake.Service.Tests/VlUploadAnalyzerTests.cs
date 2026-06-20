@@ -83,7 +83,7 @@ public class VlUploadAnalyzerTests
                 ""finish_reason"": ""stop"",
                 ""index"": 0,
                 ""message"": {
-                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 3, \""grade\"": 8, \""description\"": \""English vocabulary\"" },\n  { \""imageIndices\"": [1], \""subject\"": 1, \""grade\"": 7, \""description\"": \""Chinese reading\"" }\n]"",
+                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 3, \""grade\"": 8, \""rootCause\"": \""English vocabulary\"" },\n  { \""imageIndices\"": [1], \""subject\"": 1, \""grade\"": 7, \""rootCause\"": \""Chinese reading\"" }\n]"",
                     ""role"": ""assistant""
                 }
             }],
@@ -105,11 +105,11 @@ public class VlUploadAnalyzerTests
         result.Groups[0].ImageIndices.Should().Equal(0);
         result.Groups[0].Subject.Should().Be(3);
         result.Groups[0].Grade.Should().Be(8);
-        result.Groups[0].Description.Should().Be("English vocabulary");
+        result.Groups[0].RootCause.Should().Be("English vocabulary");
         result.Groups[1].ImageIndices.Should().Equal(1);
         result.Groups[1].Subject.Should().Be(1);
         result.Groups[1].Grade.Should().Be(7);
-        result.Groups[1].Description.Should().Be("Chinese reading");
+        result.Groups[1].RootCause.Should().Be("Chinese reading");
     }
 
     #endregion
@@ -183,7 +183,7 @@ public class VlUploadAnalyzerTests
                 ""finish_reason"": ""stop"",
                 ""index"": 0,
                 ""message"": {
-                    ""content"": ""[\n  { \""imageIndices\"": [0, 1], \""subject\"": 1, \""grade\"": 7, \""description\"": \""Group A\"" },\n  { \""imageIndices\"": [1, 2], \""subject\"": 2, \""grade\"": 8, \""description\"": \""Group B\"" }\n]"",
+                    ""content"": ""[\n  { \""imageIndices\"": [0, 1], \""subject\"": 1, \""grade\"": 7, \""rootCause\"": \""Group A\"" },\n  { \""imageIndices\"": [1, 2], \""subject\"": 2, \""grade\"": 8, \""rootCause\"": \""Group B\"" }\n]"",
                     ""role"": ""assistant""
                 }
             }],
@@ -218,7 +218,7 @@ public class VlUploadAnalyzerTests
                 ""finish_reason"": ""stop"",
                 ""index"": 0,
                 ""message"": {
-                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 1, \""grade\"": 7, \""description\"": \""Group A\"" },\n  { \""imageIndices\"": [0], \""subject\"": 2, \""grade\"": 8, \""description\"": \""Group B\"" }\n]"",
+                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 1, \""grade\"": 7, \""rootCause\"": \""Group A\"" },\n  { \""imageIndices\"": [0], \""subject\"": 2, \""grade\"": 8, \""rootCause\"": \""Group B\"" }\n]"",
                     ""role"": ""assistant""
                 }
             }],
@@ -254,7 +254,7 @@ public class VlUploadAnalyzerTests
                 ""finish_reason"": ""stop"",
                 ""index"": 0,
                 ""message"": {
-                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 0, \""grade\"": 15, \""description\"": \""Invalid values\"" }\n]"",
+                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 0, \""grade\"": 15, \""rootCause\"": \""Invalid values\"" }\n]"",
                     ""role"": ""assistant""
                 }
             }],
@@ -286,7 +286,7 @@ public class VlUploadAnalyzerTests
                 ""finish_reason"": ""stop"",
                 ""index"": 0,
                 ""message"": {
-                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": -1, \""grade\"": 5, \""description\"": \""Negative subject\"" }\n]"",
+                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": -1, \""grade\"": 5, \""rootCause\"": \""Negative subject\"" }\n]"",
                     ""role"": ""assistant""
                 }
             }],
@@ -317,7 +317,7 @@ public class VlUploadAnalyzerTests
                 ""finish_reason"": ""stop"",
                 ""index"": 0,
                 ""message"": {
-                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 3, \""grade\"": 0, \""description\"": \""Zero grade\"" }\n]"",
+                    ""content"": ""[\n  { \""imageIndices\"": [0], \""subject\"": 3, \""grade\"": 0, \""rootCause\"": \""Zero grade\"" }\n]"",
                     ""role"": ""assistant""
                 }
             }],
@@ -353,7 +353,7 @@ public class VlUploadAnalyzerTests
                 ""index"": 0,
                 ""message"": {
                     ""content"": [
-                        {""type"": ""text"", ""text"": ""[\n  { \""imageIndices\"": [0, 1], \""subject\"": 1, \""grade\"": 7, \""description\"": \""Chinese reading\"" }\n]""}
+                        {""type"": ""text"", ""text"": ""[\n  { \""imageIndices\"": [0, 1], \""subject\"": 1, \""grade\"": 7, \""rootCause\"": \""Chinese reading\"" }\n]""}
                     ],
                     ""role"": ""assistant""
                 }

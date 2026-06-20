@@ -22,7 +22,7 @@ Student-Mistake 轮询采集 — `ruoyu.mistake` 主动轮询 `ruoyu.student` �
 - **触发条件**：`UploadPollingWorker` 每 60 秒轮询一次
 - **调用方**：Mistake 服务的 `UploadPollingWorker`（BackgroundService）
 - **目标**：Student 的 `GetProcessingUploadRecords` gRPC 接口
-- **行为**：获取所有 Processing 状态的上传记录，过滤 `type == "mistake"` 的图片，进行 VL 分析、错题创建、OSS 迁移
+- **行为**：获取所有 Processing 状态的上传记录，过滤 `type == "mistake"` 的图片，进行 VL 分析（含错误根因生成）、错题创建、OSS 迁移
 
 ### 方向2: mistake → student（处理完成通知）
 

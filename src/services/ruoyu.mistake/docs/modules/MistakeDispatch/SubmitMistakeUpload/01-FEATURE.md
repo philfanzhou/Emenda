@@ -9,6 +9,7 @@
 - 同一个 `source_upload_id` 可以多次提交，每次都会创建新的错题条目（不检查重复）
 - 每个图片路径创建一个 `SourceRegionModel`，初始时 `BoundingBox` 为 null
 - 创建的错题条目初始状态为 `PendingReview`
+- `root_cause` 字段由 VL 分析在创建时自动生成，包含错误根因分析（纯文本）
 
 ## 关键验收条件
 

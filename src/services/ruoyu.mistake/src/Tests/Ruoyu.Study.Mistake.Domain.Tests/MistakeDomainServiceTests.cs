@@ -91,7 +91,7 @@ public class MistakeDomainServiceTests
         result.Should().NotBeNull();
         item.ReviewStatus.Should().Be((int)ReviewStatus.Confirmed);
         item.ReviewerId.Should().Be("teacher-1");
-        item.ReviewComment.Should().Be("looks good");
+        item.RootCause.Should().Be("looks good");
         item.ReviewedAt.Should().NotBeNull();
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
@@ -285,7 +285,7 @@ public class MistakeDomainServiceTests
 
         result.Should().NotBeNull();
         item.ReviewStatus.Should().Be((int)ReviewStatus.Rejected);
-        item.ReviewComment.Should().Be("需要重新上传");
+        item.RootCause.Should().Be("需要重新上传");
         _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
     }
 

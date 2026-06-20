@@ -106,7 +106,7 @@ public class MistakeServiceImplOssMigrationTests
             Id = itemId.ToString(),
             ReviewStatus = ReviewStatus.Confirmed,
             ReviewerId = "teacher-1",
-            ReviewComment = "ok"
+            RootCause = "ok"
         };
 
         var result = await _service.ReviewMistakeItem(request, CreateTestContext());
@@ -189,7 +189,7 @@ public class MistakeServiceImplOssMigrationTests
             Id = itemId.ToString(),
             ReviewStatus = ReviewStatus.Rejected,
             ReviewerId = "teacher-1",
-            ReviewComment = "bad"
+            RootCause = "bad"
         };
 
         var result = await _service.ReviewMistakeItem(request, CreateTestContext());
@@ -242,7 +242,7 @@ public class MistakeServiceImplOssMigrationTests
             Id = itemId.ToString(),
             ReviewStatus = ReviewStatus.Rejected,
             ReviewerId = "teacher-1",
-            ReviewComment = "bad"
+            RootCause = "bad"
         };
 
         var result = await _service.ReviewMistakeItem(request, CreateTestContext());
@@ -289,7 +289,7 @@ public class MistakeServiceImplOssMigrationTests
             Id = itemId.ToString(),
             ReviewStatus = ReviewStatus.Rejected,
             ReviewerId = "teacher-1",
-            ReviewComment = "bad"
+            RootCause = "bad"
         };
 
         var result = await _service.ReviewMistakeItem(request, CreateTestContext());
@@ -335,7 +335,7 @@ public class MistakeServiceImplOssMigrationTests
             Id = itemId.ToString(),
             ReviewStatus = ReviewStatus.Rejected,
             ReviewerId = "teacher-1",
-            ReviewComment = "bad"
+            RootCause = "bad"
         };
 
         var result = await _service.ReviewMistakeItem(request, CreateTestContext());

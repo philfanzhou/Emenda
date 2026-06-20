@@ -184,7 +184,7 @@ public static class DatabaseInitializer
                         ADD COLUMN IF NOT EXISTS source_regions jsonb NOT NULL DEFAULT '[]',
                         ADD COLUMN IF NOT EXISTS reviewer_id character varying(36) NULL,
                         ADD COLUMN IF NOT EXISTS reviewed_at timestamp with time zone NULL,
-                        ADD COLUMN IF NOT EXISTS review_comment text NULL,
+                        ADD COLUMN IF NOT EXISTS root_cause text NULL,
                         ADD COLUMN IF NOT EXISTS type integer NOT NULL DEFAULT 0,
                         ADD COLUMN IF NOT EXISTS question_id character varying(36) NULL;";
                 await addMissingColsCmd.ExecuteNonQueryAsync();
@@ -232,6 +232,20 @@ public static class DatabaseInitializer
 
     private static async Task EnsureColumnRenamesAsync(MistakeDbContext context)
     {
+        // Rename review_comment -> root_cause in mistake_item table
+        await using var renameReviewCommentCmd = context.Database.GetDbConnection().CreateCommand();
+        renameReviewCommentCmd.CommandText = @"
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'mistake_item' AND column_name = 'review_comment'
+                ) THEN
+                    ALTER TABLE mistake_item RENAME COLUMN review_comment TO root_cause;
+                END IF;
+            END $$;";
+        await renameReviewCommentCmd.ExecuteNonQueryAsync();
+
         await using var checkTablesCmd = context.Database.GetDbConnection().CreateCommand();
         checkTablesCmd.CommandText = @"
             SELECT EXISTS (
@@ -346,7 +360,7 @@ public static class DatabaseInitializer
                     review_status integer NOT NULL,
                     reviewer_id character varying(36) NULL,
                     reviewed_at timestamp with time zone NULL,
-                    review_comment text NULL,
+                    root_cause text NULL,
                     type integer NOT NULL DEFAULT 0,
                     question_id character varying(36) NULL,
                     created_at timestamp with time zone NOT NULL,

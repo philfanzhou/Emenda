@@ -35,7 +35,7 @@ message SubmitMistakeUploadRequest {
   int32 subject = 2;
   int32 grade = 3;
   repeated string image_paths = 4;
-  string comments = 5;
+  string root_cause = 5;
   string source_upload_id = 6;
 }
 
@@ -82,7 +82,7 @@ message ReviewMistakeItemRequest {
   string id = 1;
   ReviewStatus review_status = 2;
   string reviewer_id = 3;
-  string review_comment = 4;
+  string root_cause = 4;
   int32 grade = 5;
   int32 subject = 6;
 }
@@ -101,7 +101,7 @@ message AddMistakeItemRequest {
   int32 grade = 3;
   string source_upload_id = 4;
   repeated SourceRegion source_regions = 5;
-  string comments = 6;
+  string root_cause = 6;
 }
 
 message UpdateMistakeItemRequest {

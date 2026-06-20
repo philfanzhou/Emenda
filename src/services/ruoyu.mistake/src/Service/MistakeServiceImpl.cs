@@ -52,7 +52,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             var imagePaths = new List<string>(request.ImagePaths);
             var items = await _mistakeService.SubmitMistakeUploadAsync(
                 request.StudentId, request.Subject, request.Grade,
-                imagePaths, request.Comments, request.SourceUploadId);
+                imagePaths, request.RootCause, request.SourceUploadId);
 
             var response = new SubmitMistakeUploadResponse { Success = true };
             response.CreatedItemIds.AddRange(items.Select(i => i.Id.ToString()));
@@ -158,7 +158,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 Guid.Parse(request.Id),
                 (int)request.ReviewStatus,
                 request.ReviewerId,
-                request.ReviewComment,
+                request.RootCause,
                 grade,
                 subject);
 
@@ -213,7 +213,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         var createReq = new StudentProto.CreateReturnedRecordRequest
                         {
                             StudentId = item.StudentId,
-                            Comments = $"Rejected: {request.ReviewComment ?? "No comment"}"
+                            Comments = $"Rejected: {request.RootCause ?? "No comment"}"
                         };
                         foreach (var path in migratedBackPaths)
                         {
@@ -542,7 +542,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             ReviewedAt = item.ReviewedAt.HasValue
                 ? item.ReviewedAt.Value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
                 : string.Empty,
-            ReviewComment = item.ReviewComment ?? string.Empty,
+            RootCause = item.RootCause ?? string.Empty,
             Type = item.Type,
             QuestionId = item.QuestionId ?? string.Empty,
             CreatedAt = item.CreatedAt == DateTimeOffset.MinValue

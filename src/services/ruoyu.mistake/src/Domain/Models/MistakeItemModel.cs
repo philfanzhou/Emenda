@@ -14,7 +14,7 @@ public class MistakeItemModel
     public int ReviewStatus { get; set; }
     public string? ReviewerId { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }
-    public string? ReviewComment { get; set; }
+    public string? RootCause { get; set; }
     public int Type { get; set; }
     public string? QuestionId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -44,7 +44,7 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.ReviewStatus = model.ReviewStatus;
         entity.ReviewerId = model.ReviewerId;
         entity.ReviewedAt = model.ReviewedAt;
-        entity.ReviewComment = model.ReviewComment;
+        entity.RootCause = model.RootCause;
         entity.Type = model.Type;
         entity.QuestionId = model.QuestionId;
         entity.UpdatedAt = model.UpdatedAt;
@@ -183,7 +183,7 @@ public class MistakeItemRepository : IMistakeItemRepository
             ReviewStatus = model.ReviewStatus,
             ReviewerId = model.ReviewerId,
             ReviewedAt = model.ReviewedAt,
-            ReviewComment = model.ReviewComment,
+            RootCause = model.RootCause,
             Type = model.Type,
             QuestionId = model.QuestionId,
             CreatedAt = model.CreatedAt,
@@ -216,7 +216,7 @@ public class MistakeItemRepository : IMistakeItemRepository
             ReviewStatus = entity.ReviewStatus,
             ReviewerId = entity.ReviewerId,
             ReviewedAt = entity.ReviewedAt,
-            ReviewComment = entity.ReviewComment,
+            RootCause = entity.RootCause,
             Type = entity.Type,
             QuestionId = entity.QuestionId,
             CreatedAt = entity.CreatedAt,

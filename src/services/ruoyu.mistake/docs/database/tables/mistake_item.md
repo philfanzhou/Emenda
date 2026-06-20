@@ -13,7 +13,7 @@
 | `review_status` | `INT` | NOT NULL | — | 审核状态，见 ReviewStatus 枚举 |
 | `reviewer_id` | `VARCHAR(36)` | NULL | — | 审核人ID |
 | `reviewed_at` | `TIMESTAMPTZ` | NULL | — | 审核时间 |
-| `review_comment` | `TEXT` | NULL | — | 审核意见 |
+| `root_cause` | `TEXT` | NULL | — | 错误根因（AI 生成，老师审核时可修改） |
 | `type` | `INT` | NOT NULL | — | 错题类型 |
 | `question_id` | `VARCHAR(36)` | NULL | — | 关联的题目ID |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | `now()` | 创建时间 |

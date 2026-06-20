@@ -42,8 +42,8 @@ public class MistakeItemEntity
     [Column("reviewed_at")]
     public DateTimeOffset? ReviewedAt { get; set; }
 
-    [Column("review_comment")]
-    public string? ReviewComment { get; set; }
+    [Column("root_cause")]
+    public string? RootCause { get; set; }
 
     [Column("type")]
     public int Type { get; set; }

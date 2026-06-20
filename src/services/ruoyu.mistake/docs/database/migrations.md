@@ -80,6 +80,29 @@
 |------|--------|--------|--------|
 | `image_paths` | `text` | `jsonb` | mistake_practice |
 
+## 20260620_RenameReviewCommentToRootCause
+
+**日期**: 2026-06-20
+**类型**: 列重命名
+
+### 变更内容
+
+`mistake_item` 表：`review_comment` 列重命名为 `root_cause`
+
+### 背景
+
+原 `review_comment` 字段用于老师审核意见，但实际使用率极低。改为 `root_cause` 后，由 VL 分析在创建错题时自动生成错误根因，老师审核时可修改。纯文本格式，不做结构化分类。
+
+### 列重命名
+
+| 旧列名 | 新列名 | 所在表 |
+|--------|--------|--------|
+| `review_comment` | `root_cause` | mistake_item |
+
+### DatabaseInitializer 处理
+
+在 `EnsureColumnRenamesAsync` 中增加：当 `mistake_item` 表存在 `review_comment` 列且不存在 `root_cause` 列时，执行 `ALTER TABLE mistake_item RENAME COLUMN review_comment TO root_cause`。
+
 ## 相关文档
 
 - [表结构文档](./tables/)

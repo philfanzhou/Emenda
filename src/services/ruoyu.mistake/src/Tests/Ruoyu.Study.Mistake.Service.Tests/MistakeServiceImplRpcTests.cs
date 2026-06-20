@@ -249,7 +249,7 @@ public class MistakeServiceImplRpcTests
             .Setup(x => x.SubmitMistakeUploadAsync(
                 "student-1", 3, 5,
                 It.IsAny<List<string>>(),
-                "comments here",
+                "root cause here",
                 "upload-1"))
             .ReturnsAsync(new List<MistakeItemModel> { item1, item2 });
 
@@ -259,7 +259,7 @@ public class MistakeServiceImplRpcTests
             Subject = 3,
             Grade = 5,
             SourceUploadId = "upload-1",
-            Comments = "comments here"
+            RootCause = "root cause here"
         };
         request.ImagePaths.Add("path1.jpg");
         request.ImagePaths.Add("path2.jpg");

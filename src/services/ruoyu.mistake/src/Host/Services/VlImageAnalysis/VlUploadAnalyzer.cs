@@ -117,15 +117,15 @@ You will see {totalImageCount} images uploaded by a student. Analyze these image
 You must and may only return a JSON array, without any other text explanation.
 JSON format example (assuming 3 images, where the first 2 belong to the same mistake):
 [
-  {{ ""imageIndices"": [0, 1], ""subject"": 1, ""grade"": 7, ""description"": ""Chinese modern reading comprehension"" }},
-  {{ ""imageIndices"": [2],    ""subject"": 3, ""grade"": 7, ""description"": ""English cloze test"" }}
+  {{ ""imageIndices"": [0, 1], ""subject"": 1, ""grade"": 7, ""rootCause"": ""语文现代文阅读理解答题思路不清"" }},
+  {{ ""imageIndices"": [2],    ""subject"": 3, ""grade"": 7, ""rootCause"": ""英语完形填空上下文逻辑理解错误"" }}
 ]
 
 [Field Rules]
 1. imageIndices: integer array, representing the original indices of images in this group (0-based). The union of all groups' imageIndices = [0, {totalImageCount - 1}].
 2. subject: subject number (1-9).
 3. grade: grade number (1-12).
-4. description: a one-sentence description of this mistake group (no more than 50 characters).
+4. rootCause: one-sentence analysis of the error root cause in Chinese (no more than 50 characters). Focus on WHY the student made the mistake, not just WHAT the mistake is.
 
 [Important Notes]
 - Only valid subject numbers 1-9 and grade numbers 1-12 are allowed.
@@ -402,7 +402,7 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
                 ImageIndices = validIndices,
                 Subject = subject,
                 Grade = grade,
-                Description = raw.Description ?? string.Empty
+                RootCause = raw.RootCause ?? string.Empty
             });
 
             _logger.LogDebug("TryParseGroups: Added group {GroupIdx} (indices={ValidIndices}, subject={Subject}, grade={Grade})",
@@ -523,7 +523,7 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
         [JsonPropertyName("grade")]
         public int Grade { get; set; }
 
-        [JsonPropertyName("description")]
-        public string? Description { get; set; }
+        [JsonPropertyName("rootCause")]
+        public string? RootCause { get; set; }
     }
 }

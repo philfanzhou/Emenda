@@ -198,7 +198,7 @@ public class UploadPollingWorker : BackgroundService
                     ImageIndices = Enumerable.Range(0, mistakeImagePaths.Count).ToList(),
                     Subject = 1,  // Default: Chinese
                     Grade = 7,    // Default: Middle school year 1
-                    Description = "Mistake upload (VL skipped)"
+                    RootCause = "Mistake upload (VL skipped)"
                 }
             };
         }
@@ -230,9 +230,9 @@ public class UploadPollingWorker : BackgroundService
                 continue;
             }
 
-            var comments = !string.IsNullOrWhiteSpace(group.Description)
-                ? group.Description
-                : record.Comments ?? string.Empty;
+            var rootCause = !string.IsNullOrWhiteSpace(group.RootCause)
+                ? group.RootCause
+                : string.Empty;
 
             try
             {
@@ -242,7 +242,7 @@ public class UploadPollingWorker : BackgroundService
                     group.Subject,
                     group.Grade,
                     selectedPaths,
-                    comments,
+                    rootCause,
                     recordId).ConfigureAwait(false);
 
                 _logger.LogInformation("UploadPollingWorker: Created {ItemCount} MistakeItem(s) for group in record {RecordId}",

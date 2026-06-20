@@ -199,7 +199,7 @@ public class UploadPollingWorkerTests
                     ImageIndices = new List<int> { 0, 1 },
                     Subject = 3,
                     Grade = 8,
-                    Description = "English vocabulary"
+                    RootCause = "English vocabulary"
                 }
             }
         });
@@ -434,7 +434,7 @@ public class UploadPollingWorkerTests
                     ImageIndices = new List<int> { 0, 1, 2 },
                     Subject = 1,
                     Grade = 7,
-                    Description = "Single group"
+                    RootCause = "Single group"
                 }
             }
         });

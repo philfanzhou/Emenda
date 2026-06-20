@@ -41,9 +41,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("character varying(36)")
                         .HasColumnName("question_id");
 
-                    b.Property<string>("ReviewComment")
+                    b.Property<string>("RootCause")
                         .HasColumnType("text")
-                        .HasColumnName("review_comment");
+                        .HasColumnName("root_cause");
 
                     b.Property<int>("ReviewStatus")
                         .HasColumnType("integer")

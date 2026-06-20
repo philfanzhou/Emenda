@@ -172,7 +172,7 @@ public class MistakeServiceImplAdditionalTests
             ReviewStatus = (int)ReviewStatus.Confirmed,
             ReviewerId = "teacher-1",
             ReviewedAt = reviewedAt,
-            ReviewComment = "ok",
+            RootCause = "ok",
             CreatedAt = new DateTimeOffset(2025, 6, 13, 8, 0, 0, TimeSpan.Zero),
             UpdatedAt = reviewedAt
         };
@@ -187,7 +187,7 @@ public class MistakeServiceImplAdditionalTests
 
         result.Items[0].ReviewStatus.Should().Be(ReviewStatus.Confirmed);
         result.Items[0].ReviewerId.Should().Be("teacher-1");
-        result.Items[0].ReviewComment.Should().Be("ok");
+        result.Items[0].RootCause.Should().Be("ok");
         result.Items[0].ReviewedAt.Should().NotBeEmpty();
         result.Items[0].CreatedAt.Should().NotBeEmpty();
         result.Items[0].UpdatedAt.Should().NotBeEmpty();
