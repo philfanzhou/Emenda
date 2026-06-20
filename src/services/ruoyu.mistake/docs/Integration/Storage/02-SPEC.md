@@ -21,7 +21,7 @@
 | `review_status` | integer | NOT NULL | 审核状态 |
 | `reviewer_id` | varchar(36) | NULL | 审核人 ID |
 | `reviewed_at` | timestamptz | NULL | 审核时间 |
-| `review_comment` | text | NULL | 审核评论 |
+| `root_cause` | text | NULL | 错误根因（AI 生成，老师可修改） |
 | `type` | integer | NOT NULL, DEFAULT 0 | 错题类型 |
 | `question_id` | varchar(36) | NULL | 关联题目 ID |
 | `created_at` | timestamptz | NOT NULL | 创建时间 |

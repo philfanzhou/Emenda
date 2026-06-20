@@ -59,5 +59,5 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 - 表名 `mistake` → `mistake_item`
 - 列 `status` → `review_status`
 - 列 `mistake_id` → `mistake_item_id`（process_log / mistake_practice）
-- 新增 `source_upload_id`, `source_regions`, `reviewer_id`, `reviewed_at`, `review_comment`, `type`, `question_id`
+- 新增 `source_upload_id`, `source_regions`, `reviewer_id`, `reviewed_at`, `root_cause`, `type`, `question_id`
 - 移除 `date`, `image_paths`, `fingerprint`

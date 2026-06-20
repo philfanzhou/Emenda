@@ -79,7 +79,7 @@ SQLite 未配置连接字符串时，默认路径为 `data/sqlite/ruoyu_study_mi
 服务启动时 `DatabaseInitializer.InitializeAsync` 按以下顺序执行：
 
 1. **旧表迁移**：检测 `mistake` 表是否存在
-   - 存在 → 重命名为 `mistake_item`，添加缺失列（`source_upload_id`、`source_regions`、`reviewer_id`、`reviewed_at`、`review_comment`、`type`、`question_id`），将 `status` 列重命名为 `review_status`，删除旧列（`date`、`image_paths`、`fingerprint`），创建索引
+   - 存在 → 重命名为 `mistake_item`，添加缺失列（`source_upload_id`、`source_regions`、`reviewer_id`、`reviewed_at`、`root_cause`、`type`、`question_id`），将 `status` 列重命名为 `review_status`，删除旧列（`date`、`image_paths`、`fingerprint`），创建索引
    - 不存在 → 跳过
 2. **列名修正**：检测 `process_log` 和 `mistake_practice` 表中是否存在 `mistake_id` 列，存在则重命名为 `mistake_item_id`
 3. **外键补全**：为 `process_log` 和 `mistake_practice` 添加指向 `mistake_item` 的外键约束（如不存在）

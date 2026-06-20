@@ -111,7 +111,7 @@
 | **前置条件** | 1. mistake 服务已启动<br>2. 存在一条 PendingReview 状态的错题 |
 | **输入** | id=有效错题ID, reviewStatus=Confirmed(2), reviewerId="teacher-001", reviewComment="确认", grade=8(修正), subject=4(修正) |
 | **操作步骤** | 1. 调用 ReviewMistakeItem 传入确认参数<br>2. 检查返回 success=true<br>3. 调用 GetMistakeItem 验证状态已更新 |
-| **预期结果** | 1. 返回 success=true<br>2. 错题 review_status 变为 Confirmed(2)<br>3. grade 和 subject 被修正为传入值<br>4. reviewer_id、reviewed_at、review_comment 已填充<br>5. process_log 新增 action=3(ReviewConfirmed) 记录 |
+| **预期结果** | 1. 返回 success=true<br>2. 错题 review_status 变为 Confirmed(2)<br>3. grade 和 subject 被修正为传入值<br>4. reviewer_id、reviewed_at、root_cause 已填充<br>5. process_log 新增 action=3(ReviewConfirmed) 记录 |
 | **失败判断** | 返回 success=false；状态未变更；修正字段未生效；无审核日志 |
 
 ### TC-10 审核驳回单条错题

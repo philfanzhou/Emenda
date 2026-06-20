@@ -33,7 +33,7 @@ message ReviewMistakeItemRequest {
   string id = 1;
   ReviewStatus review_status = 2;
   string reviewer_id = 3;
-  string review_comment = 4;
+  string root_cause = 4;
   int32 grade = 5;
   int32 subject = 6;
 }
@@ -90,7 +90,7 @@ Task<MigrateImagesToMistakeResponse> MigrateImagesToMistakeAsync(IEnumerable<str
 | review_status | INT | 审核状态 (1=PendingReview, 2=Confirmed, 3=Rejected) |
 | reviewer_id | VARCHAR(36) | 审核人ID |
 | reviewed_at | DATETIMEOFFSET | 审核时间 |
-| review_comment | TEXT | 审核评论 |
+| root_cause | TEXT | 审核评论 |
 | subject | INT | 学科（审核时可更新） |
 | grade | INT | 年级（审核时可更新） |
 | source_regions | JSON | 图片区域列表（含 SourceImagePath） |
@@ -121,7 +121,7 @@ MistakeDomainService.ReviewMistakeItemAsync()
     │  1. GetByIdAsync(id) → 获取错题条目
     │  2. 验证 ReviewStatus == PendingReview
     │  3. 验证 reviewStatus == Confirmed || Rejected
-    │  4. 更新 ReviewStatus/ReviewerId/ReviewedAt/ReviewComment/UpdatedAt
+    │  4. 更新 ReviewStatus/ReviewerId/ReviewedAt/RootCause/UpdatedAt
     │  5. 可选更新 Grade/Subject
     │
     ├──► IMistakeItemRepository.UpdateAsync(item)

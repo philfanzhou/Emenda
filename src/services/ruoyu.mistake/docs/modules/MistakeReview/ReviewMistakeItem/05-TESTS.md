@@ -16,7 +16,7 @@
 
 - **Given** 错题条目 ReviewStatus 为 PendingReview
 - **When** 调用 ReviewMistakeItemAsync(id, Confirmed, "teacher-1", "looks good")
-- **Then** 返回非 null 结果，ReviewStatus 更新为 Confirmed，ReviewerId 为 "teacher-1"，ReviewComment 为 "looks good"，ReviewedAt 不为 null，SaveChangesAsync 被调用一次
+- **Then** 返回非 null 结果，ReviewStatus 更新为 Confirmed，ReviewerId 为 "teacher-1"，RootCause 为 "looks good"，ReviewedAt 不为 null，SaveChangesAsync 被调用一次
 
 ### ReviewMistakeItemAsync_WhenAlreadyReviewed_ShouldThrow
 
@@ -28,7 +28,7 @@
 
 - **Given** 错题条目 ReviewStatus 为 PendingReview
 - **When** 调用 ReviewMistakeItemAsync(id, Rejected, "teacher-1", "需要重新上传")
-- **Then** 返回非 null 结果，ReviewStatus 更新为 Rejected，ReviewComment 为 "需要重新上传"，SaveChangesAsync 被调用一次
+- **Then** 返回非 null 结果，ReviewStatus 更新为 Rejected，RootCause 为 "需要重新上传"，SaveChangesAsync 被调用一次
 
 ## 遗漏的测试场景
 

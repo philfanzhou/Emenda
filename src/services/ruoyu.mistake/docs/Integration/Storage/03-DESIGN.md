@@ -62,7 +62,7 @@ MigrateOldSchemaAsync
   │   - source_regions (jsonb, DEFAULT '[]')
   │   - reviewer_id (varchar(36), NULL)
   │   - reviewed_at (timestamptz, NULL)
-  │   - review_comment (text, NULL)
+  │   - root_cause (text, NULL)
   │   - type (integer, DEFAULT 0)
   │   - question_id (varchar(36), NULL)
   │

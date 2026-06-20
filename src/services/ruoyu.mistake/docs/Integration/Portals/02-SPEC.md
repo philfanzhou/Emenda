@@ -180,11 +180,11 @@
 |------|------|------|------|
 | Id | string | 是 | 错题ID |
 | ReviewStatus | int | 是 | 审核结果：2=确认，3=驳回 |
-| ReviewComment | string | 否 | 审核备注 |
+| RootCause | string | 否 | 错误根因（AI 生成，老师可修改） |
 | Grade | int | 否 | 年级修正 |
 | Subject | int | 否 | 学科修正 |
 
-**gRPC 请求**：`ReviewMistakeItemRequest { Id, ReviewStatus, ReviewerId, ReviewComment, Grade, Subject }`
+**gRPC 请求**：`ReviewMistakeItemRequest { Id, ReviewStatus, ReviewerId, RootCause, Grade, Subject }`
 
 **ReviewerId 来源**：`User.FindFirst(ClaimTypes.NameIdentifier)` 或 `User.FindFirst("sub")`
 
@@ -214,7 +214,7 @@
 | Ids | List\<string\> | 否* | 错题ID列表（与 Items 二选一） |
 | Items | List\<BatchReviewItemRequest\> | 否* | 错题列表（含 Id, Subject, Grade），与 Ids 二选一 |
 | ReviewStatus | int | 是 | 审核结果：2=确认，3=驳回 |
-| ReviewComment | string | 否 | 审核备注 |
+| RootCause | string | 否 | 错误根因（AI 生成，老师可修改） |
 
 **BatchReviewItemRequest**：
 

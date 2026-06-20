@@ -13,7 +13,7 @@
 │ review_status                       │
 │ reviewer_id                         │
 │ reviewed_at                         │
-│ review_comment                      │
+│ root_cause                      │
 │ type                                │
 │ question_id                         │
 │ created_at                          │

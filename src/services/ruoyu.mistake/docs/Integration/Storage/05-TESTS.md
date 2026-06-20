@@ -50,7 +50,7 @@
 - **预期**：
   - 删除旧表外键
   - 重命名 `mistake` → `mistake_item`
-  - 添加缺失列（`source_upload_id`, `source_regions`, `reviewer_id`, `reviewed_at`, `review_comment`, `type`, `question_id`）
+  - 添加缺失列（`source_upload_id`, `source_regions`, `reviewer_id`, `reviewed_at`, `root_cause`, `type`, `question_id`）
   - 重命名 `status` → `review_status`
   - 删除废弃列（`date`, `image_paths`, `fingerprint`）
   - 创建索引

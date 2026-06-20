@@ -13,7 +13,7 @@
 - [x] FR-01: 接收审核请求，包含错题ID、审核状态、审核人ID、审核评论及可选的年级/学科更新
 - [x] FR-02: 验证审核状态只能是 Confirmed 或 Rejected
 - [x] FR-03: 验证只能审核 PendingReview 状态的错题
-- [x] FR-04: 更新错题的 ReviewStatus、ReviewerId、ReviewedAt、ReviewComment、UpdatedAt
+- [x] FR-04: 更新错题的 ReviewStatus、ReviewerId、ReviewedAt、RootCause、UpdatedAt
 - [x] FR-05: 可选更新 grade（1-12）和 subject（1-9）
 - [x] FR-06: 记录 ProcessLog（Action=ReviewConfirmed 或 ReviewRejected）
 - [x] FR-07: Confirmed 时迁移图片：uploads/ → mistakes/（OSS Copy+Delete）
@@ -47,7 +47,7 @@
 
 - **Given** 错题条目为 PendingReview 状态，审核结果为 Confirmed
 - **When** 调用 ReviewMistakeItemAsync
-- **Then** ReviewStatus 更新为 Confirmed，ReviewerId 和 ReviewComment 被设置，ReviewedAt 和 UpdatedAt 为当前 UTC 时间
+- **Then** ReviewStatus 更新为 Confirmed，ReviewerId 和 RootCause 被设置，ReviewedAt 和 UpdatedAt 为当前 UTC 时间
 
 ### AC-FR-05: 可选更新 grade 和 subject
 
