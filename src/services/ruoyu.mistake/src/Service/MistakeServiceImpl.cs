@@ -165,93 +165,74 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
             if (item == null)
                 return new ReviewMistakeItemResponse { Success = false, ErrorMessage = "错题不存在" };
 
-            var removedPaths = new List<string>();
-
             if (request.ReviewStatus == ReviewStatus.Confirmed)
             {
-                // 逐条迁移当前这道题的图片：uploads/ → mistakes/
-                // 通过 Student gRPC MigrateImagesToMistake 接口迁移，避免跨服务直接操作 OSS
-                var updated = false;
-                var pathsToMigrate = new List<string>();
+                // Confirm flow: images are already in mistakes/ from the polling worker.
+                // No migration or Student record update needed here.
+                _logger.LogInformation("ReviewMistakeItem: Confirmed MistakeItem {ItemId}", item.Id);
+            }
+            else if (request.ReviewStatus == ReviewStatus.Rejected)
+            {
+                // Reject flow: migrate images back from mistakes/ to uploads/ and create a returned record
+                var rejectedImagePaths = item.SourceRegions
+                    .Where(r => !string.IsNullOrWhiteSpace(r.SourceImagePath))
+                    .Select(r => r.SourceImagePath)
+                    .ToList();
 
-                foreach (var region in item.SourceRegions)
-                {
-                    if (string.IsNullOrWhiteSpace(region.SourceImagePath))
-                        continue;
-
-                    removedPaths.Add(region.SourceImagePath);
-
-                    if (region.SourceImagePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        pathsToMigrate.Add(region.SourceImagePath);
-                    }
-                }
-
-                if (pathsToMigrate.Count > 0)
+                // Migrate images back: mistakes/ -> uploads/
+                var migratedBackPaths = new List<string>();
+                foreach (var mistakePath in rejectedImagePaths)
                 {
                     try
                     {
-                        var migrateRequest = new StudentProto.MigrateImagesToMistakeRequest();
-                        migrateRequest.SourcePaths.AddRange(pathsToMigrate);
-                        var migrateResponse = await _studentClient.MigrateImagesToMistakeAsync(migrateRequest);
-
-                        foreach (var result in migrateResponse.Results)
+                        if (mistakePath.StartsWith("mistakes/", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (result.Success)
-                            {
-                                // 更新 MistakeItem 中的路径引用
-                                foreach (var region in item.SourceRegions)
-                                {
-                                    if (region.SourceImagePath == result.SourcePath)
-                                    {
-                                        region.SourceImagePath = result.NewPath;
-                                        updated = true;
-                                    }
-                                }
-
-                                _logger.LogDebug("ReviewMistakeItem: Migrated image from {OldPath} to {NewPath}", result.SourcePath, result.NewPath);
-                            }
-                            else
-                            {
-                                _logger.LogError("ReviewMistakeItem: Failed to migrate image {Path}: {Error}", result.SourcePath, result.ErrorMessage);
-                            }
+                            var uploadPath = "uploads/" + mistakePath.Substring("mistakes/".Length);
+                            await _ossService.CopyObjectAsync(mistakePath, uploadPath).ConfigureAwait(false);
+                            await _ossService.DeleteAsync(mistakePath).ConfigureAwait(false);
+                            migratedBackPaths.Add(uploadPath);
+                            _logger.LogDebug("ReviewMistakeItem: Migrated rejected image back {MistakePath} -> {UploadPath}",
+                                mistakePath, uploadPath);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "ReviewMistakeItem: Error calling MigrateImagesToMistake for {Count} paths", pathsToMigrate.Count);
+                        _logger.LogError(ex, "ReviewMistakeItem: Failed to migrate rejected image back {Path}", mistakePath);
                     }
                 }
 
-                if (updated)
-                {
-                    await _mistakeService.UpdateMistakeItemAsync(item).ConfigureAwait(false);
-                }
+                // Delete MistakeItem (cascades to practice and process_log)
+                await _mistakeService.DeleteMistakeItemAsync(item.Id);
+                _logger.LogInformation("ReviewMistakeItem: Rejected and deleted MistakeItem {ItemId}", item.Id);
 
-                // 审核通过：从上传记录中移除已迁移的图片路径
-                if (removedPaths.Count > 0 && !string.IsNullOrWhiteSpace(item.SourceUploadId) && !string.IsNullOrWhiteSpace(item.StudentId))
+                // Create a returned upload record in Student so the student can re-upload
+                if (migratedBackPaths.Count > 0 && !string.IsNullOrWhiteSpace(item.StudentId))
                 {
                     try
                     {
-                        var removeReq = new StudentProto.RemoveImagesFromRecordRequest
+                        var createReq = new StudentProto.CreateReturnedRecordRequest
                         {
-                            RecordId = item.SourceUploadId,
-                            StudentId = item.StudentId
+                            StudentId = item.StudentId,
+                            Comments = $"Rejected: {request.ReviewComment ?? "No comment"}"
                         };
-                        removeReq.ImagePaths.AddRange(removedPaths);
-                        await _studentClient.RemoveImagesFromRecordAsync(removeReq);
+                        foreach (var path in migratedBackPaths)
+                        {
+                            createReq.ImageEntries.Add(new StudentProto.ImageEntry
+                            {
+                                Path = path,
+                                Type = "mistake"
+                            });
+                        }
+                        await _studentClient.CreateReturnedRecordAsync(createReq).ConfigureAwait(false);
+                        _logger.LogInformation("ReviewMistakeItem: Created returned record for student {StudentId} with {Count} images",
+                            item.StudentId, migratedBackPaths.Count);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "ReviewMistakeItem: Failed to remove images from upload record, SourceUploadId: {Id}", item.SourceUploadId);
+                        _logger.LogError(ex, "ReviewMistakeItem: Failed to create returned record for student {StudentId}",
+                            item.StudentId);
                     }
                 }
-            }
-            else if (request.ReviewStatus == ReviewStatus.Rejected)
-            {
-                // 驳回后删除 MistakeItem 记录（级联删除关联的 practice 和 process_log）
-                await _mistakeService.DeleteMistakeItemAsync(item.Id);
-                _logger.LogInformation("ReviewMistakeItem: Rejected and deleted MistakeItem {ItemId}", item.Id);
             }
 
             var response = new ReviewMistakeItemResponse
@@ -260,64 +241,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 SourceUploadId = item.SourceUploadId ?? string.Empty,
                 StudentId = item.StudentId ?? string.Empty
             };
-            response.RemovedImagePaths.AddRange(removedPaths);
-
-            // 审核后编排：检查该 UploadRecord 下是否还有待审核的 MistakeItem
-            if (!string.IsNullOrWhiteSpace(item.SourceUploadId))
-            {
-                try
-                {
-                    var remainingItems = await _mistakeService.GetMistakeItemsByUploadAsync(item.SourceUploadId);
-                    var hasPending = remainingItems.Any(i => i.ReviewStatus == (int)ReviewStatus.PendingReview);
-
-                    if (!hasPending)
-                    {
-                        // 无待审核 item
-                        if (request.ReviewStatus == ReviewStatus.Confirmed)
-                        {
-                            // 通过时：RemoveImagesFromRecord 已在上方调用
-                            // 这里检查记录是否仍存在，若存在则标记退回
-                            try
-                            {
-                                await _studentClient.MarkUploadRecordAsReturnedAsync(
-                                    new StudentProto.MarkUploadRecordAsReturnedRequest
-                                    {
-                                        RecordId = item.SourceUploadId,
-                                        StudentId = item.StudentId ?? string.Empty,
-                                        Comments = "所有错题已审核处理完毕"
-                                    });
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "ReviewMistakeItem: Failed to mark upload record as returned after all items reviewed, SourceUploadId: {Id}", item.SourceUploadId);
-                            }
-                        }
-                        else if (request.ReviewStatus == ReviewStatus.Rejected)
-                        {
-                            // 驳回时：图片仍在 uploads/ 下，不需要移除
-                            // 标记上传记录为已退回
-                            try
-                            {
-                                await _studentClient.MarkUploadRecordAsReturnedAsync(
-                                    new StudentProto.MarkUploadRecordAsReturnedRequest
-                                    {
-                                        RecordId = item.SourceUploadId,
-                                        StudentId = item.StudentId ?? string.Empty,
-                                        Comments = "所有错题已驳回"
-                                    });
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex, "ReviewMistakeItem: Failed to mark upload record as returned after rejection, SourceUploadId: {Id}", item.SourceUploadId);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "ReviewMistakeItem: Failed to check remaining items for SourceUploadId: {Id}", item.SourceUploadId);
-                }
-            }
 
             return response;
         }
@@ -452,32 +375,24 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 }
             }
 
-            // 通过 Student gRPC MigrateImagesToMistake 接口批量迁移
+            // Migrate images from uploads/ to mistakes/ directly via OSS
             if (pathsToMigrate.Count > 0)
             {
-                try
+                foreach (var oldPath in pathsToMigrate)
                 {
-                    var migrateRequest = new StudentProto.MigrateImagesToMistakeRequest();
-                    migrateRequest.SourcePaths.AddRange(pathsToMigrate);
-                    var migrateResponse = await _studentClient.MigrateImagesToMistakeAsync(migrateRequest);
-
-                    foreach (var migrateResult in migrateResponse.Results)
+                    try
                     {
-                        if (migrateResult.Success)
-                        {
-                            pathMapping[migrateResult.SourcePath] = migrateResult.NewPath;
-                            migratedImagePaths.Add(migrateResult.SourcePath);
-                            _logger.LogDebug("CompleteUploadReview: Migrated {OldPath} -> {NewPath}", migrateResult.SourcePath, migrateResult.NewPath);
-                        }
-                        else
-                        {
-                            _logger.LogError("CompleteUploadReview: Failed to migrate {Path}: {Error}", migrateResult.SourcePath, migrateResult.ErrorMessage);
-                        }
+                        var newPath = "mistakes/" + oldPath.Substring("uploads/".Length);
+                        await _ossService.CopyObjectAsync(oldPath, newPath).ConfigureAwait(false);
+                        await _ossService.DeleteAsync(oldPath).ConfigureAwait(false);
+                        pathMapping[oldPath] = newPath;
+                        migratedImagePaths.Add(oldPath);
+                        _logger.LogDebug("CompleteUploadReview: Migrated {OldPath} -> {NewPath}", oldPath, newPath);
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "CompleteUploadReview: Error calling MigrateImagesToMistake");
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "CompleteUploadReview: Failed to migrate {Path}", oldPath);
+                    }
                 }
             }
 

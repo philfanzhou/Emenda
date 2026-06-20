@@ -1,0 +1,529 @@
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+using Ruoyu.Study.Common.Constants;
+using Ruoyu.Study.Common.Oss;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+
+namespace Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
+
+public class VlUploadAnalyzer : IVlAnalyzer
+{
+    private readonly IOssService _ossService;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly VlAnalyzerOptions _options;
+    private readonly ILogger<VlUploadAnalyzer> _logger;
+
+    private const int MaxImageLongSide = 768;
+
+    public VlUploadAnalyzer(
+        IOssService ossService,
+        IHttpClientFactory httpClientFactory,
+        IOptions<VlAnalyzerOptions> options,
+        ILogger<VlUploadAnalyzer> logger)
+    {
+        _ossService = ossService;
+        _httpClientFactory = httpClientFactory;
+        _options = options.Value;
+        _logger = logger;
+    }
+
+    public async Task<VlAnalysisResult> AnalyzeAsync(string studentId, List<string> imagePaths, CancellationToken ct = default)
+    {
+        if (imagePaths == null || imagePaths.Count == 0)
+        {
+            _logger.LogWarning("No image paths provided for analysis");
+            return new VlAnalysisResult { Skipped = true };
+        }
+
+        var imageDataList = await LoadImagesAsBase64Async(imagePaths, ct);
+
+        var prompt = BuildPrompt(imagePaths.Count);
+        var requestBody = BuildRequestBody(prompt, imageDataList);
+
+        var responseContent = await SendRequestWithRetryAsync(requestBody, ct);
+
+        return ParseResponse(responseContent, imagePaths.Count);
+    }
+
+    private async Task<List<string>> LoadImagesAsBase64Async(List<string> imagePaths, CancellationToken ct)
+    {
+        var results = new List<string>();
+        for (int i = 0; i < imagePaths.Count; i++)
+        {
+            var path = imagePaths[i];
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var stream = await _ossService.DownloadAsync(path);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms, ct);
+                var bytes = ms.ToArray();
+
+                var compressedBytes = CompressImage(bytes);
+                var base64 = Convert.ToBase64String(compressedBytes);
+                var mimeType = "image/jpeg";
+                results.Add($"data:{mimeType};base64,{base64}");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidOperationException($"Failed to load image {i} from OSS: {path}", ex);
+            }
+        }
+        return results;
+    }
+
+    private static byte[] CompressImage(byte[] imageData)
+    {
+        using var image = Image.Load(imageData);
+
+        if (image.Width > MaxImageLongSide || image.Height > MaxImageLongSide)
+        {
+            image.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Size = new Size(MaxImageLongSide, MaxImageLongSide),
+                Mode = ResizeMode.Max
+            }));
+        }
+
+        using var ms = new MemoryStream();
+        image.SaveAsJpeg(ms, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
+        return ms.ToArray();
+    }
+
+    private static string BuildPrompt(int totalImageCount)
+    {
+        var subjectList = string.Join("\n", SubjectConstants.DisplayNames.Select(kv => $"{kv.Key}={kv.Value}"));
+        var gradeList = string.Join("\n", GradeConstants.DisplayNames.Select(kv => $"{kv.Key}={kv.Value}"));
+
+        return $@"[Task Description]
+You will see {totalImageCount} images uploaded by a student. Analyze these images, determine which mistake items they belong to, and split the images into groups by ""same mistake item"".
+
+[Splitting Rules]
+- Multiple images belonging to the same mistake item (question + solution, continuous steps, related diagrams, etc.) must be in the same group.
+- Images of different subjects/different questions must be in different groups.
+- The union of all splits must cover all {totalImageCount} images (indices starting from 0), with no omissions or duplicates.
+
+[Available Subjects]
+{subjectList}
+
+[Available Grades]
+{gradeList}
+
+[Output Requirements]
+You must and may only return a JSON array, without any other text explanation.
+JSON format example (assuming 3 images, where the first 2 belong to the same mistake):
+[
+  {{ ""imageIndices"": [0, 1], ""subject"": 1, ""grade"": 7, ""description"": ""Chinese modern reading comprehension"" }},
+  {{ ""imageIndices"": [2],    ""subject"": 3, ""grade"": 7, ""description"": ""English cloze test"" }}
+]
+
+[Field Rules]
+1. imageIndices: integer array, representing the original indices of images in this group (0-based). The union of all groups' imageIndices = [0, {totalImageCount - 1}].
+2. subject: subject number (1-9).
+3. grade: grade number (1-12).
+4. description: a one-sentence description of this mistake group (no more than 50 characters).
+
+[Important Notes]
+- Only valid subject numbers 1-9 and grade numbers 1-12 are allowed.
+- If an image cannot determine subject/grade, choose the most likely option, do not return 0.
+- The returned JSON must be in standard array format, ensuring it can be parsed correctly.";
+    }
+
+    private string BuildRequestBody(string prompt, List<string> imageDataList)
+    {
+        var contentParts = new List<object>();
+
+        contentParts.Add(new { type = "text", text = prompt });
+
+        foreach (var dataUri in imageDataList)
+        {
+            contentParts.Add(new
+            {
+                type = "image_url",
+                image_url = new { url = dataUri }
+            });
+        }
+
+        var body = new
+        {
+            model = _options.Model,
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = contentParts
+                }
+            },
+            temperature = _options.Temperature,
+            stream = false
+        };
+
+        return JsonSerializer.Serialize(body, new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        });
+    }
+
+    private async Task<string> SendRequestWithRetryAsync(string requestBody, CancellationToken ct)
+    {
+        Exception? lastException = null;
+
+        for (int attempt = 0; attempt <= _options.MaxRetries; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (attempt > 0)
+            {
+                _logger.LogInformation("Retrying VL analysis, attempt {Attempt}/{MaxRetries}", attempt, _options.MaxRetries);
+                await Task.Delay(_options.RetryDelayMs * attempt, ct);
+            }
+
+            try
+            {
+                var client = _httpClientFactory.CreateClient("VlAnalyzer");
+                client.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+
+                var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.ApiBaseUrl}/chat/completions");
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+                var response = await client.SendAsync(request, ct);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync(ct);
+                    _logger.LogInformation("VL analysis API response received, length={Length}", content.Length);
+                    return content;
+                }
+
+                var errorContent = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("VL analysis API returned status {StatusCode}: {Error}", response.StatusCode, errorContent);
+
+                if ((int)response.StatusCode >= 400 && (int)response.StatusCode < 500
+                    && response.StatusCode != System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    throw new InvalidOperationException($"VL API client error ({response.StatusCode}): {errorContent}");
+                }
+
+                lastException = new InvalidOperationException($"VL API returned {response.StatusCode}: {errorContent}");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "VL analysis HTTP request failed, attempt {Attempt}", attempt + 1);
+                lastException = ex;
+            }
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+            {
+                _logger.LogWarning("VL analysis request timed out, attempt {Attempt}", attempt + 1);
+                lastException = ex;
+            }
+        }
+
+        throw lastException ?? new InvalidOperationException("VL analysis failed after retries");
+    }
+
+    private VlAnalysisResult ParseResponse(string responseContent, int totalImageCount)
+    {
+        var result = new VlAnalysisResult { Skipped = false };
+
+        try
+        {
+            var apiResponse = JsonSerializer.Deserialize<VlApiResponse>(responseContent, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
+
+            if (apiResponse?.Choices == null || apiResponse.Choices.Count == 0)
+            {
+                _logger.LogWarning("VL API returned empty choices. Raw response (first 500 chars): {RawResponse}",
+                    Truncate(responseContent, 500));
+                return result;
+            }
+
+            var choice = apiResponse.Choices[0];
+            var finishReason = choice.FinishReason ?? "unknown";
+            var content = choice.Message?.Content;
+
+            _logger.LogDebug("VL API finish_reason: {FinishReason}, content length: {ContentLength}",
+                finishReason, content?.Length ?? 0);
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                var contentType = DetectContentType(responseContent);
+                _logger.LogWarning(
+                    "VL API returned empty message content. finish_reason={FinishReason}, " +
+                    "content JSON type={ContentType}, raw response (first 1000 chars): {RawResponse}",
+                    finishReason, contentType, Truncate(responseContent, 1000));
+                result.RawResponse = responseContent;
+                return result;
+            }
+
+            result.RawResponse = content;
+
+            var groups = TryParseGroups(content, totalImageCount);
+            if (groups == null)
+            {
+                _logger.LogWarning("Failed to extract groups JSON from VL response. Content (first 500 chars): {Content}",
+                    Truncate(content, 500));
+                return result;
+            }
+
+            result.Groups = groups;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse VL API response. Raw response (first 500 chars): {RawResponse}",
+                Truncate(responseContent, 500));
+        }
+
+        return result;
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return "(empty)";
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+    }
+
+    private static string DetectContentType(string responseContent)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(responseContent);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("choices", out var choices) &&
+                choices.GetArrayLength() > 0)
+            {
+                var choice = choices[0];
+                if (choice.TryGetProperty("message", out var message) &&
+                    message.TryGetProperty("content", out var content))
+                {
+                    return content.ValueKind switch
+                    {
+                        JsonValueKind.String => "string",
+                        JsonValueKind.Array => $"array[{content.GetArrayLength()} elements]",
+                        JsonValueKind.Null => "null",
+                        JsonValueKind.Object => "object",
+                        _ => content.ValueKind.ToString()
+                    };
+                }
+            }
+        }
+        catch
+        {
+            // Ignore parse errors in detection
+        }
+        return "unknown";
+    }
+
+    private List<VlImageGroup>? TryParseGroups(string content, int totalImageCount)
+    {
+        _logger.LogDebug("TryParseGroups: totalImageCount={TotalImageCount}, contentLen={ContentLen}",
+            totalImageCount, content.Length);
+
+        var startIdx = content.IndexOf('[');
+        if (startIdx < 0)
+        {
+            _logger.LogWarning("TryParseGroups: No '[' found in content");
+            return null;
+        }
+
+        var endIdx = content.LastIndexOf(']');
+        if (endIdx < startIdx)
+        {
+            _logger.LogWarning("TryParseGroups: No ']' found in content or invalid position");
+            return null;
+        }
+
+        var jsonStr = content.Substring(startIdx, endIdx - startIdx + 1);
+
+        var rawGroups = JsonSerializer.Deserialize<List<VlGroupDto>>(jsonStr, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        });
+
+        if (rawGroups == null)
+        {
+            _logger.LogWarning("TryParseGroups: Deserialize returned null");
+            return null;
+        }
+
+        _logger.LogDebug("TryParseGroups: Parsed {RawGroupCount} raw groups from JSON", rawGroups.Count);
+
+        var groups = new List<VlImageGroup>();
+        var usedIndices = new HashSet<int>();
+        foreach (var raw in rawGroups)
+        {
+            var groupIdx = groups.Count;
+            if (raw.ImageIndices == null || raw.ImageIndices.Count == 0)
+            {
+                _logger.LogWarning("TryParseGroups: Group {GroupIdx} skipped (no imageIndices)", groupIdx);
+                continue;
+            }
+
+            var validIndices = raw.ImageIndices
+                .Where(i => i >= 0 && i < totalImageCount)
+                .Distinct()
+                .ToList();
+
+            if (validIndices.Count == 0)
+            {
+                _logger.LogWarning("TryParseGroups: Group {GroupIdx} skipped (no valid indices)", groupIdx);
+                continue;
+            }
+
+            var overlappingIndices = validIndices.Where(i => usedIndices.Contains(i)).ToList();
+            if (overlappingIndices.Count > 0)
+            {
+                validIndices = validIndices.Except(overlappingIndices).ToList();
+                if (validIndices.Count == 0)
+                {
+                    _logger.LogWarning("TryParseGroups: Group {GroupIdx} skipped (all indices overlap)", groupIdx);
+                    continue;
+                }
+                _logger.LogInformation("TryParseGroups: Group {GroupIdx} removed overlapping indices, remaining={Remaining}",
+                    groupIdx, string.Join(",", validIndices));
+            }
+
+            foreach (var i in validIndices) usedIndices.Add(i);
+
+            var subject = raw.Subject > 0 && raw.Subject <= 9 ? raw.Subject : 1;
+            var grade = raw.Grade > 0 && raw.Grade <= 12 ? raw.Grade : 7;
+
+            groups.Add(new VlImageGroup
+            {
+                ImageIndices = validIndices,
+                Subject = subject,
+                Grade = grade,
+                Description = raw.Description ?? string.Empty
+            });
+
+            _logger.LogDebug("TryParseGroups: Added group {GroupIdx} (indices={ValidIndices}, subject={Subject}, grade={Grade})",
+                groupIdx, string.Join(",", validIndices), subject, grade);
+        }
+
+        if (groups.Count == 0) return null;
+
+        return groups;
+    }
+
+    private class VlApiResponse
+    {
+        [JsonPropertyName("choices")]
+        public List<VlChoice>? Choices { get; set; }
+    }
+
+    private class VlChoice
+    {
+        [JsonPropertyName("message")]
+        public VlMessage? Message { get; set; }
+
+        [JsonPropertyName("finish_reason")]
+        public string? FinishReason { get; set; }
+    }
+
+    private class VlMessage
+    {
+        [JsonPropertyName("content")]
+        [JsonConverter(typeof(MessageContentConverter))]
+        public string? Content { get; set; }
+    }
+
+    /// <summary>
+    /// Handles both string and array formats for the message content field.
+    /// Some VL models return content as a plain string, others as an array of content parts.
+    /// </summary>
+    private class MessageContentConverter : JsonConverter<string?>
+    {
+        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                return reader.GetString();
+            }
+
+            if (reader.TokenType == JsonTokenType.StartArray)
+            {
+                using var doc = JsonDocument.ParseValue(ref reader);
+
+                foreach (var element in doc.RootElement.EnumerateArray())
+                {
+                    if (element.TryGetProperty("type", out var typeProp) &&
+                        typeProp.GetString() == "text")
+                    {
+                        if (element.TryGetProperty("text", out var textProp))
+                        {
+                            var text = textProp.GetString();
+                            if (!string.IsNullOrEmpty(text)) return text;
+                        }
+                        if (element.TryGetProperty("content", out var contentProp))
+                        {
+                            var text = contentProp.GetString();
+                            if (!string.IsNullOrEmpty(text)) return text;
+                        }
+                    }
+                }
+
+                foreach (var element in doc.RootElement.EnumerateArray())
+                {
+                    if (element.TryGetProperty("text", out var textProp) &&
+                        textProp.ValueKind == JsonValueKind.String)
+                    {
+                        var text = textProp.GetString();
+                        if (!string.IsNullOrEmpty(text)) return text;
+                    }
+                }
+
+                var texts = new List<string>();
+                foreach (var element in doc.RootElement.EnumerateArray())
+                {
+                    if (element.ValueKind == JsonValueKind.String)
+                    {
+                        var text = element.GetString();
+                        if (!string.IsNullOrEmpty(text)) texts.Add(text);
+                    }
+                }
+
+                if (texts.Count > 0) return string.Join("\n", texts);
+
+                var rawArray = JsonSerializer.Serialize(doc.RootElement);
+                return rawArray.Length > 0 ? rawArray : null;
+            }
+
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return null;
+            }
+
+            reader.Skip();
+            return null;
+        }
+
+        public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value);
+        }
+    }
+
+    private class VlGroupDto
+    {
+        [JsonPropertyName("imageIndices")]
+        public List<int>? ImageIndices { get; set; }
+
+        [JsonPropertyName("subject")]
+        public int Subject { get; set; }
+
+        [JsonPropertyName("grade")]
+        public int Grade { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+    }
+}

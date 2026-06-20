@@ -6,6 +6,8 @@ using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
+using Ruoyu.Study.Mistake.Host.Services;
+using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service;
 using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
@@ -51,16 +53,25 @@ builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
 
-// OSS 服务（Mistake 直连，允许前缀：mistakes/）
+// OSS service (Mistake direct access, allowed prefixes: mistakes/, uploads/)
+// uploads/ prefix needed for polling worker to read and migrate images
 builder.Services.AddSingleton<IOssService>(sp =>
 {
     var ossConfig = new OssOptions();
     builder.Configuration.GetSection("Oss").Bind(ossConfig);
     return new S3OssService(ossConfig.Endpoint, ossConfig.AccessKey, ossConfig.SecretKey, ossConfig.BucketName,
-        new[] { "mistakes/" }, ossConfig.PublicEndpoint);
+        new[] { "mistakes/", "uploads/" }, ossConfig.PublicEndpoint);
 });
 
-// Student Learning gRPC client（用于审核后编排：RemoveImagesFromRecord / MarkUploadRecordAsReturned）
+// VL Analyzer for image grouping
+builder.Services.Configure<VlAnalyzerOptions>(builder.Configuration.GetSection("VlAnalyzer"));
+builder.Services.AddHttpClient("VlAnalyzer");
+builder.Services.AddSingleton<IVlAnalyzer, VlUploadAnalyzer>();
+
+// Polling worker: polls Student service for Processing records and processes them
+builder.Services.AddHostedService<UploadPollingWorker>();
+
+// Student Learning gRPC client (used by polling worker and review flow)
 builder.Services.AddSingleton(sp =>
 {
     var grpcUrl = builder.Configuration["StudentLearningService:GrpcUrl"]

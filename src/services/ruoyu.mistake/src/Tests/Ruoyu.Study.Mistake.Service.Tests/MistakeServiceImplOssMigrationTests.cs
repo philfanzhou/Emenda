@@ -20,8 +20,8 @@ using MistakeGetPresignedUrlRequest = Ruoyu.Study.Mistake.Contract.Protos.GetPre
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
 /// <summary>
-/// Tests for MistakeServiceImpl focusing on OSS image migration logic
-/// in ReviewMistakeItem and CompleteUploadReview.
+/// Tests for MistakeServiceImpl focusing on the refactored review flow
+/// where OSS migration is handled by the polling worker, not during review.
 /// </summary>
 public class MistakeServiceImplOssMigrationTests
 {
@@ -61,59 +61,72 @@ public class MistakeServiceImplOssMigrationTests
             _ => { });
     }
 
-    private void SetupMigrateImagesToMistakeAsync(MigrateImagesToMistakeResponse response)
+    private void SetupCreateReturnedRecordAsync()
     {
         _mockStudentClient
-            .Setup(x => x.MigrateImagesToMistakeAsync(
-                It.IsAny<MigrateImagesToMistakeRequest>(),
+            .Setup(x => x.CreateReturnedRecordAsync(
+                It.IsAny<StudentProto.CreateReturnedRecordRequest>(),
                 It.IsAny<Metadata>(),
                 It.IsAny<DateTime?>(),
                 It.IsAny<CancellationToken>()))
-            .Returns(new AsyncUnaryCall<MigrateImagesToMistakeResponse>(
-                Task.FromResult(response),
+            .Returns(new AsyncUnaryCall<StudentProto.UploadImagesResponse>(
+                Task.FromResult(new StudentProto.UploadImagesResponse { Success = true }),
                 Task.FromResult(new Metadata()),
                 () => Status.DefaultSuccess,
                 () => new Metadata(),
                 () => { }));
     }
 
-    private void SetupRemoveImagesFromRecordAsync()
-    {
-        _mockStudentClient
-            .Setup(x => x.RemoveImagesFromRecordAsync(
-                It.IsAny<RemoveImagesFromRecordRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(new AsyncUnaryCall<RemoveImagesFromRecordResponse>(
-                Task.FromResult(new RemoveImagesFromRecordResponse { Success = true }),
-                Task.FromResult(new Metadata()),
-                () => Status.DefaultSuccess,
-                () => new Metadata(),
-                () => { }));
-    }
-
-    private void SetupMarkUploadRecordAsReturnedAsync()
-    {
-        _mockStudentClient
-            .Setup(x => x.MarkUploadRecordAsReturnedAsync(
-                It.IsAny<MarkUploadRecordAsReturnedRequest>(),
-                It.IsAny<Metadata>(),
-                It.IsAny<DateTime?>(),
-                It.IsAny<CancellationToken>()))
-            .Returns(new AsyncUnaryCall<StudentProto.BoolResponse>(
-                Task.FromResult(new StudentProto.BoolResponse { Success = true }),
-                Task.FromResult(new Metadata()),
-                () => Status.DefaultSuccess,
-                () => new Metadata(),
-                () => { }));
-    }
-
-    // === ReviewMistakeItem OSS Migration Tests ===
+    // === ReviewMistakeItem Confirm Tests ===
 
     [Fact]
-    public async Task ReviewMistakeItem_WhenConfirmed_ShouldMigrateUploadsToMistakes()
+    public async Task ReviewMistakeItem_WhenConfirmed_ShouldSucceedWithoutMigration()
     {
+        // After refactoring, confirm no longer triggers OSS migration or Student calls.
+        // Images are already in mistakes/ from the polling worker.
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            SourceUploadId = "upload-1",
+            ReviewStatus = (int)ReviewStatus.Confirmed,
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "mistakes/student-1/img1.jpg" }
+            }
+        };
+
+        _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.Confirmed, "teacher-1", "ok", null, null))
+            .ReturnsAsync(item);
+
+        var request = new ReviewMistakeItemRequest
+        {
+            Id = itemId.ToString(),
+            ReviewStatus = ReviewStatus.Confirmed,
+            ReviewerId = "teacher-1",
+            ReviewComment = "ok"
+        };
+
+        var result = await _service.ReviewMistakeItem(request, CreateTestContext());
+
+        result.Success.Should().BeTrue();
+        // No OSS migration should happen
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        // No Student gRPC calls should happen for confirm
+        _mockStudentClient.Verify(x => x.RemoveImagesFromRecordAsync(
+            It.IsAny<StudentProto.RemoveImagesFromRecordRequest>(),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReviewMistakeItem_WhenConfirmed_WithUploadPaths_ShouldStillSucceed()
+    {
+        // Even if paths are still at uploads/ (edge case), confirm should succeed
         var itemId = Guid.NewGuid();
         var item = new MistakeItemModel
         {
@@ -128,46 +141,175 @@ public class MistakeServiceImplOssMigrationTests
         };
 
         _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
-            itemId, (int)ReviewStatus.Confirmed, "teacher-1", "ok", null, null))
+            itemId, (int)ReviewStatus.Confirmed, "teacher-1", It.IsAny<string>(), null, null))
             .ReturnsAsync(item);
-        _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
-            .ReturnsAsync(true);
-        _mockDomainService.Setup(x => x.GetMistakeItemsByUploadAsync(It.IsAny<string>()))
-            .ReturnsAsync(new List<MistakeItemModel>());
-
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img1.jpg",
-            NewPath = "mistakes/student-1/img1.jpg",
-            Success = true
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
-        SetupRemoveImagesFromRecordAsync();
-        SetupMarkUploadRecordAsReturnedAsync();
 
         var request = new ReviewMistakeItemRequest
         {
             Id = itemId.ToString(),
             ReviewStatus = ReviewStatus.Confirmed,
-            ReviewerId = "teacher-1",
-            ReviewComment = "ok"
+            ReviewerId = "teacher-1"
         };
 
         var result = await _service.ReviewMistakeItem(request, CreateTestContext());
 
         result.Success.Should().BeTrue();
-        _mockStudentClient.Verify(x => x.MigrateImagesToMistakeAsync(
-            It.IsAny<MigrateImagesToMistakeRequest>(),
+        // No OSS migration, no Student calls
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    // === ReviewMistakeItem Reject Tests ===
+
+    [Fact]
+    public async Task ReviewMistakeItem_WhenRejected_ShouldMigrateBackAndCreateReturnedRecord()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            SourceUploadId = "upload-1",
+            ReviewStatus = (int)ReviewStatus.Rejected,
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "mistakes/student-1/img1.jpg" }
+            }
+        };
+
+        _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.Rejected, "teacher-1", "bad", null, null))
+            .ReturnsAsync(item);
+        _mockDomainService.Setup(x => x.DeleteMistakeItemAsync(itemId))
+            .ReturnsAsync(true);
+        SetupCreateReturnedRecordAsync();
+
+        var request = new ReviewMistakeItemRequest
+        {
+            Id = itemId.ToString(),
+            ReviewStatus = ReviewStatus.Rejected,
+            ReviewerId = "teacher-1",
+            ReviewComment = "bad"
+        };
+
+        var result = await _service.ReviewMistakeItem(request, CreateTestContext());
+
+        result.Success.Should().BeTrue();
+        // Should migrate image back: mistakes/ -> uploads/
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            "mistakes/student-1/img1.jpg", "uploads/student-1/img1.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.DeleteAsync("mistakes/student-1/img1.jpg"), Times.Once);
+        // Should delete MistakeItem
+        _mockDomainService.Verify(x => x.DeleteMistakeItemAsync(itemId), Times.Once);
+        // Should create returned record in Student
+        _mockStudentClient.Verify(x => x.CreateReturnedRecordAsync(
+            It.Is<StudentProto.CreateReturnedRecordRequest>(r =>
+                r.StudentId == "student-1" &&
+                r.ImageEntries.Count == 1 &&
+                r.ImageEntries[0].Path == "uploads/student-1/img1.jpg" &&
+                r.ImageEntries[0].Type == "mistake"),
             It.IsAny<Metadata>(),
             It.IsAny<DateTime?>(),
             It.IsAny<CancellationToken>()), Times.Once);
-        item.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/img1.jpg");
     }
 
     [Fact]
-    public async Task ReviewMistakeItem_WhenRejected_ShouldNotMigrateImages()
+    public async Task ReviewMistakeItem_WhenRejected_MultipleImages_ShouldMigrateAllBack()
     {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            SourceUploadId = "upload-1",
+            ReviewStatus = (int)ReviewStatus.Rejected,
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "mistakes/student-1/img1.jpg" },
+                new() { SourceImagePath = "mistakes/student-1/img2.jpg" }
+            }
+        };
+
+        _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.Rejected, "teacher-1", "bad", null, null))
+            .ReturnsAsync(item);
+        _mockDomainService.Setup(x => x.DeleteMistakeItemAsync(itemId))
+            .ReturnsAsync(true);
+        SetupCreateReturnedRecordAsync();
+
+        var request = new ReviewMistakeItemRequest
+        {
+            Id = itemId.ToString(),
+            ReviewStatus = ReviewStatus.Rejected,
+            ReviewerId = "teacher-1",
+            ReviewComment = "bad"
+        };
+
+        var result = await _service.ReviewMistakeItem(request, CreateTestContext());
+
+        result.Success.Should().BeTrue();
+        // Both images should be migrated back
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            "mistakes/student-1/img1.jpg", "uploads/student-1/img1.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            "mistakes/student-1/img2.jpg", "uploads/student-1/img2.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.DeleteAsync("mistakes/student-1/img1.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.DeleteAsync("mistakes/student-1/img2.jpg"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ReviewMistakeItem_WhenRejected_OssMigrationFails_ShouldStillDeleteAndCreateRecord()
+    {
+        var itemId = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = itemId,
+            StudentId = "student-1",
+            SourceUploadId = "upload-1",
+            ReviewStatus = (int)ReviewStatus.Rejected,
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "mistakes/student-1/img1.jpg" }
+            }
+        };
+
+        _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
+            itemId, (int)ReviewStatus.Rejected, "teacher-1", "bad", null, null))
+            .ReturnsAsync(item);
+        _mockDomainService.Setup(x => x.DeleteMistakeItemAsync(itemId))
+            .ReturnsAsync(true);
+        // OSS copy fails
+        _mockOssService.Setup(x => x.CopyObjectAsync(
+            It.IsAny<string>(), It.IsAny<string>()))
+            .ThrowsAsync(new Exception("OSS error"));
+        SetupCreateReturnedRecordAsync();
+
+        var request = new ReviewMistakeItemRequest
+        {
+            Id = itemId.ToString(),
+            ReviewStatus = ReviewStatus.Rejected,
+            ReviewerId = "teacher-1",
+            ReviewComment = "bad"
+        };
+
+        var result = await _service.ReviewMistakeItem(request, CreateTestContext());
+
+        // Should still succeed even if OSS migration fails
+        result.Success.Should().BeTrue();
+        // MistakeItem should still be deleted
+        _mockDomainService.Verify(x => x.DeleteMistakeItemAsync(itemId), Times.Once);
+        // No returned record should be created since migration failed
+        _mockStudentClient.Verify(x => x.CreateReturnedRecordAsync(
+            It.IsAny<StudentProto.CreateReturnedRecordRequest>(),
+            It.IsAny<Metadata>(),
+            It.IsAny<DateTime?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReviewMistakeItem_WhenRejected_WithUploadPaths_ShouldNotMigrateBack()
+    {
+        // If paths are already at uploads/, no migration back needed
         var itemId = Guid.NewGuid();
         var item = new MistakeItemModel
         {
@@ -184,11 +326,9 @@ public class MistakeServiceImplOssMigrationTests
         _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Rejected, "teacher-1", "bad", null, null))
             .ReturnsAsync(item);
-        _mockDomainService.Setup(x => x.DeleteMistakeItemAsync(It.IsAny<Guid>()))
+        _mockDomainService.Setup(x => x.DeleteMistakeItemAsync(itemId))
             .ReturnsAsync(true);
-        _mockDomainService.Setup(x => x.GetMistakeItemsByUploadAsync(It.IsAny<string>()))
-            .ReturnsAsync(new List<MistakeItemModel>());
-        SetupMarkUploadRecordAsReturnedAsync();
+        SetupCreateReturnedRecordAsync();
 
         var request = new ReviewMistakeItemRequest
         {
@@ -201,165 +341,14 @@ public class MistakeServiceImplOssMigrationTests
         var result = await _service.ReviewMistakeItem(request, CreateTestContext());
 
         result.Success.Should().BeTrue();
-        _mockStudentClient.Verify(x => x.MigrateImagesToMistakeAsync(
-            It.IsAny<MigrateImagesToMistakeRequest>(),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
-            It.IsAny<CancellationToken>()), Times.Never);
+        // No OSS copy for uploads/ paths
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        // MistakeItem should still be deleted
+        _mockDomainService.Verify(x => x.DeleteMistakeItemAsync(itemId), Times.Once);
     }
 
-    [Fact]
-    public async Task ReviewMistakeItem_WhenMigrationFails_ShouldNotBlockFlow()
-    {
-        var itemId = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = itemId,
-            StudentId = "student-1",
-            SourceUploadId = "upload-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new() { SourceImagePath = "uploads/student-1/img1.jpg" },
-                new() { SourceImagePath = "uploads/student-1/img2.jpg" }
-            }
-        };
-
-        _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
-            itemId, (int)ReviewStatus.Confirmed, It.IsAny<string>(), It.IsAny<string>(), null, null))
-            .ReturnsAsync(item);
-        _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
-            .ReturnsAsync(true);
-        _mockDomainService.Setup(x => x.GetMistakeItemsByUploadAsync(It.IsAny<string>()))
-            .ReturnsAsync(new List<MistakeItemModel>());
-
-        // First image migration fails, second succeeds
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img1.jpg",
-            NewPath = "",
-            Success = false,
-            ErrorMessage = "Migration failed"
-        });
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img2.jpg",
-            NewPath = "mistakes/student-1/img2.jpg",
-            Success = true
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
-        SetupRemoveImagesFromRecordAsync();
-        SetupMarkUploadRecordAsReturnedAsync();
-
-        var request = new ReviewMistakeItemRequest
-        {
-            Id = itemId.ToString(),
-            ReviewStatus = ReviewStatus.Confirmed,
-            ReviewerId = "teacher-1"
-        };
-
-        var result = await _service.ReviewMistakeItem(request, CreateTestContext());
-
-        result.Success.Should().BeTrue();
-        // Failed image path unchanged
-        item.SourceRegions[0].SourceImagePath.Should().Be("uploads/student-1/img1.jpg");
-        // Successful image path updated
-        item.SourceRegions[1].SourceImagePath.Should().Be("mistakes/student-1/img2.jpg");
-    }
-
-    [Fact]
-    public async Task ReviewMistakeItem_WhenAlreadyMistakesPath_ShouldSkipMigration()
-    {
-        var itemId = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = itemId,
-            StudentId = "student-1",
-            SourceUploadId = "upload-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new() { SourceImagePath = "mistakes/student-1/already.jpg" }
-            }
-        };
-
-        _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
-            itemId, (int)ReviewStatus.Confirmed, It.IsAny<string>(), It.IsAny<string>(), null, null))
-            .ReturnsAsync(item);
-        _mockDomainService.Setup(x => x.GetMistakeItemsByUploadAsync(It.IsAny<string>()))
-            .ReturnsAsync(new List<MistakeItemModel>());
-        SetupRemoveImagesFromRecordAsync();
-        SetupMarkUploadRecordAsReturnedAsync();
-
-        var request = new ReviewMistakeItemRequest
-        {
-            Id = itemId.ToString(),
-            ReviewStatus = ReviewStatus.Confirmed,
-            ReviewerId = "teacher-1"
-        };
-
-        var result = await _service.ReviewMistakeItem(request, CreateTestContext());
-
-        result.Success.Should().BeTrue();
-        _mockStudentClient.Verify(x => x.MigrateImagesToMistakeAsync(
-            It.IsAny<MigrateImagesToMistakeRequest>(),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
-            It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task ReviewMistakeItem_WhenMigrationSucceeds_ShouldUpdatePath()
-    {
-        var itemId = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = itemId,
-            StudentId = "student-1",
-            SourceUploadId = "upload-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new() { SourceImagePath = "uploads/student-1/img1.jpg" }
-            }
-        };
-
-        _mockDomainService.Setup(x => x.ReviewMistakeItemAsync(
-            itemId, (int)ReviewStatus.Confirmed, It.IsAny<string>(), It.IsAny<string>(), null, null))
-            .ReturnsAsync(item);
-        _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
-            .ReturnsAsync(true);
-        _mockDomainService.Setup(x => x.GetMistakeItemsByUploadAsync(It.IsAny<string>()))
-            .ReturnsAsync(new List<MistakeItemModel>());
-
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img1.jpg",
-            NewPath = "mistakes/student-1/img1.jpg",
-            Success = true
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
-        SetupRemoveImagesFromRecordAsync();
-        SetupMarkUploadRecordAsReturnedAsync();
-
-        var request = new ReviewMistakeItemRequest
-        {
-            Id = itemId.ToString(),
-            ReviewStatus = ReviewStatus.Confirmed,
-            ReviewerId = "teacher-1"
-        };
-
-        var result = await _service.ReviewMistakeItem(request, CreateTestContext());
-
-        // Flow should succeed
-        result.Success.Should().BeTrue();
-        // Path is updated because migration succeeded
-        item.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/img1.jpg");
-    }
-
-    // === CompleteUploadReview OSS Migration Tests ===
+    // === CompleteUploadReview Tests (Legacy) ===
 
     [Fact]
     public async Task CompleteUploadReview_ShouldMigrateOnlyConfirmedItems()
@@ -399,16 +388,6 @@ public class MistakeServiceImplOssMigrationTests
         _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
             .ReturnsAsync(true);
 
-        // Only confirmed item's path should be migrated
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img1.jpg",
-            NewPath = "mistakes/student-1/img1.jpg",
-            Success = true
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
-
         var request = new CompleteUploadReviewRequest
         {
             SourceUploadId = "upload-1",
@@ -418,18 +397,19 @@ public class MistakeServiceImplOssMigrationTests
         var result = await _service.CompleteUploadReview(request, CreateTestContext());
 
         result.Success.Should().BeTrue();
-        // MigrateImagesToMistakeAsync should be called once with only confirmed paths
-        _mockStudentClient.Verify(x => x.MigrateImagesToMistakeAsync(
-            It.IsAny<MigrateImagesToMistakeRequest>(),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        // Only confirmed item's path should be migrated via OSS
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            "uploads/student-1/img1.jpg", "mistakes/student-1/img1.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.DeleteAsync("uploads/student-1/img1.jpg"), Times.Once);
+        // Rejected item should NOT be migrated
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            "uploads/student-1/img2.jpg", It.IsAny<string>()), Times.Never);
         confirmedItem.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/img1.jpg");
         rejectedItem.SourceRegions[0].SourceImagePath.Should().Be("uploads/student-1/img2.jpg");
     }
 
     [Fact]
-    public async Task CompleteUploadReview_WhenMigrationFails_ShouldNotBlockFlow()
+    public async Task CompleteUploadReview_WhenOssFails_ShouldNotBlockFlow()
     {
         var item = new MistakeItemModel
         {
@@ -455,22 +435,11 @@ public class MistakeServiceImplOssMigrationTests
         _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
             .ReturnsAsync(true);
 
-        // First image migration fails, second succeeds
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img1.jpg",
-            NewPath = "",
-            Success = false,
-            ErrorMessage = "Migration error"
-        });
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img2.jpg",
-            NewPath = "mistakes/student-1/img2.jpg",
-            Success = true
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
+        // First image fails, second succeeds
+        _mockOssService.SetupSequence(x => x.CopyObjectAsync(
+            It.IsAny<string>(), It.IsAny<string>()))
+            .ThrowsAsync(new Exception("OSS error"))
+            .Returns(Task.CompletedTask);
 
         var request = new CompleteUploadReviewRequest
         {
@@ -481,74 +450,10 @@ public class MistakeServiceImplOssMigrationTests
         var result = await _service.CompleteUploadReview(request, CreateTestContext());
 
         result.Success.Should().BeTrue();
+        // Failed image path unchanged
         item.SourceRegions[0].SourceImagePath.Should().Be("uploads/student-1/img1.jpg");
+        // Successful image path updated
         item.SourceRegions[1].SourceImagePath.Should().Be("mistakes/student-1/img2.jpg");
-    }
-
-    [Fact]
-    public async Task CompleteUploadReview_ShouldDeduplicatePathsWithCache()
-    {
-        var sharedPath = "uploads/student-1/shared.jpg";
-        var item1 = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            StudentId = "student-1",
-            SourceUploadId = "upload-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new() { SourceImagePath = sharedPath }
-            }
-        };
-        var item2 = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            StudentId = "student-1",
-            SourceUploadId = "upload-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new() { SourceImagePath = sharedPath }
-            }
-        };
-
-        _mockDomainService.Setup(x => x.CompleteUploadReviewAsync("upload-1", "teacher-1"))
-            .ReturnsAsync(new CompleteUploadReviewResult
-            {
-                Success = true,
-                SourceUploadId = "upload-1",
-                StudentId = "student-1",
-                Items = new List<MistakeItemModel> { item1, item2 }
-            });
-        _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
-            .ReturnsAsync(true);
-
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = sharedPath,
-            NewPath = "mistakes/student-1/shared.jpg",
-            Success = true
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
-
-        var request = new CompleteUploadReviewRequest
-        {
-            SourceUploadId = "upload-1",
-            ReviewerId = "teacher-1"
-        };
-
-        var result = await _service.CompleteUploadReview(request, CreateTestContext());
-
-        result.Success.Should().BeTrue();
-        // MigrateImagesToMistakeAsync should only be called once (deduplication by pathsToMigrate list)
-        _mockStudentClient.Verify(x => x.MigrateImagesToMistakeAsync(
-            It.IsAny<MigrateImagesToMistakeRequest>(),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
-            It.IsAny<CancellationToken>()), Times.Once);
-        item1.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/shared.jpg");
-        item2.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/shared.jpg");
     }
 
     [Fact]
@@ -558,7 +463,7 @@ public class MistakeServiceImplOssMigrationTests
             .ReturnsAsync(new CompleteUploadReviewResult
             {
                 Success = false,
-                ErrorMessage = "还有 2 条错题待审核，请先完成所有审核"
+                ErrorMessage = "Still has 2 pending review items"
             });
 
         var request = new CompleteUploadReviewRequest
@@ -570,107 +475,9 @@ public class MistakeServiceImplOssMigrationTests
         var result = await _service.CompleteUploadReview(request, CreateTestContext());
 
         result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("待审核");
-        _mockStudentClient.Verify(x => x.MigrateImagesToMistakeAsync(
-            It.IsAny<MigrateImagesToMistakeRequest>(),
-            It.IsAny<Metadata>(),
-            It.IsAny<DateTime?>(),
-            It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task CompleteUploadReview_WhenAllMigrationFails_ShouldStillReturnSuccess()
-    {
-        var item = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            StudentId = "student-1",
-            SourceUploadId = "upload-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new() { SourceImagePath = "uploads/student-1/img1.jpg" }
-            }
-        };
-
-        _mockDomainService.Setup(x => x.CompleteUploadReviewAsync("upload-1", "teacher-1"))
-            .ReturnsAsync(new CompleteUploadReviewResult
-            {
-                Success = true,
-                SourceUploadId = "upload-1",
-                StudentId = "student-1",
-                Items = new List<MistakeItemModel> { item }
-            });
-
-        // All migrations fail
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img1.jpg",
-            NewPath = "",
-            Success = false,
-            ErrorMessage = "Migration completely down"
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
-
-        var request = new CompleteUploadReviewRequest
-        {
-            SourceUploadId = "upload-1",
-            ReviewerId = "teacher-1"
-        };
-
-        var result = await _service.CompleteUploadReview(request, CreateTestContext());
-
-        result.Success.Should().BeTrue();
-        item.SourceRegions[0].SourceImagePath.Should().Be("uploads/student-1/img1.jpg");
-    }
-
-    [Fact]
-    public async Task CompleteUploadReview_WhenMigrationSucceeds_ShouldUpdatePath()
-    {
-        var item = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            StudentId = "student-1",
-            SourceUploadId = "upload-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new() { SourceImagePath = "uploads/student-1/img1.jpg" }
-            }
-        };
-
-        _mockDomainService.Setup(x => x.CompleteUploadReviewAsync("upload-1", "teacher-1"))
-            .ReturnsAsync(new CompleteUploadReviewResult
-            {
-                Success = true,
-                SourceUploadId = "upload-1",
-                StudentId = "student-1",
-                Items = new List<MistakeItemModel> { item }
-            });
-        _mockDomainService.Setup(x => x.UpdateMistakeItemAsync(It.IsAny<MistakeItemModel>()))
-            .ReturnsAsync(true);
-
-        var migrateResponse = new MigrateImagesToMistakeResponse();
-        migrateResponse.Results.Add(new MigrateImageResult
-        {
-            SourcePath = "uploads/student-1/img1.jpg",
-            NewPath = "mistakes/student-1/img1.jpg",
-            Success = true
-        });
-        SetupMigrateImagesToMistakeAsync(migrateResponse);
-
-        var request = new CompleteUploadReviewRequest
-        {
-            SourceUploadId = "upload-1",
-            ReviewerId = "teacher-1"
-        };
-
-        var result = await _service.CompleteUploadReview(request, CreateTestContext());
-
-        result.Success.Should().BeTrue();
-        // Path is updated because migration succeeded
-        item.SourceRegions[0].SourceImagePath.Should().Be("mistakes/student-1/img1.jpg");
+        result.ErrorMessage.Should().Contain("pending");
+        _mockOssService.Verify(x => x.CopyObjectAsync(
+            It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     // === GetPresignedUrl Tests ===

@@ -11,6 +11,10 @@ HTTP_PORT="5007"
 
 STUDENT_GRPC_ADDR="ruoyu-student:5005"
 
+VL_API_KEY="${VL_API_KEY:-}"
+VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.siliconflow.cn/v1}"
+VL_MODEL="${VL_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
+
 DB_HOST="ruoyu-postgres"
 DB_PORT="5432"
 DB_NAME="ruoyu_study_mistake"
@@ -46,7 +50,10 @@ docker run -d \
   -e Oss__AccessKey="${OSS_ACCESS_KEY}" \
   -e Oss__SecretKey="${OSS_SECRET_KEY}" \
   -e Oss__BucketName="${OSS_BUCKET}" \
-  -e StudentService__GrpcUrl="http://${STUDENT_GRPC_ADDR}" \
+  -e StudentLearningService__GrpcUrl="http://${STUDENT_GRPC_ADDR}" \
+  -e VlAnalyzer__ApiKey="${VL_API_KEY}" \
+  -e VlAnalyzer__ApiBaseUrl="${VL_API_BASE_URL}" \
+  -e VlAnalyzer__Model="${VL_MODEL}" \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"
