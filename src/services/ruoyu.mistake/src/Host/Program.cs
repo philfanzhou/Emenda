@@ -55,10 +55,10 @@ builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
 
 // OSS service (Mistake direct access, allowed prefixes: mistakes/, uploads/)
 // uploads/ prefix needed for polling worker to read and migrate images
+var ossConfig = new OssOptions();
+builder.Configuration.GetSection("Oss").Bind(ossConfig);
 builder.Services.AddSingleton<IOssService>(sp =>
 {
-    var ossConfig = new OssOptions();
-    builder.Configuration.GetSection("Oss").Bind(ossConfig);
     return new S3OssService(ossConfig.Endpoint, ossConfig.AccessKey, ossConfig.SecretKey, ossConfig.BucketName,
         new[] { "mistakes/", "uploads/" }, ossConfig.PublicEndpoint);
 });
@@ -111,6 +111,20 @@ else
 {
     app.Logger.LogInformation("Database: SQLite");
 }
+
+var vlConfig = builder.Configuration.GetSection("VlAnalyzer");
+var vlOptions = vlConfig.Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
+app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}, ApiBaseUrl={ApiBaseUrl}",
+    vlOptions.IsConfigured, vlOptions.Model, vlOptions.ApiBaseUrl);
+
+var studentGrpcUrl = builder.Configuration["StudentLearningService:GrpcUrl"]
+                     ?? builder.Configuration["StudentService:GrpcUrl"]
+                     ?? "http://localhost:5005";
+app.Logger.LogInformation("Student Service: GrpcUrl={Url}", studentGrpcUrl);
+
+app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
+    ossConfig.Endpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
+app.Logger.LogInformation("UploadPollingWorker: Enabled=true, PollInterval=60s");
 
 using (var scope = app.Services.CreateScope())
 {
