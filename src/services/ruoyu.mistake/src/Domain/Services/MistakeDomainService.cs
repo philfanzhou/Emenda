@@ -61,6 +61,7 @@ public class MistakeDomainService : IMistakeDomainService
                 SourceImagePath = p,
                 BoundingBox = null
             }),
+            RootCause = rootCause,
             ReviewStatus = (int)ReviewStatus.PendingReview,
             CreatedAt = DateTimeOffset.UtcNow
         };
