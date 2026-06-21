@@ -127,3 +127,5 @@ MistakeDomainService.SubmitMistakeUploadAsync()
 3. **BoundingBox 初始为 null**: 提交时仅记录图片路径，裁剪区域（BoundingBox）留待后续分析步骤填充。
 
 4. **不检查重复**: 同一 `sourceUploadId` 可以多次提交，每次创建新条目。这允许学生对同一上传进行补充提交。
+
+5. **UploadPollingWorker 幂等检查**: Worker 在处理每条记录前，通过 `IMistakeDomainService.GetMistakeItemsByUploadAsync(uploadId)` 查询该 uploadId 下已有的 MistakeItem，从 SourceRegions 中提取已处理图片路径集合。然后计算未处理图片 = 记录全部图片 - 已处理图片。只对未处理图片执行 VL 分析、MistakeItem 创建和 OSS 迁移。若全部图片已处理，则跳过 VL/OSS，直接通知 Student 删除全部图片。这确保 Worker 重复轮询同一条记录时不会产生重复数据，同时能自动清理因之前 bug 遗留的脏数据。

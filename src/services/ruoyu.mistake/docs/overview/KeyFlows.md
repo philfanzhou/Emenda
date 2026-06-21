@@ -1,30 +1,59 @@
 # ruoyu.mistake 关键业务流程
 
-## 流程1: 错题提交流程
+## 流程1: 错题自动分析流程（UploadPollingWorker）
 
-**触发条件**: ruoyu.student 的 UploadAnalysisWorker 完成 VL 图像分析后，或 GrpcUploadDispatcher 直接分发
-**参与服务**: ruoyu.student → ruoyu.mistake
-**数据流转**: 上传记录元数据 + 图片路径 → mistake_item(PendingReview) + process_log(Created)
+**触发条件**: UploadPollingWorker 每 60 秒轮询 Student 服务的 Processing 状态上传记录
+**参与服务**: ruoyu.mistake(Worker) → ruoyu.student, VL API, OSS
+**数据流转**: 上传记录图片 → VL 分组分析 → MistakeItem(PendingReview) + OSS 迁移(uploads/→mistakes/) → 通知 Student 删除已处理图片
 
 ```
- student (UploadAnalysisWorker)               mistake
-       │                                         │
-       │  SubmitMistakeUpload                    │
-       │  (student_id, subject, grade,           │
-       │   image_paths, source_upload_id)        │
-       │────────────────────────────────────────▶│
-       │                                         │ 1. 参数校验
-       │                                         │ 2. 创建 MistakeItem
-       │                                         │    (ReviewStatus=PendingReview)
-       │                                         │ 3. 记录 ProcessLog(Created)
-       │                                         │ 4. SaveChanges
-       │                                         │
-       │  Response: created_item_ids             │
-       │◀────────────────────────────────────────│
-       │                                         │
-       │  标记上传记录 Completed                  │
-       │                                         │
+ mistake (UploadPollingWorker)        student           VL API          OSS
+       │                                │                 │              │
+       │ GetProcessingUploadRecords     │                 │              │
+       │───────────────────────────────▶│                 │              │
+       │◀───────────────────────────────│                 │              │
+       │                                │                 │              │
+       │ 【幂等检查】                    │                 │              │
+       │ GetMistakeItemsByUpload(uploadId)                │              │
+       │ (内部调用 DomainService)        │                 │              │
+       │ → 提取已处理图片路径             │                 │              │
+       │ → 计算未处理图片 = 全部 - 已处理  │                 │              │
+       │                                │                 │              │
+       │ 未处理为空？                     │                 │              │
+       │  ├─ 是 → 跳过 VL/OSS，          │                 │              │
+       │  │      直接通知删除全部图片      │                 │              │
+       │  └─ 否 → 继续                   │                 │              │
+       │                                │                 │              │
+       │ VL Analyze(未处理图片)          │                 │              │
+       │────────────────────────────────────────────────▶│              │
+       │◀────────────────────────────────────────────────│              │
+       │ (分组结果: subject, grade, rootCause)            │              │
+       │                                │                 │              │
+       │ SubmitMistakeUpload(未处理图片)  │                 │              │
+       │ (内部调用 DomainService)        │                 │              │
+       │                                │                 │              │
+       │ OSS Copy uploads/→mistakes/    │                 │              │
+       │ (仅未处理图片)                  │                 │─────────────▶│
+       │ OSS Delete uploads/            │                 │─────────────▶│
+       │                                │                 │              │
+       │ 更新 MistakeItem 路径           │                 │              │
+       │                                │                 │              │
+       │ RemoveProcessedImages          │                 │              │
+       │ (已处理+新处理的所有图片)        │                 │              │
+       │───────────────────────────────▶│                 │              │
+       │◀───────────────────────────────│                 │              │
+       │                                │                 │              │
+       │                                │ 图片删完→自动删除记录            │
 ```
+
+### 幂等保证
+
+UploadPollingWorker 在处理每条记录前，先查询该 uploadId 下已有的 MistakeItem，提取已处理图片路径，只对未处理图片执行 VL 分析、MistakeItem 创建和 OSS 迁移。这确保：
+
+1. **不会重复创建 MistakeItem**：已处理的图片不会被再次提交
+2. **不会重复迁移 OSS**：已迁移的图片不会被再次 copy/delete
+3. **存量脏数据自动清理**：之前因 bug 遗留的"已处理但未通知删除"的记录，下次轮询时会被识别并通知 Student 删除
+4. **部分失败安全**：如果某次处理只完成了部分图片，下次轮询会只处理剩余图片
 
 ## 流程2: 错题审核流程
 

@@ -9,6 +9,7 @@
 ## 现有测试文件
 
 - `test/Ruoyu.Study.Mistake.Domain.Tests/MistakeDomainServiceTests.cs`
+- `test/Ruoyu.Study.Mistake.Service.Tests/UploadPollingWorkerTests.cs`
 
 ## 单元测试
 
@@ -36,3 +37,12 @@
 | 多个验证错误同时存在时错误消息应合并 | 验证错误合并逻辑 | 中 |
 | ProcessLog 记录验证 | 验证 ProcessLog 的 Action 和 details 是否正确 | 中 |
 | comments 字段传递 | 验证 comments 可选字段正确传递 | 低 |
+
+### UploadPollingWorker 幂等测试
+
+| 场景 | 说明 | 优先级 |
+|------|------|--------|
+| 全部图片已处理时应跳过 VL/OSS，直接通知删除 | 存量脏数据自动清理 | 高 |
+| 部分图片已处理时应只处理未处理图片 | 部分失败后重试 | 高 |
+| 无已处理图片时应正常处理全部图片 | 首次处理，幂等检查不影响正常流程 | 高 |
+| 已处理图片路径包含 mistakes/ 前缀时应正确匹配 | OSS 迁移后路径已更新 | 中 |

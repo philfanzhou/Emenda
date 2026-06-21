@@ -190,6 +190,11 @@ public class UploadPollingWorkerTests
         pageResult.Items.Add(record);
         SetupStudentClientResponse(pageResult);
 
+        // No existing items (first-time processing)
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync("record-1"))
+            .ReturnsAsync(new List<MistakeItemModel>());
+
         SetupVlAnalyzerResponse(new VlAnalysisResult
         {
             Groups = new List<VlImageGroup>
@@ -303,6 +308,10 @@ public class UploadPollingWorkerTests
         pageResult.Items.Add(record);
         SetupStudentClientResponse(pageResult);
 
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync("record-1"))
+            .ReturnsAsync(new List<MistakeItemModel>());
+
         var mistakeItem = CreateMistakeItem(subject: 1, grade: 7);
         SetupDomainServiceSubmit(new List<MistakeItemModel> { mistakeItem });
 
@@ -351,6 +360,10 @@ public class UploadPollingWorkerTests
         var pageResult = new StudentProto.UploadRecordsPageResult { TotalCount = 1, Page = 1, PageSize = 50 };
         pageResult.Items.Add(record);
         SetupStudentClientResponse(pageResult);
+
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync("record-1"))
+            .ReturnsAsync(new List<MistakeItemModel>());
 
         // VL returns empty groups
         SetupVlAnalyzerResponse(new VlAnalysisResult { Skipped = true });
@@ -424,6 +437,10 @@ public class UploadPollingWorkerTests
         var pageResult = new StudentProto.UploadRecordsPageResult { TotalCount = 1, Page = 1, PageSize = 50 };
         pageResult.Items.Add(record);
         SetupStudentClientResponse(pageResult);
+
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync("record-1"))
+            .ReturnsAsync(new List<MistakeItemModel>());
 
         SetupVlAnalyzerResponse(new VlAnalysisResult
         {
@@ -505,6 +522,285 @@ public class UploadPollingWorkerTests
 
     #endregion
 
+    #region Idempotency - All Images Already Processed
+
+    [Fact]
+    public async Task PollAndProcessAsync_WhenAllImagesAlreadyProcessed_ShouldSkipVlAndOss()
+    {
+        // Arrange: Record has 2 images, both already have MistakeItems
+        var record = CreateRecord(entries: new List<StudentProto.ImageEntry>
+        {
+            CreateImageEntry("uploads/student-1/img1.jpg"),
+            CreateImageEntry("uploads/student-1/img2.jpg")
+        });
+
+        var pageResult = new StudentProto.UploadRecordsPageResult
+        {
+            TotalCount = 1,
+            Page = 1,
+            PageSize = 50
+        };
+        pageResult.Items.Add(record);
+        SetupStudentClientResponse(pageResult);
+
+        // Existing MistakeItems with mistakes/ paths (already migrated)
+        var existingItem = new MistakeItemModel
+        {
+            Id = Guid.NewGuid(),
+            StudentId = "student-1",
+            SourceUploadId = "record-1",
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "mistakes/student-1/img1.jpg" },
+                new() { SourceImagePath = "mistakes/student-1/img2.jpg" }
+            }
+        };
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync("record-1"))
+            .ReturnsAsync(new List<MistakeItemModel> { existingItem });
+
+        var removeResponse = new StudentProto.RemoveProcessedImagesResponse
+        {
+            Success = true,
+            RecordDeleted = true,
+            RemainingImageCount = 0
+        };
+        _mockStudentClient
+            .Setup(x => x.RemoveProcessedImagesAsync(
+                It.IsAny<StudentProto.RemoveProcessedImagesRequest>(),
+                null, null, It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(removeResponse));
+
+        var worker = CreateWorker();
+
+        // Act
+        await InvokePollAndProcessAsync(worker, CancellationToken.None);
+
+        // Assert: VL should NOT be called
+        _mockVlAnalyzer.Verify(x => x.AnalyzeAsync(
+            It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // OSS should NOT be called
+        _mockOssService.Verify(x => x.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+
+        // SubmitMistakeUpload should NOT be called
+        _mockDomainService.Verify(x => x.SubmitMistakeUploadAsync(
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(),
+            It.IsAny<List<string>>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+
+        // RemoveProcessedImages should be called with all paths (normalized to uploads/)
+        _mockStudentClient.Verify(x => x.RemoveProcessedImagesAsync(
+            It.Is<StudentProto.RemoveProcessedImagesRequest>(r =>
+                r.RecordId == "record-1" &&
+                r.ImagePaths.Contains("uploads/student-1/img1.jpg") &&
+                r.ImagePaths.Contains("uploads/student-1/img2.jpg")),
+            null, null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    #endregion
+
+    #region Idempotency - Partial Images Already Processed
+
+    [Fact]
+    public async Task PollAndProcessAsync_WhenPartialImagesAlreadyProcessed_ShouldOnlyProcessUnprocessed()
+    {
+        // Arrange: Record has 3 images, img1 already processed (has MistakeItem)
+        var record = CreateRecord(entries: new List<StudentProto.ImageEntry>
+        {
+            CreateImageEntry("uploads/student-1/img1.jpg"),
+            CreateImageEntry("uploads/student-1/img2.jpg"),
+            CreateImageEntry("uploads/student-1/img3.jpg")
+        });
+
+        var pageResult = new StudentProto.UploadRecordsPageResult
+        {
+            TotalCount = 1,
+            Page = 1,
+            PageSize = 50
+        };
+        pageResult.Items.Add(record);
+        SetupStudentClientResponse(pageResult);
+
+        // Existing MistakeItem for img1 (already migrated to mistakes/)
+        var existingItem = new MistakeItemModel
+        {
+            Id = Guid.NewGuid(),
+            StudentId = "student-1",
+            SourceUploadId = "record-1",
+            SourceRegions = new List<SourceRegionModel>
+            {
+                new() { SourceImagePath = "mistakes/student-1/img1.jpg" }
+            }
+        };
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync("record-1"))
+            .ReturnsAsync(new List<MistakeItemModel> { existingItem });
+
+        // VL only receives unprocessed images [img2, img3]
+        SetupVlAnalyzerResponse(new VlAnalysisResult
+        {
+            Groups = new List<VlImageGroup>
+            {
+                new()
+                {
+                    ImageIndices = new List<int> { 0, 1 },
+                    Subject = 1,
+                    Grade = 7,
+                    RootCause = "Partial reprocess"
+                }
+            }
+        });
+
+        var newItem = CreateMistakeItem();
+        newItem.SourceRegions = new List<SourceRegionModel>
+        {
+            new() { SourceImagePath = "uploads/student-1/img2.jpg" },
+            new() { SourceImagePath = "uploads/student-1/img3.jpg" }
+        };
+        SetupDomainServiceSubmit(new List<MistakeItemModel> { newItem });
+
+        _mockOssService.Setup(x => x.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _mockOssService.Setup(x => x.DeleteAsync(It.IsAny<string>()))
+            .ReturnsAsync(true);
+
+        var removeResponse = new StudentProto.RemoveProcessedImagesResponse
+        {
+            Success = true,
+            RecordDeleted = true,
+            RemainingImageCount = 0
+        };
+        _mockStudentClient
+            .Setup(x => x.RemoveProcessedImagesAsync(
+                It.IsAny<StudentProto.RemoveProcessedImagesRequest>(),
+                null, null, It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(removeResponse));
+
+        var worker = CreateWorker();
+
+        // Act
+        await InvokePollAndProcessAsync(worker, CancellationToken.None);
+
+        // Assert: VL should be called with only unprocessed images
+        _mockVlAnalyzer.Verify(x => x.AnalyzeAsync(
+            "student-1",
+            It.Is<List<string>>(p => p.Count == 2 &&
+                p.Contains("uploads/student-1/img2.jpg") &&
+                p.Contains("uploads/student-1/img3.jpg")),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // SubmitMistakeUpload should be called with only unprocessed images
+        _mockDomainService.Verify(x => x.SubmitMistakeUploadAsync(
+            "student-1", 1, 7,
+            It.Is<List<string>>(p => p.Count == 2),
+            "Partial reprocess",
+            "record-1"), Times.Once);
+
+        // OSS should only migrate img2 and img3
+        _mockOssService.Verify(x => x.CopyObjectAsync("uploads/student-1/img2.jpg", "mistakes/student-1/img2.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.CopyObjectAsync("uploads/student-1/img3.jpg", "mistakes/student-1/img3.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.CopyObjectAsync("uploads/student-1/img1.jpg", It.IsAny<string>()), Times.Never);
+
+        // RemoveProcessedImages should include all 3 paths (old + new)
+        _mockStudentClient.Verify(x => x.RemoveProcessedImagesAsync(
+            It.Is<StudentProto.RemoveProcessedImagesRequest>(r =>
+                r.RecordId == "record-1" &&
+                r.ImagePaths.Count == 3),
+            null, null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    #endregion
+
+    #region Idempotency - No Previously Processed Images
+
+    [Fact]
+    public async Task PollAndProcessAsync_WhenNoPreviouslyProcessed_ShouldProcessAllImages()
+    {
+        // Arrange: Record has 2 images, no existing MistakeItems
+        var record = CreateRecord(entries: new List<StudentProto.ImageEntry>
+        {
+            CreateImageEntry("uploads/student-1/img1.jpg"),
+            CreateImageEntry("uploads/student-1/img2.jpg")
+        });
+
+        var pageResult = new StudentProto.UploadRecordsPageResult
+        {
+            TotalCount = 1,
+            Page = 1,
+            PageSize = 50
+        };
+        pageResult.Items.Add(record);
+        SetupStudentClientResponse(pageResult);
+
+        // No existing items
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync("record-1"))
+            .ReturnsAsync(new List<MistakeItemModel>());
+
+        SetupVlAnalyzerResponse(new VlAnalysisResult
+        {
+            Groups = new List<VlImageGroup>
+            {
+                new()
+                {
+                    ImageIndices = new List<int> { 0, 1 },
+                    Subject = 3,
+                    Grade = 8,
+                    RootCause = "First time"
+                }
+            }
+        });
+
+        var mistakeItem = CreateMistakeItem(subject: 3, grade: 8);
+        mistakeItem.SourceRegions = new List<SourceRegionModel>
+        {
+            new() { SourceImagePath = "uploads/student-1/img1.jpg" },
+            new() { SourceImagePath = "uploads/student-1/img2.jpg" }
+        };
+        SetupDomainServiceSubmit(new List<MistakeItemModel> { mistakeItem });
+
+        _mockOssService.Setup(x => x.CopyObjectAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(Task.CompletedTask);
+        _mockOssService.Setup(x => x.DeleteAsync(It.IsAny<string>()))
+            .ReturnsAsync(true);
+
+        var removeResponse = new StudentProto.RemoveProcessedImagesResponse
+        {
+            Success = true,
+            RecordDeleted = true,
+            RemainingImageCount = 0
+        };
+        _mockStudentClient
+            .Setup(x => x.RemoveProcessedImagesAsync(
+                It.IsAny<StudentProto.RemoveProcessedImagesRequest>(),
+                null, null, It.IsAny<CancellationToken>()))
+            .Returns(CreateAsyncCall(removeResponse));
+
+        var worker = CreateWorker();
+
+        // Act
+        await InvokePollAndProcessAsync(worker, CancellationToken.None);
+
+        // Assert: VL should be called with all images
+        _mockVlAnalyzer.Verify(x => x.AnalyzeAsync(
+            "student-1",
+            It.Is<List<string>>(p => p.Count == 2),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        // SubmitMistakeUpload should be called with all images
+        _mockDomainService.Verify(x => x.SubmitMistakeUploadAsync(
+            "student-1", 3, 8,
+            It.Is<List<string>>(p => p.Count == 2),
+            "First time",
+            "record-1"), Times.Once);
+
+        // OSS should migrate both images
+        _mockOssService.Verify(x => x.CopyObjectAsync("uploads/student-1/img1.jpg", "mistakes/student-1/img1.jpg"), Times.Once);
+        _mockOssService.Verify(x => x.CopyObjectAsync("uploads/student-1/img2.jpg", "mistakes/student-1/img2.jpg"), Times.Once);
+    }
+
+    #endregion
+
     #region Pagination
 
     [Fact]
@@ -546,6 +842,10 @@ public class UploadPollingWorkerTests
             });
 
         SetupVlAnalyzerResponse(new VlAnalysisResult { Skipped = true });
+
+        _mockDomainService
+            .Setup(x => x.GetMistakeItemsByUploadAsync(It.IsAny<string>()))
+            .ReturnsAsync(new List<MistakeItemModel>());
 
         var mistakeItem = CreateMistakeItem();
         mistakeItem.SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "test.jpg" } };

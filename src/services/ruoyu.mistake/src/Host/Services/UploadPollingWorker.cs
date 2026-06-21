@@ -152,7 +152,55 @@ public class UploadPollingWorker : BackgroundService
         _logger.LogDebug("UploadPollingWorker: Record {RecordId} has {Count} mistake images: {Paths}",
             recordId, mistakeImagePaths.Count, string.Join(", ", mistakeImagePaths));
 
-        // Step 2: VL analysis
+        // Step 2: Idempotency check — find already-processed images
+        var mistakeService = scopedServices.GetRequiredService<IMistakeDomainService>();
+        var ossService = scopedServices.GetRequiredService<IOssService>();
+
+        var existingItems = await mistakeService.GetMistakeItemsByUploadAsync(recordId).ConfigureAwait(false);
+        var processedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in existingItems)
+        {
+            foreach (var region in item.SourceRegions)
+            {
+                if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
+                {
+                    // SourceImagePath may have been updated to mistakes/ prefix after OSS migration;
+                    // normalize back to uploads/ for comparison with the original record paths
+                    var path = region.SourceImagePath;
+                    if (path.StartsWith("mistakes/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        path = "uploads/" + path.Substring("mistakes/".Length);
+                    }
+                    processedPaths.Add(path);
+                }
+            }
+        }
+
+        var unprocessedPaths = mistakeImagePaths
+            .Where(p => !processedPaths.Contains(p))
+            .ToList();
+
+        _logger.LogInformation(
+            "UploadPollingWorker: Record {RecordId} idempotency check: {Total} images, {Processed} already processed, {Unprocessed} to process",
+            recordId, mistakeImagePaths.Count, processedPaths.Count, unprocessedPaths.Count);
+
+        // Step 3: If all images already processed, skip VL/OSS and just notify Student to delete
+        if (unprocessedPaths.Count == 0)
+        {
+            _logger.LogInformation(
+                "UploadPollingWorker: Record {RecordId} all images already processed, notifying Student to delete",
+                recordId);
+
+            var allPathsToDelete = processedPaths.ToList();
+            if (allPathsToDelete.Count > 0)
+            {
+                await NotifyStudentToRemoveImagesAsync(scopedServices, recordId, allPathsToDelete, ct).ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        // Step 4: VL analysis (only unprocessed images)
         var analyzer = scopedServices.GetRequiredService<IVlAnalyzer>();
         VlAnalysisResult analysisResult;
 
@@ -160,7 +208,7 @@ public class UploadPollingWorker : BackgroundService
         {
             try
             {
-                analysisResult = await analyzer.AnalyzeAsync(record.StudentId, mistakeImagePaths, ct).ConfigureAwait(false);
+                analysisResult = await analyzer.AnalyzeAsync(record.StudentId, unprocessedPaths, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -190,12 +238,12 @@ public class UploadPollingWorker : BackgroundService
         {
             _logger.LogInformation("UploadPollingWorker: VL analysis returned no groups or was skipped, " +
                 "treating all {Count} images as single group for record {RecordId}",
-                mistakeImagePaths.Count, recordId);
+                unprocessedPaths.Count, recordId);
             groups = new List<VlImageGroup>
             {
                 new VlImageGroup
                 {
-                    ImageIndices = Enumerable.Range(0, mistakeImagePaths.Count).ToList(),
+                    ImageIndices = Enumerable.Range(0, unprocessedPaths.Count).ToList(),
                     Subject = 1,  // Default: Chinese
                     Grade = 7,    // Default: Middle school year 1
                     RootCause = "Mistake upload (VL skipped)"
@@ -203,10 +251,8 @@ public class UploadPollingWorker : BackgroundService
             };
         }
 
-        // Step 3: For each group, create MistakeItem and migrate OSS images
-        var mistakeService = scopedServices.GetRequiredService<IMistakeDomainService>();
-        var ossService = scopedServices.GetRequiredService<IOssService>();
-        var allProcessedPaths = new List<string>();
+        // Step 5: For each group, create MistakeItem and migrate OSS images
+        var allProcessedPaths = new List<string>(processedPaths); // Include previously processed paths
 
         foreach (var group in groups)
         {
@@ -218,9 +264,9 @@ public class UploadPollingWorker : BackgroundService
             }
 
             var selectedPaths = group.ImageIndices
-                .Where(idx => idx >= 0 && idx < mistakeImagePaths.Count)
+                .Where(idx => idx >= 0 && idx < unprocessedPaths.Count)
                 .Distinct()
-                .Select(idx => mistakeImagePaths[idx])
+                .Select(idx => unprocessedPaths[idx])
                 .ToList();
 
             if (selectedPaths.Count == 0)
@@ -236,7 +282,7 @@ public class UploadPollingWorker : BackgroundService
 
             try
             {
-                // Step 3a: Create MistakeItem (images still at uploads/ paths)
+                // Step 5a: Create MistakeItem (images still at uploads/ paths)
                 var items = await mistakeService.SubmitMistakeUploadAsync(
                     record.StudentId,
                     group.Subject,
@@ -248,7 +294,7 @@ public class UploadPollingWorker : BackgroundService
                 _logger.LogInformation("UploadPollingWorker: Created {ItemCount} MistakeItem(s) for group in record {RecordId}",
                     items.Count, recordId);
 
-                // Step 3b: Migrate OSS images from uploads/ to mistakes/
+                // Step 5b: Migrate OSS images from uploads/ to mistakes/
                 var migratedPaths = new List<(string OldPath, string NewPath)>();
                 foreach (var oldPath in selectedPaths)
                 {
@@ -270,7 +316,7 @@ public class UploadPollingWorker : BackgroundService
                     }
                 }
 
-                // Step 3c: Update MistakeItem SourceRegions with new paths
+                // Step 5c: Update MistakeItem SourceRegions with new paths
                 if (migratedPaths.Count > 0)
                 {
                     var pathMap = migratedPaths.ToDictionary(p => p.OldPath, p => p.NewPath, StringComparer.OrdinalIgnoreCase);
@@ -301,42 +347,51 @@ public class UploadPollingWorker : BackgroundService
             }
         }
 
-        // Step 4: Notify Student service to remove processed images
+        // Step 6: Notify Student service to remove processed images (both old and new)
         if (allProcessedPaths.Count > 0)
         {
-            try
-            {
-                var studentClient = scopedServices.GetRequiredService<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
-                var removeRequest = new StudentProto.RemoveProcessedImagesRequest
-                {
-                    RecordId = recordId
-                };
-                removeRequest.ImagePaths.AddRange(allProcessedPaths);
-                var removeResponse = await studentClient.RemoveProcessedImagesAsync(
-                    removeRequest, cancellationToken: ct).ConfigureAwait(false);
-
-                if (removeResponse.Success)
-                {
-                    _logger.LogInformation(
-                        "UploadPollingWorker: Removed processed images from Student record {RecordId}. " +
-                        "RecordDeleted={Deleted}, Remaining={Remaining}",
-                        recordId, removeResponse.RecordDeleted, removeResponse.RemainingImageCount);
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "UploadPollingWorker: Failed to remove processed images from Student record {RecordId}: {Error}",
-                        recordId, removeResponse.ErrorMessage);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "UploadPollingWorker: Failed to call RemoveProcessedImages for record {RecordId}",
-                    recordId);
-            }
+            await NotifyStudentToRemoveImagesAsync(scopedServices, recordId, allProcessedPaths, ct).ConfigureAwait(false);
         }
 
         _logger.LogInformation("UploadPollingWorker: Completed processing record {RecordId}", recordId);
+    }
+
+    private async Task NotifyStudentToRemoveImagesAsync(
+        IServiceProvider scopedServices,
+        string recordId,
+        List<string> imagePaths,
+        CancellationToken ct)
+    {
+        try
+        {
+            var studentClient = scopedServices.GetRequiredService<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+            var removeRequest = new StudentProto.RemoveProcessedImagesRequest
+            {
+                RecordId = recordId
+            };
+            removeRequest.ImagePaths.AddRange(imagePaths);
+            var removeResponse = await studentClient.RemoveProcessedImagesAsync(
+                removeRequest, cancellationToken: ct).ConfigureAwait(false);
+
+            if (removeResponse.Success)
+            {
+                _logger.LogInformation(
+                    "UploadPollingWorker: Removed processed images from Student record {RecordId}. " +
+                    "RecordDeleted={Deleted}, Remaining={Remaining}",
+                    recordId, removeResponse.RecordDeleted, removeResponse.RemainingImageCount);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "UploadPollingWorker: Failed to remove processed images from Student record {RecordId}: {Error}",
+                    recordId, removeResponse.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "UploadPollingWorker: Failed to call RemoveProcessedImages for record {RecordId}",
+                recordId);
+        }
     }
 
     /// <summary>

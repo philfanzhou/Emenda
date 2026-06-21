@@ -80,6 +80,18 @@
 - **When** 再次调用 SubmitMistakeUpload
 - **Then** 创建新的错题条目（不检查重复），返回新的 ID
 
+### AC-FR-08: UploadPollingWorker 幂等检查
+
+- **Given** UploadPollingWorker 轮询到一条 Processing 记录，该 uploadId 下已有 MistakeItem
+- **When** Worker 执行幂等检查
+- **Then** 从已有 MistakeItem 的 SourceRegions 中提取已处理图片路径，计算未处理图片列表，只对未处理图片执行 VL 分析和 MistakeItem 创建
+
+### AC-FR-09: 全部已处理时跳过分析
+
+- **Given** UploadPollingWorker 轮询到一条 Processing 记录，该 uploadId 下所有图片均已有对应 MistakeItem
+- **When** Worker 执行幂等检查
+- **Then** 跳过 VL 分析和 OSS 迁移，直接通知 Student 删除全部已处理图片
+
 ## 非功能需求
 
 - NFR-01: 验证错误信息需明确指出具体字段和有效范围
