@@ -123,8 +123,8 @@ public class UploadPollingWorkerTests
             Task.FromResult(result),
             Task.FromResult(new Metadata()),
             () => Status.DefaultSuccess,
-            null,
-            null);
+            null!,
+            null!);
     }
 
     private static AsyncUnaryCall<StudentProto.RemoveProcessedImagesResponse> CreateAsyncCall(StudentProto.RemoveProcessedImagesResponse result)
@@ -133,8 +133,8 @@ public class UploadPollingWorkerTests
             Task.FromResult(result),
             Task.FromResult(new Metadata()),
             () => Status.DefaultSuccess,
-            null,
-            null);
+            null!,
+            null!);
     }
 
     private void SetupStudentClientResponse(StudentProto.UploadRecordsPageResult result)

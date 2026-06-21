@@ -307,11 +307,13 @@ public class UploadPollingWorker : BackgroundService
             try
             {
                 var studentClient = scopedServices.GetRequiredService<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+                var removeRequest = new StudentProto.RemoveProcessedImagesRequest
+                {
+                    RecordId = recordId
+                };
+                removeRequest.ImagePaths.AddRange(allProcessedPaths);
                 var removeResponse = await studentClient.RemoveProcessedImagesAsync(
-                    new StudentProto.RemoveProcessedImagesRequest
-                    {
-                        RecordId = recordId
-                    }, cancellationToken: ct).ConfigureAwait(false);
+                    removeRequest, cancellationToken: ct).ConfigureAwait(false);
 
                 if (removeResponse.Success)
                 {
