@@ -83,10 +83,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("subject");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("integer")
-                        .HasColumnName("type");
-
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone")

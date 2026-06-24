@@ -543,7 +543,6 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 ? item.ReviewedAt.Value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
                 : string.Empty,
             RootCause = item.RootCause ?? string.Empty,
-            Type = item.Type,
             QuestionId = item.QuestionId ?? string.Empty,
             CreatedAt = item.CreatedAt == DateTimeOffset.MinValue
                 ? string.Empty

@@ -15,7 +15,8 @@ public class MistakeItemModel
     public string? ReviewerId { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }
     public string? RootCause { get; set; }
-    public int Type { get; set; }
+    // 注意：历史上存在 Type（int 1-6 枚举，对应"错误类型"）字段，
+    // 因无法覆盖全部错题场景已于 2026 年 6 月下线。
     public string? QuestionId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }

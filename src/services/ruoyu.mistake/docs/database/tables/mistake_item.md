@@ -14,7 +14,6 @@
 | `reviewer_id` | `VARCHAR(36)` | NULL | — | 审核人ID |
 | `reviewed_at` | `TIMESTAMPTZ` | NULL | — | 审核时间 |
 | `root_cause` | `TEXT` | NULL | — | 错误根因（AI 生成，老师审核时可修改） |
-| `type` | `INT` | NOT NULL | — | 错题类型 |
 | `question_id` | `VARCHAR(36)` | NULL | — | 关联的题目ID |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | `now()` | 创建时间 |
 | `updated_at` | `TIMESTAMPTZ` | NULL, ConcurrencyCheck | — | 最后更新时间，乐观并发控制 |

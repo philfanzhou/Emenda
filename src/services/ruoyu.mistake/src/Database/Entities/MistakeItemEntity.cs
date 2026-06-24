@@ -45,8 +45,9 @@ public class MistakeItemEntity
     [Column("root_cause")]
     public string? RootCause { get; set; }
 
-    [Column("type")]
-    public int Type { get; set; }
+    // 注意：历史上存在 [Column("type")] 的"错误类型"字段（int 1-6 枚举），
+    // 因无法覆盖全部错题场景已于 2026 年 6 月下线，相关 DB 列通过迁移文件删除。
+    // 未来若需要 tag 能力，请通过新列承载而非复用此 tag 号。
 
     [Column("question_id")]
     [MaxLength(36)]

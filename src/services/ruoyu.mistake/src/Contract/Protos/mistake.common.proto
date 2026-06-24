@@ -60,7 +60,9 @@ message MistakeItemDto {
   string reviewer_id = 8;
   string reviewed_at = 9;
   string root_cause = 10;
-  int32 type = 11;
+  // 注意：proto tag 11 历史上对应"错误类型"int 字段（ErrorType 枚举 1-6），
+  // 因该枚举无法覆盖全部错题场景已于 2026 年 6 月下线，未来可能改为自由 tag。
+  reserved 11;
   string question_id = 12;
   string created_at = 13;
   string updated_at = 14;

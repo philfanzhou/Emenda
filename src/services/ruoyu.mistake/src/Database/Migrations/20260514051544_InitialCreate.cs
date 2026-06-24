@@ -25,7 +25,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     reviewer_id = table.Column<string>(type: "character varying(36)", maxLength: 36, nullable: true),
                     reviewed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     review_comment = table.Column<string>(type: "text", nullable: true),
-                    type = table.Column<int>(type: "integer", nullable: false),
                     question_id = table.Column<string>(type: "character varying(36)", maxLength: 36, nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)

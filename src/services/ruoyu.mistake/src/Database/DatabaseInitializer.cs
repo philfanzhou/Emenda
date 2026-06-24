@@ -185,7 +185,6 @@ public static class DatabaseInitializer
                         ADD COLUMN IF NOT EXISTS reviewer_id character varying(36) NULL,
                         ADD COLUMN IF NOT EXISTS reviewed_at timestamp with time zone NULL,
                         ADD COLUMN IF NOT EXISTS root_cause text NULL,
-                        ADD COLUMN IF NOT EXISTS type integer NOT NULL DEFAULT 0,
                         ADD COLUMN IF NOT EXISTS question_id character varying(36) NULL;";
                 await addMissingColsCmd.ExecuteNonQueryAsync();
 
@@ -207,7 +206,8 @@ public static class DatabaseInitializer
                     ALTER TABLE mistake_item
                         DROP COLUMN IF EXISTS date,
                         DROP COLUMN IF EXISTS image_paths,
-                        DROP COLUMN IF EXISTS fingerprint;";
+                        DROP COLUMN IF EXISTS fingerprint,
+                        DROP COLUMN IF EXISTS type;";
                 await dropOldColsCmd.ExecuteNonQueryAsync();
 
                 await using var createNewIndexesCmd = context.Database.GetDbConnection().CreateCommand();
@@ -361,7 +361,6 @@ public static class DatabaseInitializer
                     reviewer_id character varying(36) NULL,
                     reviewed_at timestamp with time zone NULL,
                     root_cause text NULL,
-                    type integer NOT NULL DEFAULT 0,
                     question_id character varying(36) NULL,
                     created_at timestamp with time zone NOT NULL,
                     updated_at timestamp with time zone NULL,
