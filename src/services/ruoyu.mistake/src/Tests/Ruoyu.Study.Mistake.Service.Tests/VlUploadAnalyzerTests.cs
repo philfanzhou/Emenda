@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
+using Ruoyu.Study.Mistake.Service.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Xunit;

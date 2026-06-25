@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using Ruoyu.Study.Common.Constants;
 using Ruoyu.Study.Common.Oss;
+using Ruoyu.Study.Mistake.Service.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 
@@ -47,6 +48,29 @@ public class VlUploadAnalyzer : IVlAnalyzer
         var responseContent = await SendRequestWithRetryAsync(requestBody, ct);
 
         return ParseResponse(responseContent, imagePaths.Count);
+    }
+
+    public async Task<VlReanalysisResult> ReAnalyzeAsync(
+        string studentId,
+        List<string> imagePaths,
+        string existingRootCause,
+        string? teacherDescription,
+        CancellationToken ct = default)
+    {
+        if (imagePaths == null || imagePaths.Count == 0)
+        {
+            _logger.LogWarning("ReAnalyzeAsync: No image paths provided for item belonging to studentId={StudentId}", studentId);
+            return new VlReanalysisResult { Skipped = true };
+        }
+
+        var imageDataList = await LoadImagesAsBase64Async(imagePaths, ct);
+
+        var prompt = BuildReanalyzePrompt(imagePaths.Count, existingRootCause, teacherDescription);
+        var requestBody = BuildReanalyzeRequestBody(prompt, imageDataList);
+
+        var responseContent = await SendRequestWithRetryAsync(requestBody, ct);
+
+        return ParseReanalyzeResponse(responseContent);
     }
 
     private async Task<List<string>> LoadImagesAsBase64Async(List<string> imagePaths, CancellationToken ct)
@@ -92,6 +116,159 @@ public class VlUploadAnalyzer : IVlAnalyzer
         using var ms = new MemoryStream();
         image.SaveAsJpeg(ms, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
         return ms.ToArray();
+    }
+
+    private static string BuildReanalyzePrompt(int totalImageCount, string existingRootCause, string? teacherDescription)
+    {
+        // 安全截断教师描述，防止异常长度污染 prompt
+        var safeExisting = string.IsNullOrWhiteSpace(existingRootCause) ? "(none)" : existingRootCause;
+        var hasTeacherNote = !string.IsNullOrWhiteSpace(teacherDescription);
+
+        var teacherNoteSection = hasTeacherNote
+            ? $@"
+
+[Teacher's Additional Context]
+The reviewing teacher has provided the following note about this mistake:
+""{teacherDescription}""
+
+Take this teacher note into account as supplementary context, but the images remain the primary source of truth.
+"
+            : "\n(No additional teacher note was provided.)\n";
+
+        return $@"[Task Description]
+You are re-analyzing a previously-analyzed student mistake. The original analysis concluded:
+""{safeExisting}""
+
+You will see {totalImageCount} images for this mistake. Produce a refined one-sentence analysis of the error root cause in Chinese (no more than 50 characters). Focus on WHY the student made the mistake, not just WHAT the mistake is.
+{teacherNoteSection}
+[Output Requirements]
+Return ONLY a JSON object with no other text:
+{{ ""rootCause"": ""..."" }}
+";
+    }
+
+    private string BuildReanalyzeRequestBody(string prompt, List<string> imageDataList)
+    {
+        var contentParts = new List<object>();
+
+        contentParts.Add(new { type = "text", text = prompt });
+
+        foreach (var dataUri in imageDataList)
+        {
+            contentParts.Add(new
+            {
+                type = "image_url",
+                image_url = new { url = dataUri }
+            });
+        }
+
+        var body = new
+        {
+            model = _options.Model,
+            messages = new[]
+            {
+                new
+                {
+                    role = "user",
+                    content = contentParts
+                }
+            },
+            temperature = _options.Temperature,
+            stream = false
+        };
+
+        return JsonSerializer.Serialize(body, new JsonSerializerOptions
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        });
+    }
+
+    private VlReanalysisResult ParseReanalyzeResponse(string responseContent)
+    {
+        var result = new VlReanalysisResult { Skipped = false };
+
+        try
+        {
+            var apiResponse = JsonSerializer.Deserialize<VlApiResponse>(responseContent, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
+
+            if (apiResponse?.Choices == null || apiResponse.Choices.Count == 0)
+            {
+                _logger.LogWarning("ReAnalyzeAsync: VL API returned empty choices. Raw (first 500): {Raw}",
+                    Truncate(responseContent, 500));
+                return result;
+            }
+
+            var choice = apiResponse.Choices[0];
+            var finishReason = choice.FinishReason ?? "unknown";
+            var content = choice.Message?.Content;
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                _logger.LogWarning(
+                    "ReAnalyzeAsync: VL API returned empty content. finish_reason={FinishReason}, raw (first 500): {Raw}",
+                    finishReason, Truncate(responseContent, 500));
+                result.RawResponse = responseContent;
+                return result;
+            }
+
+            result.RawResponse = content;
+
+            var rootCause = TryParseReanalysisRootCause(content);
+            if (rootCause == null)
+            {
+                _logger.LogWarning("ReAnalyzeAsync: Failed to extract rootCause from response. Content (first 500): {Content}",
+                    Truncate(content, 500));
+                return result;
+            }
+
+            result.RootCause = rootCause;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "ReAnalyzeAsync: Failed to parse VL API response. Raw (first 500): {Raw}",
+                Truncate(responseContent, 500));
+        }
+
+        return result;
+    }
+
+    private static string? TryParseReanalysisRootCause(string content)
+    {
+        // Try direct JSON object parse first
+        try
+        {
+            using var doc = JsonDocument.Parse(content);
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("rootCause", out var prop))
+            {
+                var rc = prop.GetString();
+                if (!string.IsNullOrWhiteSpace(rc)) return rc.Trim();
+            }
+        }
+        catch (JsonException)
+        {
+            // Fall through to regex fallback
+        }
+
+        // Fallback: scan for "rootCause" key (handles responses wrapped in code blocks or with extra text)
+        var keyIndex = content.IndexOf("\"rootCause\"", StringComparison.Ordinal);
+        if (keyIndex < 0) return null;
+
+        var colonIndex = content.IndexOf(':', keyIndex);
+        if (colonIndex < 0) return null;
+
+        var quoteStart = content.IndexOf('"', colonIndex + 1);
+        if (quoteStart < 0) return null;
+
+        var quoteEnd = content.IndexOf('"', quoteStart + 1);
+        if (quoteEnd < 0) return null;
+
+        var value = content.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private static string BuildPrompt(int totalImageCount)

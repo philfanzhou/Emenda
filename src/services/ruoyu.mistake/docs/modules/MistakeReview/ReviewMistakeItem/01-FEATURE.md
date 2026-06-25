@@ -12,6 +12,7 @@
 - 确认审核时，图片已在轮询阶段迁移到 `mistakes/`，无需额外 OSS 操作
 - 驳回审核时，Mistake 将图片从 `mistakes/` 迁回 `uploads/`，删除 MistakeItem，并调用 Student 的 `CreateReturnedUploadRecord` 创建退回记录
 - 可选在审核时更新 grade(1-12) 和 subject(1-9)
+- **审核前可触发 [ReanalyzeMistakeItem](../ReanalyzeMistakeItem/01-FEATURE.md) 让 AI 重新生成根因**（不重置审核状态）
 
 ## 关键验收条件
 

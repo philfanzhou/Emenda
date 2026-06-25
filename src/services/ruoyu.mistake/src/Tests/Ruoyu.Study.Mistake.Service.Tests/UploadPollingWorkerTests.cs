@@ -14,6 +14,7 @@ using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
+using Ruoyu.Study.Mistake.Service.Services;
 using Xunit;
 using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 

@@ -153,6 +153,94 @@ public class MistakeDomainService : IMistakeDomainService
         return item;
     }
 
+    public async Task<MistakeReanalysisResult> ReanalyzeMistakeItemAsync(
+        Guid id, string? reviewerId, string? teacherDescription, CancellationToken ct = default)
+    {
+        // This method performs validation and persistence only.
+        // VL API call is performed in MistakeServiceImpl (Service layer) to avoid
+        // a circular reference between Domain and Host/Services.
+        // Callers MUST pass `newRootCause` (already VL-analyzed) and the method will
+        // update the item + write ProcessLog atomically.
+        if (id == Guid.Empty)
+        {
+            return new MistakeReanalysisResult { Success = false, ErrorMessage = "错题 ID 不能为空" };
+        }
+
+        var item = await _mistakeItemRepository.GetByIdAsync(id);
+        if (item == null)
+        {
+            return new MistakeReanalysisResult { Success = false, ErrorMessage = "错题不存在" };
+        }
+
+        if (item.ReviewStatus != (int)ReviewStatus.PendingReview &&
+            item.ReviewStatus != (int)ReviewStatus.Confirmed)
+        {
+            return new MistakeReanalysisResult
+            {
+                Success = false,
+                ErrorMessage = "只能对 PendingReview 或 Confirmed 状态的错题重新分析"
+            };
+        }
+
+        if (item.SourceRegions == null || item.SourceRegions.Count == 0)
+        {
+            return new MistakeReanalysisResult
+            {
+                Success = false,
+                ErrorMessage = "错题无图片，无法重新分析"
+            };
+        }
+
+        // item is the entity to be updated by MistakeServiceImpl after VL succeeds.
+        // The actual update + ProcessLog write happens in the orchestrating caller.
+        return new MistakeReanalysisResult
+        {
+            Success = true,
+            Item = item
+        };
+    }
+
+    // Persist a successful re-analysis: update root_cause, log audit, save.
+    public async Task PersistReanalyzedRootCauseAsync(
+        MistakeItemModel item,
+        string previousRootCause,
+        string? reviewerId,
+        string? teacherDescription,
+        string newRootCause,
+        CancellationToken ct = default)
+    {
+        if (item == null) throw new ArgumentNullException(nameof(item));
+        if (newRootCause == null) throw new ArgumentNullException(nameof(newRootCause));
+
+        var details = BuildProcessLogDetails(previousRootCause, teacherDescription, newRootCause);
+
+        item.RootCause = newRootCause;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _mistakeItemRepository.UpdateAsync(item);
+        await AddProcessLogAsync(item.Id, ProcessAction.Reanalyzed, details, item.StudentId);
+        await _unitOfWork.SaveChangesAsync();
+    }
+
+    // Persist a failed re-analysis: only log the failure, do NOT modify root_cause.
+    public async Task LogReanalyzeFailureAsync(
+        MistakeItemModel item,
+        string? reviewerId,
+        string? teacherDescription,
+        string failureReason,
+        CancellationToken ct = default)
+    {
+        if (item == null) throw new ArgumentNullException(nameof(item));
+
+        var details = BuildProcessLogDetails(
+            item.RootCause ?? string.Empty,
+            teacherDescription,
+            $"FAILED: {failureReason}");
+
+        await AddProcessLogAsync(item.Id, ProcessAction.Reanalyzed, details, item.StudentId);
+        await _unitOfWork.SaveChangesAsync();
+    }
+
     public async Task<MistakeItemModel> AddMistakeItemAsync(MistakeItemModel item)
     {
         ValidateMistakeItemData(item);
@@ -166,6 +254,21 @@ public class MistakeDomainService : IMistakeDomainService
         await _unitOfWork.SaveChangesAsync();
 
         return item;
+    }
+
+    private static string BuildProcessLogDetails(
+        string previousRootCause, string? teacherDescription, string newRootCauseOrFailure)
+    {
+        // PII-safe: store only that teacher note was provided + length buckets, not the full text.
+        var noteProvided = !string.IsNullOrWhiteSpace(teacherDescription);
+        var noteLength = noteProvided ? teacherDescription!.Length : 0;
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            previous_root_cause = previousRootCause,
+            teacher_description_provided = noteProvided,
+            teacher_description_length = noteLength,
+            new_root_cause = newRootCauseOrFailure
+        });
     }
 
     public async Task<bool> DeleteMistakeItemAsync(Guid id)

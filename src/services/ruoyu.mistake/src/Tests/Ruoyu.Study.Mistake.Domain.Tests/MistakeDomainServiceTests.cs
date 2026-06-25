@@ -864,4 +864,149 @@ public class MistakeDomainServiceTests
 
         result.Should().BeNull();
     }
+
+    // ========== ReanalyzeMistakeItemAsync validation tests ==========
+
+    [Fact]
+    public async Task ReanalyzeMistakeItemAsync_WithEmptyId_ShouldReturnError()
+    {
+        var result = await _service.ReanalyzeMistakeItemAsync(Guid.Empty, "t1", null);
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("错题 ID 不能为空");
+    }
+
+    [Fact]
+    public async Task ReanalyzeMistakeItemAsync_WithNonExistentId_ShouldReturnError()
+    {
+        var id = Guid.NewGuid();
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync((MistakeItemModel?)null);
+
+        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Be("错题不存在");
+    }
+
+    [Fact]
+    public async Task ReanalyzeMistakeItemAsync_WithRejectedStatus_ShouldReturnError()
+    {
+        var id = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = id,
+            StudentId = "student-1",
+            ReviewStatus = (int)ReviewStatus.Rejected,
+            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+
+        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("PendingReview 或 Confirmed");
+    }
+
+    [Fact]
+    public async Task ReanalyzeMistakeItemAsync_WithEmptySourceRegions_ShouldReturnError()
+    {
+        var id = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = id,
+            StudentId = "student-1",
+            ReviewStatus = (int)ReviewStatus.PendingReview,
+            SourceRegions = new List<SourceRegionModel>()
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+
+        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("错题无图片");
+    }
+
+    [Fact]
+    public async Task ReanalyzeMistakeItemAsync_WithPendingReviewAndImages_ShouldReturnSuccess()
+    {
+        var id = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = id,
+            StudentId = "student-1",
+            ReviewStatus = (int)ReviewStatus.PendingReview,
+            RootCause = "原根因",
+            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+
+        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", "教师备注");
+        result.Success.Should().BeTrue();
+        result.Item.Should().NotBeNull();
+        result.Item!.Id.Should().Be(id);
+        result.Item.RootCause.Should().Be("原根因");
+    }
+
+    [Fact]
+    public async Task ReanalyzeMistakeItemAsync_WithConfirmedAndImages_ShouldReturnSuccess()
+    {
+        var id = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = id,
+            StudentId = "student-1",
+            ReviewStatus = (int)ReviewStatus.Confirmed,
+            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
+        };
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+
+        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
+        result.Success.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PersistReanalyzedRootCauseAsync_ShouldUpdateItemAndWriteProcessLog()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = id,
+            StudentId = "student-1",
+            RootCause = "原根因",
+            ReviewStatus = (int)ReviewStatus.Confirmed
+        };
+
+        // Act
+        await _service.PersistReanalyzedRootCauseAsync(
+            item, "原根因", "t1", "教师备注", "新根因");
+
+        // Assert
+        item.RootCause.Should().Be("新根因");
+        item.UpdatedAt.Should().NotBeNull();
+        _mockItemRepo.Verify(x => x.UpdateAsync(item), Times.Once);
+        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(
+            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed)), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task LogReanalyzeFailureAsync_ShouldNotMutateRootCause()
+    {
+        // Arrange
+        var id = Guid.NewGuid();
+        var item = new MistakeItemModel
+        {
+            Id = id,
+            StudentId = "student-1",
+            RootCause = "原根因（保留）",
+            ReviewStatus = (int)ReviewStatus.Confirmed
+        };
+
+        // Act
+        await _service.LogReanalyzeFailureAsync(
+            item, "t1", "教师备注", "VL timeout");
+
+        // Assert — root_cause must remain unchanged
+        item.RootCause.Should().Be("原根因（保留）", "VL failure must not mutate root_cause");
+        _mockItemRepo.Verify(x => x.UpdateAsync(It.IsAny<MistakeItemModel>()), Times.Never);
+        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(
+            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed)), Times.Once);
+    }
 }

@@ -4,6 +4,7 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Contract.Protos;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
+using Ruoyu.Study.Mistake.Service.Services;
 using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Service;
@@ -13,17 +14,20 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     private readonly IMistakeDomainService _mistakeService;
     private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
     private readonly IOssService _ossService;
+    private readonly IVlAnalyzer _vlAnalyzer;
     private readonly ILogger<MistakeServiceImpl> _logger;
 
     public MistakeServiceImpl(
         IMistakeDomainService mistakeService,
         StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
         IOssService ossService,
+        IVlAnalyzer vlAnalyzer,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
         _studentClient = studentClient;
         _ossService = ossService;
+        _vlAnalyzer = vlAnalyzer;
         _logger = logger;
     }
 
@@ -247,6 +251,101 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         catch (MistakeValidationException ex)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+    }
+
+    public override async Task<ReanalyzeMistakeItemResponse> ReanalyzeMistakeItem(
+        ReanalyzeMistakeItemRequest request, ServerCallContext context)
+    {
+        _logger.LogInformation(
+            "ReanalyzeMistakeItem called: id={ItemId}, reviewerId={ReviewerId}, hasTeacherNote={HasNote}",
+            request.Id, request.ReviewerId, !string.IsNullOrWhiteSpace(request.TeacherDescription));
+
+        // 1. Validate request shape
+        if (string.IsNullOrWhiteSpace(request.Id))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "错题 ID 不能为空"));
+        }
+        if (!Guid.TryParse(request.Id, out var itemGuid))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "错题 ID 格式无效"));
+        }
+
+        // 2. Validate state and load item (Domain layer)
+        var validation = await _mistakeService.ReanalyzeMistakeItemAsync(
+            itemGuid, request.ReviewerId, request.TeacherDescription, context.CancellationToken);
+        if (!validation.Success || validation.Item == null)
+        {
+            // Map domain validation errors to gRPC codes per spec
+            var message = validation.ErrorMessage ?? "重新分析失败";
+            if (message == "错题不存在")
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, message));
+            }
+            return new ReanalyzeMistakeItemResponse { Success = false, ErrorMessage = message };
+        }
+
+        var item = validation.Item;
+        var imagePaths = item.SourceRegions
+            .Where(r => !string.IsNullOrWhiteSpace(r.SourceImagePath))
+            .Select(r => r.SourceImagePath)
+            .ToList();
+        var previousRootCause = item.RootCause ?? string.Empty;
+
+        // 3. Call VL re-analysis
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var vlResult = await _vlAnalyzer.ReAnalyzeAsync(
+                item.StudentId, imagePaths, previousRootCause, request.TeacherDescription, context.CancellationToken);
+
+            sw.Stop();
+
+            if (vlResult.Skipped || string.IsNullOrEmpty(vlResult.RootCause))
+            {
+                _logger.LogWarning(
+                    "ReanalyzeMistakeItem: VL returned no root cause. ItemId={ItemId}, DurationMs={DurationMs}",
+                    item.Id, sw.ElapsedMilliseconds);
+                await _mistakeService.LogReanalyzeFailureAsync(
+                    item, request.ReviewerId, request.TeacherDescription, "VL 未返回根因", context.CancellationToken);
+                return new ReanalyzeMistakeItemResponse { Success = false, ErrorMessage = "重新分析失败：AI 未返回根因" };
+            }
+
+            // 4. Update in-memory item with new root cause (mirrors what PersistReanalyzedRootCauseAsync does in DB)
+            item.RootCause = vlResult.RootCause;
+            item.UpdatedAt = DateTimeOffset.UtcNow;
+
+            // 5. Persist new root cause + write ProcessLog
+            await _mistakeService.PersistReanalyzedRootCauseAsync(
+                item, previousRootCause, request.ReviewerId, request.TeacherDescription, vlResult.RootCause, context.CancellationToken);
+
+            _logger.LogInformation(
+                "ReanalyzeMistakeItem: success. ItemId={ItemId}, ReviewerId={ReviewerId}, PreviousLen={PrevLen}, NewLen={NewLen}, DurationMs={DurationMs}",
+                item.Id, request.ReviewerId, previousRootCause.Length, vlResult.RootCause.Length, sw.ElapsedMilliseconds);
+
+            return new ReanalyzeMistakeItemResponse
+            {
+                Success = true,
+                Item = MapMistakeItemDto(item)
+            };
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger.LogError(ex,
+                "ReanalyzeMistakeItem: VL call failed. ItemId={ItemId}, DurationMs={DurationMs}",
+                item.Id, sw.ElapsedMilliseconds);
+            // VL 失败时**不**修改 root_cause，仅写 ProcessLog 记录失败
+            try
+            {
+                await _mistakeService.LogReanalyzeFailureAsync(
+                    item, request.ReviewerId, request.TeacherDescription, ex.Message, CancellationToken.None);
+            }
+            catch (Exception logEx)
+            {
+                _logger.LogError(logEx, "ReanalyzeMistakeItem: failed to write ProcessLog for failure");
+            }
+            throw new RpcException(new Status(StatusCode.Internal, $"重新分析失败：{ex.Message}"));
         }
     }
 

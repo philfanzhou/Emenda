@@ -66,7 +66,7 @@ builder.Services.AddSingleton<IOssService>(sp =>
 // VL Analyzer for image grouping
 builder.Services.Configure<VlAnalyzerOptions>(builder.Configuration.GetSection("VlAnalyzer"));
 builder.Services.AddHttpClient("VlAnalyzer");
-builder.Services.AddSingleton<IVlAnalyzer, VlUploadAnalyzer>();
+builder.Services.AddSingleton<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer, VlUploadAnalyzer>();
 
 // Polling worker: polls Student service for Processing records and processes them
 builder.Services.AddHostedService<UploadPollingWorker>();

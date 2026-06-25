@@ -38,6 +38,7 @@ public class MistakeServiceImplRpcTests
     private readonly Mock<ILogger<MistakeServiceImpl>> _mockLogger;
     private readonly Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient> _mockStudentClient;
     private readonly Mock<IOssService> _mockOssService;
+    private readonly Mock<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer> _mockVlAnalyzer;
     private readonly MistakeServiceImpl _service;
 
     public MistakeServiceImplRpcTests()
@@ -46,11 +47,13 @@ public class MistakeServiceImplRpcTests
         _mockLogger = new Mock<ILogger<MistakeServiceImpl>>();
         _mockStudentClient = new Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mockOssService = new Mock<IOssService>();
+        _mockVlAnalyzer = new Mock<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer>();
 
         _service = new MistakeServiceImpl(
             _mockDomainService.Object,
             _mockStudentClient.Object,
             _mockOssService.Object,
+            _mockVlAnalyzer.Object,
             _mockLogger.Object);
     }
 

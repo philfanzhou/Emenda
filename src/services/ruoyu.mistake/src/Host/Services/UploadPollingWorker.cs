@@ -3,6 +3,7 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
+using Ruoyu.Study.Mistake.Service.Services;
 using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Host.Services;

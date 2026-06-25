@@ -37,11 +37,13 @@ public class MistakeServiceImplOssMigrationTests
         _mockLogger = new Mock<ILogger<MistakeServiceImpl>>();
         _mockStudentClient = new Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mockOssService = new Mock<IOssService>();
+        var mockVlAnalyzer = new Mock<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer>();
 
         _service = new MistakeServiceImpl(
             _mockDomainService.Object,
             _mockStudentClient.Object,
             _mockOssService.Object,
+            mockVlAnalyzer.Object,
             _mockLogger.Object);
     }
 

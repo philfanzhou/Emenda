@@ -15,6 +15,7 @@ service MistakeGrpcService {
   rpc GetPendingReviewUploads(GetPendingReviewUploadsRequest) returns (PendingReviewUploadListResponse);
 
   rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (ReviewMistakeItemResponse);
+  rpc ReanalyzeMistakeItem(ReanalyzeMistakeItemRequest) returns (ReanalyzeMistakeItemResponse);
   rpc AddMistakeItem(AddMistakeItemRequest) returns (MistakeItemDto);
   rpc UpdateMistakeItem(UpdateMistakeItemRequest) returns (MistakeItemDto);
   rpc DeleteMistakeItem(IdRequest) returns (BoolResponse);
@@ -93,6 +94,18 @@ message ReviewMistakeItemResponse {
   string source_upload_id = 3;
   string student_id = 4;
   repeated string removed_image_paths = 5;
+}
+
+message ReanalyzeMistakeItemRequest {
+  string id = 1;
+  string reviewer_id = 2;            // 教师 ID（从 JWT 提取）
+  string teacher_description = 3;     // 可选：教师补充描述
+}
+
+message ReanalyzeMistakeItemResponse {
+  bool success = 1;
+  string error_message = 2;
+  MistakeItemDto item = 3;           // 成功时返回更新后的 item
 }
 
 message AddMistakeItemRequest {
