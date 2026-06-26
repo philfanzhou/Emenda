@@ -14,6 +14,9 @@ STUDENT_GRPC_ADDR="ruoyu-student:5005"
 VL_API_KEY="${VL_API_KEY:-}"
 VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.siliconflow.cn/v1}"
 VL_MODEL="${VL_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
+# MaxOutputTokens must leave enough room for the reasoning VL models
+# (mimo-v2.5, step-3.7-flash) — see docs/overview/SystemContext.md and HR-12.
+VL_MAX_OUTPUT_TOKENS="${VL_MAX_OUTPUT_TOKENS:-4096}"
 
 DB_HOST="ruoyu-postgres"
 DB_PORT="5432"
@@ -54,6 +57,7 @@ docker run -d \
   -e VlAnalyzer__ApiKey="${VL_API_KEY}" \
   -e VlAnalyzer__ApiBaseUrl="${VL_API_BASE_URL}" \
   -e VlAnalyzer__Model="${VL_MODEL}" \
+  -e VlAnalyzer__MaxOutputTokens="${VL_MAX_OUTPUT_TOKENS}" \
   "$IMAGE_NAME"
 
 echo "${CONTAINER_NAME} started"
