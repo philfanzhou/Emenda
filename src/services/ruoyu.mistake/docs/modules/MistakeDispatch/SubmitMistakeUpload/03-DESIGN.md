@@ -129,3 +129,5 @@ MistakeDomainService.SubmitMistakeUploadAsync()
 4. **不检查重复**: 同一 `sourceUploadId` 可以多次提交，每次创建新条目。这允许学生对同一上传进行补充提交。
 
 5. **UploadPollingWorker 幂等检查**: Worker 在处理每条记录前，通过 `IMistakeDomainService.GetMistakeItemsByUploadAsync(uploadId)` 查询该 uploadId 下已有的 MistakeItem，从 SourceRegions 中提取已处理图片路径集合。然后计算未处理图片 = 记录全部图片 - 已处理图片。只对未处理图片执行 VL 分析、MistakeItem 创建和 OSS 迁移。若全部图片已处理，则跳过 VL/OSS，直接通知 Student 删除全部图片。这确保 Worker 重复轮询同一条记录时不会产生重复数据，同时能自动清理因之前 bug 遗留的脏数据。
+
+6. **VL 请求体构造约定（跨模块共享）**: `UploadPollingWorker` 与 `ReanalyzeJobHostedService` 都通过 `IVlAnalyzer` 间接调用 `VlUploadAnalyzer`。VL 请求体**必须**包含 `max_tokens = VlAnalyzerOptions.MaxOutputTokens`（默认 4096），目的是为当前可用的推理型模型（mimo-v2.5、step-3.7-flash）预留 reasoning 预算，避免 content 被截断。详细说明、根因诊断、复现数据见 `docs/overview/SystemContext.md` 中 "VL Provider" 段和 `docs/HumanReview.md` HR-12。

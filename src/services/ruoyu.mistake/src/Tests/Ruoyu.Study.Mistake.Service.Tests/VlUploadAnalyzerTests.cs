@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -431,6 +432,64 @@ public class VlUploadAnalyzerTests
         // Assert
         result.Groups.Should().BeEmpty();
         result.Skipped.Should().BeFalse();
+    }
+
+    #endregion
+
+    #region Request Body - max_tokens
+
+    /// <summary>
+    /// Captures the outgoing request body so tests can assert the JSON shape
+    /// (specifically that <c>max_tokens</c> is set, which is required for
+    /// reasoning VL models like mimo-v2.5 / step-3.7-flash to leave room
+    /// for the actual <c>content</c> response). See HumanReview HR-12.
+    /// </summary>
+    private class CapturingHttpMessageHandler : HttpMessageHandler
+    {
+        public string? CapturedRequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Content != null)
+            {
+                CapturedRequestBody = await request.Content.ReadAsStringAsync(cancellationToken);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(@"{
+                    ""choices"": [{
+                        ""finish_reason"": ""stop"",
+                        ""index"": 0,
+                        ""message"": { ""role"": ""assistant"", ""content"": ""[]"" }
+                    }]
+                }", Encoding.UTF8, "application/json")
+            };
+        }
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_RequestBody_ShouldIncludeMaxTokens()
+    {
+        // Arrange
+        var handler = new CapturingHttpMessageHandler();
+        var httpClient = new HttpClient(handler);
+        _httpClientFactory.Setup(x => x.CreateClient("VlAnalyzer")).Returns(httpClient);
+        var analyzer = new VlUploadAnalyzer(
+            _ossService.Object,
+            _httpClientFactory.Object,
+            Options.Create(_options),
+            _logger.Object);
+
+        // Act
+        await analyzer.AnalyzeAsync("student-1", new List<string> { "img1.jpg" });
+
+        // Assert
+        handler.CapturedRequestBody.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(handler.CapturedRequestBody!);
+        doc.RootElement.TryGetProperty("max_tokens", out var maxTokensProp).Should().BeTrue(
+            "request body must include max_tokens for reasoning VL models (mimo, stepfun)");
+        maxTokensProp.GetInt32().Should().Be(4096);
     }
 
     #endregion

@@ -265,6 +265,14 @@ CREATE INDEX ix_reanalyze_job_completed_at      ON reanalyze_job (completed_at) 
   │   └─ N 个 worker（MaxConcurrency=2）从 Channel 读 Job 并处理：
   │       ├─ MarkRunningAsync（写 started_at）
   │       ├─ 调 IVlAnalyzer.ReAnalyzeAsync(item.studentId, imagePaths, previous_root_cause, teacher_description)
+  │       │     └─ VL 请求体构造约定：OpenAI 兼容 chat/completions，
+  │       │        必传 `max_tokens = VlAnalyzerOptions.MaxOutputTokens`（默认 4096）。
+  │       │        原因：当前可用 provider（mimo-v2.5、step-3.7-flash）均为推理型模型，
+  │       │        会在响应中产生 reasoning_content 消耗 token；不显式指定 max_tokens
+  │       │        会让某些 provider 的默认 reasoning 预算耗光 content 空间，导致
+  │       │        `content=""` + `finish_reason="length"`，被 TryParseReanalysisRootCause
+  │       │        拒绝 → Job 标 Failed。详见 docs/overview/SystemContext.md 中
+  │       │        "VL Provider" 段以及 HR-12。
   │       ├─ 成功：MarkCompletedAsync
   │       │     └─ IReanalyzeJobService 内部：更新 mistake_item.root_cause / updated_at + 写 ProcessLog(Reanalyzed, details 含 job_id)
   │       └─ 失败：MarkFailedAsync

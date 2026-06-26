@@ -84,13 +84,15 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 - **调用接口**: `GetProcessingUploadRecords`（轮询采集）、`RemoveProcessedImages`（处理完成通知）、`CreateReturnedUploadRecord`（退回创建记录）
 - **调用场景**: `UploadPollingWorker` 轮询 Processing 记录；审核驳回时创建 Returned 记录
 
-### VL Provider (SiliconFlow Qwen3-VL)
+### VL Provider (OpenAI 兼容 Chat Completions)
 
-- **协议**: HTTP/HTTPS，OpenAI 兼容 API
+- **协议**: HTTP/HTTPS，OpenAI 兼容 API（`/v1/chat/completions`）
 - **接口**: `{ApiBaseUrl}/chat/completions`
-- **调用场景**: `VlUploadAnalyzer` 对错题图片进行视觉语言分析，按学科/年级分组
-- **配置**: `VlAnalyzer` 配置段（ApiKey、ApiBaseUrl、Model）
-- **失败策略**: 分析失败时记录错误，跳过该记录，下轮重试
+- **调用场景**: `VlUploadAnalyzer` 对错题图片进行视觉语言分析，按学科/年级分组（`AnalyzeAsync`）或对单条错题重新生成根因（`ReAnalyzeAsync`）
+- **配置**: `VlAnalyzer` 配置段（ApiKey、ApiBaseUrl、Model、MaxOutputTokens、Temperature、TimeoutSeconds、MaxRetries、RetryDelayMs）
+- **请求体约定**: 必须包含 `max_tokens` 字段（`VlAnalyzerOptions.MaxOutputTokens`，默认 4096），原因是当前可用的 provider 均为**推理型模型**（如 `mimo-v2.5`、`step-3.7-flash`），会在响应中产生独立的 `reasoning_content` 字段消耗大量 token；如果不显式指定 `max_tokens`，某些 provider 的默认值会让 reasoning 把全部 token 耗光，导致 `content` 字段为空字符串、`finish_reason="length"`，最终被本服务的 `TryParseGroups` / `TryParseReanalysisRootCause` 拒绝，导致 Reanalyze Job 标 `Failed`、初次分析走"VL skipped"默认根因
+- **响应格式兼容**: 部分 provider（如 stepfun）的 `content` 字段会被 markdown 代码块包裹（` ```json ... ``` `），现有解析逻辑通过 `IndexOf('[')` + `LastIndexOf(']')` 提取 JSON 子串，能稳定处理
+- **失败策略**: HTTP 失败自动重试（`MaxRetries`）；4xx（除 429）立即抛错；解析失败（content 为空 / JSON 解析失败）不重试，由 `ReanalyzeJobHostedService` 标记 Job 为 `Failed`、由 `UploadPollingWorker` 走默认 "Mistake upload (VL skipped)" 兜底分组
 
 ### OSS (MinIO / SeaweedFS)
 

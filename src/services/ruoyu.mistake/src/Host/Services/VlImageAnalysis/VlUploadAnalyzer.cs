@@ -174,6 +174,7 @@ Return ONLY a JSON object with no other text:
                 }
             },
             temperature = _options.Temperature,
+            max_tokens = _options.MaxOutputTokens,
             stream = false
         };
 
@@ -337,6 +338,7 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
                 }
             },
             temperature = _options.Temperature,
+            max_tokens = _options.MaxOutputTokens,
             stream = false
         };
 
