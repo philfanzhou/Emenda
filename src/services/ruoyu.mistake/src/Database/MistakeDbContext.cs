@@ -15,6 +15,7 @@ public class MistakeDbContext : DbContext
     public DbSet<MistakeItemEntity> MistakeItems { get; set; } = null!;
     public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
+    public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -86,6 +87,15 @@ public class MistakeDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.MistakeItemId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReanalyzeJobEntity>(entity =>
+        {
+            entity.Property(e => e.Id).ValueGeneratedNever();
+
+            entity.HasIndex(e => new { e.Status, e.CreatedAt });
+            entity.HasIndex(e => new { e.ReviewerId, e.Status });
+            entity.HasIndex(e => e.CompletedAt);
         });
     }
 }

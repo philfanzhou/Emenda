@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Mistake.Database.Entities;
@@ -19,19 +20,19 @@ public class MistakeItemRepository : IMistakeItemRepository
         _dbContext = dbContext;
     }
 
-    public async Task AddAsync(MistakeItemModel model)
+    public async Task AddAsync(MistakeItemModel model, CancellationToken ct = default)
     {
         var entity = MapToEntity(model);
-        await _dbContext.MistakeItems.AddAsync(entity);
+        await _dbContext.MistakeItems.AddAsync(entity, ct);
     }
 
-    public async Task<MistakeItemModel?> GetByIdAsync(Guid id)
+    public async Task<MistakeItemModel?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var entity = await _dbContext.MistakeItems.FindAsync(id);
+        var entity = await _dbContext.MistakeItems.FindAsync(new object?[] { id }, ct);
         return entity != null ? MapToModel(entity) : null;
     }
 
-    public async Task<bool> UpdateAsync(MistakeItemModel model)
+    public async Task<bool> UpdateAsync(MistakeItemModel model, CancellationToken ct = default)
     {
         var entity = await _dbContext.MistakeItems.FindAsync(model.Id);
         if (entity == null) return false;
@@ -52,7 +53,16 @@ public class MistakeItemRepository : IMistakeItemRepository
         return true;
     }
 
-    public async Task<bool> DeleteAsync(Guid id)
+    public async Task SetRootCauseDeferredAsync(Guid itemId, string newRootCause, DateTimeOffset updatedAt, CancellationToken ct = default)
+    {
+        var entity = await _dbContext.MistakeItems.FindAsync(new object?[] { itemId }, ct);
+        if (entity == null) return;
+        entity.RootCause = newRootCause;
+        entity.UpdatedAt = updatedAt;
+        // Caller must invoke IUnitOfWork.SaveChangesAsync to commit.
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var entity = await _dbContext.MistakeItems.FindAsync(id);
         if (entity == null) return false;

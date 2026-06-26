@@ -16,6 +16,8 @@ service MistakeGrpcService {
 
   rpc ReviewMistakeItem(ReviewMistakeItemRequest) returns (ReviewMistakeItemResponse);
   rpc ReanalyzeMistakeItem(ReanalyzeMistakeItemRequest) returns (ReanalyzeMistakeItemResponse);
+  rpc GetReanalyzeJobs(GetReanalyzeJobsRequest) returns (GetReanalyzeJobsResponse);
+  rpc GetActiveReanalyzeJobs(GetActiveReanalyzeJobsRequest) returns (GetActiveReanalyzeJobsResponse);
   rpc AddMistakeItem(AddMistakeItemRequest) returns (MistakeItemDto);
   rpc UpdateMistakeItem(UpdateMistakeItemRequest) returns (MistakeItemDto);
   rpc DeleteMistakeItem(IdRequest) returns (BoolResponse);
@@ -98,14 +100,51 @@ message ReviewMistakeItemResponse {
 
 message ReanalyzeMistakeItemRequest {
   string id = 1;
-  string reviewer_id = 2;            // 教师 ID（从 JWT 提取）
+  string reviewer_id = 2;            // 教师 ID（BFF 从 JWT 提取）
   string teacher_description = 3;     // 可选：教师补充描述
+  string student_id = 4;              // 学生 ID（必填，鉴权校验用）
 }
 
 message ReanalyzeMistakeItemResponse {
   bool success = 1;
   string error_message = 2;
-  MistakeItemDto item = 3;           // 成功时返回更新后的 item
+  // 旧字段 item 已废弃：Job 异步执行，结果通过 GetReanalyzeJobs 查询。
+  reserved 3;
+  string job_id = 4;                  // 成功时返回 JobId
+}
+
+message ReanalyzeJobDto {
+  string job_id = 1;
+  string item_id = 2;
+  string student_id = 3;
+  ReanalyzeJobStatus status = 4;
+  string new_root_cause = 5;
+  string error_message = 6;
+  string created_at = 7;
+  string started_at = 8;
+  string completed_at = 9;
+  int64 vl_duration_ms = 10;
+}
+
+message GetReanalyzeJobsRequest {
+  string reviewer_id = 1;             // 教师 ID（BFF 从 JWT 提取，必填，鉴权用）
+  repeated string job_ids = 2;         // 1-100 个
+}
+
+message GetReanalyzeJobsResponse {
+  bool success = 1;
+  string error_message = 2;
+  repeated ReanalyzeJobDto jobs = 3;
+}
+
+message GetActiveReanalyzeJobsRequest {
+  string reviewer_id = 1;             // 教师 ID（BFF 从 JWT 提取，必填，鉴权用）
+}
+
+message GetActiveReanalyzeJobsResponse {
+  bool success = 1;
+  string error_message = 2;
+  repeated ReanalyzeJobDto jobs = 3;
 }
 
 message AddMistakeItemRequest {

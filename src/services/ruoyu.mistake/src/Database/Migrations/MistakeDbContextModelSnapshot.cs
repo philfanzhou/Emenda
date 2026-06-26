@@ -206,6 +206,76 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
                     b.Navigation("MistakeItem");
                 });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ReanalyzeJobEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("NewRootCause")
+                        .HasColumnType("text")
+                        .HasColumnName("new_root_cause");
+
+                    b.Property<string>("PreviousRootCause")
+                        .HasColumnType("text")
+                        .HasColumnName("previous_root_cause");
+
+                    b.Property<string>("ReviewerId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("reviewer_id")
+                        .IsRequired();
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status")
+                        .HasDefaultValue(1);
+
+                    b.Property<string>("StudentId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("student_id")
+                        .IsRequired();
+
+                    b.Property<string>("TeacherDescription")
+                        .HasColumnType("text")
+                        .HasColumnName("teacher_description");
+
+                    b.Property<long?>("VlDurationMs")
+                        .HasColumnType("bigint")
+                        .HasColumnName("vl_duration_ms");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompletedAt");
+
+                    b.HasIndex("ReviewerId", "Status");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("reanalyze_job");
+                });
 #pragma warning restore 612, 618
         }
     }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
@@ -51,7 +52,7 @@ public class MistakeDomainServiceTests
         items[0].SourceRegions[0].BoundingBox.Should().BeNull();
         items[0].SourceRegions[1].SourceImagePath.Should().Be("img2.jpg");
         items[0].ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -83,7 +84,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.PendingReview
         };
 
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Confirmed, "teacher-1", "looks good");
@@ -93,7 +94,7 @@ public class MistakeDomainServiceTests
         item.ReviewerId.Should().Be("teacher-1");
         item.RootCause.Should().Be("looks good");
         item.ReviewedAt.Should().NotBeNull();
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -106,7 +107,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.Confirmed
         };
 
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var act = () => _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Rejected, "teacher-1", null);
@@ -125,16 +126,16 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.Confirmed
         };
 
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.DeleteAsync(itemId)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.DeleteAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.DeleteMistakeItemAsync(itemId);
 
         result.Should().BeTrue();
         _mockPracticeRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
         _mockLogRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
-        _mockItemRepo.Verify(x => x.DeleteAsync(itemId), Times.Once);
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockItemRepo.Verify(x => x.DeleteAsync(itemId, It.IsAny<CancellationToken>()), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -147,16 +148,16 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.PendingReview
         };
 
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.DeleteAsync(itemId)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.DeleteAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.DeleteMistakeItemAsync(itemId);
 
         result.Should().BeTrue();
         _mockPracticeRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
         _mockLogRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
-        _mockItemRepo.Verify(x => x.DeleteAsync(itemId), Times.Once);
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockItemRepo.Verify(x => x.DeleteAsync(itemId, It.IsAny<CancellationToken>()), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -220,7 +221,7 @@ public class MistakeDomainServiceTests
         result.SourceRegions[0].BoundingBox.Should().NotBeNull();
         result.SourceRegions[1].BoundingBox.Should().BeNull();
         result.ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -233,7 +234,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.PendingReview
         };
 
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var practice = new MistakePracticeModel { MistakeItemId = itemId };
         var act = () => _service.AddPracticeAsync(practice);
@@ -252,7 +253,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.Confirmed
         };
 
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var practice = new MistakePracticeModel
         {
@@ -265,7 +266,7 @@ public class MistakeDomainServiceTests
 
         result.Should().NotBeNull();
         result.MistakeItemId.Should().Be(itemId);
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -278,7 +279,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.PendingReview
         };
 
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Rejected, "teacher-1", "需要重新上传");
@@ -286,7 +287,7 @@ public class MistakeDomainServiceTests
         result.Should().NotBeNull();
         item.ReviewStatus.Should().Be((int)ReviewStatus.Rejected);
         item.RootCause.Should().Be("需要重新上传");
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -311,12 +312,12 @@ public class MistakeDomainServiceTests
             StudentId = "student-1"
         };
 
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.UpdateMistakeItemAsync(item);
 
         result.Should().BeTrue();
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -422,7 +423,7 @@ public class MistakeDomainServiceTests
 
         _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
             log.Action == (int)ProcessAction.Created &&
-            log.Details == "Mistake item created from upload")), Times.Once);
+            log.Details == "Mistake item created from upload"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -453,7 +454,7 @@ public class MistakeDomainServiceTests
     {
         var itemId = Guid.NewGuid();
         var item = new MistakeItemModel { Id = itemId, StudentId = "student-1" };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.GetMistakeItemAsync(itemId);
 
@@ -465,7 +466,7 @@ public class MistakeDomainServiceTests
     public async Task GetMistakeItemAsync_WhenNotExists_ShouldReturnNull()
     {
         var itemId = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
         var result = await _service.GetMistakeItemAsync(itemId);
 
@@ -531,7 +532,7 @@ public class MistakeDomainServiceTests
     public async Task LogMistakeProcessAsync_WhenItemExists_ShouldReturnTrue()
     {
         var itemId = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(new MistakeItemModel { Id = itemId });
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(new MistakeItemModel { Id = itemId });
 
         var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Mastered, "已掌握");
 
@@ -539,19 +540,19 @@ public class MistakeDomainServiceTests
         _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
             log.MistakeItemId == itemId &&
             log.Action == (int)ProcessAction.Mastered &&
-            log.Details == "已掌握")), Times.Once);
+            log.Details == "已掌握"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task LogMistakeProcessAsync_WhenItemNotExists_ShouldReturnFalse()
     {
         var itemId = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
         var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Mastered, "test");
 
         result.Should().BeFalse();
-        _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>()), Times.Never);
+        _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // === GetMistakeProcessHistory 补充测试 ===
@@ -606,7 +607,7 @@ public class MistakeDomainServiceTests
     public async Task DeleteMistakeItemAsync_WhenNotExists_ShouldReturnFalse()
     {
         var itemId = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
         var result = await _service.DeleteMistakeItemAsync(itemId);
 
@@ -620,7 +621,7 @@ public class MistakeDomainServiceTests
     {
         var itemId = Guid.NewGuid();
         var item = new MistakeItemModel { Id = itemId, ReviewStatus = (int)ReviewStatus.PendingReview };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var act = () => _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.PendingReview, "teacher-1", null);
@@ -633,7 +634,7 @@ public class MistakeDomainServiceTests
     public async Task ReviewMistakeItemAsync_WhenNotFound_ShouldReturnNull()
     {
         var itemId = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
         var result = await _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Confirmed, "teacher-1", null);
@@ -646,7 +647,7 @@ public class MistakeDomainServiceTests
     {
         var itemId = Guid.NewGuid();
         var item = new MistakeItemModel { Id = itemId, ReviewStatus = (int)ReviewStatus.PendingReview, Grade = 3, Subject = 1 };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.ReviewMistakeItemAsync(
             itemId, (int)ReviewStatus.Confirmed, "teacher-1", null, grade: 6, subject: 5);
@@ -699,7 +700,7 @@ public class MistakeDomainServiceTests
     public async Task UpdateMistakeItemPartialAsync_WhenItemNotFound_ShouldReturnNull()
     {
         var itemId = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync((MistakeItemModel?)null);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
         var result = await _service.UpdateMistakeItemPartialAsync(itemId, studentId: "new-student");
 
@@ -717,8 +718,8 @@ public class MistakeDomainServiceTests
             Subject = 3,
             Grade = 5
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.UpdateMistakeItemPartialAsync(itemId, studentId: "new-student");
 
@@ -739,8 +740,8 @@ public class MistakeDomainServiceTests
             Subject = 3,
             Grade = 5
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.UpdateMistakeItemPartialAsync(itemId, subject: 7);
 
@@ -761,8 +762,8 @@ public class MistakeDomainServiceTests
             Subject = 3,
             Grade = 5
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.UpdateMistakeItemPartialAsync(itemId, grade: 10);
 
@@ -787,8 +788,8 @@ public class MistakeDomainServiceTests
                 new() { SourceImagePath = "old.jpg" }
             }
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var newRegions = new List<SourceRegionModel>
         {
@@ -815,8 +816,8 @@ public class MistakeDomainServiceTests
             Subject = 3,
             Grade = 5
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.UpdateMistakeItemPartialAsync(itemId);
 
@@ -837,8 +838,8 @@ public class MistakeDomainServiceTests
             Subject = 3,
             Grade = 5
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(true);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var result = await _service.UpdateMistakeItemPartialAsync(itemId, subject: 0);
 
@@ -857,8 +858,8 @@ public class MistakeDomainServiceTests
             Subject = 3,
             Grade = 5
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId)).ReturnsAsync(item);
-        _mockItemRepo.Setup(x => x.UpdateAsync(item)).ReturnsAsync(false);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         var result = await _service.UpdateMistakeItemPartialAsync(itemId, studentId: "new-student");
 
@@ -879,7 +880,7 @@ public class MistakeDomainServiceTests
     public async Task ReanalyzeMistakeItemAsync_WithNonExistentId_ShouldReturnError()
     {
         var id = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync((MistakeItemModel?)null);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
         var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
         result.Success.Should().BeFalse();
@@ -897,7 +898,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.Rejected,
             SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
         result.Success.Should().BeFalse();
@@ -915,7 +916,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.PendingReview,
             SourceRegions = new List<SourceRegionModel>()
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
         result.Success.Should().BeFalse();
@@ -934,7 +935,7 @@ public class MistakeDomainServiceTests
             RootCause = "原根因",
             SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", "教师备注");
         result.Success.Should().BeTrue();
@@ -954,7 +955,7 @@ public class MistakeDomainServiceTests
             ReviewStatus = (int)ReviewStatus.Confirmed,
             SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
         };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id)).ReturnsAsync(item);
+        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
         var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
         result.Success.Should().BeTrue();
@@ -980,10 +981,10 @@ public class MistakeDomainServiceTests
         // Assert
         item.RootCause.Should().Be("新根因");
         item.UpdatedAt.Should().NotBeNull();
-        _mockItemRepo.Verify(x => x.UpdateAsync(item), Times.Once);
+        _mockItemRepo.Verify(x => x.UpdateAsync(item, It.IsAny<CancellationToken>()), Times.Once);
         _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(
-            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed)), Times.Once);
-        _mockUow.Verify(x => x.SaveChangesAsync(), Times.Once);
+            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed), It.IsAny<CancellationToken>()), Times.Once);
+        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1005,8 +1006,8 @@ public class MistakeDomainServiceTests
 
         // Assert — root_cause must remain unchanged
         item.RootCause.Should().Be("原根因（保留）", "VL failure must not mutate root_cause");
-        _mockItemRepo.Verify(x => x.UpdateAsync(It.IsAny<MistakeItemModel>()), Times.Never);
+        _mockItemRepo.Verify(x => x.UpdateAsync(It.IsAny<MistakeItemModel>(), It.IsAny<CancellationToken>()), Times.Never);
         _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(
-            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed)), Times.Once);
+            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

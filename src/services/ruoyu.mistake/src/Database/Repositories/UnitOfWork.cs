@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 
@@ -12,8 +13,8 @@ public class UnitOfWork : IUnitOfWork
         _dbContext = dbContext;
     }
 
-    public async Task<int> SaveChangesAsync()
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
-        return await _dbContext.SaveChangesAsync();
+        return await _dbContext.SaveChangesAsync(ct);
     }
 }

@@ -12,6 +12,7 @@ namespace Ruoyu.Study.Mistake.Service;
 public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 {
     private readonly IMistakeDomainService _mistakeService;
+    private readonly IReanalyzeJobService _reanalyzeJobService;
     private readonly StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient _studentClient;
     private readonly IOssService _ossService;
     private readonly IVlAnalyzer _vlAnalyzer;
@@ -19,12 +20,14 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
 
     public MistakeServiceImpl(
         IMistakeDomainService mistakeService,
+        IReanalyzeJobService reanalyzeJobService,
         StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient studentClient,
         IOssService ossService,
         IVlAnalyzer vlAnalyzer,
         ILogger<MistakeServiceImpl> logger)
     {
         _mistakeService = mistakeService;
+        _reanalyzeJobService = reanalyzeJobService;
         _studentClient = studentClient;
         _ossService = ossService;
         _vlAnalyzer = vlAnalyzer;
@@ -258,8 +261,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         ReanalyzeMistakeItemRequest request, ServerCallContext context)
     {
         _logger.LogInformation(
-            "ReanalyzeMistakeItem called: id={ItemId}, reviewerId={ReviewerId}, hasTeacherNote={HasNote}",
-            request.Id, request.ReviewerId, !string.IsNullOrWhiteSpace(request.TeacherDescription));
+            "ReanalyzeMistakeItem (async job) called: id={ItemId}, reviewerId={ReviewerId}, studentId={StudentId}, hasTeacherNote={HasNote}",
+            request.Id, request.ReviewerId, request.StudentId, !string.IsNullOrWhiteSpace(request.TeacherDescription));
 
         // 1. Validate request shape
         if (string.IsNullOrWhiteSpace(request.Id))
@@ -270,84 +273,134 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "错题 ID 格式无效"));
         }
-
-        // 2. Validate state and load item (Domain layer)
-        var validation = await _mistakeService.ReanalyzeMistakeItemAsync(
-            itemGuid, request.ReviewerId, request.TeacherDescription, context.CancellationToken);
-        if (!validation.Success || validation.Item == null)
+        if (string.IsNullOrWhiteSpace(request.ReviewerId))
         {
-            // Map domain validation errors to gRPC codes per spec
-            var message = validation.ErrorMessage ?? "重新分析失败";
-            if (message == "错题不存在")
-            {
-                throw new RpcException(new Status(StatusCode.NotFound, message));
-            }
-            return new ReanalyzeMistakeItemResponse { Success = false, ErrorMessage = message };
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "未识别教师身份"));
+        }
+        if (string.IsNullOrWhiteSpace(request.StudentId))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "缺少学生ID"));
         }
 
-        var item = validation.Item;
-        var imagePaths = item.SourceRegions
-            .Where(r => !string.IsNullOrWhiteSpace(r.SourceImagePath))
-            .Select(r => r.SourceImagePath)
-            .ToList();
-        var previousRootCause = item.RootCause ?? string.Empty;
+        // 2. Enqueue the job. The ReanalyzeJobService performs item validation,
+        //    snapshots previous root_cause, and persists a Pending job in a single
+        //    transaction. It does NOT call VL — that is done by the hosted worker.
+        var result = await _reanalyzeJobService.StartJobAsync(
+            itemGuid,
+            request.ReviewerId,
+            request.StudentId,
+            request.TeacherDescription,
+            context.CancellationToken);
 
-        // 3. Call VL re-analysis
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        try
+        if (!result.Success)
         {
-            var vlResult = await _vlAnalyzer.ReAnalyzeAsync(
-                item.StudentId, imagePaths, previousRootCause, request.TeacherDescription, context.CancellationToken);
-
-            sw.Stop();
-
-            if (vlResult.Skipped || string.IsNullOrEmpty(vlResult.RootCause))
+            var code = result.ErrorCode switch
             {
-                _logger.LogWarning(
-                    "ReanalyzeMistakeItem: VL returned no root cause. ItemId={ItemId}, DurationMs={DurationMs}",
-                    item.Id, sw.ElapsedMilliseconds);
-                await _mistakeService.LogReanalyzeFailureAsync(
-                    item, request.ReviewerId, request.TeacherDescription, "VL 未返回根因", context.CancellationToken);
-                return new ReanalyzeMistakeItemResponse { Success = false, ErrorMessage = "重新分析失败：AI 未返回根因" };
+                "NotFound" => StatusCode.NotFound,
+                "FailedPrecondition" => StatusCode.FailedPrecondition,
+                "InvalidArgument" => StatusCode.InvalidArgument,
+                _ => StatusCode.Internal
+            };
+            // NotFound and InvalidArgument are surfaced as gRPC exceptions so the
+            // BFF can map them to HTTP 404/400. FailedPrecondition is a 422
+            // business validation that we return as success=false.
+            if (code == StatusCode.NotFound || code == StatusCode.InvalidArgument)
+            {
+                throw new RpcException(new Status(code, result.ErrorMessage ?? "重新分析失败"));
             }
-
-            // 4. Update in-memory item with new root cause (mirrors what PersistReanalyzedRootCauseAsync does in DB)
-            item.RootCause = vlResult.RootCause;
-            item.UpdatedAt = DateTimeOffset.UtcNow;
-
-            // 5. Persist new root cause + write ProcessLog
-            await _mistakeService.PersistReanalyzedRootCauseAsync(
-                item, previousRootCause, request.ReviewerId, request.TeacherDescription, vlResult.RootCause, context.CancellationToken);
-
-            _logger.LogInformation(
-                "ReanalyzeMistakeItem: success. ItemId={ItemId}, ReviewerId={ReviewerId}, PreviousLen={PrevLen}, NewLen={NewLen}, DurationMs={DurationMs}",
-                item.Id, request.ReviewerId, previousRootCause.Length, vlResult.RootCause.Length, sw.ElapsedMilliseconds);
-
             return new ReanalyzeMistakeItemResponse
             {
-                Success = true,
-                Item = MapMistakeItemDto(item)
+                Success = false,
+                ErrorMessage = result.ErrorMessage ?? "重新分析失败"
             };
         }
-        catch (Exception ex)
+
+        return new ReanalyzeMistakeItemResponse
         {
-            sw.Stop();
-            _logger.LogError(ex,
-                "ReanalyzeMistakeItem: VL call failed. ItemId={ItemId}, DurationMs={DurationMs}",
-                item.Id, sw.ElapsedMilliseconds);
-            // VL 失败时**不**修改 root_cause，仅写 ProcessLog 记录失败
-            try
-            {
-                await _mistakeService.LogReanalyzeFailureAsync(
-                    item, request.ReviewerId, request.TeacherDescription, ex.Message, CancellationToken.None);
-            }
-            catch (Exception logEx)
-            {
-                _logger.LogError(logEx, "ReanalyzeMistakeItem: failed to write ProcessLog for failure");
-            }
-            throw new RpcException(new Status(StatusCode.Internal, $"重新分析失败：{ex.Message}"));
-        }
+            Success = true,
+            JobId = result.Job.Id.ToString()
+        };
     }
+
+    public override async Task<GetReanalyzeJobsResponse> GetReanalyzeJobs(
+        GetReanalyzeJobsRequest request, ServerCallContext context)
+    {
+        var reviewerId = request.ReviewerId;
+        if (string.IsNullOrWhiteSpace(reviewerId))
+        {
+            return new GetReanalyzeJobsResponse
+            {
+                Success = false,
+                ErrorMessage = "未识别教师身份"
+            };
+        }
+
+        if (request.JobIds == null || request.JobIds.Count == 0)
+        {
+            return new GetReanalyzeJobsResponse
+            {
+                Success = false,
+                ErrorMessage = "缺少 ids 参数"
+            };
+        }
+        if (request.JobIds.Count > 100)
+        {
+            return new GetReanalyzeJobsResponse
+            {
+                Success = false,
+                ErrorMessage = "ids 数量必须在 1-100 之间"
+            };
+        }
+
+        var ids = new List<Guid>(request.JobIds.Count);
+        foreach (var raw in request.JobIds)
+        {
+            if (Guid.TryParse(raw, out var id)) ids.Add(id);
+        }
+
+        var jobs = await _reanalyzeJobService.GetJobsAsync(reviewerId, ids, context.CancellationToken);
+        return new GetReanalyzeJobsResponse
+        {
+            Success = true,
+            Jobs = { jobs.Select(MapJobDto) }
+        };
+    }
+
+    public override async Task<GetActiveReanalyzeJobsResponse> GetActiveReanalyzeJobs(
+        GetActiveReanalyzeJobsRequest request, ServerCallContext context)
+    {
+        var reviewerId = request.ReviewerId;
+        if (string.IsNullOrWhiteSpace(reviewerId))
+        {
+            return new GetActiveReanalyzeJobsResponse
+            {
+                Success = false,
+                ErrorMessage = "未识别教师身份"
+            };
+        }
+        var jobs = await _reanalyzeJobService.GetActiveJobsAsync(reviewerId, context.CancellationToken);
+        return new GetActiveReanalyzeJobsResponse
+        {
+            Success = true,
+            Jobs = { jobs.Select(MapJobDto) }
+        };
+    }
+
+    private static ReanalyzeJobDto MapJobDto(Domain.Models.ReanalyzeJobModel job) => new()
+    {
+        JobId = job.Id.ToString(),
+        ItemId = job.ItemId.ToString(),
+        StudentId = job.StudentId,
+        Status = (ReanalyzeJobStatus)(int)job.Status,
+        NewRootCause = job.NewRootCause ?? string.Empty,
+        ErrorMessage = job.ErrorMessage ?? string.Empty,
+        CreatedAt = job.CreatedAt.ToString("o"),
+        StartedAt = job.StartedAt?.ToString("o") ?? string.Empty,
+        CompletedAt = job.CompletedAt?.ToString("o") ?? string.Empty,
+        // Pass through the nullable directly. 0 is a valid (if improbable)
+        // value for VL call; the BFF decides how to render it.
+        VlDurationMs = job.VlDurationMs ?? -1
+    };
 
     public override async Task<MistakeItemDto> AddMistakeItem(AddMistakeItemRequest request, ServerCallContext context)
     {

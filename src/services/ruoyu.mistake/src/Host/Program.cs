@@ -50,8 +50,10 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
 builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
+builder.Services.AddScoped<IReanalyzeJobRepository, ReanalyzeJobRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
+builder.Services.AddScoped<IReanalyzeJobService, ReanalyzeJobService>();
 
 // OSS service (Mistake direct access, allowed prefixes: mistakes/, uploads/)
 // uploads/ prefix needed for polling worker to read and migrate images
@@ -70,6 +72,11 @@ builder.Services.AddSingleton<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer, 
 
 // Polling worker: polls Student service for Processing records and processes them
 builder.Services.AddHostedService<UploadPollingWorker>();
+
+// Reanalyze job workers: process AI re-analysis jobs asynchronously.
+// MaxConcurrency is hardcoded to 2 inside the service (do not externalize).
+builder.Services.AddHostedService<ReanalyzeJobHostedService>();
+builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
 
 // Student Learning gRPC client (used by polling worker and review flow)
 builder.Services.AddSingleton(sp =>
@@ -125,6 +132,8 @@ app.Logger.LogInformation("Student Service: GrpcUrl={Url}", studentGrpcUrl);
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
     ossConfig.Endpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
 app.Logger.LogInformation("UploadPollingWorker: Enabled=true, PollInterval=60s");
+app.Logger.LogInformation("ReanalyzeJobHostedService: Enabled=true, MaxConcurrency=2 (hardcoded)");
+app.Logger.LogInformation("ReanalyzeJobCleanupService: Enabled=true, RetentionDays=30 (hardcoded)");
 
 using (var scope = app.Services.CreateScope())
 {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Mistake.Database.Entities;
@@ -18,7 +19,7 @@ public class ProcessLogRepository : IProcessLogRepository
         _dbContext = dbContext;
     }
 
-    public async Task AddAsync(ProcessLogModel model)
+    public async Task AddAsync(ProcessLogModel model, CancellationToken ct = default)
     {
         var entity = new ProcessLogEntity
         {
@@ -29,7 +30,7 @@ public class ProcessLogRepository : IProcessLogRepository
             Details = model.Details,
             CreatedAt = model.CreatedAt
         };
-        await _dbContext.ProcessLogs.AddAsync(entity);
+        await _dbContext.ProcessLogs.AddAsync(entity, ct);
     }
 
     public async Task<List<ProcessLogModel>> GetByMistakeItemIdAsync(Guid mistakeItemId)

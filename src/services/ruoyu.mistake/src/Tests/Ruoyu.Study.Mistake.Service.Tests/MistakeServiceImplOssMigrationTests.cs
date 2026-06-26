@@ -26,6 +26,7 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 public class MistakeServiceImplOssMigrationTests
 {
     private readonly Mock<IMistakeDomainService> _mockDomainService;
+    private readonly Mock<IReanalyzeJobService> _mockReanalyzeJobService;
     private readonly Mock<ILogger<MistakeServiceImpl>> _mockLogger;
     private readonly Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient> _mockStudentClient;
     private readonly Mock<IOssService> _mockOssService;
@@ -34,6 +35,7 @@ public class MistakeServiceImplOssMigrationTests
     public MistakeServiceImplOssMigrationTests()
     {
         _mockDomainService = new Mock<IMistakeDomainService>();
+        _mockReanalyzeJobService = new Mock<IReanalyzeJobService>();
         _mockLogger = new Mock<ILogger<MistakeServiceImpl>>();
         _mockStudentClient = new Mock<StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
         _mockOssService = new Mock<IOssService>();
@@ -41,6 +43,7 @@ public class MistakeServiceImplOssMigrationTests
 
         _service = new MistakeServiceImpl(
             _mockDomainService.Object,
+            _mockReanalyzeJobService.Object,
             _mockStudentClient.Object,
             _mockOssService.Object,
             mockVlAnalyzer.Object,
