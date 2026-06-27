@@ -7,10 +7,11 @@ public class VlAnalyzerOptions
     public string Model { get; set; } = "Qwen/Qwen3-VL-30B-A3B-Instruct";
     public double Temperature { get; set; } = 0.1;
 
-    // Required for reasoning VL models (e.g. mimo-v2.5, step-3.7-flash) so that
-    // their internal `reasoning_content` does not exhaust the entire token budget
-    // and leave `content` empty. See docs/overview/SystemContext.md and HumanReview HR-12.
-    public int MaxOutputTokens { get; set; } = 4096;
+    // max_tokens is intentionally NOT sent in the request body. The API provider
+    // uses its own default output limit based on the model's context window
+    // (e.g. mimo 1M, stepfun 256K). Setting it does not help handle oversized
+    // inputs — the provider returns an error if the input exceeds the limit.
+    // See docs/overview/SystemContext.md "VL Provider" section.
 
     public int TimeoutSeconds { get; set; } = 60;
     public int MaxRetries { get; set; } = 2;

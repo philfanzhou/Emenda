@@ -2,16 +2,6 @@
 
 > 代码审查发现项，按优先级排列。已解决项必须移除。
 
-## P0 — 必须修复
-
-### HR-12: 推理型 VL 模型默认 max_tokens 不够，content 被截断为空
-
-- **问题**：`VlUploadAnalyzer.BuildRequestBody` / `BuildReanalyzeRequestBody` 当前请求体只包含 `model`、`messages`、`temperature`、`stream`，**未**显式发送 `max_tokens`，依赖 provider 默认值。实际可用 provider（`mimo-v2.5`、`step-3.7-flash`）均为推理型模型，响应中会产生独立的 `reasoning_content` 字段并消耗大量 token。在实测中：stepfun 的 `step-3.7-flash` 当 `max_tokens ≤ 1024` 时，`content` 字段返回空字符串、`finish_reason="length"`；mimo 的 `mimo-v2.5` 也存在同样风险（默认 max_tokens 较小但 reasoning 短，未必触发）。后果：ReanalyzeJob 解析失败 → 标 `Failed`；AnalyzeAsync 走"VL skipped"默认根因分组。重现：使用 stepfun `step-3.7-flash` + 用户提供的 key 跑 `ReAnalyzeAsync`，1x1 像素图 5/5 成功（因为 reasoning 短），但 768x768 真实图偶尔会因 token 预算耗尽导致 content 为空。
-- **A** (推荐)：在 `VlAnalyzerOptions` 增加 `public int MaxOutputTokens { get; set; } = 4096;` 字段，`BuildRequestBody` / `BuildReanalyzeRequestBody` 显式写入 `max_tokens = _options.MaxOutputTokens`；`appsettings.json` 增加 `"MaxOutputTokens": 4096` 默认值；新增单元测试 `BuildRequestBody_ShouldIncludeMaxTokens` 验证请求体含 `"max_tokens": 4096`。
-- **B**：硬编码 `max_tokens = 4096` 到 `BuildRequestBody`，不走配置。
-- **C**：暂不处理。当前只有 stepfun 复现，mimo 暂未触发；继续观察。
-- **批复**：
-
 ## P1 — 应尽快修复
 
 ### HR-06: OSS 迁移与 DB 更新不在同一事务

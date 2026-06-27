@@ -162,6 +162,7 @@ Return ONLY a JSON object with no other text:
             });
         }
 
+        // max_tokens is intentionally omitted — see VlAnalyzerOptions comment.
         var body = new
         {
             model = _options.Model,
@@ -174,7 +175,6 @@ Return ONLY a JSON object with no other text:
                 }
             },
             temperature = _options.Temperature,
-            max_tokens = _options.MaxOutputTokens,
             stream = false
         };
 
@@ -326,6 +326,7 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
             });
         }
 
+        // max_tokens is intentionally omitted — see VlAnalyzerOptions comment.
         var body = new
         {
             model = _options.Model,
@@ -338,7 +339,6 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
                 }
             },
             temperature = _options.Temperature,
-            max_tokens = _options.MaxOutputTokens,
             stream = false
         };
 

@@ -439,10 +439,8 @@ public class VlUploadAnalyzerTests
     #region Request Body - max_tokens
 
     /// <summary>
-    /// Captures the outgoing request body so tests can assert the JSON shape
-    /// (specifically that <c>max_tokens</c> is set, which is required for
-    /// reasoning VL models like mimo-v2.5 / step-3.7-flash to leave room
-    /// for the actual <c>content</c> response). See HumanReview HR-12.
+    /// Captures the outgoing request body so tests can assert the JSON shape.
+    /// max_tokens must NOT be present — the provider uses its own default.
     /// </summary>
     private class CapturingHttpMessageHandler : HttpMessageHandler
     {
@@ -469,7 +467,7 @@ public class VlUploadAnalyzerTests
     }
 
     [Fact]
-    public async Task AnalyzeAsync_RequestBody_ShouldIncludeMaxTokens()
+    public async Task AnalyzeAsync_RequestBody_ShouldNotIncludeMaxTokens()
     {
         // Arrange
         var handler = new CapturingHttpMessageHandler();
@@ -487,9 +485,8 @@ public class VlUploadAnalyzerTests
         // Assert
         handler.CapturedRequestBody.Should().NotBeNullOrEmpty();
         using var doc = JsonDocument.Parse(handler.CapturedRequestBody!);
-        doc.RootElement.TryGetProperty("max_tokens", out var maxTokensProp).Should().BeTrue(
-            "request body must include max_tokens for reasoning VL models (mimo, stepfun)");
-        maxTokensProp.GetInt32().Should().Be(4096);
+        doc.RootElement.TryGetProperty("max_tokens", out _).Should().BeFalse(
+            "max_tokens must not be sent — provider uses its own default output limit");
     }
 
     #endregion
