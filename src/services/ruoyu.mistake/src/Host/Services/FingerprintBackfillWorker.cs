@@ -71,23 +71,26 @@ public class FingerprintBackfillWorker : BackgroundService
         // Only confirmed mistakes have their images migrated to mistakes/ and survive
         // upload-record deletion; pending/rejected items still have uploads/ paths and
         // their fingerprints are maintained by the normal upload dedup path.
+        // NOTE: SourceRegions is a JSONB column — cannot use SelectMany server-side,
+        // so we materialize first then extract paths client-side.
         var items = await dbContext.MistakeItems
             .Where(i => i.ReviewStatus == ConfirmedReviewStatus)
             .Select(i => new
             {
                 i.StudentId,
-                Paths = i.SourceRegions.Select(r => r.SourceImagePath).ToList()
+                i.SourceRegions
             })
             .ToListAsync(ct).ConfigureAwait(false);
 
         var pairs = new List<(string StudentId, string OssPath)>();
         foreach (var item in items)
         {
-            foreach (var path in item.Paths)
+            if (item.SourceRegions == null) continue;
+            foreach (var region in item.SourceRegions)
             {
-                if (!string.IsNullOrWhiteSpace(path))
+                if (!string.IsNullOrWhiteSpace(region.SourceImagePath))
                 {
-                    pairs.Add((item.StudentId, path));
+                    pairs.Add((item.StudentId, region.SourceImagePath));
                 }
             }
         }
