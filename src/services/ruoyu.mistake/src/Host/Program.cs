@@ -78,6 +78,11 @@ builder.Services.AddHostedService<UploadPollingWorker>();
 builder.Services.AddHostedService<ReanalyzeJobHostedService>();
 builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
 
+// TEMPORARY: One-time fingerprint backfill — safe to delete after deployment verification
+// Rebuilds fingerprints for historical confirmed-mistake images. Remove this line and the
+// FingerprintBackfillWorker.cs file after the backfill log shows completion.
+builder.Services.AddHostedService<FingerprintBackfillWorker>();
+
 // Student Learning gRPC client (used by polling worker and review flow)
 builder.Services.AddSingleton(sp =>
 {
@@ -134,6 +139,7 @@ app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=m
 app.Logger.LogInformation("UploadPollingWorker: Enabled=true, PollInterval=60s");
 app.Logger.LogInformation("ReanalyzeJobHostedService: Enabled=true, MaxConcurrency=2 (hardcoded)");
 app.Logger.LogInformation("ReanalyzeJobCleanupService: Enabled=true, RetentionDays=30 (hardcoded)");
+app.Logger.LogInformation("FingerprintBackfillWorker: Enabled=true (TEMPORARY one-time backfill)");
 
 using (var scope = app.Services.CreateScope())
 {
