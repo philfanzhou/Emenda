@@ -56,9 +56,9 @@
 - [ ] pending-items 接口学科过滤
 - [ ] list 接口学科过滤（内存过滤 + 分页）
 
-### 驳回后清理
-- [ ] 单条审核驳回 → DeleteMistakeItem → 检查剩余 → MarkUploadRecordAsReturned
-- [ ] 批量审核驳回 → 同上逻辑
+### 退回后清理
+- [ ] 单条审核退回 → DeleteMistakeItem → 检查剩余 → MarkUploadRecordAsReturned
+- [ ] 批量审核退回 → 同上逻辑
 - [ ] 退回错题 → DeleteMistakeItem → MarkUploadRecordAsReturned
 
 ### 确认后自动完成审核

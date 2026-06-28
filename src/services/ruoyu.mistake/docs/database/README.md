@@ -28,7 +28,7 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 | 0 | UNSPECIFIED | 未指定 |
 | 1 | PendingReview | 待审核 |
 | 2 | Confirmed | 已确认 |
-| 3 | Rejected | 已驳回 |
+| 3 | Rejected | 已退回 |
 
 ### ProcessAction（process_log.action）
 
@@ -38,7 +38,7 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 | 1 | Created | 创建错题 |
 | 2 | Analyzed | 分析 |
 | 3 | ReviewConfirmed | 审核确认 |
-| 4 | ReviewRejected | 审核驳回 |
+| 4 | ReviewRejected | 审核退回 |
 | 5 | Practiced | 练习 |
 | 6 | Mastered | 已掌握 |
 

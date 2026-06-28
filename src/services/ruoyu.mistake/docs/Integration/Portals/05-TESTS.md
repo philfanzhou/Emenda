@@ -166,7 +166,7 @@
 
 **预期结果**：审核成功，自动完成审核，上传记录被删除
 
-### TC-TCH-007 单条审核 — 驳回
+### TC-TCH-007 单条审核 — 退回
 
 **前置条件**：上传记录下有多条错题
 
@@ -179,7 +179,7 @@
 
 **预期结果**：错题被删除，上传记录保留
 
-### TC-TCH-008 单条审核 — 驳回最后一条
+### TC-TCH-008 单条审核 — 退回最后一条
 
 **前置条件**：上传记录下仅剩一条错题
 
@@ -202,14 +202,14 @@
 
 **预期结果**：返回 BatchReviewResponse，含 ProcessedCount 和 FailedIds
 
-### TC-TCH-010 批量审核 — 驳回
+### TC-TCH-010 批量审核 — 退回
 
 **步骤**：
 1. POST /api/mistake/batch-review，Body: { Ids: ["id1", "id2"], ReviewStatus=3 }
 2. 验证每条都调用了 ReviewMistakeItem 和 DeleteMistakeItem
 3. 验证 MarkUploadRecordAsReturned 在适当条件下被调用
 
-**预期结果**：所有驳回的错题被删除，空的上传记录标记为已退回
+**预期结果**：所有退回的错题被删除，空的上传记录标记为已退回
 
 ### TC-TCH-011 批量审核 — 参数校验
 
@@ -219,7 +219,7 @@
 
 **步骤**：
 1. POST /api/mistake/batch-review，Body: { Ids: ["id1"], ReviewStatus=1 }
-2. 验证返回 400，Message: "审核结果只能是确认(2)或驳回(3)"
+2. 验证返回 400，Message: "审核结果只能是确认(2)或退回(3)"
 
 ### TC-TCH-012 退回错题
 

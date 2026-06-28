@@ -34,7 +34,7 @@
 | 1 | Created | 创建错题 |
 | 2 | Analyzed | 分析 |
 | 3 | ReviewConfirmed | 审核确认 |
-| 4 | ReviewRejected | 审核驳回 |
+| 4 | ReviewRejected | 审核退回 |
 | 5 | Practiced | 练习 |
 | 6 | Mastered | 已掌握 |
 

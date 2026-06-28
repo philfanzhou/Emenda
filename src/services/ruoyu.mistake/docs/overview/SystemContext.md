@@ -1,6 +1,6 @@
 # ruoyu.mistake 系统上下文
 
-ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责错题记录的全生命周期管理——轮询采集学生上传的错题图片、VL 视觉语言分析、自动创建待审核错题、教师逐条审核确认/驳回、审核完成后触发 OSS 图片迁移，到错题练习追踪与类型分析。本服务是错题业务域的唯一数据权威，通过轮询 ruoyu.student 获取已分类的上传记录，并通过 gRPC 对外暴露能力。
+ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责错题记录的全生命周期管理——轮询采集学生上传的错题图片、VL 视觉语言分析、自动创建待审核错题、教师逐条审核确认/退回、审核完成后触发 OSS 图片迁移，到错题练习追踪与类型分析。本服务是错题业务域的唯一数据权威，通过轮询 ruoyu.student 获取已分类的上传记录，并通过 gRPC 对外暴露能力。
 
 ## 系统上下文图
 
@@ -82,7 +82,7 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 
 - **协议**: gRPC (HTTP/2)，目标端口 5005
 - **调用接口**: `GetProcessingUploadRecords`（轮询采集）、`RemoveProcessedImages`（处理完成通知）、`CreateReturnedUploadRecord`（退回创建记录）
-- **调用场景**: `UploadPollingWorker` 轮询 Processing 记录；审核驳回时创建 Returned 记录
+- **调用场景**: `UploadPollingWorker` 轮询 Processing 记录；审核退回时创建 Returned 记录
 
 ### VL Provider (OpenAI 兼容 Chat Completions)
 
@@ -106,7 +106,7 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 - **协议**: S3 兼容 API
 - **接口**: `IOssService`（生产: `S3OssService`，开发: `LocalFileOssService`）
 - **允许前缀**: `mistakes/`、`uploads/`（轮询期间需要读取 uploads/ 下的图片）
-- **调用场景**: `UploadPollingWorker` 中图片迁移（uploads/ → mistakes/）；`ReviewMistakeItem` 驳回时反向迁移（mistakes/ → uploads/）；缩略图生成
+- **调用场景**: `UploadPollingWorker` 中图片迁移（uploads/ → mistakes/）；`ReviewMistakeItem` 退回时反向迁移（mistakes/ → uploads/）；缩略图生成
 - **失败策略**: 单图迁移失败不阻塞整体流程，catch 后 log error 继续
 
 ### PostgreSQL / SQLite
@@ -122,7 +122,7 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 |----------|------|
 | 数据权威 | mistake 是 `mistake_item`、`mistake_practice`、`process_log` 三张表的唯一写入者 |
 | 只读引用 | `student_id`、`source_upload_id`、`reviewer_id` 为外部引用字段，mistake 不校验其存在性 |
-| 主动调用 Student | 通过 `UploadPollingWorker` 轮询 Student 的 Processing 记录；审核驳回时调用 `CreateReturnedUploadRecord` |
+| 主动调用 Student | 通过 `UploadPollingWorker` 轮询 Student 的 Processing 记录；审核退回时调用 `CreateReturnedUploadRecord` |
 | 不调用其他业务服务 | 不调用 Homework、QuestionBank 等其他业务微服务 |
 | 不做认证鉴权 | 认证在 portal 层完成，mistake 信任调用方传入的身份参数 |
 | OSS 路径归属 | `mistakes/` 前缀由 mistake 主责；`uploads/` 前缀由 student 主责；轮询期间 mistake 可读写两个前缀 |

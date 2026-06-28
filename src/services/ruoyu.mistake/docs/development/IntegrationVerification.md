@@ -114,17 +114,17 @@
 | **预期结果** | 1. 返回 success=true<br>2. 错题 review_status 变为 Confirmed(2)<br>3. grade 和 subject 被修正为传入值<br>4. reviewer_id、reviewed_at、root_cause 已填充<br>5. process_log 新增 action=3(ReviewConfirmed) 记录 |
 | **失败判断** | 返回 success=false；状态未变更；修正字段未生效；无审核日志 |
 
-### TC-10 审核驳回单条错题
+### TC-10 审核退回单条错题
 
 | 项目 | 内容 |
 |------|------|
-| **用例名称** | 审核驳回单条错题 |
-| **目的** | 验证 ReviewMistakeItem 驳回操作，以及 teacher_portal 驳回后的级联处理 |
+| **用例名称** | 审核退回单条错题 |
+| **目的** | 验证 ReviewMistakeItem 退回操作，以及 teacher_portal 退回后的级联处理 |
 | **前置条件** | 1. mistake 服务已启动<br>2. teacher_portal 已启动且 MistakeGrpcService:Address 配置正确<br>3. student 服务已启动<br>4. 存在一条 PendingReview 状态的错题 |
 | **输入** | id=有效错题ID, reviewStatus=Rejected(3), reviewerId="teacher-001", reviewComment="图片模糊" |
-| **操作步骤** | 1. 通过 teacher_portal POST /api/mistake/review-item 传入驳回参数<br>2. 验证 mistake 服务 ReviewMistakeItem 返回 success=true<br>3. 验证 teacher_portal 自动调用 DeleteMistakeItem 删除该错题<br>4. 若该 sourceUploadId 下无其他错题，验证调用 student.MarkUploadRecordAsReturned |
+| **操作步骤** | 1. 通过 teacher_portal POST /api/mistake/review-item 传入退回参数<br>2. 验证 mistake 服务 ReviewMistakeItem 返回 success=true<br>3. 验证 teacher_portal 自动调用 DeleteMistakeItem 删除该错题<br>4. 若该 sourceUploadId 下无其他错题，验证调用 student.MarkUploadRecordAsReturned |
 | **预期结果** | 1. ReviewMistakeItem 返回 success=true，状态变为 Rejected(3)<br>2. 错题记录被删除（DeleteMistakeItem）<br>3. 若该上传记录下无剩余错题，student 服务的上传记录被标记为已退回<br>4. process_log 新增 action=4(ReviewRejected) 记录 |
-| **失败判断** | 驳回后错题未被删除；MarkUploadRecordAsReturned 未被调用（当应调用时）；状态未变更 |
+| **失败判断** | 退回后错题未被删除；MarkUploadRecordAsReturned 未被调用（当应调用时）；状态未变更 |
 
 ### TC-11 批量审核确认
 
@@ -138,17 +138,17 @@
 | **预期结果** | 1. 返回 success=true, processedCount=2, failedCount=0<br>2. 所有错题状态变为 Confirmed<br>3. 自动触发 CompleteUploadReview（OSS 迁移等）<br>4. student 服务删除上传记录 |
 | **失败判断** | 部分确认失败；CompleteUploadReview 未自动触发；student 回调未执行 |
 
-### TC-12 批量审核驳回
+### TC-12 批量审核退回
 
 | 项目 | 内容 |
 |------|------|
-| **用例名称** | 批量审核驳回 |
-| **目的** | 验证 teacher_portal BatchReview 接口批量驳回多条错题，以及级联删除和退回处理 |
+| **用例名称** | 批量审核退回 |
+| **目的** | 验证 teacher_portal BatchReview 接口批量退回多条错题，以及级联删除和退回处理 |
 | **前置条件** | 1. mistake 服务已启动<br>2. teacher_portal 已启动<br>3. student 服务已启动<br>4. 同一 sourceUploadId 下存在多条 PendingReview 错题 |
-| **输入** | items=[{id="item-1"},{id="item-2"}], reviewStatus=3(Rejected), reviewComment="批量驳回" |
-| **操作步骤** | 1. 调用 POST /api/mistake/batch-review 传入多条驳回<br>2. 验证所有错题被 ReviewMistakeItem 驳回后自动 DeleteMistakeItem<br>3. 验证当该 sourceUploadId 下无剩余错题时，调用 student.MarkUploadRecordAsReturned |
+| **输入** | items=[{id="item-1"},{id="item-2"}], reviewStatus=3(Rejected), reviewComment="批量退回" |
+| **操作步骤** | 1. 调用 POST /api/mistake/batch-review 传入多条退回<br>2. 验证所有错题被 ReviewMistakeItem 退回后自动 DeleteMistakeItem<br>3. 验证当该 sourceUploadId 下无剩余错题时，调用 student.MarkUploadRecordAsReturned |
 | **预期结果** | 1. 返回 success=true, processedCount=2, failedCount=0<br>2. 所有错题记录被删除<br>3. student 服务上传记录被标记为已退回 |
-| **失败判断** | 部分驳回失败；错题未被删除；MarkUploadRecordAsReturned 未被调用（当应调用时） |
+| **失败判断** | 部分退回失败；错题未被删除；MarkUploadRecordAsReturned 未被调用（当应调用时） |
 
 ### TC-13 完成审核 (CompleteUploadReview)
 
@@ -316,7 +316,7 @@
   - 非核心接口（如 GetAllReferencedImagePaths）返回结果与预期有偏差但不影响主流程
   - 容错场景日志消息与预期不完全匹配，但功能行为正确
   - 分页边界值（如 total_pages 计算）存在微小偏差
-  - teacher_portal 级联操作（驳回后删除、确认后 CompleteUploadReview）偶发失败但可重试成功
+  - teacher_portal 级联操作（退回后删除、确认后 CompleteUploadReview）偶发失败但可重试成功
   - 数据库旧表迁移在特定边界情况下需手动介入
 
 ### 阻塞问题
@@ -432,7 +432,7 @@ teacher_portal ──(DeleteUploadRecordAfterReview)──→ student
 | REVIEW_STATUS_UNSPECIFIED | 0 | 未指定 |
 | REVIEW_STATUS_PENDING_REVIEW | 1 | 待审核 |
 | REVIEW_STATUS_CONFIRMED | 2 | 已确认 |
-| REVIEW_STATUS_REJECTED | 3 | 已驳回 |
+| REVIEW_STATUS_REJECTED | 3 | 已退回 |
 
 ## 附录：ProcessAction 枚举值
 
@@ -442,6 +442,6 @@ teacher_portal ──(DeleteUploadRecordAfterReview)──→ student
 | PROCESS_ACTION_CREATED | 1 | 创建 |
 | PROCESS_ACTION_ANALYZED | 2 | 分析 |
 | PROCESS_ACTION_REVIEW_CONFIRMED | 3 | 审核确认 |
-| PROCESS_ACTION_REVIEW_REJECTED | 4 | 审核驳回 |
+| PROCESS_ACTION_REVIEW_REJECTED | 4 | 审核退回 |
 | PROCESS_ACTION_PRACTICED | 5 | 练习 |
 | PROCESS_ACTION_MASTERED | 6 | 掌握 |

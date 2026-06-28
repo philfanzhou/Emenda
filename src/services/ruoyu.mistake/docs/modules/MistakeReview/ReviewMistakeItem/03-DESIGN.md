@@ -177,6 +177,6 @@ MistakeServiceImpl (gRPC 层后审核编排)
 
 6. **审核幂等性**: 不支持重复审核。已审核（Confirmed 或 Rejected）的条目再次审核会抛出 MistakeValidationException。
 
-7. **驳回删除 MistakeItem**: Rejected 时直接删除该 MistakeItem，而非仅标记状态。因为驳回的错题不应保留在系统中，学生需要重新上传。
+7. **退回删除 MistakeItem**: Rejected 时直接删除该 MistakeItem，而非仅标记状态。因为退回的错题不应保留在系统中，学生需要重新上传。
 
 8. **无待审核条目时自动标记上传记录**: 审核完成后检查该 sourceUploadId 下是否还有 PendingReview 条目，若无则调用 MarkUploadRecordAsReturned。这替代了原先 CompleteUploadReview 的功能，使审核流程在逐条审核时即时完成。

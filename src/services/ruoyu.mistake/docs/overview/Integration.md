@@ -9,7 +9,7 @@
 | 3 | GetMistakeItemsByUpload | gRPC | 入 | admin_portal, teacher_portal | 按上传批次查询错题列表 |
 | 4 | GetMistakeItemList | gRPC | 入 | admin_portal, teacher_portal, user_portal | 分页查询错题列表 |
 | 5 | GetPendingReviewUploads | gRPC | 入 | teacher_portal | 查询待审核上传批次 |
-| 6 | ReviewMistakeItem | gRPC | 入 | teacher_portal | 审核单条错题（确认/驳回） |
+| 6 | ReviewMistakeItem | gRPC | 入 | teacher_portal | 审核单条错题（确认/退回） |
 | 7 | AddMistakeItem | gRPC | 入 | teacher_portal | 手动添加错题条目 |
 | 8 | UpdateMistakeItem | gRPC | 入 | admin_portal | 更新错题条目 |
 | 9 | DeleteMistakeItem | gRPC | 入 | teacher_portal, user_portal | 删除错题条目 |

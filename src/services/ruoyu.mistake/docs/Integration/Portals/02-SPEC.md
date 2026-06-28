@@ -179,7 +179,7 @@
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | Id | string | 是 | 错题ID |
-| ReviewStatus | int | 是 | 审核结果：2=确认，3=驳回 |
+| ReviewStatus | int | 是 | 审核结果：2=确认，3=退回 |
 | RootCause | string | 否 | 错误根因（AI 生成，老师可修改） |
 | Grade | int | 否 | 年级修正 |
 | Subject | int | 否 | 学科修正 |
@@ -188,7 +188,7 @@
 
 **ReviewerId 来源**：`User.FindFirst(ClaimTypes.NameIdentifier)` 或 `User.FindFirst("sub")`
 
-**驳回后（ReviewStatus=3）额外行为**：
+**退回后（ReviewStatus=3）额外行为**：
 
 1. `GetMistakeItem` → 获取 sourceUploadId 和 studentId
 2. `DeleteMistakeItem` → 删除该错题
@@ -213,7 +213,7 @@
 |------|------|------|------|
 | Ids | List\<string\> | 否* | 错题ID列表（与 Items 二选一） |
 | Items | List\<BatchReviewItemRequest\> | 否* | 错题列表（含 Id, Subject, Grade），与 Ids 二选一 |
-| ReviewStatus | int | 是 | 审核结果：2=确认，3=驳回 |
+| ReviewStatus | int | 是 | 审核结果：2=确认，3=退回 |
 | RootCause | string | 否 | 错误根因（AI 生成，老师可修改） |
 
 **BatchReviewItemRequest**：
@@ -224,7 +224,7 @@
 | Subject | int? | 学科修正 |
 | Grade | int? | 年级修正 |
 
-**额外行为**：与单条审核相同，驳回后清理、确认后自动完成审核。批量确认时，收集所有 sourceUploadId，统一检查每个上传记录是否全部审核完成。
+**额外行为**：与单条审核相同，退回后清理、确认后自动完成审核。批量确认时，收集所有 sourceUploadId，统一检查每个上传记录是否全部审核完成。
 
 **响应**：`BatchReviewResponse { Success, Message, ProcessedCount, FailedCount, FailedIds[] }`
 

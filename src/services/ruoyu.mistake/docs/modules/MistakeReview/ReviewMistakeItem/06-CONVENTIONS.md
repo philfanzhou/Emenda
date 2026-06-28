@@ -29,9 +29,9 @@
 
 | 错误场景 | gRPC StatusCode | 错误消息 | 来源 |
 |----------|-----------------|----------|------|
-| review_status 非 Confirmed/Rejected | InvalidArgument | 审核结果只能是确认或驳回 | gRPC层 |
+| review_status 非 Confirmed/Rejected | InvalidArgument | 审核结果只能是确认或退回 | gRPC层 |
 | 错题非 PendingReview 状态 | InvalidArgument | 只能审核待审核状态的错题 | 领域层 |
-| 审核结果非 Confirmed/Rejected（领域层） | InvalidArgument | 审核结果只能是确认或驳回 | 领域层 |
+| 审核结果非 Confirmed/Rejected（领域层） | InvalidArgument | 审核结果只能是确认或退回 | 领域层 |
 | 错题不存在 | - | success=false, error_message="错题不存在" | gRPC层 |
 
 ## 图片迁移约定

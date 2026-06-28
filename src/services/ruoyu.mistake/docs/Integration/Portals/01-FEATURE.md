@@ -28,7 +28,7 @@ Mistake 模块通过 gRPC 为三个 Portal 提供错题业务接口。Mistake �
 - **核心职责**：
   - 获取待审核上传记录列表
   - 获取审核详情（按上传记录）
-  - 单条审核（确认/驳回）
+  - 单条审核（确认/退回）
   - 批量审核
   - 手动添加错题
   - 完成审核
@@ -36,7 +36,7 @@ Mistake 模块通过 gRPC 为三个 Portal 提供错题业务接口。Mistake �
   - 查询错题列表与详情
   - 查询待审核条目
 - **额外行为**：
-  - **驳回后清理**：调用 `DeleteMistakeItem` 删除错题 → 检查上传记录下是否还有剩余错题 → 若无则调用 Student 的 `MarkUploadRecordAsReturned` 标记上传记录为已退回
+  - **退回后清理**：调用 `DeleteMistakeItem` 删除错题 → 检查上传记录下是否还有剩余错题 → 若无则调用 Student 的 `MarkUploadRecordAsReturned` 标记上传记录为已退回
   - **确认后自动完成审核**：检查上传记录下是否还有待审核条目 → 若无则调用 `CompleteUploadReview` → 调用 Student 的 `DeleteUploadRecordAfterReviewAsync` 删除上传记录
 - **权限**：通过 `TeacherDbService.GetSubjectsByUserId` 过滤教师可查看的学科
 

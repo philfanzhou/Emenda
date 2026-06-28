@@ -44,6 +44,6 @@
 | Created | 1 | 创建 |
 | Analyzed | 2 | 分析 |
 | ReviewConfirmed | 3 | 审核确认 |
-| ReviewRejected | 4 | 审核驳回 |
+| ReviewRejected | 4 | 审核退回 |
 | Practiced | 5 | 练习 |
 | Mastered | 6 | 掌握 |

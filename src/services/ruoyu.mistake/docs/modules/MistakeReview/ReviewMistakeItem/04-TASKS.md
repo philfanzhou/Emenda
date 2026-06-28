@@ -60,7 +60,7 @@
     "files": [
       "test/Ruoyu.Study.Mistake.Domain.Tests/MistakeDomainServiceTests.cs"
     ],
-    "acceptance": "覆盖确认审核、驳回审核、重复审核场景"
+    "acceptance": "覆盖确认审核、退回审核、重复审核场景"
   }
 ]
 ```

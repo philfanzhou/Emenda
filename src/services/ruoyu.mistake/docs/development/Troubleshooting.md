@@ -102,7 +102,7 @@
 **典型症状**：调用 `ReviewMistakeItem` 返回 `StatusCode.InvalidArgument`。
 
 **常见日志特征**：
-- `"审核结果只能是确认或驳回"` — `review_status` 不是 `Confirmed` 或 `Rejected`（`MistakeServiceImpl.cs` L146）
+- `"审核结果只能是确认或退回"` — `review_status` 不是 `Confirmed` 或 `Rejected`（`MistakeServiceImpl.cs` L146）
 - `"只能审核待审核状态的错题"` — 错题当前不是 `PendingReview` 状态（`MistakeDomainService.cs` L111）
 
 **可能根因**：

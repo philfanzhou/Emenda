@@ -40,7 +40,7 @@
 | 0 | UNSPECIFIED | 未指定 |
 | 1 | PendingReview | 待审核 |
 | 2 | Confirmed | 已确认 |
-| 3 | Rejected | 已驳回 |
+| 3 | Rejected | 已退回 |
 
 ## JSONB 字段格式
 

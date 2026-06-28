@@ -59,13 +59,13 @@ ReviewItem(request)
 ├─ gRPC: ReviewMistakeItem(id, reviewStatus, reviewerId, ...)
 │  └─ 失败 → 返回 { success: false, message }
 │
-├─ ReviewStatus == 3（驳回）
+├─ ReviewStatus == 3（退回）
 │  ├─ gRPC: GetMistakeItem(id) → sourceUploadId, studentId
 │  ├─ gRPC: DeleteMistakeItem(id) → 删除该错题
 │  ├─ gRPC: GetMistakeItemsByUpload(sourceUploadId)
 │  │  └─ 检查剩余错题数量
 │  └─ 若剩余 == 0 且 studentId 非空
-│     └─ gRPC(Student): MarkUploadRecordAsReturned(recordId, studentId, "所有错题已驳回")
+│     └─ gRPC(Student): MarkUploadRecordAsReturned(recordId, studentId, "所有错题已退回")
 │
 └─ ReviewStatus == 2（确认）
    ├─ gRPC: GetMistakeItem(id) → sourceUploadId
@@ -86,7 +86,7 @@ BatchReview(request)
 ├─ 逐条处理：
 │  ├─ gRPC: ReviewMistakeItem(id, reviewStatus, ...)
 │  │
-│  ├─ ReviewStatus == 3（驳回）
+│  ├─ ReviewStatus == 3（退回）
 │  │  ├─ gRPC: GetMistakeItem(id) → sourceUploadId, studentId
 │  │  ├─ gRPC: DeleteMistakeItem(id)
 │  │  └─ 若该上传记录下无剩余错题
@@ -157,7 +157,7 @@ ReturnMistake(id, studentId, returnReason)
 
 ## Portal 层额外行为总结
 
-### 驳回后清理链
+### 退回后清理链
 
 | 步骤 | 调用 | 失败处理 |
 |------|------|----------|
