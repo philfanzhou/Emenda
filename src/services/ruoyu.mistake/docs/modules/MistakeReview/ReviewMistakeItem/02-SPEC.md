@@ -22,6 +22,7 @@
 - [x] FR-10: Confirmed 时调用学生服务 RemoveImagesFromRecord，从上传记录移除已迁移图片引用
 - [x] FR-11: Rejected 时删除该 MistakeItem
 - [x] FR-12: 审核后检查该 sourceUploadId 下是否还有 PendingReview 状态的条目，若无则调用学生服务 MarkUploadRecordAsReturned
+- [x] FR-13: Rejected 时接收 `return_reason`（教师退回原因），调用 `CreateReturnedRecordAsync` 创建新的退回记录时将 `return_reason` 透传给 student 服务写入 `image_upload_record.return_reason` 字段；不再将 root_cause 拼接到 comments 中
 
 ## 验收标准
 

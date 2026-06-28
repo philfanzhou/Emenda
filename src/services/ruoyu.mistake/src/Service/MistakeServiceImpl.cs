@@ -212,7 +212,10 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                 await _mistakeService.DeleteMistakeItemAsync(item.Id);
                 _logger.LogInformation("ReviewMistakeItem: Rejected and deleted MistakeItem {ItemId}", item.Id);
 
-                // Create a returned upload record in Student so the student can re-upload
+                // Create a returned upload record in Student so the student can re-upload.
+                // return_reason is passed through to student service and written to
+                // image_upload_record.return_reason (NOT concatenated into comments, to avoid
+                // confusing the mistake root_cause with the teacher's return reason).
                 if (migratedBackPaths.Count > 0 && !string.IsNullOrWhiteSpace(item.StudentId))
                 {
                     try
@@ -220,7 +223,8 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
                         var createReq = new StudentProto.CreateReturnedRecordRequest
                         {
                             StudentId = item.StudentId,
-                            Comments = $"Rejected: {request.RootCause ?? "No comment"}"
+                            Comments = "Rejected",
+                            ReturnReason = request.ReturnReason ?? string.Empty
                         };
                         foreach (var path in migratedBackPaths)
                         {

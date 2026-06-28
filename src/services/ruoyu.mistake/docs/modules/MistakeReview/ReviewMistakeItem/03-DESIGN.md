@@ -36,6 +36,7 @@ message ReviewMistakeItemRequest {
   string root_cause = 4;
   int32 grade = 5;
   int32 subject = 6;
+  string return_reason = 7;  // 教师退回原因（仅 Rejected 时使用，透传给 student 服务写入 return_reason 字段）
 }
 
 message ReviewMistakeItemResponse {
@@ -145,7 +146,12 @@ MistakeServiceImpl (gRPC 层后审核编排)
     │    6. 调用 StudentLearningGrpcServiceClient.RemoveImagesFromRecord(sourceUploadId, removedPaths)
     │
     │  if (Rejected):
-    │    3. 删除该 MistakeItem (IMistakeItemRepository.DeleteAsync)
+    │    3. 把图片从 mistakes/ 迁回 uploads/（CopyObject + Delete）
+    │    4. 删除该 MistakeItem (IMistakeItemRepository.DeleteAsync)
+    │    5. 调用 StudentLearningGrpcServiceClient.CreateReturnedRecordAsync(studentId, migratedBackPaths,
+    │       comments="Rejected", returnReason=request.return_reason)
+    │       — return_reason 透传给 student 服务写入 image_upload_record.return_reason
+    │       — 不再拼接 root_cause 到 comments 中
     │
     │  (Confirmed 和 Rejected 共用):
     │    6. 查询该 sourceUploadId 下是否还有 PendingReview 状态的条目
