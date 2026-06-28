@@ -155,7 +155,7 @@ public class MistakeServiceImpl : MistakeGrpcService.MistakeGrpcServiceBase
     public override async Task<ReviewMistakeItemResponse> ReviewMistakeItem(ReviewMistakeItemRequest request, ServerCallContext context)
     {
         if (request.ReviewStatus != ReviewStatus.Confirmed && request.ReviewStatus != ReviewStatus.Rejected)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "审核结果只能是确认或驳回"));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "审核结果只能是确认或退回"));
 
         try
         {

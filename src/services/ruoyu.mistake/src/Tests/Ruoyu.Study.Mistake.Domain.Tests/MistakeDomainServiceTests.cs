@@ -627,7 +627,7 @@ public class MistakeDomainServiceTests
             itemId, (int)ReviewStatus.PendingReview, "teacher-1", null);
 
         await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*审核结果只能是确认或驳回*");
+            .WithMessage("*审核结果只能是确认或退回*");
     }
 
     [Fact]

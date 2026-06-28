@@ -119,7 +119,7 @@ public class MistakeDomainService : IMistakeDomainService
 
         if (reviewStatus != (int)ReviewStatus.Confirmed && reviewStatus != (int)ReviewStatus.Rejected)
         {
-            throw new MistakeValidationException("审核结果只能是确认或驳回");
+            throw new MistakeValidationException("审核结果只能是确认或退回");
         }
 
         item.ReviewStatus = reviewStatus;
