@@ -87,15 +87,15 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 ### VL Provider (OpenAI 兼容 Chat Completions)
 
 - **协议**: HTTP/HTTPS，OpenAI 兼容 API（`/v1/chat/completions`）
-- **接口**: `{ApiBaseUrl}/chat/completions`
-- **调用场景**: `VlUploadAnalyzer` 对错题图片进行视觉语言分析，按学科/年级分组（`AnalyzeAsync`）或对单条错题重新生成根因（`ReAnalyzeAsync`）
-- **配置**: `VlAnalyzer` 配置段（ApiKey、ApiBaseUrl、Model、Temperature、TimeoutSeconds、MaxRetries、RetryDelayMs）
+- **接口**: `{BaseUrl}/chat/completions`
+- **调用场景**: `VlUploadAnalyzer` 对错题图片进行视觉语言分析，按学科/年级分组（`AnalyzeAsync`）或对单条错题重新生成根因（`ReAnalyzeAsync`）；HTTP 调用由共享库 `Ruoyu.Study.Ai.Shared` 的 `OpenAiCompatibleClient` 统一处理（鉴权、超时、重试）
+- **配置**: `VlAnalyzer` 配置段（ApiKey、BaseUrl、Model、Temperature、TimeoutSeconds、MaxRetries、RetryDelayMs）
 - **start.sh 环境变量约定**: `start.sh` 显式映射以下 3 个最关键的配置（其余如 `Temperature` / `TimeoutSeconds` / `MaxRetries` / `RetryDelayMs` 走 `appsettings.json` 默认值）：
 
   | 启动脚本变量 | 环境变量 | 配置键 | 默认 | 必填 |
   |---|---|---|---|---|
   | `VL_API_KEY` | `VlAnalyzer__ApiKey` | `VlAnalyzer:ApiKey` | 空 | 是（生产） |
-  | `VL_API_BASE_URL` | `VlAnalyzer__ApiBaseUrl` | `VlAnalyzer:ApiBaseUrl` | `https://api.siliconflow.cn/v1` | 否 |
+  | `VL_API_BASE_URL` | `VlAnalyzer__BaseUrl` | `VlAnalyzer:BaseUrl` | `https://api.siliconflow.cn/v1` | 否 |
   | `VL_MODEL` | `VlAnalyzer__Model` | `VlAnalyzer:Model` | `Qwen/Qwen3-VL-30B-A3B-Instruct` | 否 |
 - **请求体约定**: 请求体**不发送** `max_tokens` 字段，让 API provider 使用自身的默认输出限制。当前使用的模型（mimo 1M 上下文、stepfun 256K 上下文）均无需显式指定输出上限。同理，不设置总上下文长度限制——该值是 provider 端模型的固有能力，API 调用中设置不会让超长输入自动截断，超限时 provider 会直接返回错误
 - **响应格式兼容**: 部分 provider（如 stepfun）的 `content` 字段会被 markdown 代码块包裹（` ```json ... ``` `），现有解析逻辑通过 `IndexOf('[')` + `LastIndexOf(']')` 提取 JSON 子串，能稳定处理

@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Ruoyu.Study.Common.Ai;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
@@ -67,7 +68,19 @@ builder.Services.AddSingleton<IOssService>(sp =>
 
 // VL Analyzer for image grouping
 builder.Services.Configure<VlAnalyzerOptions>(builder.Configuration.GetSection("VlAnalyzer"));
-builder.Services.AddHttpClient("VlAnalyzer");
+// Register OpenAiCompatibleClient in non-streaming mode (HttpClient.Timeout finite,
+// per-attempt timeout enforced by the client). OpenAiCompatibleClient's constructor
+// configures BaseAddress + Bearer auth on the HttpClient, so AddHttpClient only needs
+// to register the named client for pooling.
+builder.Services.AddHttpClient(nameof(OpenAiCompatibleClient));
+builder.Services.AddSingleton<OpenAiCompatibleClient>(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient(nameof(OpenAiCompatibleClient));
+    var options = sp.GetRequiredService<IOptions<VlAnalyzerOptions>>().Value;
+    var logger = sp.GetRequiredService<ILogger<OpenAiCompatibleClient>>();
+    return new OpenAiCompatibleClient(httpClient, options, logger);
+});
 builder.Services.AddSingleton<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer, VlUploadAnalyzer>();
 
 // Polling worker: polls Student service for Processing records and processes them
@@ -121,8 +134,9 @@ else
 
 var vlConfig = builder.Configuration.GetSection("VlAnalyzer");
 var vlOptions = vlConfig.Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
-app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}, ApiBaseUrl={ApiBaseUrl}",
-    vlOptions.IsConfigured, vlOptions.Model, vlOptions.ApiBaseUrl);
+app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}, BaseUrl={BaseUrl}, ApiKey={ApiKeyStatus}",
+    vlOptions.IsConfigured, vlOptions.Model, vlOptions.BaseUrl,
+    string.IsNullOrEmpty(vlOptions.ApiKey) ? "(empty - service disabled)" : SensitiveDataMasker.MaskApiKey(vlOptions.ApiKey));
 
 var studentGrpcUrl = builder.Configuration["StudentLearningService:GrpcUrl"]
                      ?? builder.Configuration["StudentService:GrpcUrl"]

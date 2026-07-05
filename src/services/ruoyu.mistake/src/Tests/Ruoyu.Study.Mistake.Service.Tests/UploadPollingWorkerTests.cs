@@ -46,7 +46,7 @@ public class UploadPollingWorkerTests
         {
             ApiKey = "test-api-key",
             Model = "test-model",
-            ApiBaseUrl = "http://localhost:8000",
+            BaseUrl = "http://localhost:8000",
             Temperature = 0.1,
             TimeoutSeconds = 30,
             MaxRetries = 0,

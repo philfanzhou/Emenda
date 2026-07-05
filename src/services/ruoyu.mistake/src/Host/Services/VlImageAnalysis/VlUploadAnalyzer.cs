@@ -1,8 +1,7 @@
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
+using Ruoyu.Study.Common.Ai;
 using Ruoyu.Study.Common.Constants;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Service.Services;
@@ -14,7 +13,7 @@ namespace Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 public class VlUploadAnalyzer : IVlAnalyzer
 {
     private readonly IOssService _ossService;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly OpenAiCompatibleClient _client;
     private readonly VlAnalyzerOptions _options;
     private readonly ILogger<VlUploadAnalyzer> _logger;
 
@@ -22,12 +21,12 @@ public class VlUploadAnalyzer : IVlAnalyzer
 
     public VlUploadAnalyzer(
         IOssService ossService,
-        IHttpClientFactory httpClientFactory,
+        OpenAiCompatibleClient client,
         IOptions<VlAnalyzerOptions> options,
         ILogger<VlUploadAnalyzer> logger)
     {
         _ossService = ossService;
-        _httpClientFactory = httpClientFactory;
+        _client = client;
         _options = options.Value;
         _logger = logger;
     }
@@ -45,7 +44,7 @@ public class VlUploadAnalyzer : IVlAnalyzer
         var prompt = BuildPrompt(imagePaths.Count);
         var requestBody = BuildRequestBody(prompt, imageDataList);
 
-        var responseContent = await SendRequestWithRetryAsync(requestBody, ct);
+        var responseContent = await _client.CallAsync(requestBody, ct);
 
         return ParseResponse(responseContent, imagePaths.Count);
     }
@@ -68,7 +67,7 @@ public class VlUploadAnalyzer : IVlAnalyzer
         var prompt = BuildReanalyzePrompt(imagePaths.Count, existingRootCause, teacherDescription);
         var requestBody = BuildReanalyzeRequestBody(prompt, imageDataList);
 
-        var responseContent = await SendRequestWithRetryAsync(requestBody, ct);
+        var responseContent = await _client.CallAsync(requestBody, ct);
 
         return ParseReanalyzeResponse(responseContent);
     }
@@ -147,7 +146,7 @@ Return ONLY a JSON object with no other text:
 ";
     }
 
-    private string BuildReanalyzeRequestBody(string prompt, List<string> imageDataList)
+    private object BuildReanalyzeRequestBody(string prompt, List<string> imageDataList)
     {
         var contentParts = new List<object>();
 
@@ -163,7 +162,7 @@ Return ONLY a JSON object with no other text:
         }
 
         // max_tokens is intentionally omitted — see VlAnalyzerOptions comment.
-        var body = new
+        return new
         {
             model = _options.Model,
             messages = new[]
@@ -177,12 +176,6 @@ Return ONLY a JSON object with no other text:
             temperature = _options.Temperature,
             stream = false
         };
-
-        return JsonSerializer.Serialize(body, new JsonSerializerOptions
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-        });
     }
 
     private VlReanalysisResult ParseReanalyzeResponse(string responseContent)
@@ -191,7 +184,7 @@ Return ONLY a JSON object with no other text:
 
         try
         {
-            var apiResponse = JsonSerializer.Deserialize<VlApiResponse>(responseContent, new JsonSerializerOptions
+            var apiResponse = JsonSerializer.Deserialize<OpenAiApiResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
             });
@@ -311,7 +304,7 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
 - The returned JSON must be in standard array format, ensuring it can be parsed correctly.";
     }
 
-    private string BuildRequestBody(string prompt, List<string> imageDataList)
+    private object BuildRequestBody(string prompt, List<string> imageDataList)
     {
         var contentParts = new List<object>();
 
@@ -327,7 +320,7 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
         }
 
         // max_tokens is intentionally omitted — see VlAnalyzerOptions comment.
-        var body = new
+        return new
         {
             model = _options.Model,
             messages = new[]
@@ -341,70 +334,6 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
             temperature = _options.Temperature,
             stream = false
         };
-
-        return JsonSerializer.Serialize(body, new JsonSerializerOptions
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-        });
-    }
-
-    private async Task<string> SendRequestWithRetryAsync(string requestBody, CancellationToken ct)
-    {
-        Exception? lastException = null;
-
-        for (int attempt = 0; attempt <= _options.MaxRetries; attempt++)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            if (attempt > 0)
-            {
-                _logger.LogInformation("Retrying VL analysis, attempt {Attempt}/{MaxRetries}", attempt, _options.MaxRetries);
-                await Task.Delay(_options.RetryDelayMs * attempt, ct);
-            }
-
-            try
-            {
-                var client = _httpClientFactory.CreateClient("VlAnalyzer");
-                client.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
-
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{_options.ApiBaseUrl}/chat/completions");
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
-                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-
-                var response = await client.SendAsync(request, ct);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var content = await response.Content.ReadAsStringAsync(ct);
-                    _logger.LogInformation("VL analysis API response received, length={Length}", content.Length);
-                    return content;
-                }
-
-                var errorContent = await response.Content.ReadAsStringAsync(ct);
-                _logger.LogWarning("VL analysis API returned status {StatusCode}: {Error}", response.StatusCode, errorContent);
-
-                if ((int)response.StatusCode >= 400 && (int)response.StatusCode < 500
-                    && response.StatusCode != System.Net.HttpStatusCode.TooManyRequests)
-                {
-                    throw new InvalidOperationException($"VL API client error ({response.StatusCode}): {errorContent}");
-                }
-
-                lastException = new InvalidOperationException($"VL API returned {response.StatusCode}: {errorContent}");
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogWarning(ex, "VL analysis HTTP request failed, attempt {Attempt}", attempt + 1);
-                lastException = ex;
-            }
-            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
-            {
-                _logger.LogWarning("VL analysis request timed out, attempt {Attempt}", attempt + 1);
-                lastException = ex;
-            }
-        }
-
-        throw lastException ?? new InvalidOperationException("VL analysis failed after retries");
     }
 
     private VlAnalysisResult ParseResponse(string responseContent, int totalImageCount)
@@ -413,7 +342,7 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
 
         try
         {
-            var apiResponse = JsonSerializer.Deserialize<VlApiResponse>(responseContent, new JsonSerializerOptions
+            var apiResponse = JsonSerializer.Deserialize<OpenAiApiResponse>(responseContent, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
             });
@@ -591,104 +520,6 @@ JSON format example (assuming 3 images, where the first 2 belong to the same mis
         if (groups.Count == 0) return null;
 
         return groups;
-    }
-
-    private class VlApiResponse
-    {
-        [JsonPropertyName("choices")]
-        public List<VlChoice>? Choices { get; set; }
-    }
-
-    private class VlChoice
-    {
-        [JsonPropertyName("message")]
-        public VlMessage? Message { get; set; }
-
-        [JsonPropertyName("finish_reason")]
-        public string? FinishReason { get; set; }
-    }
-
-    private class VlMessage
-    {
-        [JsonPropertyName("content")]
-        [JsonConverter(typeof(MessageContentConverter))]
-        public string? Content { get; set; }
-    }
-
-    /// <summary>
-    /// Handles both string and array formats for the message content field.
-    /// Some VL models return content as a plain string, others as an array of content parts.
-    /// </summary>
-    private class MessageContentConverter : JsonConverter<string?>
-    {
-        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                return reader.GetString();
-            }
-
-            if (reader.TokenType == JsonTokenType.StartArray)
-            {
-                using var doc = JsonDocument.ParseValue(ref reader);
-
-                foreach (var element in doc.RootElement.EnumerateArray())
-                {
-                    if (element.TryGetProperty("type", out var typeProp) &&
-                        typeProp.GetString() == "text")
-                    {
-                        if (element.TryGetProperty("text", out var textProp))
-                        {
-                            var text = textProp.GetString();
-                            if (!string.IsNullOrEmpty(text)) return text;
-                        }
-                        if (element.TryGetProperty("content", out var contentProp))
-                        {
-                            var text = contentProp.GetString();
-                            if (!string.IsNullOrEmpty(text)) return text;
-                        }
-                    }
-                }
-
-                foreach (var element in doc.RootElement.EnumerateArray())
-                {
-                    if (element.TryGetProperty("text", out var textProp) &&
-                        textProp.ValueKind == JsonValueKind.String)
-                    {
-                        var text = textProp.GetString();
-                        if (!string.IsNullOrEmpty(text)) return text;
-                    }
-                }
-
-                var texts = new List<string>();
-                foreach (var element in doc.RootElement.EnumerateArray())
-                {
-                    if (element.ValueKind == JsonValueKind.String)
-                    {
-                        var text = element.GetString();
-                        if (!string.IsNullOrEmpty(text)) texts.Add(text);
-                    }
-                }
-
-                if (texts.Count > 0) return string.Join("\n", texts);
-
-                var rawArray = JsonSerializer.Serialize(doc.RootElement);
-                return rawArray.Length > 0 ? rawArray : null;
-            }
-
-            if (reader.TokenType == JsonTokenType.Null)
-            {
-                return null;
-            }
-
-            reader.Skip();
-            return null;
-        }
-
-        public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
-        {
-            writer.WriteStringValue(value);
-        }
     }
 
     private class VlGroupDto

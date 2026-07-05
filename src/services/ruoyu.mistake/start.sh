@@ -14,6 +14,8 @@ STUDENT_GRPC_ADDR="ruoyu-student:5005"
 VL_API_KEY="${VL_API_KEY:-}"
 VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.siliconflow.cn/v1}"
 VL_MODEL="${VL_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
+# Note: VlAnalyzer:BaseUrl is the unified config key (was ApiBaseUrl before AI shared library refactor).
+# VL_API_BASE_URL shell variable is kept for backward compatibility with deployment scripts.
 
 DB_HOST="ruoyu-postgres"
 DB_PORT="5432"
@@ -52,7 +54,7 @@ docker run -d \
   -e Oss__BucketName="${OSS_BUCKET}" \
   -e StudentLearningService__GrpcUrl="http://${STUDENT_GRPC_ADDR}" \
   -e VlAnalyzer__ApiKey="${VL_API_KEY}" \
-  -e VlAnalyzer__ApiBaseUrl="${VL_API_BASE_URL}" \
+  -e VlAnalyzer__BaseUrl="${VL_API_BASE_URL}" \
   -e VlAnalyzer__Model="${VL_MODEL}" \
   "$IMAGE_NAME"
 

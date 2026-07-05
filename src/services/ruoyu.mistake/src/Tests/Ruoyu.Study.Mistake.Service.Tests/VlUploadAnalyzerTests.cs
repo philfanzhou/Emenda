@@ -11,6 +11,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Ruoyu.Study.Common.Ai;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service.Services;
@@ -27,25 +28,25 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 public class VlUploadAnalyzerTests
 {
     private readonly Mock<IOssService> _ossService;
-    private readonly Mock<IHttpClientFactory> _httpClientFactory;
     private readonly VlAnalyzerOptions _options;
     private readonly Mock<ILogger<VlUploadAnalyzer>> _logger;
+    private readonly Mock<ILogger<OpenAiCompatibleClient>> _aiClientLogger;
 
     public VlUploadAnalyzerTests()
     {
         _ossService = new Mock<IOssService>();
-        _httpClientFactory = new Mock<IHttpClientFactory>();
         _options = new VlAnalyzerOptions
         {
             ApiKey = "test-key",
             Model = "test-model",
-            ApiBaseUrl = "http://localhost:8000",
+            BaseUrl = "http://localhost:8000",
             Temperature = 0.1,
             TimeoutSeconds = 30,
             MaxRetries = 0,
             RetryDelayMs = 0
         };
         _logger = new Mock<ILogger<VlUploadAnalyzer>>();
+        _aiClientLogger = new Mock<ILogger<OpenAiCompatibleClient>>();
 
         // Default: return a valid small JPEG from OSS
         _ossService.Setup(x => x.DownloadAsync(It.IsAny<string>()))
@@ -63,12 +64,14 @@ public class VlUploadAnalyzerTests
     {
         var handler = new MockHttpMessageHandler(httpResponse);
         var httpClient = new HttpClient(handler);
-        _httpClientFactory.Setup(x => x.CreateClient("VlAnalyzer"))
-            .Returns(httpClient);
+        var aiClient = new OpenAiCompatibleClient(
+            httpClient,
+            _options,
+            _aiClientLogger.Object);
 
         return new VlUploadAnalyzer(
             _ossService.Object,
-            _httpClientFactory.Object,
+            aiClient,
             Options.Create(_options),
             _logger.Object);
     }
@@ -155,19 +158,21 @@ public class VlUploadAnalyzerTests
         // Arrange: Mock OSS to return valid image, but HTTP client throws
         var handler = new FailingHttpMessageHandler();
         var httpClient = new HttpClient(handler);
-        _httpClientFactory.Setup(x => x.CreateClient("VlAnalyzer"))
-            .Returns(httpClient);
+        var aiClient = new OpenAiCompatibleClient(
+            httpClient,
+            _options,
+            _aiClientLogger.Object);
 
         var analyzer = new VlUploadAnalyzer(
             _ossService.Object,
-            _httpClientFactory.Object,
+            aiClient,
             Options.Create(_options),
             _logger.Object);
 
         // Act
         var act = () => analyzer.AnalyzeAsync("student-1", new List<string> { "img1.jpg" });
 
-        // Assert: HttpRequestException is thrown when HTTP handler fails
+        // Assert: HttpRequestException is propagated by OpenAiCompatibleClient after retries exhaust
         await act.Should().ThrowAsync<HttpRequestException>();
     }
 
@@ -472,10 +477,13 @@ public class VlUploadAnalyzerTests
         // Arrange
         var handler = new CapturingHttpMessageHandler();
         var httpClient = new HttpClient(handler);
-        _httpClientFactory.Setup(x => x.CreateClient("VlAnalyzer")).Returns(httpClient);
+        var aiClient = new OpenAiCompatibleClient(
+            httpClient,
+            _options,
+            _aiClientLogger.Object);
         var analyzer = new VlUploadAnalyzer(
             _ossService.Object,
-            _httpClientFactory.Object,
+            aiClient,
             Options.Create(_options),
             _logger.Object);
 
