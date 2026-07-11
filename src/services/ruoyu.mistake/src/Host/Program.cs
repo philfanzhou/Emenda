@@ -102,8 +102,8 @@ builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
 // Student Learning gRPC client (used by polling worker and review flow)
 builder.Services.AddSingleton(sp =>
 {
-    var grpcUrl = builder.Configuration["StudentLearningService:GrpcUrl"]
-                  ?? builder.Configuration["StudentService:GrpcUrl"]
+    var grpcUrl = builder.Configuration["StudentService:GrpcUrl"]
+                  ?? builder.Configuration["StudentLearningService:GrpcUrl"]
                   ?? "http://localhost:5005";
     var logger = sp.GetRequiredService<ILogger<Program>>();
     logger.LogInformation("Connecting to Student Learning gRPC: {Url}", grpcUrl);
@@ -154,7 +154,9 @@ app.Logger.LogInformation(
     StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Username"]),
     StartupDiagnosticsFormatter.SummarizePassword(builder.Configuration["PostgreSql:Password"]),
     StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["Database:Name"]),
-    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["StudentLearningService:GrpcUrl"]));
+    StartupDiagnosticsFormatter.SummarizeValue(
+        builder.Configuration["StudentService:GrpcUrl"] ??
+        builder.Configuration["StudentLearningService:GrpcUrl"]));
 
 var vlConfig = builder.Configuration.GetSection("VlAnalyzer");
 var vlOptions = vlConfig.Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
@@ -162,8 +164,8 @@ app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}
     vlOptions.IsConfigured, vlOptions.Model, vlOptions.BaseUrl,
     string.IsNullOrEmpty(vlOptions.ApiKey) ? "(empty - service disabled)" : SensitiveDataMasker.MaskApiKey(vlOptions.ApiKey));
 
-var studentGrpcUrl = builder.Configuration["StudentLearningService:GrpcUrl"]
-                     ?? builder.Configuration["StudentService:GrpcUrl"]
+var studentGrpcUrl = builder.Configuration["StudentService:GrpcUrl"]
+                     ?? builder.Configuration["StudentLearningService:GrpcUrl"]
                      ?? "http://localhost:5005";
 app.Logger.LogInformation("Student Service: GrpcUrl={Url}", studentGrpcUrl);
 

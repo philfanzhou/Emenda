@@ -6,16 +6,15 @@ IMAGE_TAG="20260501"
 IMAGE_NAME="ruoyu.study.mistake:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-mistake"
 NETWORK_NAME="ruoyu-net"
-CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"
-CONSUL_TOKEN="${CONSUL_TOKEN:-}"
 GRPC_PORT="5006"
 HTTP_PORT="5007"
+
+CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"
+CONSUL_TOKEN="${CONSUL_TOKEN:-}"
 
 VL_API_KEY="${VL_API_KEY:-}"
 VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.siliconflow.cn/v1}"
 VL_MODEL="${VL_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
-# Note: VlAnalyzer:BaseUrl is the unified config key (was ApiBaseUrl before AI shared library refactor).
-# VL_API_BASE_URL shell variable is kept for backward compatibility with deployment scripts.
 
 DB_NAME="ruoyu_study_mistake"
 
