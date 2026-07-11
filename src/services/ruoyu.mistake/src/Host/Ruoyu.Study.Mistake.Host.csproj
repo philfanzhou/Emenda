@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Service\Ruoyu.Study.Mistake.Service.csproj" />
+    <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Consul.Shared\Ruoyu.Study.Consul.Shared.csproj" />
     <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
     <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Ai.Shared\Ruoyu.Study.Ai.Shared.csproj" />
     <ProjectReference Include="..\..\..\ruoyu.student\src\Contract\Ruoyu.Study.Student.Contract.csproj" />

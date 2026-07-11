@@ -4,6 +4,49 @@
 
 ---
 
+## Consul 接入约束
+
+`ruoyu.mistake` 现在固定接入 Consul，通过 `ruoyu.common` 下的共享 Consul 代码读取共享配置并注册服务。
+
+共享 Consul 配置承载：
+
+- `config/ruoyu/infrastructure.json`
+  - `PostgreSql:Host`
+  - `PostgreSql:Port`
+  - `PostgreSql:Username`
+  - `PostgreSql:Password`
+  - `Oss:*`
+- `config/ruoyu/service-endpoints.json`
+  - `StudentLearningService:GrpcUrl`
+
+服务私有配置仍保留在 Mistake 自身：
+
+- `Database:Name=ruoyu_study_mistake`
+- `Endpoints:Grpc=5006`
+- `Endpoints:Http=5007`
+- `VlAnalyzer:*`
+
+启动脚本 `start.sh` 只保留：
+
+- `CONSUL_HTTP_ADDR`
+- `CONSUL_TOKEN`
+- `Endpoints__Grpc`
+- `Endpoints__Http`
+- `Database__Name`
+- `VlAnalyzer__ApiKey`
+- `VlAnalyzer__BaseUrl`
+- `VlAnalyzer__Model`
+
+并补充：
+
+```bash
+--add-host=host.docker.internal:host-gateway
+```
+
+确保 Linux Docker 容器能访问宿主机上的 Consul。
+
+---
+
 ## 端口与协议说明
 
 | 端口 | 协议 | 用途 | 配置键 | 默认值 |
@@ -22,9 +65,9 @@
 | 项目 | 内容 |
 |------|------|
 | **节点名称** | 配置准备 |
-| **前置条件** | 已获取部署环境信息（数据库连接串、OSS 凭证、student 服务地址） |
+| **前置条件** | 已获取部署环境信息（Consul 地址、ACL token、VL 分析私有配置） |
 | **输入条件** | appsettings.json 模板、环境变量清单 |
-| **操作步骤** | 1. 编辑 `appsettings.json`，填写 `ConnectionStrings:Default`<br>2. 编辑 `appsettings.json`，填写 `Oss` 节（Endpoint、AccessKey、SecretKey、BucketName）<br>3. 如需自定义端口，设置 `Endpoints:Grpc` 和 `Endpoints:Http`<br>4. 如使用本地 OSS，设置环境变量 `USE_LOCAL_OSS=1`，可选设置 `OSS_LOCAL_PATH` |
+| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentLearningService:GrpcUrl`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`、`Endpoints:*`<br>4. 如需自定义端口，设置 `Endpoints:Grpc` 和 `Endpoints:Http` |
 | **成功判定** | 所有必填配置项均有有效值；端口不与已有服务冲突 |
 | **失败后排查方向** | 1. 配置键拼写错误 → 对照 appsettings.json 结构检查<br>2. 端口冲突 → `netstat` 检查端口占用<br>3. 环境变量未生效 → 确认运行环境是否正确注入 |
 
@@ -32,18 +75,21 @@
 
 ```json
 {
+  "Consul": {
+    "Host": "host.docker.internal",
+    "Port": 8500,
+    "KvPrefix": "config/ruoyu"
+  },
   "Endpoints": {
     "Grpc": 5006,
     "Http": 5007
   },
-  "ConnectionStrings": {
-    "Default": "Host=localhost;Port=5432;Database=ruoyu_study_mistake;Username=phil"
+  "Database": {
+    "Name": "ruoyu_study_mistake"
   },
-  "Oss": {
-    "Endpoint": "localhost:8333",
-    "AccessKey": "mock_access_key",
-    "SecretKey": "mock_secret_key",
-    "BucketName": "ruoyu-study"
+  "VlAnalyzer": {
+    "BaseUrl": "https://api.siliconflow.cn/v1",
+    "Model": "Qwen/Qwen3-VL-30B-A3B-Instruct"
   }
 }
 ```
@@ -53,6 +99,8 @@
 连接字符串包含 `Host=` 或 `Server=`（不区分大小写）→ 使用 PostgreSQL（Npgsql），否则使用 SQLite。
 
 SQLite 未配置连接字符串时，默认路径为 `data/sqlite/ruoyu_study_mistake.db`。
+
+容器部署下默认通过 Consul 中的 `PostgreSql:*` 与本地 `Database:Name` 拼出 PostgreSQL 连接串。
 
 ### OSS 模式判定逻辑
 

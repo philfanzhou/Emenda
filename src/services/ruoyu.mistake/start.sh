@@ -6,10 +6,10 @@ IMAGE_TAG="20260501"
 IMAGE_NAME="ruoyu.study.mistake:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-mistake"
 NETWORK_NAME="ruoyu-net"
+CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"
+CONSUL_TOKEN="${CONSUL_TOKEN:-}"
 GRPC_PORT="5006"
 HTTP_PORT="5007"
-
-STUDENT_GRPC_ADDR="ruoyu-student:5005"
 
 VL_API_KEY="${VL_API_KEY:-}"
 VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.siliconflow.cn/v1}"
@@ -17,18 +17,7 @@ VL_MODEL="${VL_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
 # Note: VlAnalyzer:BaseUrl is the unified config key (was ApiBaseUrl before AI shared library refactor).
 # VL_API_BASE_URL shell variable is kept for backward compatibility with deployment scripts.
 
-DB_HOST="ruoyu-postgres"
-DB_PORT="5432"
 DB_NAME="ruoyu_study_mistake"
-DB_USER="postgres"
-DB_PASS="postgres"
-
-CONNECTION_STRING="Host=${DB_HOST};Port=${DB_PORT};Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASS};"
-
-OSS_ENDPOINT="ruoyu-seaweedfs:8333"
-OSS_ACCESS_KEY="seaweedfs_admin"
-OSS_SECRET_KEY="seaweedfs_admin"
-OSS_BUCKET="ruoyu-study"
 
 docker network inspect "$NETWORK_NAME" >/dev/null 2>&1 || docker network create "$NETWORK_NAME"
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
@@ -44,15 +33,13 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   --network "$NETWORK_NAME" \
+  --add-host=host.docker.internal:host-gateway \
   -e TZ=Asia/Shanghai \
+  -e CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR}" \
+  -e CONSUL_TOKEN="${CONSUL_TOKEN}" \
   -e Endpoints__Grpc="${GRPC_PORT}" \
   -e Endpoints__Http="${HTTP_PORT}" \
-  -e ConnectionStrings__Default="${CONNECTION_STRING}" \
-  -e Oss__Endpoint="${OSS_ENDPOINT}" \
-  -e Oss__AccessKey="${OSS_ACCESS_KEY}" \
-  -e Oss__SecretKey="${OSS_SECRET_KEY}" \
-  -e Oss__BucketName="${OSS_BUCKET}" \
-  -e StudentLearningService__GrpcUrl="http://${STUDENT_GRPC_ADDR}" \
+  -e Database__Name="${DB_NAME}" \
   -e VlAnalyzer__ApiKey="${VL_API_KEY}" \
   -e VlAnalyzer__BaseUrl="${VL_API_BASE_URL}" \
   -e VlAnalyzer__Model="${VL_MODEL}" \

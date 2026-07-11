@@ -10,9 +10,15 @@ using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service;
+using Ruoyu.Study.Consul.Shared;
 using StudentProto = Ruoyu.Study.Student.Contract.Protos;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
+
+var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
+var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
 var grpcPort = builder.Configuration.GetValue<int?>("Endpoints:Grpc") ?? 5006;
 var httpPort = builder.Configuration.GetValue<int?>("Endpoints:Http") ?? 5007;
@@ -36,7 +42,9 @@ builder.Services.AddGrpc(options =>
     options.MaxSendMessageSize = 100 * 1024 * 1024;
 });
 
-var connectionString = builder.Configuration.GetConnectionString("Default");
+var connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
+    builder.Configuration,
+    builder.Configuration.GetConnectionString("Default"));
 var isPostgreSql = !string.IsNullOrWhiteSpace(connectionString)
     && (connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase)
         || connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase));
@@ -122,6 +130,14 @@ var app = builder.Build();
 
 app.Logger.LogInformation("Mistake Service starting");
 app.Logger.LogInformation("Endpoints: gRPC={GrpcPort}, HTTP={HttpPort}", grpcPort, httpPort);
+app.Logger.LogInformation(
+    "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
+    $"{consulOptions.Host}:{consulOptions.Port}",
+    StartupDiagnosticsFormatter.MaskSecret(consulOptions.Token),
+    consulRuntimeState.Source,
+    consulRuntimeState.KeyCount,
+    StartupDiagnosticsFormatter.SummarizePrefixes(consulRuntimeState.LoadedPrefixes),
+    StartupDiagnosticsFormatter.SummarizeError(consulRuntimeState.LastError));
 if (isPostgreSql && !string.IsNullOrEmpty(connectionString))
 {
     var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };
@@ -131,6 +147,14 @@ else
 {
     app.Logger.LogInformation("Database: SQLite");
 }
+app.Logger.LogInformation(
+    "Effective configuration diagnostics: PostgreSqlHost={PostgreSqlHost}, PostgreSqlPort={PostgreSqlPort}, PostgreSqlUsername={PostgreSqlUsername}, PostgreSqlPassword={PostgreSqlPassword}, DatabaseName={DatabaseName}, StudentGrpcUrl={StudentGrpcUrl}",
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Host"]),
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Port"]),
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Username"]),
+    StartupDiagnosticsFormatter.SummarizePassword(builder.Configuration["PostgreSql:Password"]),
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["Database:Name"]),
+    StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["StudentLearningService:GrpcUrl"]));
 
 var vlConfig = builder.Configuration.GetSection("VlAnalyzer");
 var vlOptions = vlConfig.Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
