@@ -10,7 +10,7 @@
 
 共享 Consul 配置承载：
 
-- `config/ruoyu/infrastructure.json`
+- `config/ruoyu/shared.json`
   - `PostgreSql:Host`
   - `PostgreSql:Port`
   - `PostgreSql:Username`
