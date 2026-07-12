@@ -4,7 +4,7 @@ using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service.Services;
-using StudentProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 
 namespace Ruoyu.Study.Mistake.Host.Services;
 
@@ -71,22 +71,18 @@ public class UploadPollingWorker : BackgroundService
     private async Task PollAndProcessAsync(CancellationToken ct)
     {
         using var scope = _serviceProvider.CreateScope();
-        var studentClient = scope.ServiceProvider.GetRequiredService<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
+        var studentClient = scope.ServiceProvider.GetRequiredService<IStudentHttpClient>();
 
         var page = 1;
         var hasMore = true;
 
         while (hasMore && !ct.IsCancellationRequested)
         {
-            StudentProto.UploadRecordsPageResult pageResult;
+            UploadRecordsPage pageResult;
             try
             {
                 pageResult = await studentClient.GetProcessingUploadRecordsAsync(
-                    new StudentProto.GetProcessingUploadRecordsRequest
-                    {
-                        Page = page,
-                        PageSize = PageSize
-                    }, cancellationToken: ct).ConfigureAwait(false);
+                    page, PageSize, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -129,7 +125,7 @@ public class UploadPollingWorker : BackgroundService
     }
 
     private async Task ProcessRecordAsync(
-        StudentProto.UploadRecordDto record,
+        UploadRecordDto record,
         IServiceProvider scopedServices,
         CancellationToken ct)
     {
@@ -365,14 +361,9 @@ public class UploadPollingWorker : BackgroundService
     {
         try
         {
-            var studentClient = scopedServices.GetRequiredService<StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient>();
-            var removeRequest = new StudentProto.RemoveProcessedImagesRequest
-            {
-                RecordId = recordId
-            };
-            removeRequest.ImagePaths.AddRange(imagePaths);
+            var studentClient = scopedServices.GetRequiredService<IStudentHttpClient>();
             var removeResponse = await studentClient.RemoveProcessedImagesAsync(
-                removeRequest, cancellationToken: ct).ConfigureAwait(false);
+                recordId, imagePaths, ct).ConfigureAwait(false);
 
             if (removeResponse.Success)
             {

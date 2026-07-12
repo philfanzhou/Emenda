@@ -11,7 +11,7 @@ using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service;
 using Ruoyu.Study.Consul.Shared;
-using StudentProto = Ruoyu.Study.Student.Contract.Protos;
+using Ruoyu.Study.MistakeBff.GrpcClients;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,26 +20,14 @@ builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
 var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
-var grpcPort = builder.Configuration.GetValue<int?>("Endpoints:Grpc") ?? 5006;
 var httpPort = builder.Configuration.GetValue<int?>("Endpoints:Http") ?? 5007;
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenAnyIP(grpcPort, listenOptions =>
-    {
-        listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
-    });
-
     options.ListenAnyIP(httpPort, listenOptions =>
     {
         listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1;
     });
-});
-
-builder.Services.AddGrpc(options =>
-{
-    options.MaxReceiveMessageSize = 100 * 1024 * 1024;
-    options.MaxSendMessageSize = 100 * 1024 * 1024;
 });
 
 var connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
@@ -99,37 +87,15 @@ builder.Services.AddHostedService<UploadPollingWorker>();
 builder.Services.AddHostedService<ReanalyzeJobHostedService>();
 builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
 
-// Student Learning gRPC client (used by polling worker and review flow)
-builder.Services.AddSingleton(sp =>
-{
-    var grpcUrl = builder.Configuration["StudentService:GrpcUrl"]
-                  ?? builder.Configuration["StudentLearningService:GrpcUrl"]
-                  ?? "http://localhost:5005";
-    var logger = sp.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("Connecting to Student Learning gRPC: {Url}", grpcUrl);
-
-    var handler = new SocketsHttpHandler
-    {
-        ConnectTimeout = TimeSpan.FromSeconds(5),
-        MaxConnectionsPerServer = 10,
-        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-        EnableMultipleHttp2Connections = true,
-    };
-
-    var channel = Grpc.Net.Client.GrpcChannel.ForAddress(grpcUrl, new Grpc.Net.Client.GrpcChannelOptions
-    {
-        HttpHandler = handler,
-        MaxRetryAttempts = 3,
-    });
-
-    return new StudentProto.StudentLearningGrpcService.StudentLearningGrpcServiceClient(channel);
-});
+// Student HTTP client (used by polling worker and review flow)
+var studentBaseUrl = builder.Configuration["StudentService:BaseUrl"]
+                     ?? "http://localhost:5005";
+builder.Services.AddStudentHttpClient(studentBaseUrl);
 
 var app = builder.Build();
 
 app.Logger.LogInformation("Mistake Service starting");
-app.Logger.LogInformation("Endpoints: gRPC={GrpcPort}, HTTP={HttpPort}", grpcPort, httpPort);
+app.Logger.LogInformation("Endpoint: HTTP={HttpPort}", httpPort);
 app.Logger.LogInformation(
     "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
     $"{consulOptions.Host}:{consulOptions.Port}",
@@ -148,15 +114,14 @@ else
     app.Logger.LogInformation("Database: SQLite");
 }
 app.Logger.LogInformation(
-    "Effective configuration diagnostics: PostgreSqlHost={PostgreSqlHost}, PostgreSqlPort={PostgreSqlPort}, PostgreSqlUsername={PostgreSqlUsername}, PostgreSqlPassword={PostgreSqlPassword}, DatabaseName={DatabaseName}, StudentGrpcUrl={StudentGrpcUrl}",
+    "Effective configuration diagnostics: PostgreSqlHost={PostgreSqlHost}, PostgreSqlPort={PostgreSqlPort}, PostgreSqlUsername={PostgreSqlUsername}, PostgreSqlPassword={PostgreSqlPassword}, DatabaseName={DatabaseName}, StudentBaseUrl={StudentBaseUrl}",
     StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Host"]),
     StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Port"]),
     StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["PostgreSql:Username"]),
     StartupDiagnosticsFormatter.SummarizePassword(builder.Configuration["PostgreSql:Password"]),
     StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["Database:Name"]),
     StartupDiagnosticsFormatter.SummarizeValue(
-        builder.Configuration["StudentService:GrpcUrl"] ??
-        builder.Configuration["StudentLearningService:GrpcUrl"]));
+        builder.Configuration["StudentService:BaseUrl"]));
 
 var vlConfig = builder.Configuration.GetSection("VlAnalyzer");
 var vlOptions = vlConfig.Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
@@ -164,10 +129,7 @@ app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}
     vlOptions.IsConfigured, vlOptions.Model, vlOptions.BaseUrl,
     string.IsNullOrEmpty(vlOptions.ApiKey) ? "(empty - service disabled)" : SensitiveDataMasker.MaskApiKey(vlOptions.ApiKey));
 
-var studentGrpcUrl = builder.Configuration["StudentService:GrpcUrl"]
-                     ?? builder.Configuration["StudentLearningService:GrpcUrl"]
-                     ?? "http://localhost:5005";
-app.Logger.LogInformation("Student Service: GrpcUrl={Url}", studentGrpcUrl);
+app.Logger.LogInformation("Student Service: BaseUrl={Url}", studentBaseUrl);
 
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
     ossConfig.Endpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
@@ -182,7 +144,7 @@ using (var scope = app.Services.CreateScope())
     await DatabaseInitializer.InitializeAsync(dbContext, loggerFactory);
 }
 
-app.MapGrpcService<MistakeServiceImpl>();
-app.MapGet("/", () => "Mistake gRPC host is running.");
+app.MapMistakeHttpEndpoints();
+app.MapGet("/", () => "Mistake WebAPI host is running.");
 
 app.Run();

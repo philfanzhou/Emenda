@@ -17,12 +17,11 @@
   - `PostgreSql:Password`
   - `Oss:*`
 - `config/ruoyu/service-endpoints.json`
-  - `StudentService:GrpcUrl`
+  - `StudentService:BaseUrl`（student 服务 HTTP 地址，如 `http://ruoyu-student:5005`）
 
 服务私有配置仍保留在 Mistake 自身：
 
 - `Database:Name=ruoyu_study_mistake`
-- `Endpoints:Grpc=5006`
 - `Endpoints:Http=5007`
 - `VlAnalyzer:*`
 
@@ -30,12 +29,13 @@
 
 - `CONSUL_HTTP_ADDR`
 - `CONSUL_TOKEN`
-- `Endpoints__Grpc`
 - `Endpoints__Http`
 - `Database__Name`
 - `VlAnalyzer__ApiKey`
 - `VlAnalyzer__BaseUrl`
 - `VlAnalyzer__Model`
+
+> 协议策略遵循 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)：WebAPI-Only，gRPC 端口 5006 已于 2026-07-12 下线。
 
 并补充：
 
@@ -51,12 +51,11 @@
 
 | 端口 | 协议 | 用途 | 配置键 | 默认值 |
 |------|------|------|--------|--------|
-| gRPC 端口 | HTTP/2 | 接收所有 gRPC 调用（student、admin_portal、teacher_portal、user_portal） | `Endpoints:Grpc` | 5006 |
-| HTTP 端口 | HTTP/1 | 健康检查（`GET /`） | `Endpoints:Http` | 5007 |
+| HTTP 端口 | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /`） | `Endpoints:Http` | 5007 |
 
-**gRPC 端口**承载全部业务接口，包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等 15 个 RPC 方法。
+**HTTP 端口**承载全部业务接口（18 个端点，路由前缀 `/api/mistakes`），包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等。同时 `GET /` 返回服务状态字符串用于健康检查。
 
-**HTTP 端口**仅用于健康检查，`GET /` 返回 `"Mistake gRPC host is running."`。student 服务的 `GrpcUploadDispatcher` 通过此端点判断 mistake 服务是否可用。
+> gRPC 端口 5006 已于 2026-07-12 下线（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
 
 ---
 
@@ -67,7 +66,7 @@
 | **节点名称** | 配置准备 |
 | **前置条件** | 已获取部署环境信息（Consul 地址、ACL token、VL 分析私有配置） |
 | **输入条件** | appsettings.json 模板、环境变量清单 |
-| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:GrpcUrl`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`、`Endpoints:*`<br>4. 如需自定义端口，设置 `Endpoints:Grpc` 和 `Endpoints:Http` |
+| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:BaseUrl`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`、`Endpoints:*`<br>4. 如需自定义端口，设置 `Endpoints:Http` |
 | **成功判定** | 所有必填配置项均有有效值；端口不与已有服务冲突 |
 | **失败后排查方向** | 1. 配置键拼写错误 → 对照 appsettings.json 结构检查<br>2. 端口冲突 → `netstat` 检查端口占用<br>3. 环境变量未生效 → 确认运行环境是否正确注入 |
 
@@ -81,7 +80,6 @@
     "KvPrefix": "config/ruoyu"
   },
   "Endpoints": {
-    "Grpc": 5006,
     "Http": 5007
   },
   "Database": {
@@ -194,20 +192,21 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 |------|------|
 | **节点名称** | 依赖服务准备 |
 | **前置条件** | 各 portal 服务已部署 |
-| **输入条件** | mistake 服务的 gRPC 地址 |
-| **操作步骤** | 1. 确认 mistake 服务已启动并在 gRPC 端口（默认 5006）监听<br>2. 确认各 portal 的 mistake 地址配置正确 |
-| **成功判定** | 各 portal 可正常调用 mistake 的 gRPC 接口 |
-| **失败后排查方向** | 1. portal 地址不可达 → 检查地址配置、网络连通性<br>2. gRPC 调用超时 → 检查 mistake 是否在 HTTP/2 模式监听<br>3. 调用返回错误 → 查看 portal 日志中的 gRPC 错误详情 |
+| **输入条件** | mistake 服务的 HTTP 地址 |
+| **操作步骤** | 1. 确认 mistake 服务已启动并在 HTTP 端口（默认 5007）监听<br>2. 确认各 portal 的 mistake 地址配置正确 |
+| **成功判定** | 各 portal 可正常调用 mistake 的 HTTP 接口 |
+| **失败后排查方向** | 1. portal 地址不可达 → 检查地址配置、网络连通性<br>2. HTTP 调用超时 → 检查 mistake 是否在 5007 端口监听<br>3. 调用返回错误 → 查看 portal 日志中的 HTTP 错误详情 |
 
 ### 各 portal 的 mistake 地址配置
 
 | Portal | 配置键 | 默认值 |
 |--------|--------|--------|
-| admin_portal | `MistakeGrpcService:Address` | `http://localhost:5006` |
-| teacher_portal | `MistakeService:GrpcUrl` | `http://localhost:5006` |
-| user_portal | `MistakeService:GrpcUrl` | `http://localhost:5006` |
+| admin_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
+| teacher_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
+| user_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
+| assistant_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
 
-如果 mistake 的 gRPC 端口不是默认的 5006，需要同步修改所有 portal 的配置。
+如果 mistake 的 HTTP 端口不是默认的 5007，需要同步修改所有 portal 的配置。
 
 ---
 
@@ -232,10 +231,6 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 5. 各 portal 服务
 ```
 
-### gRPC 消息大小
-
-服务配置 gRPC 最大收发消息大小为 **100MB**（`MaxReceiveMessageSize` 和 `MaxSendMessageSize` 均为 100 * 1024 * 1024）。如果上传的图片数据超过此限制，gRPC 调用会失败。
-
 ---
 
 ## 流程六：健康检查
@@ -246,8 +241,8 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 | **前置条件** | 服务已启动 |
 | **输入条件** | HTTP 端口可访问 |
 | **操作步骤** | 1. 向 HTTP 端口发送 `GET /` 请求<br>2. 检查响应状态码和内容 |
-| **成功判定** | HTTP 200，响应体为 `"Mistake gRPC host is running."` |
-| **失败后排查方向** | 1. 无响应 → 服务未启动或 HTTP 端口配置错误<br>2. 连接拒绝 → 端口未监听，检查 Kestrel 配置<br>3. 返回非预期内容 → 确认请求的是 HTTP 端口而非 gRPC 端口 |
+| **成功判定** | HTTP 200，响应体为 `"Mistake WebAPI host is running."` |
+| **失败后排查方向** | 1. 无响应 → 服务未启动或 HTTP 端口配置错误<br>2. 连接拒绝 → 端口未监听，检查 Kestrel 配置<br>3. 返回非预期内容 → 确认请求的是 HTTP 端口 5007 |
 
 ### 健康检查方式
 
@@ -255,9 +250,9 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 curl http://<host>:5007/
 ```
 
-预期返回：`Mistake gRPC host is running.`
+预期返回：`Mistake WebAPI host is running.`
 
-> **注意**：健康检查走 HTTP 端口（默认 5007），不是 gRPC 端口（默认 5006）。student 服务的 `GrpcUploadDispatcher` 通过此 HTTP 健康检查判断 mistake 是否可用。
+> **注意**：健康检查走 HTTP 端口（默认 5007），承载全部 18 个业务端点。mistake→student 的调用也通过 HTTP（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
 
 ---
 
@@ -276,7 +271,7 @@ curl http://<host>:5007/
 
 | 步骤 | 验证内容 | 方法 | 失败排查 |
 |------|---------|------|---------|
-| 1 | student → mistake 连通 | student 端触发上传，观察 mistake 日志是否收到 `SubmitMistakeUpload` | 检查 student 的 mistake 地址配置、gRPC 端口是否正确 |
+| 1 | student → mistake 连通 | student 端触发上传，观察 mistake 日志是否收到 `SubmitMistakeUpload` | 检查 student 的 mistake 地址配置、HTTP 端口是否正确 |
 | 2 | portal → mistake 连通 | 通过 portal 页面查询错题列表，观察是否返回数据 | 检查 portal 的 mistake 地址配置 |
 | 3 | mistake → OSS 操作 | 执行 `CompleteUploadReview`，确认图片从 `uploads/` 迁移到 `mistakes/` | 检查 OSS 配置和桶权限 |
 | 4 | admin_portal OSS 审计 | 触发 `GetAllReferencedImagePaths`，确认返回图片路径列表 | 检查 admin_portal 的 mistake 地址配置 |
@@ -314,12 +309,12 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 |---|--------|---------|---------|---------|
 | 1 | 服务存活 | `GET /` 健康检查 | 返回 200 | 检查进程状态、端口监听 |
 | 2 | 数据库连接 | 查询错题列表接口 | 正常返回数据 | 检查连接串、数据库状态 |
-| 3 | gRPC 端口可达 | portal 调用 mistake 接口 | 正常响应 | 检查 gRPC 端口、防火墙规则 |
+| 3 | HTTP 端口可达 | portal 调用 mistake 接口 | 正常响应 | 检查 HTTP 端口 5007、防火墙规则 |
 | 4 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |
 | 5 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` | 存在 `20260514051544_InitialCreate` 记录 | 手动 stamp 或排查迁移日志 |
 | 6 | 旧表已迁移 | 检查 `mistake` 表是否存在 | 不存在（已重命名为 `mistake_item`） | 如仍存在，检查迁移日志是否跳过 |
 | 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 手动执行列重命名 SQL |
 | 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 手动添加外键约束 |
 | 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 手动创建缺失索引 |
-| 10 | gRPC 消息大小 | 上传含大量图片的错题 | 不超过 100MB 限制 | 如需更大限制，修改 `Program.cs` 中的消息大小配置 |
+| 10 | HTTP 请求大小 | 上传含大量图片的错题 | 不超过服务器请求体大小限制 | 如需更大限制，修改 Kestrel `MaxRequestBodySize` |
 | 11 | SQLite 文件位置（如适用） | 检查 `data/sqlite/ruoyu_study_mistake.db` | 文件存在且可读写 | 检查目录权限 |

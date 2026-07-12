@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Mistake.Database.Entities;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Repositories;
-using Ruoyu.Study.Mistake.Contract.Protos;
 
 namespace Ruoyu.Study.Mistake.Database.Repositories;
 

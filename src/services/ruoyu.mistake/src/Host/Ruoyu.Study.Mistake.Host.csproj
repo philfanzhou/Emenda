@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore" Version="2.62.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -21,7 +20,6 @@
     <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Consul.Shared\Ruoyu.Study.Consul.Shared.csproj" />
     <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
     <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.Ai.Shared\Ruoyu.Study.Ai.Shared.csproj" />
-    <ProjectReference Include="..\..\..\ruoyu.student\src\Contract\Ruoyu.Study.Student.Contract.csproj" />
     <ProjectReference Include="..\Database\Ruoyu.Study.Mistake.Database.csproj" />
   </ItemGroup>
 

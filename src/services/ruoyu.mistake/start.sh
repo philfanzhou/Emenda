@@ -6,7 +6,6 @@ IMAGE_TAG="20260501"
 IMAGE_NAME="ruoyu.study.mistake:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-mistake"
 NETWORK_NAME="ruoyu-net"
-GRPC_PORT="5006"
 HTTP_PORT="5007"
 
 CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"

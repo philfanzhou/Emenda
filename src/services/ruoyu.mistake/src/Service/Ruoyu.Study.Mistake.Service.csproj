@@ -2,11 +2,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Domain\Ruoyu.Study.Mistake.Domain.csproj" />
-    <ProjectReference Include="..\..\..\ruoyu.student\src\Contract\Ruoyu.Study.Student.Contract.csproj" />
+    <ProjectReference Include="..\..\..\ruoyu.common\src\Ruoyu.Study.MistakeBff.GrpcClients\Ruoyu.Study.MistakeBff.GrpcClients.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore" Version="2.62.0" />
     <PackageReference Include="Mapster" Version="10.0.6" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
