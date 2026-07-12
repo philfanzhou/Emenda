@@ -14,6 +14,7 @@ COPY src/services/ruoyu.mistake/src/Service/Ruoyu.Study.Mistake.Service.csproj s
 COPY src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj src/services/ruoyu.mistake/src/Host/
 COPY src/services/ruoyu.common/src/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj src/services/ruoyu.common/src/Ruoyu.Study.Common/
 COPY src/services/ruoyu.common/src/Ruoyu.Study.Ai.Shared/Ruoyu.Study.Ai.Shared.csproj src/services/ruoyu.common/src/Ruoyu.Study.Ai.Shared/
+COPY src/services/ruoyu.common/src/Ruoyu.Study.Consul.Shared/Ruoyu.Study.Consul.Shared.csproj src/services/ruoyu.common/src/Ruoyu.Study.Consul.Shared/
 COPY src/services/ruoyu.student/src/Contract/Ruoyu.Study.Student.Contract.csproj src/services/ruoyu.student/src/Contract/
 
 RUN dotnet restore "src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj"
