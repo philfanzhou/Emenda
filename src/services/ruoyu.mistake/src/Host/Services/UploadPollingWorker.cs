@@ -4,7 +4,7 @@ using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service.Services;
-using Ruoyu.Study.MistakeBff.GrpcClients;
+using Ruoyu.Study.MistakeBff.HttpClients;
 
 namespace Ruoyu.Study.Mistake.Host.Services;
 

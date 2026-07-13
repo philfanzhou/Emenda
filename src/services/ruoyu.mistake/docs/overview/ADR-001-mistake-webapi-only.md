@@ -35,7 +35,7 @@ ruoyu.mistake 服务当前是**纯 gRPC 服务**：
 | C7 | **4 个 portal 的 mistake gRPC client 注册改为 IMistakeHttpClient 注册**（admin/teacher/user/assistant）。|
 | C8 | **不补充 JWT 认证**，鉴权仍在 BFF 层。|
 | C9 | **gRPC 下线后**：`AddGrpc()` / `MapGrpcService<>()` 移除；`mistake.proto` / `mistake.common.proto` 删除；端口 5006 下线；Contract 项目删除。|
-| C10 | **MistakeBff.GrpcClients 库保留**：继续承载 IStudentHttpClient（student 调用）+ 新增 IMistakeHttpClient（mistake 调用），库名沿用不改名以减少波及面。|
+| C10 | **MistakeBff.HttpClients 库保留**：继续承载 IStudentHttpClient（student 调用）+ 新增 IMistakeHttpClient（mistake 调用），库名沿用不改名以减少波及面。|
 | C11 | **UploadPollingWorker 改用 IStudentHttpClient**：原先通过 gRPC client 调用的 GetProcessingUploadRecords / RemoveProcessedImages 改为 HTTP。|
 | C12 | **CompleteUploadReview 保持 `[Obsolete]`**：仅保留供 LegacyClean 运维兜底，HTTP 端点也保留。|
 
@@ -94,8 +94,8 @@ mistake 服务原先通过 student gRPC client 调用的 3 个方法，需新增
 | mistake 服务（Host + Service + Contract） | 删除 gRPC 层，新建 HTTP 端点层，删除 Contract 项目，Program.cs 移除 gRPC/Kestrel HTTP2 |
 | mistake 服务 UploadPollingWorker | gRPC client → IStudentHttpClient（2 个调用点）|
 | mistake 服务 MistakeServiceImpl | gRPC client → IStudentHttpClient（1 个调用点：CreateReturnedRecord）|
-| IStudentHttpClient（MistakeBff.GrpcClients） | 新增 3 个方法 + 实现 |
-| MistakeBff.GrpcClients 库 | 新增 IMistakeHttpClient 接口 + 实现，删除 mistake.proto Protobuf 引用 |
+| IStudentHttpClient（MistakeBff.HttpClients） | 新增 3 个方法 + 实现 |
+| MistakeBff.HttpClients 库 | 新增 IMistakeHttpClient 接口 + 实现，删除 mistake.proto Protobuf 引用 |
 | MistakeUploadBff.Shared | mistake gRPC client → IMistakeHttpClient |
 | MistakeReviewBff.Shared | mistake gRPC client → IMistakeHttpClient |
 | user_portal | mistake gRPC client → IMistakeHttpClient |

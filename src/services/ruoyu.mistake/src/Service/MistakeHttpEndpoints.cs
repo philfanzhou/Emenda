@@ -12,7 +12,7 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service.Dtos;
-using Ruoyu.Study.MistakeBff.GrpcClients;
+using Ruoyu.Study.MistakeBff.HttpClients;
 using MistakeItemDto = Ruoyu.Study.Mistake.Service.Dtos.MistakeItemDto;
 using ReanalyzeJobDto = Ruoyu.Study.Mistake.Service.Dtos.ReanalyzeJobDto;
 using MistakeItemPageResult = Ruoyu.Study.Mistake.Service.Dtos.MistakeItemPageResult;
