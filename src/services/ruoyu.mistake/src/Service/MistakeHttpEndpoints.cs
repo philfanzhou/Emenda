@@ -157,22 +157,25 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] int size,
         IMistakeDomainService mistakeService)
     {
+        var normalizedPage = page > 0 ? page : 1;
+        var normalizedSize = size > 0 ? Math.Min(size, 100) : 10;
+
         var (items, totalCount) = await mistakeService.GetMistakeItemListAsync(
             studentId ?? string.Empty,
             subject,
             grade,
             reviewStatus,
-            page,
-            size);
+            normalizedPage,
+            normalizedSize);
 
         var result = new MistakeItemPageResult
         {
             PageMeta = new PageMetaDto
             {
-                Page = page,
-                Size = size,
+                Page = normalizedPage,
+                Size = normalizedSize,
                 TotalCount = totalCount,
-                TotalPages = (totalCount + size - 1) / size
+                TotalPages = (totalCount + normalizedSize - 1) / normalizedSize
             }
         };
         result.Items.AddRange(items.Select(MapMistakeItemDto));
@@ -186,6 +189,9 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] string? subjects,
         IMistakeDomainService mistakeService)
     {
+        var normalizedPage = page > 0 ? page : 1;
+        var normalizedSize = size > 0 ? Math.Min(size, 100) : 10;
+
         List<int>? subjectList = null;
         if (!string.IsNullOrWhiteSpace(subjects))
         {
@@ -197,16 +203,16 @@ public static partial class MistakeHttpEndpoints
             if (subjectList.Count == 0) subjectList = null;
         }
 
-        var (uploads, totalCount) = await mistakeService.GetPendingReviewUploadsAsync(page, size, subjectList);
+        var (uploads, totalCount) = await mistakeService.GetPendingReviewUploadsAsync(normalizedPage, normalizedSize, subjectList);
 
         var result = new PendingReviewUploadListResponse
         {
             PageMeta = new PageMetaDto
             {
-                Page = page,
-                Size = size,
+                Page = normalizedPage,
+                Size = normalizedSize,
                 TotalCount = totalCount,
-                TotalPages = (totalCount + size - 1) / size
+                TotalPages = (totalCount + normalizedSize - 1) / normalizedSize
             }
         };
         result.Uploads.AddRange(uploads.Select(u => new PendingReviewUploadDto

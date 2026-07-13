@@ -17,7 +17,7 @@
   - `PostgreSql:Password`
   - `Oss:*`
 - `config/ruoyu/service-endpoints.json`
-  - `StudentService:BaseUrl`（student 服务 HTTP 地址，如 `http://ruoyu-student:5005`）
+  - `StudentService:Url`（student 服务 HTTP 地址，如 `http://ruoyu-student:5005`）
 
 服务私有配置仍保留在 Mistake 自身：
 
@@ -66,7 +66,7 @@
 | **节点名称** | 配置准备 |
 | **前置条件** | 已获取部署环境信息（Consul 地址、ACL token、VL 分析私有配置） |
 | **输入条件** | appsettings.json 模板、环境变量清单 |
-| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:BaseUrl`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`、`Endpoints:*`<br>4. 如需自定义端口，设置 `Endpoints:Http` |
+| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:Url`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`、`Endpoints:*`<br>4. 如需自定义端口，设置 `Endpoints:Http` |
 | **成功判定** | 所有必填配置项均有有效值；端口不与已有服务冲突 |
 | **失败后排查方向** | 1. 配置键拼写错误 → 对照 appsettings.json 结构检查<br>2. 端口冲突 → `netstat` 检查端口占用<br>3. 环境变量未生效 → 确认运行环境是否正确注入 |
 

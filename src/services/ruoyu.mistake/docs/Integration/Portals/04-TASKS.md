@@ -2,10 +2,10 @@
 
 ## admin_portal 集成
 
-### gRPC 客户端注册
-- [ ] 配置 `MistakeGrpcService:Address` = `http://localhost:5006`
-- [ ] 注册 `MistakeGrpcService.MistakeGrpcServiceClient` 到 DI
-- [ ] 注册 `StudentManagementGrpcService.StudentManagementGrpcServiceClient` 到 DI
+### HTTP 客户端注册
+- [ ] 配置 `MistakeService:BaseUrl` = `http://localhost:5007`
+- [ ] 注册 `IMistakeHttpClient` 到 DI（AddMistakeHttpClient）
+- [ ] 注册 `IStudentHttpClient` 到 DI（AddStudentHttpClient）
 
 ### MistakeController
 - [ ] GET /api/admin/mistakes — 分页查询错题列表
@@ -33,9 +33,9 @@
 
 ## teacher_portal 集成
 
-### gRPC 客户端注册
-- [ ] 配置 `MistakeService:GrpcUrl` = `http://localhost:5006`
-- [ ] 注册 `MistakeGrpcService.MistakeGrpcServiceClient` 到 DI
+### HTTP 客户端注册
+- [ ] 配置 `MistakeService:BaseUrl` = `http://localhost:5007`
+- [ ] 注册 `IMistakeHttpClient` 到 DI（AddMistakeHttpClient）
 - [ ] 注册 `TeacherDbService` 到 DI
 
 ### MistakeController
@@ -68,9 +68,9 @@
 
 ## user_portal 集成
 
-### gRPC 客户端注册
-- [ ] 配置 `MistakeService:GrpcUrl` = `http://localhost:5006`
-- [ ] 注册 `MistakeGrpcService.MistakeGrpcServiceClient` 到 DI
+### HTTP 客户端注册
+- [ ] 配置 `MistakeService:BaseUrl` = `http://localhost:5007`
+- [ ] 注册 `IMistakeHttpClient` 到 DI（AddMistakeHttpClient）
 
 ### MistakeController
 - [ ] GET /api/mistake/list — 学生错题列表（ReviewStatus=Confirmed）
@@ -85,10 +85,10 @@
 ## 通用
 
 ### 错误处理
-- [ ] gRPC RpcException 映射为 HTTP 状态码
+- [ ] HTTP 调用异常映射为 HTTP 状态码
 - [ ] 统一错误响应格式
 - [ ] 日志记录规范
 
 ### 配置
-- [ ] 各 Portal 的 gRPC 地址配置
+- [ ] 各 Portal 的 HTTP 地址配置
 - [ ] 分页参数默认值与上限配置

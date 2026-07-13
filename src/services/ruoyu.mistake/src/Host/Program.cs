@@ -87,8 +87,11 @@ builder.Services.AddHostedService<UploadPollingWorker>();
 builder.Services.AddHostedService<ReanalyzeJobHostedService>();
 builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
 
-// Student HTTP client (used by polling worker and review flow)
-var studentBaseUrl = builder.Configuration["StudentService:BaseUrl"]
+// Student HTTP client (used by polling worker and review flow).
+// Prefer the new HTTP key, but keep legacy fallbacks so old local/test configs do not break.
+var studentBaseUrl = builder.Configuration["StudentService:Url"]
+                     ?? builder.Configuration["StudentService:BaseUrl"]
+                     ?? builder.Configuration["StudentService:GrpcUrl"]
                      ?? "http://localhost:5005";
 builder.Services.AddStudentHttpClient(studentBaseUrl);
 
@@ -121,7 +124,9 @@ app.Logger.LogInformation(
     StartupDiagnosticsFormatter.SummarizePassword(builder.Configuration["PostgreSql:Password"]),
     StartupDiagnosticsFormatter.SummarizeValue(builder.Configuration["Database:Name"]),
     StartupDiagnosticsFormatter.SummarizeValue(
-        builder.Configuration["StudentService:BaseUrl"]));
+        builder.Configuration["StudentService:Url"]
+        ?? builder.Configuration["StudentService:BaseUrl"]
+        ?? builder.Configuration["StudentService:GrpcUrl"]));
 
 var vlConfig = builder.Configuration.GetSection("VlAnalyzer");
 var vlOptions = vlConfig.Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
