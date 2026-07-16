@@ -10,10 +10,10 @@ COPY src/services/ruoyu.mistake/src/Database/Ruoyu.Study.Mistake.Database.csproj
 COPY src/services/ruoyu.mistake/src/Domain/Ruoyu.Study.Mistake.Domain.csproj src/services/ruoyu.mistake/src/Domain/
 COPY src/services/ruoyu.mistake/src/Service/Ruoyu.Study.Mistake.Service.csproj src/services/ruoyu.mistake/src/Service/
 COPY src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj src/services/ruoyu.mistake/src/Host/
-COPY src/ruoyu.common/src/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj src/ruoyu.common/src/Ruoyu.Study.Common/
-COPY src/ruoyu.common/src/Ruoyu.Study.Ai.Shared/Ruoyu.Study.Ai.Shared.csproj src/ruoyu.common/src/Ruoyu.Study.Ai.Shared/
-COPY src/ruoyu.common/src/Ruoyu.Study.Consul.Shared/Ruoyu.Study.Consul.Shared.csproj src/ruoyu.common/src/Ruoyu.Study.Consul.Shared/
-COPY src/ruoyu.common/src/Ruoyu.Study.MistakeBff.HttpClients/Ruoyu.Study.MistakeBff.HttpClients.csproj src/ruoyu.common/src/Ruoyu.Study.MistakeBff.HttpClients/
+COPY src/ruoyu.common/backend/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj src/ruoyu.common/backend/Ruoyu.Study.Common/
+COPY src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared/Ruoyu.Study.Ai.Shared.csproj src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared/
+COPY src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared/Ruoyu.Study.Consul.Shared.csproj src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared/
+COPY src/ruoyu.common/backend/Ruoyu.Study.MistakeBff.HttpClients/Ruoyu.Study.MistakeBff.HttpClients.csproj src/ruoyu.common/backend/Ruoyu.Study.MistakeBff.HttpClients/
 
 RUN dotnet restore "src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj"
 
