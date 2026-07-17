@@ -16,6 +16,7 @@
   - `PostgreSql:Username`
   - `PostgreSql:Password`
   - `Oss:*`
+  - `Loki:Uri`（Loki 日志地址，如 `http://ruoyu-loki:3100`，由 `Program.cs` 读取并覆盖 Serilog Loki Sink 的 uri）
 - `config/ruoyu/service-endpoints.json`
   - `StudentService:Url`（student 服务 HTTP 地址，如 `http://ruoyu-student:5005`）
 
@@ -88,6 +89,30 @@
   "VlAnalyzer": {
     "BaseUrl": "https://api.siliconflow.cn/v1",
     "Model": "Qwen/Qwen3-VL-30B-A3B-Instruct"
+  },
+  "Loki": {
+    "Uri": "http://localhost:3100"
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft.AspNetCore": "Warning",
+        "Microsoft.EntityFrameworkCore": "Warning"
+      }
+    },
+    "WriteTo": [
+      { "Name": "Console" },
+      {
+        "Name": "GrafanaLoki",
+        "Args": {
+          "uri": "http://ruoyu-loki:3100",
+          "labels": [
+            { "key": "service", "value": "Ruoyu.Study.Mistake" }
+          ]
+        }
+      }
+    ]
   }
 }
 ```
