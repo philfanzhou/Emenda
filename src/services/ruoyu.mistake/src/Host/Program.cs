@@ -12,26 +12,14 @@ using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service;
 using Ruoyu.Study.Consul.Shared;
 using Ruoyu.Study.MistakeBff.HttpClients;
-using Ruoyu.Study.Mistake.Host;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
 
 // ========== Serilog (Console + Grafana Loki) ==========
-// Loki 地址统一来自配置键 Loki:Uri（优先由 Consul KV 提供），覆盖 appsettings.json 中的 fallback。
-// Loki Sink 在 uri 为 null 时会抛 ArgumentNullException，配置文件中提供 fallback uri 确保服务能启动。
-// Loki 不可达时 Sink 异步重试，不影响服务运行。
-var lokiUri = builder.Configuration["Loki:Uri"];
-if (!string.IsNullOrWhiteSpace(lokiUri))
-{
-    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-    {
-        ["Serilog:WriteTo:1:Args:uri"] = lokiUri
-    });
-}
-
-builder.Host.UseAgentSerilog("Ruoyu.Study.Mistake");
+builder.Configuration.AddRuoyuLokiSink();
+builder.Host.UseRuoyuSerilog("Ruoyu.Study.Mistake");
 
 var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
