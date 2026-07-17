@@ -9,7 +9,7 @@ Mistake 模块通过 HTTP 为三个 Portal 提供错题业务接口。Mistake �
 ### admin_portal — 管理查看与运维
 
 - **代码位置**：`admin_portal\backend\Controllers\MistakeController.cs`
-- **HTTP 配置**：`MistakeService:BaseUrl` = `http://localhost:5007`
+- **HTTP 配置**：`MistakeService:Url` = `http://localhost:5007`
 - **核心职责**：
   - 分页查询错题列表（支持按学生/学科/年级/审核状态筛选）
   - 查询单条错题详情
@@ -24,7 +24,7 @@ Mistake 模块通过 HTTP 为三个 Portal 提供错题业务接口。Mistake �
 ### teacher_portal — 审核流程核心
 
 - **代码位置**：`teacher_portal\backend\Controllers\MistakeController.cs`
-- **HTTP 配置**：`MistakeService:BaseUrl` = `http://localhost:5007`
+- **HTTP 配置**：`MistakeService:Url` = `http://localhost:5007`
 - **核心职责**：
   - 获取待审核上传记录列表
   - 获取审核详情（按上传记录）
@@ -43,7 +43,7 @@ Mistake 模块通过 HTTP 为三个 Portal 提供错题业务接口。Mistake �
 ### user_portal — 学生查看
 
 - **代码位置**：`user_portal\backend\Controllers\MistakeController.cs`
-- **HTTP 配置**：`MistakeService:BaseUrl` = `http://localhost:5007`
+- **HTTP 配置**：`MistakeService:Url` = `http://localhost:5007`
 - **核心职责**：
   - 查看自己的错题列表
   - 查看错题详情

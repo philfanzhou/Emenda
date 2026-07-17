@@ -3,7 +3,7 @@
 ## admin_portal 集成
 
 ### HTTP 客户端注册
-- [ ] 配置 `MistakeService:BaseUrl` = `http://localhost:5007`
+- [ ] 配置 `MistakeService:Url` = `http://localhost:5007`
 - [ ] 注册 `IMistakeHttpClient` 到 DI（AddMistakeHttpClient）
 - [ ] 注册 `IStudentHttpClient` 到 DI（AddStudentHttpClient）
 
@@ -34,7 +34,7 @@
 ## teacher_portal 集成
 
 ### HTTP 客户端注册
-- [ ] 配置 `MistakeService:BaseUrl` = `http://localhost:5007`
+- [ ] 配置 `MistakeService:Url` = `http://localhost:5007`
 - [ ] 注册 `IMistakeHttpClient` 到 DI（AddMistakeHttpClient）
 - [ ] 注册 `TeacherDbService` 到 DI
 
@@ -69,7 +69,7 @@
 ## user_portal 集成
 
 ### HTTP 客户端注册
-- [ ] 配置 `MistakeService:BaseUrl` = `http://localhost:5007`
+- [ ] 配置 `MistakeService:Url` = `http://localhost:5007`
 - [ ] 注册 `IMistakeHttpClient` 到 DI（AddMistakeHttpClient）
 
 ### MistakeController

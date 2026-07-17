@@ -226,10 +226,10 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 
 | Portal | 配置键 | 默认值 |
 |--------|--------|--------|
-| admin_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
-| teacher_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
-| user_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
-| assistant_portal | `MistakeService:BaseUrl` | `http://localhost:5007` |
+| admin_portal | `MistakeService:Url` | `http://localhost:5007` |
+| teacher_portal | `MistakeService:Url` | `http://localhost:5007` |
+| user_portal | `MistakeService:Url` | `http://localhost:5007` |
+| assistant_portal | `MistakeService:Url` | `http://localhost:5007` |
 
 如果 mistake 的 HTTP 端口不是默认的 5007，需要同步修改所有 portal 的配置。
 
