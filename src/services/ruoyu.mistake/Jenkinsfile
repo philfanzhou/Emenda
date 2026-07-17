@@ -20,7 +20,7 @@ pipeline {
     }
 
     environment {
-        REPO_DIR         = '/mnt/data1/Ruoyu.Study'
+        REPO_DIR         = "${env.REPO_DIR ?: '/srv/repo'}"
         SERVICE_DIR      = "${env.REPO_DIR}/src/services/ruoyu.mistake"
         BUILD_SCRIPT     = "${env.REPO_DIR}/script/build-script/04-mistake.build.sh"
         TEST_PROJ        = "${env.SERVICE_DIR}/src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj"
