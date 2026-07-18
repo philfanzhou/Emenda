@@ -2,12 +2,9 @@
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-IMAGE_TAG="20260501"
-IMAGE_NAME="ruoyu.study.mistake:${IMAGE_TAG}"
+IMAGE_NAME="ruoyu.study.mistake:20260501"
 CONTAINER_NAME="ruoyu-mistake"
 NETWORK_NAME="ruoyu-net"
-# HTTP listen port is hardcoded to 5007 inside the container (Program.cs).
-# Port is the host port mapped to the container's 5007.
 Port="5007"
 
 CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"
