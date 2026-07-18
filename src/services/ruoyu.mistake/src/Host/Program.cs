@@ -24,7 +24,9 @@ builder.Host.UseRuoyuSerilog("Ruoyu.Study.Mistake");
 var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
 
-var httpPort = builder.Configuration.GetValue<int?>("Endpoints:Http") ?? 5007;
+// HTTP listen port is hardcoded to 5007 (not configurable via Endpoints:Http).
+// host port mapping is controlled by start.sh: -p ${Port}:5007.
+const int httpPort = 5007;
 
 builder.WebHost.ConfigureKestrel(options =>
 {

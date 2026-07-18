@@ -395,30 +395,30 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 
 ## 7. 配置缺失或端口错误
 
-### 7.1 Endpoints 配置缺失
+### 7.1 端口配置说明
 
 **典型症状**：服务启动后无法从预期端口访问。
 
 **常见日志特征**：无报错，但监听端口与预期不符
 
 **可能根因**：
-- `Endpoints:Grpc` 缺失 → 默认 5006
-- `Endpoints:Http` 缺失 → 默认 5007
-- 配置键名拼写错误
+- HTTP 监听端口固定为 5007（`Program.cs` 硬编码），不再通过配置键读取
+- host 端口映射未配置（`start.sh` 的 `Port` 变量缺失或被占用）
+- gRPC 端口 5006 已于 2026-07-12 下线，不再监听（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）
 
 **排查步骤**：
-1. 检查 `appsettings.json` 中是否有 `Endpoints` 配置节
-2. 启动日志中查看 Kestrel 实际监听端口
+1. 启动日志中查看 Kestrel 实际监听端口（应为 5007）
+2. 确认 `start.sh` 的 `Port` 变量配置正确，且 `-p ${Port}:5007` 映射生效
 3. 确认调用方连接的端口与 mistake 实际监听端口一致
 
-| 配置键 | 默认值 | 协议 |
-|--------|--------|------|
-| `Endpoints:Grpc` | 5006 | HTTP/2 |
-| `Endpoints:Http` | 5007 | HTTP/1.1 |
+| 端口 | 协议 | 配置方式 |
+|------|------|---------|
+| 5007（容器内固定） | HTTP/1.1 | `Program.cs` 硬编码，不可配置 |
+| host 映射端口 | — | `start.sh` 的 `Port` 变量（`-p ${Port}:5007`） |
 
-**临时绕过**：使用默认端口
+**临时绕过**：使用默认端口 5007
 
-**根治建议**：在 `appsettings.json` 中显式配置端口，避免依赖默认值。
+**根治建议**：HTTP 监听端口已硬编码为 5007，无需在 `appsettings.json` 中配置 `Endpoints:Http`。如需 host 端口映射，在 `start.sh` 设置 `Port` 变量。
 
 ### 7.2 ConnectionStrings:Default 缺失
 
@@ -546,8 +546,8 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 
 | 配置项 | 位置 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `Endpoints:Grpc` | appsettings.json | 5006 | gRPC (HTTP/2) 端口 |
-| `Endpoints:Http` | appsettings.json | 5007 | HTTP/1.1 端口 |
+| HTTP 监听端口 | `Program.cs` 硬编码 | 5007 | HTTP/1.1 端口（容器内固定，不可配置） |
+| `Port` | `start.sh` 变量 | 5007 | host 端口映射（`-p ${Port}:5007`） |
 | `ConnectionStrings:Default` | appsettings.json | SQLite | PostgreSQL 连接字符串 |
 | `Oss:Endpoint` | appsettings.json | localhost:8333 | S3 兼容 OSS 端点 |
 | `Oss:AccessKey` | appsettings.json | mock_access_key | OSS AccessKey |

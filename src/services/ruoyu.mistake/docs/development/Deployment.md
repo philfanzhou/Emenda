@@ -23,14 +23,14 @@
 服务私有配置仍保留在 Mistake 自身：
 
 - `Database:Name=ruoyu_study_mistake`
-- `Endpoints:Http=5007`
 - `VlAnalyzer:*`
+
+> **HTTP 监听端口固定为 5007**：硬编码在 `Program.cs` 的 `ConfigureKestrel` 中，不通过配置键 `Endpoints:Http` 读取，启动脚本也不再注入 `Endpoints__Http` 环境变量。host 端口映射通过 `start.sh` 的 `Port` 变量控制（`-p ${Port}:5007`）。
 
 启动脚本 `start.sh` 只保留：
 
 - `CONSUL_HTTP_ADDR`
 - `CONSUL_TOKEN`
-- `Endpoints__Http`
 - `Database__Name`
 - `VlAnalyzer__ApiKey`
 - `VlAnalyzer__BaseUrl`
@@ -50,9 +50,10 @@
 
 ## 端口与协议说明
 
-| 端口 | 协议 | 用途 | 配置键 | 默认值 |
-|------|------|------|--------|--------|
-| HTTP 端口 | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /`） | `Endpoints:Http` | 5007 |
+| 端口 | 协议 | 用途 | 配置方式 |
+|------|------|------|---------|
+| HTTP 端口（容器内固定） | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /`） | `Program.cs` 硬编码 5007，不可配置 |
+| host 映射端口 | — | host 访问容器服务的映射端口 | `start.sh` 的 `Port` 变量（`-p ${Port}:5007`） |
 
 **HTTP 端口**承载全部业务接口（18 个端点，路由前缀 `/api/mistakes`），包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等。同时 `GET /` 返回服务状态字符串用于健康检查。
 
@@ -67,8 +68,8 @@
 | **节点名称** | 配置准备 |
 | **前置条件** | 已获取部署环境信息（Consul 地址、ACL token、VL 分析私有配置） |
 | **输入条件** | appsettings.json 模板、环境变量清单 |
-| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:Url`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`、`Endpoints:*`<br>4. 如需自定义端口，设置 `Endpoints:Http` |
-| **成功判定** | 所有必填配置项均有有效值；端口不与已有服务冲突 |
+| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:Url`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`<br>4. HTTP 监听端口固定为 5007（`Program.cs` 硬编码），如需 host 端口映射，设置 `start.sh` 的 `Port` 变量 |
+| **成功判定** | 所有必填配置项均有有效值；host 映射端口不与已有服务冲突 |
 | **失败后排查方向** | 1. 配置键拼写错误 → 对照 appsettings.json 结构检查<br>2. 端口冲突 → `netstat` 检查端口占用<br>3. 环境变量未生效 → 确认运行环境是否正确注入 |
 
 ### 配置项速查
@@ -79,9 +80,6 @@
     "Host": "host.docker.internal",
     "Port": 8500,
     "KvPrefix": "config/ruoyu"
-  },
-  "Endpoints": {
-    "Http": 5007
   },
   "Database": {
     "Name": "ruoyu_study_mistake"

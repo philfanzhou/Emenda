@@ -6,7 +6,9 @@ IMAGE_TAG="20260501"
 IMAGE_NAME="ruoyu.study.mistake:${IMAGE_TAG}"
 CONTAINER_NAME="ruoyu-mistake"
 NETWORK_NAME="ruoyu-net"
-HTTP_PORT="5007"
+# HTTP listen port is hardcoded to 5007 inside the container (Program.cs).
+# Port is the host port mapped to the container's 5007.
+Port="5007"
 
 CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-host.docker.internal:8500}"
 CONSUL_TOKEN="${CONSUL_TOKEN:-}"
@@ -32,11 +34,10 @@ docker run -d \
   --restart unless-stopped \
   --network "$NETWORK_NAME" \
   --add-host=host.docker.internal:host-gateway \
+  -p "${Port}:5007" \
   -e TZ=Asia/Shanghai \
   -e CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR}" \
   -e CONSUL_TOKEN="${CONSUL_TOKEN}" \
-  -e Endpoints__Grpc="${GRPC_PORT}" \
-  -e Endpoints__Http="${HTTP_PORT}" \
   -e Database__Name="${DB_NAME}" \
   -e VlAnalyzer__ApiKey="${VL_API_KEY}" \
   -e VlAnalyzer__BaseUrl="${VL_API_BASE_URL}" \
