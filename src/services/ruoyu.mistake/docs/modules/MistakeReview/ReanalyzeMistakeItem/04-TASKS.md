@@ -36,7 +36,7 @@
 
 - [ ] TASK-22: `Database/Entities/ReanalyzeJobEntity.cs` 新建
 - [ ] TASK-23: `Database/MistakeDbContext.cs` 注册 `DbSet<ReanalyzeJobEntity>` + 索引配置
-- [ ] TASK-24: `Database/Migrations/YYYYMMDDHHMMSS_AddReanalyzeJob.cs` 新建（PostgreSQL + SQLite 双 provider）
+- [ ] TASK-24: `Database/Migrations/YYYYMMDDHHMMSS_AddReanalyzeJob.cs` 新建（PostgreSQL provider）
 - [ ] TASK-25: 验证 `dotnet ef migrations add` 后 SQL 正确性（手动检查 `Up`/`Down`）
 
 ## 5. Hosted Services

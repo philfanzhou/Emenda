@@ -198,18 +198,6 @@
 | **预期结果** | 各场景下服务正常启动，表结构符合预期，日志中无异常 |
 | **失败判断** | 服务启动失败；Npgsql 异常；SQL 执行异常；表结构不正确 |
 
-### TC-18 数据库初始化 (SQLite)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 数据库初始化 — SQLite |
-| **目的** | 验证 SQLite 环境下数据库初始化流程 |
-| **前置条件** | 1. ConnectionStrings:Default 为空或不包含 PostgreSQL 连接串<br>2. SQLite 数据目录存在 |
-| **输入** | 启动 mistake 服务（不配置 PostgreSQL 连接串） |
-| **操作步骤** | 1. 不配置 ConnectionStrings:Default<br>2. 启动服务<br>3. 验证使用默认路径 data/sqlite/ruoyu_study_mistake.db<br>4. 验证表被创建<br>5. 验证不执行旧表迁移逻辑 |
-| **预期结果** | 1. 使用 SQLite 作为数据库<br>2. 表结构正确创建<br>3. 不执行 MigrateOldSchemaAsync 和 StampMigrationsIfTablesExistAsync |
-| **失败判断** | 服务启动失败；SQLite 目录不存在导致异常；表未创建 |
-
 ### TC-20 地址错误 (MistakeGrpcService:Address)
 
 | 项目 | 内容 |
@@ -307,7 +295,7 @@
 - 参数校验在非法输入下返回 InvalidArgument 且消息匹配
 - 跨服务调用（student → mistake、teacher_portal → mistake → student）链路完整
 - OSS 迁移在正常情况下路径更新正确
-- 数据库初始化在 PostgreSQL 和 SQLite 环境下均成功
+- 数据库初始化在 PostgreSQL 环境下成功
 - 容错场景（OSS 单图失败）不影响主流程返回 success=true
 
 ### 部分通过
@@ -327,7 +315,7 @@
 - 审核操作（ReviewMistakeItem）状态未正确变更
 - CompleteUploadReview 在所有前提满足时返回 success=false
 - 数据库初始化失败导致服务无法启动
-- PostgreSQL 连接失败且无 SQLite 降级路径
+- PostgreSQL 连接失败
 - OSS 完全不可用时 CompleteUploadReview 抛出未捕获异常（非容错）
 - teacher_portal 无法连接 mistake 服务（MistakeGrpcService:Address 配置错误且无法修正）
 
@@ -363,10 +351,10 @@
 |------|------|
 | **触发条件** | ConnectionStrings:Default 中的 PostgreSQL 地址/端口/凭据错误，或 PostgreSQL 服务不可达 |
 | **影响范围** | 服务无法启动 |
-| **临时绕过方式** | 清空 ConnectionStrings:Default，降级为 SQLite |
-| **是否允许降级** | 允许降级为 SQLite（默认路径 data/sqlite/ruoyu_study_mistake.db） |
+| **临时绕过方式** | 无（服务固定使用 PostgreSQL） |
+| **是否允许降级** | 不允许降级 |
 | **需要团队介入** | DBA 团队排查 PostgreSQL 连接问题 |
-| **是否影响上线** | 若生产环境必须使用 PostgreSQL 则阻塞 |
+| **是否影响上线** | 阻塞，需修复 PostgreSQL 连接后重新部署 |
 
 ### 3.4 数据库初始化失败 — 旧表迁移 SQL 异常
 
@@ -379,18 +367,7 @@
 | **需要团队介入** | DBA 团队手动迁移数据 |
 | **是否影响上线** | 阻塞，需修复后重新部署 |
 
-### 3.5 数据库初始化失败 — SQLite 目录不存在
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | SQLite 默认路径 data/sqlite/ 的父目录不存在 |
-| **影响范围** | 服务无法启动 |
-| **临时绕过方式** | 手动创建 data/sqlite/ 目录 |
-| **是否允许降级** | 不允许自动降级 |
-| **需要团队介入** | 运维团队创建目录 |
-| **是否影响上线** | 阻塞，但修复简单 |
-
-### 3.6 MistakeGrpcService:Address 配置错误
+### 3.5 MistakeGrpcService:Address 配置错误
 
 | 项目 | 说明 |
 |------|------|
@@ -401,16 +378,16 @@
 | **需要团队介入** | 运维团队修正配置 |
 | **是否影响上线** | 阻塞 teacher_portal 的错题管理功能 |
 
-### 3.7 ConnectionStrings:Default 缺失
+### 3.6 ConnectionStrings:Default 缺失
 
 | 项目 | 说明 |
 |------|------|
-| **触发条件** | appsettings 中未配置 ConnectionStrings:Default |
-| **影响范围** | 自动降级为 SQLite |
-| **临时绕过方式** | 无需绕过，自动降级 |
-| **是否允许降级** | 允许，使用 SQLite 默认路径 data/sqlite/ruoyu_study_mistake.db |
-| **需要团队介入** | 无需介入（开发/测试环境可接受） |
-| **是否影响上线** | 生产环境需配置 PostgreSQL 连接串，否则阻塞 |
+| **触发条件** | appsettings 中未配置 ConnectionStrings:Default 且 Consul 未注入 PostgreSql:* |
+| **影响范围** | 服务无法启动 |
+| **临时绕过方式** | 配置 PostgreSQL 连接串 |
+| **是否允许降级** | 不允许降级 |
+| **需要团队介入** | 运维团队配置 Consul 或 appsettings |
+| **是否影响上线** | 阻塞，需配置 PostgreSQL 连接串 |
 
 ---
 

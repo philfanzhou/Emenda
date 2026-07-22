@@ -44,21 +44,14 @@
 
 ### 旧表迁移
 
-- 旧表迁移逻辑仅在 PostgreSQL 模式下执行
 - 所有 DDL 操作使用 `IF EXISTS` / `IF NOT EXISTS` 确保幂等
 - 迁移顺序：删除旧外键 → 重命名表 → 添加列 → 重命名列 → 删除列 → 创建索引 → 修正列名 → 补充外键
-
-### SQLite 模式
-
-- 不执行任何迁移逻辑
-- 使用 `EnsureCreated` 确保表存在
-- 不支持 `Migrate`，不支持 schema 变更
 
 ## JSONB 格式约定
 
 ### source_regions
 
-- 存储类型：PostgreSQL `jsonb`，SQLite `text`
+- 存储类型：PostgreSQL `jsonb`
 - 默认值：`'[]'`（空数组）
 - 字段命名：camelCase（由 `JsonNamingPolicy.CamelCase` 控制）
 - 结构：
@@ -74,7 +67,7 @@
 
 ### image_paths
 
-- 存储类型：PostgreSQL `jsonb`，SQLite `text`
+- 存储类型：PostgreSQL `jsonb`
 - 默认值：`'[]'`（空数组）
 - 字段命名：无命名策略（`JsonSerializerOptions = null`），字符串数组无需转换
 - 结构：
@@ -92,5 +85,3 @@
 ### 数据库列类型声明
 
 - PostgreSQL：`HasColumnType("jsonb")`
-- SQLite：`HasColumnType("jsonb")` 被忽略，实际存储为 `text`
-- `GetTableCreationSql` 中 SQLite 的 `image_paths` 列显式声明为 `text NOT NULL DEFAULT '[]'`

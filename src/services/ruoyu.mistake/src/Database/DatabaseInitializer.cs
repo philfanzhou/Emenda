@@ -10,12 +10,8 @@ public static class DatabaseInitializer
     public static async Task InitializeAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("DatabaseInitializer");
-        var isSqlite = context.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
-        if (!isSqlite)
-        {
-            await MigrateOldSchemaAsync(context, logger);
-            await StampMigrationsIfTablesExistAsync(context, logger);
-        }
+        await MigrateOldSchemaAsync(context, logger);
+        await StampMigrationsIfTablesExistAsync(context, logger);
         await Common.Database.DatabaseInitializer.InitializeAsync(context, loggerFactory, GetTableCreationSql);
     }
 

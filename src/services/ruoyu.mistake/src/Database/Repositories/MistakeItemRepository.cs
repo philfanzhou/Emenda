@@ -75,7 +75,7 @@ public class MistakeItemRepository : IMistakeItemRepository
         var entities = await _dbContext.MistakeItems
             .Where(m => m.SourceUploadId == sourceUploadId)
             .ToListAsync();
-        // 在客户端排序，因为 SQLite 不支持 DateTimeOffset 的 ORDER BY
+        // Sort on client side to ensure consistent ordering
         return entities.OrderBy(m => m.CreatedAt).Select(MapToModel).ToList();
     }
 
@@ -114,7 +114,7 @@ public class MistakeItemRepository : IMistakeItemRepository
             query = query.Where(m => subjects.Contains(m.Subject));
         }
 
-        // 获取所有数据在客户端进行分组和聚合，因为 SQLite 不支持 DateTimeOffset 的 Min
+        // Load all data for client-side grouping and aggregation
         var items = await query.ToListAsync();
         
         var grouped = items

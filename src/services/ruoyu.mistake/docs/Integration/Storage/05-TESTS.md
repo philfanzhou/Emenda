@@ -24,23 +24,6 @@
 - **步骤**：调用 `InitializeAsync`
 - **预期**：自动创建 `__EFMigrationsHistory` 并写入迁移记录，不重复创建表
 
-## SQLite 初始化
-
-### TC-SL-01: 全新数据库初始化
-
-- **前置条件**：`ConnectionStrings:Default` 不含 `Host=` 或 `Server=`
-- **步骤**：启动服务，调用 `InitializeAsync`
-- **预期**：
-  - 使用 `EnsureCreated` 创建所有表
-  - 跳过迁移逻辑
-  - 数据库文件创建在指定路径
-
-### TC-SL-02: 数据库文件已存在
-
-- **前置条件**：SQLite 数据库文件已存在且表完整
-- **步骤**：调用 `InitializeAsync`
-- **预期**：无报错，不重复创建表
-
 ## 旧表迁移
 
 ### TC-MG-01: 旧表 mistake 存在，mistake_item 不存在
@@ -135,12 +118,6 @@
 - **前置条件**：`MistakePracticeEntity` 已保存
 - **步骤**：修改 `ImagePaths` 列表内容，调用 `SaveChanges`
 - **预期**：EF Core 检测到变更并更新数据库
-
-### TC-JS-05: SQLite 下 JSONB 列兼容性
-
-- **前置条件**：使用 SQLite 数据库
-- **步骤**：保存和读取含 JSONB 列的实体
-- **预期**：序列化/反序列化正常工作，数据以 text 形式存储
 
 ## 乐观并发
 

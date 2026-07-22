@@ -11,7 +11,7 @@
 ## 排序规范
 
 - 固定按 `created_at` 升序排列
-- 排序在客户端执行（LINQ `OrderBy`），原因：SQLite 不支持 DateTimeOffset 的 ORDER BY
+- 排序在客户端执行（LINQ `OrderBy`）
 
 ## 日志规范
 

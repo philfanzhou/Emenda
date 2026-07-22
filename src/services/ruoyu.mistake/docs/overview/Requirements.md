@@ -9,7 +9,7 @@
 - 支持错题练习记录追踪，仅已确认错题可添加练习
 - 支持错题处理过程日志
 - 支持 OSS 垃圾清理审计（GetAllReferencedImagePaths）
-- 双数据库模式：PostgreSQL（生产）/ SQLite（开发）
+- 数据库：PostgreSQL（Npgsql provider）
 - 双 OSS 模式：S3OssService（生产）/ LocalFileOssService（开发，USE_LOCAL_OSS=1）
 - 审核完成操作涉及跨服务副作用，单点失败不阻塞整体流程
 

@@ -44,7 +44,7 @@
 | 有效 DateTimeOffset | ISO 8601 UTC | 2024-01-15T08:30:00.000Z |
 | DateTimeOffset.MinValue | 空字符串 | "" |
 
-## SQLite 兼容性约定
+## 客户端聚合约定
 
 | 操作 | 处理方式 |
 |------|----------|

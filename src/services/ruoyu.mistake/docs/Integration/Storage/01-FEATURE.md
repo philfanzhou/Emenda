@@ -2,20 +2,18 @@
 
 ## 功能概述
 
-Mistake 服务提供错题管理的数据库与存储层集成，支持 PostgreSQL 和 SQLite 双模式，具备自动迁移、旧表迁移和完整的初始化能力。
+Mistake 服务提供错题管理的数据库与存储层集成，使用 PostgreSQL（Npgsql 提供程序），具备自动迁移、旧表迁移和完整的初始化能力。
 
 ## 核心能力
 
-### 1. PostgreSQL / SQLite 双模式
+### 1. PostgreSQL 数据库
 
-- **PostgreSQL**：当 `ConnectionStrings:Default` 包含 `Host=` 或 `Server=` 时自动启用，使用 Npgsql 提供程序
-- **SQLite**：当连接字符串不含上述关键字时启用，默认路径 `Data Source=data/sqlite/ruoyu_study_mistake.db`
+- 使用 Npgsql EF Core 提供程序
 - 数据库名：`ruoyu_study_mistake`，与 `ruoyu_study_questionbank` 和 `ruoyu_study_student` 物理隔离
 
 ### 2. 自动迁移和初始化
 
-- **PostgreSQL 模式**：执行 EF Core Migrate + 旧表迁移 + 迁移标记补全 + 列名修正 + 外键补全
-- **SQLite 模式**：跳过迁移逻辑，直接使用 `EnsureCreated` 确保表存在
+- 执行 EF Core Migrate + 旧表迁移 + 迁移标记补全 + 列名修正 + 外键补全
 
 ### 3. 旧表迁移支持
 
@@ -27,8 +25,8 @@ Mistake 服务提供错题管理的数据库与存储层集成，支持 PostgreS
 
 ### 4. JSONB 存储
 
-- `source_regions`：存储错题来源区域信息（PostgreSQL JSONB / SQLite text）
-- `image_paths`：存储练习图片路径列表（PostgreSQL JSONB / SQLite text）
+- `source_regions`：存储错题来源区域信息（PostgreSQL JSONB）
+- `image_paths`：存储练习图片路径列表（PostgreSQL JSONB）
 - 自定义 `ValueComparer` 确保变更追踪正确
 
 ### 5. 级联删除

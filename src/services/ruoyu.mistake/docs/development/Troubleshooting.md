@@ -254,26 +254,9 @@
 3. 测试连接字符串：`psql "Host=localhost;Port=5432;Database=ruoyu_study_mistake;Username=phil"`
 4. 检查 `appsettings.json` 中 `ConnectionStrings:Default` 配置
 
-**临时绕过**：删除 `ConnectionStrings:Default` 配置，服务会回退到 SQLite 模式
+**临时绕过**：无（服务固定使用 PostgreSQL，必须确保 PostgreSQL 可用）
 
 **根治建议**：确保 PostgreSQL 服务稳定运行，配置正确的连接字符串。
-
-### 5.2 SQLite 目录不存在
-
-**典型症状**：未配置 PostgreSQL 连接字符串时，服务启动报 SQLite 文件路径错误。
-
-**常见日志特征**：
-- `Microsoft.Data.Sqlite.SqliteException: SQLite Error 14: 'unable to open database file'`
-
-**可能根因**：SQLite 默认路径 `data/sqlite/ruoyu_study_mistake.db` 的父目录 `data/sqlite/` 不存在
-
-**排查步骤**：
-1. 检查工作目录下是否存在 `data/sqlite/` 目录
-2. 手动创建：`mkdir -p data/sqlite`
-
-**临时绕过**：手动创建 `data/sqlite/` 目录
-
-**根治建议**：在 `Program.cs` 中启动前自动创建 SQLite 目录。
 
 ### 5.3 旧表迁移失败
 
@@ -422,21 +405,18 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 
 ### 7.2 ConnectionStrings:Default 缺失
 
-**典型症状**：服务使用 SQLite 而非 PostgreSQL，数据未持久化或与预期不一致。
+**典型症状**：服务启动失败，无法连接数据库。
 
-**常见日志特征**：
-- 无 PostgreSQL 相关日志
-- SQLite 文件出现在工作目录下
-
-**可能根因**：`ConnectionStrings:Default` 未配置，回退到 SQLite 默认路径 `Data Source=data/sqlite/ruoyu_study_mistake.db`
+**可能根因**：`ConnectionStrings:Default` 未配置且 Consul 未注入 `PostgreSql:*` 共享配置
 
 **排查步骤**：
-1. 检查 `appsettings.json` 中 `ConnectionStrings:Default` 是否存在
-2. 确认 `Program.cs` L43-51 的判断逻辑：连接字符串包含 `Host=` 或 `Server=` 才使用 PostgreSQL
+1. 检查 `appsettings.json` 中 `ConnectionStrings:Default` 是否存在且为 PostgreSQL 连接串
+2. 确认 Consul 中 `PostgreSql:Host`/`Port`/`Username`/`Password` 是否已配置
+3. 确认 `Database:Name` 配置正确
 
 **临时绕过**：添加 PostgreSQL 连接字符串
 
-**根治建议**：生产环境必须配置 PostgreSQL 连接字符串，SQLite 仅用于开发/测试。
+**根治建议**：生产环境通过 Consul 配置 `PostgreSql:*`，本地开发在 `appsettings.json` 配置 PostgreSQL 连接串。
 
 ---
 
@@ -548,7 +528,7 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 |--------|------|--------|------|
 | HTTP 监听端口 | `Program.cs` 硬编码 | 5007 | HTTP/1.1 端口（容器内固定，不可配置） |
 | `Port` | `start.sh` 变量 | 5007 | host 端口映射（`-p ${Port}:5007`） |
-| `ConnectionStrings:Default` | appsettings.json | SQLite | PostgreSQL 连接字符串 |
+| `ConnectionStrings:Default` | appsettings.json | （无） | PostgreSQL 连接字符串（本地开发兜底） |
 | `Oss:Endpoint` | appsettings.json | localhost:8333 | S3 兼容 OSS 端点 |
 | `Oss:AccessKey` | appsettings.json | mock_access_key | OSS AccessKey |
 | `Oss:SecretKey` | appsettings.json | mock_secret_key | OSS SecretKey |

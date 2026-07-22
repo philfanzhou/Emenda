@@ -132,7 +132,7 @@ MistakeServiceImpl (gRPC 层映射)
 
 ## 关键设计决策
 
-1. **客户端分组聚合**: SQLite 不支持对 DateTimeOffset 类型的 Min 聚合函数，因此将所有 PendingReview 条目加载到内存后进行 LINQ 分组聚合。这在数据量可控（size 上限 100）的场景下是可接受的权衡。
+1. **客户端分组聚合**: 将所有 PendingReview 条目加载到内存后进行 LINQ 分组聚合。在数据量可控（size 上限 100）的场景下是可接受的权衡。
 
 2. **分组键包含四个字段**: 按 `{SourceUploadId, StudentId, Subject, Grade}` 分组，意味着同一上传批次如果包含不同学科或年级的错题，会被拆分为多行。这确保了每个分组的信息一致性。
 

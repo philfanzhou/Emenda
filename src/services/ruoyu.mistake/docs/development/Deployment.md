@@ -117,11 +117,7 @@
 
 ### 数据库类型判定逻辑
 
-连接字符串包含 `Host=` 或 `Server=`（不区分大小写）→ 使用 PostgreSQL（Npgsql），否则使用 SQLite。
-
-SQLite 未配置连接字符串时，默认路径为 `data/sqlite/ruoyu_study_mistake.db`。
-
-容器部署下默认通过 Consul 中的 `PostgreSql:*` 与本地 `Database:Name` 拼出 PostgreSQL 连接串。
+连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 构建：优先从 Consul 共享配置（`PostgreSql:Host`/`Port`/`Username`/`Password` + `Database:Name`）合成 PostgreSQL 连接串，无法合成时回退到本地 `ConnectionStrings:Default`（必须为 PostgreSQL 连接串）。
 
 ### OSS 模式判定逻辑
 
@@ -137,9 +133,9 @@ SQLite 未配置连接字符串时，默认路径为 `data/sqlite/ruoyu_study_mi
 | 项目 | 内容 |
 |------|------|
 | **节点名称** | 数据库准备 |
-| **前置条件** | 配置准备完成；数据库服务器已运行（PostgreSQL 模式）或文件系统可写（SQLite 模式） |
-| **输入条件** | 有效的 `ConnectionStrings:Default` |
-| **操作步骤** | 1. PostgreSQL 模式：创建数据库 `ruoyu_study_mistake`（或连接串中指定的数据库名）<br>2. SQLite 模式：确保 `data/sqlite/` 目录存在且可写<br>3. 启动服务，`DatabaseInitializer` 将自动完成建表和迁移 |
+| **前置条件** | 配置准备完成；PostgreSQL 数据库服务器已运行 |
+| **输入条件** | 有效的 `ConnectionStrings:Default` 或 Consul `PostgreSql:*` 配置 |
+| **操作步骤** | 1. 创建数据库 `ruoyu_study_mistake`（或连接串中指定的数据库名）<br>2. 启动服务，`DatabaseInitializer` 将自动完成建表和迁移 |
 | **成功判定** | 服务启动日志中出现初始化完成信息，无异常；数据库中存在 `mistake_item`、`mistake_practice`、`process_log` 三张表 |
 | **失败后排查方向** | 1. 连接失败 → 检查连接串、数据库是否已创建、网络是否可达<br>2. 权限不足 → 检查数据库用户是否有 CREATE TABLE 权限<br>3. 迁移失败 → 查看启动日志中的异常堆栈，见下方"数据库迁移失败判断" |
 
@@ -155,25 +151,11 @@ SQLite 未配置连接字符串时，默认路径为 `data/sqlite/ruoyu_study_mi
 4. **迁移标记**：如果 `mistake_item` 表已存在但 `__EFMigrationsHistory` 中没有 `20260514051544_InitialCreate` 记录，自动插入标记行
 5. **建表保障**：通过 `Common.Database.DatabaseInitializer.InitializeAsync` 确保三张表存在
 
-### SQLite 自动初始化逻辑
-
-SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创建表结构。
-
-### SQLite 兼容性已知限制
-
-> **设计决策**：以下 workaround 是已知且有意为之的，生产环境使用 PostgreSQL 不受影响。
-
-| 位置 | 限制 | Workaround | 影响 |
-|------|------|-----------|------|
-| `MistakeItemRepository.GetPendingReviewUploadsAsync` | SQLite 不支持 `DateTimeOffset` 的 `Min` 聚合 | 在客户端执行分组和聚合 | 开发环境下数据量大时性能较低，生产 PostgreSQL 不受影响 |
-| `MistakeItemRepository.GetListAsync` | SQLite 不支持 `DateTimeOffset` 的 `ORDER BY` | 在客户端排序 | 开发环境下分页排序在客户端完成，生产 PostgreSQL 在数据库端排序 |
-
 ### 数据库不存在或迁移失败时怎么判断
 
 | 现象 | 原因 | 判断方法 |
 |------|------|---------|
 | 服务启动抛出 `NpgsqlException` | PostgreSQL 未运行或连接串错误 | 查看启动日志中的异常信息，确认 Host/Port/Username/Database |
-| 服务启动抛出 `SqliteException` | SQLite 文件路径不可写 | 检查 `data/sqlite/` 目录权限 |
 | 日志出现"检测到旧表 mistake，正在迁移到新表结构..."后异常 | 旧表结构与迁移脚本不兼容 | 检查旧表列定义，确认迁移 SQL 中的 `IF EXISTS` / `IF NOT EXISTS` 逻辑是否覆盖 |
 | 日志出现"已将 InitialCreate 迁移标记为已应用" | 正常，表示已有表被标记 | 无需处理 |
 | 表存在但 `__EFMigrationsHistory` 为空且未 stamp | stamp 逻辑未执行 | 手动检查 `mistake_item` 表是否存在，确认 stamp SQL 是否被跳过 |
@@ -247,7 +229,7 @@ SQLite 模式跳过上述全部迁移逻辑，直接调用 `EnsureCreated` 创�
 ### 启动顺序
 
 ```
-1. PostgreSQL / 确保文件系统可写（SQLite）
+1. PostgreSQL
 2. OSS 服务（MinIO/SeaweedFS）或确认本地目录可写
 3. student 服务（不强制先于 mistake，但建议先启动）
 4. mistake 服务
@@ -340,4 +322,3 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 | 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 手动添加外键约束 |
 | 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 手动创建缺失索引 |
 | 10 | HTTP 请求大小 | 上传含大量图片的错题 | 不超过服务器请求体大小限制 | 如需更大限制，修改 Kestrel `MaxRequestBodySize` |
-| 11 | SQLite 文件位置（如适用） | 检查 `data/sqlite/ruoyu_study_mistake.db` | 文件存在且可读写 | 检查目录权限 |

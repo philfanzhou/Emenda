@@ -86,5 +86,5 @@ MistakeItemRepository.GetListAsync:
 
 - **分页参数修正**：在 Domain Service 层统一处理，保证 Repository 不需要关心边界值
 - **复合索引**：`(student_id, subject, grade, review_status)` 覆盖常见查询组合
-- **SQLite 兼容**：排序在服务端完成（`OrderByDescending`），而非依赖 SQL 的 ORDER BY，因为 SQLite 对 DateTimeOffset 排序支持不一致
+- **排序**：使用 `OrderByDescending` 进行排序
 - **totalPages 计算**：在 gRPC 层使用整数除法 `(totalCount + size - 1) / size`，向上取整

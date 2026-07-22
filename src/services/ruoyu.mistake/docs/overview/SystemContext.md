@@ -24,10 +24,9 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
   UploadRecords              │              │               │        │  VL Provider │
   RemoveProcessed            │              │ EF Core       │        │ (SiliconFlow │
   Images                     │              ▼               │        │  Qwen3-VL)   │
-  CreateReturned             │       ┌──────────────┐       │        └──────────────┘
-  Record                     │       │ PostgreSQL / │       │              ▲
-                             │       │ SQLite       │       │              │ HTTP
-┌──────────────┐             │       └──────────────┘       │              │
+  CreateReturned                 │       ┌──────────────┐       │        └──────────────┘
+  Record                     │       │ PostgreSQL   │       │              ▲
+                             │       └──────────────┘       │              │ HTTP
 │              │             │                               │              │
 │teacher_portal│─────────────│                               │──────────────┘
 │  (教师端)    │  gRPC :5006 │                               │  VL 图片分析
@@ -109,12 +108,11 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 - **调用场景**: `UploadPollingWorker` 中图片迁移（uploads/ → mistakes/）；`ReviewMistakeItem` 退回时反向迁移（mistakes/ → uploads/）；缩略图生成
 - **失败策略**: 单图迁移失败不阻塞整体流程，catch 后 log error 继续
 
-### PostgreSQL / SQLite
+### PostgreSQL
 
-- **协议**: Npgsql (PostgreSQL) / Microsoft.Data.Sqlite
+- **协议**: Npgsql (PostgreSQL)
 - **访问方式**: EF Core
 - **数据库**: `ruoyu_study_mistake`
-- **选择逻辑**: 连接字符串含 `Host=` 或 `Server=` → PostgreSQL，否则 → SQLite
 
 ## 服务边界
 

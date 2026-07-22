@@ -72,6 +72,6 @@ MistakeItemRepository.GetBySourceUploadIdAsync:
 
 ## 关键设计决策
 
-- **客户端排序**: SQLite 不支持 `DateTimeOffset` 的 `ORDER BY`，因此在客户端使用 LINQ `OrderBy` 排序
+- **客户端排序**: 在客户端使用 LINQ `OrderBy` 排序
 - **无分页**: 该接口用于查看单次上传的全部错题，数据量有限（通常不超过 20 条），不需要分页
 - **简单透传**: Domain Service 直接透传 Repository 结果，无额外业务逻辑

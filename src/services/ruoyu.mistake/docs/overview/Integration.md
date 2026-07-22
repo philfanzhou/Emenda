@@ -23,7 +23,7 @@
 | 17 | GetPresignedUrl | gRPC | 入 | user_portal, teacher_portal | 生成 mistakes/ 路径图片的预签名 URL；Mistake 恢复直连 OSS（oss-path-autonomy），直接调用 `IOssService` + `ThumbnailHelper`，不再代理到 Student gRPC；路径前缀校验仅允许 `mistakes/`；支持缩略图生成（当 `size` 参数不为空且不为 `full` 时触发）：尺寸映射 `full`=原图, `medium`=800px, `small`=400px, `thumbnail`=200px；缩放模式 `ResizeMode.Max`（保持宽高比，长边不超过指定像素）；缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`（示例：原图 `mistakes/2025/06/14/def/image.jpg` → 缩略图 `mistakes/2025/06/14/def/image_small.jpg`）；缓存命中直接返回预签名 URL，缓存未命中则下载原图 → SixLabors.ImageSharp 缩放 → 上传到 OSS → 返回预签名 URL；降级策略：缩略图生成失败时返回原图 URL + Warning 日志；`IOssService.DeleteAsync` 自动清理关联缩略图 |
 | 18 | StudentLearningGrpcServiceClient.RemoveImagesFromRecord | gRPC | 出 | ruoyu.student | 审核确认时从上传记录移除已迁移图片 |
 | 19 | StudentLearningGrpcServiceClient.MarkUploadRecordAsReturned | gRPC | 出 | ruoyu.student | 上传记录下无待审核条目时标记为已退回 |
-| 20 | EF Core (Npgsql/Sqlite) | 数据库 | 出 | PostgreSQL/SQLite | 所有数据持久化操作 |
+| 20 | EF Core (Npgsql) | 数据库 | 出 | PostgreSQL | 所有数据持久化操作 |
 
 ## 失败语义总结
 
@@ -34,7 +34,7 @@
 | **Student** (MigrateImagesToMistake) | ReviewMistakeItem 确认时迁移图片失败 | catch 后 log error，继续处理下一张图 | 该图片未迁移到 mistakes/，source_regions 路径未更新 |
 | **Student** (RemoveImagesFromRecord) | ReviewMistakeItem 确认后调用失败 | catch 后 log error，审核状态已持久化不受影响 | 上传记录中仍保留已迁移图片引用，需人工或补偿任务清理 |
 | **Student** (MarkUploadRecordAsReturned) | 无待审核条目时标记上传记录失败 | catch 后 log error，审核状态已持久化不受影响 | 上传记录状态未更新为已退回，需人工或补偿任务处理 |
-| **PostgreSQL/SQLite** | 数据库操作失败 | EF Core 抛异常，gRPC 返回 INTERNAL 状态码 | 整个请求失败，调用方可重试 |
+| **PostgreSQL** | 数据库操作失败 | EF Core 抛异常，gRPC 返回 INTERNAL 状态码 | 整个请求失败，调用方可重试 |
 
 ### 关键风险：ReviewMistakeItem 的非事务性
 

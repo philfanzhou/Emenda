@@ -26,7 +26,7 @@
     "depends_on": ["TASK-02"],
     "action": "实现 GetBySourceUploadIdAsync 仓储方法（含客户端排序）",
     "files": ["src/Database/Repositories/MistakeItemRepository.cs"],
-    "acceptance": "SQLite 查询后在客户端按 CreatedAt 升序排序"
+    "acceptance": "查询后在客户端按 CreatedAt 升序排序"
   },
   {
     "id": "TASK-04",

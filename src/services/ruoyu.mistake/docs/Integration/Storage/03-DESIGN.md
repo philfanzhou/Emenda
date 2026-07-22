@@ -1,20 +1,10 @@
 # 设计说明
 
-## 1. 数据库选择逻辑
+## 1. 数据库连接
 
-```
-连接字符串包含 "Host=" 或 "Server=" ?
-  ├─ 是 → PostgreSQL (UseNpgsql)
-  └─ 否 → SQLite (UseSqlite)
-           └─ 连接字符串为空时使用默认值:
-              Data Source=data/sqlite/ruoyu_study_mistake.db
-```
-
-判断逻辑位于 `Program.cs`，通过检查 `ConnectionStrings:Default` 是否包含 `Host=` 或 `Server=`（不区分大小写）来决定使用哪种数据库提供程序。
+连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 构建：优先从 Consul 共享配置（`PostgreSql:Host`/`Port`/`Username`/`Password` + `Database:Name`）合成 PostgreSQL 连接串，无法合成时回退到本地 `ConnectionStrings:Default`（必须为 PostgreSQL 连接串）。`Program.cs` 使用 `UseNpgsql(connectionString)` 注册 `MistakeDbContext`。
 
 ## 2. 初始化流程
-
-### PostgreSQL 模式
 
 ```
 InitializeAsync(context, logger)
@@ -28,17 +18,6 @@ InitializeAsync(context, logger)
   └─ 3. Common.Database.DatabaseInitializer.InitializeAsync
         使用 GetTableCreationSql 创建缺失的表和索引
 ```
-
-### SQLite 模式
-
-```
-InitializeAsync(context, logger)
-  │
-  └─ Common.Database.DatabaseInitializer.InitializeAsync
-       使用 EnsureCreated 确保表存在（跳过迁移逻辑）
-```
-
-SQLite 模式通过检测 `context.Database.ProviderName` 是否包含 "Sqlite" 来识别，跳过所有 PostgreSQL 特有的迁移逻辑。
 
 ## 3. 旧表迁移流程
 
@@ -103,10 +82,6 @@ MigrateOldSchemaAsync
   - 相等判断：`SequenceEqual`
   - 哈希计算：聚合每个字符串的哈希
   - 快照：`ToList()` 实现浅拷贝（string 不可变，浅拷贝安全）
-
-### SQLite 兼容
-
-SQLite 不支持原生 JSONB 类型，`image_paths` 列使用 `text` 类型存储（`DEFAULT '[]'`），EF Core 的 `HasColumnType("jsonb")` 在 SQLite 下会被忽略，序列化/反序列化逻辑仍然正常工作。
 
 ## 5. 级联删除设计
 

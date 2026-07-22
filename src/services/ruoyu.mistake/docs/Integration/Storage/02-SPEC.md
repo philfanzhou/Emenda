@@ -4,7 +4,7 @@
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `ConnectionStrings:Default` | string | PostgreSQL 必填 | `Data Source=data/sqlite/ruoyu_study_mistake.db` | 数据库连接字符串。含 `Host=` 或 `Server=` 时使用 PostgreSQL，否则使用 SQLite |
+| `ConnectionStrings:Default` | string | 否（Consul 兜底） | （无） | PostgreSQL 连接字符串（本地开发兜底）。生产环境由 Consul `PostgreSql:*` + `Database:Name` 合成 |
 
 ## 表结构定义
 

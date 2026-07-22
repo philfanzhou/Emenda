@@ -350,7 +350,7 @@
 
 ## 集成测试（pre-commit 之外）
 
-- **DB 迁移验证**：`dotnet ef database update` 在 PostgreSQL 和 SQLite 都能成功
+- **DB 迁移验证**：`dotnet ef database update` 在 PostgreSQL 环境下成功
 - **端到端 happy path**：起服务 → 调 `POST /api/mistake/{id}/reanalyze` → 轮询 → 验证 mistake_item.root_cause 更新
 - **并发真实测试**：本地起服务，连续提交 5 个 Job，观察 worker 处理时间分布（应两两一组）
 

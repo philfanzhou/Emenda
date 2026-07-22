@@ -35,8 +35,7 @@
 | 运行时 | .NET | 8.0 |
 | 通信协议 | gRPC | ASP.NET Core gRPC, HTTP/2 |
 | ORM | Entity Framework Core | 8.0, Npgsql provider |
-| 生产数据库 | PostgreSQL | 单库 ruoyu_study_mistake |
-| 开发数据库 | SQLite | data/sqlite/ruoyu_study_mistake.db |
+| 数据库 | PostgreSQL | 单库 ruoyu_study_mistake |
 | 对象存储 | MinIO / SeaweedFS | S3 兼容接口, IOssService 抽象 |
 | 测试 | xUnit + Moq + FluentAssertions | 单元测试 + Mock |
 | 端口 | gRPC=5006, HTTP=5007 | |
@@ -53,7 +52,7 @@ Host ──▶ Service ──▶ Domain ──▶ Contract
 
 外部依赖:
   Service ──▶ StudentLearningGrpcServiceClient (MigrateImagesToMistake, RemoveImagesFromRecord, MarkUploadRecordAsReturned)
-  Host ──▶ MistakeDbContext (PostgreSQL / SQLite)
+  Host ──▶ MistakeDbContext (PostgreSQL)
 ```
 
 ## 详细设计索引

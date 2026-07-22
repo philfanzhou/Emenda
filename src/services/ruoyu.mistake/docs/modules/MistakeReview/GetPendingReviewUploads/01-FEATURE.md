@@ -9,7 +9,7 @@
 - 分页修正：page<=0 → 1，size<=0 → 10，size>100 → 100
 - 按 source_upload_id 分组聚合，每组返回一个 PendingReviewUploadModel
 - 可选 subjects 筛选
-- 因 SQLite 不支持 DateTimeOffset 的 Min 聚合，在客户端进行分组和聚合
+- 分组和聚合在客户端执行
 - PendingCount 和 TotalCount 当前值相同（仅统计 PendingReview 状态的条目）
 
 ## 关键验收条件
@@ -19,7 +19,7 @@
 - [x] 可选 subjects 筛选
 - [x] 按 EarliestCreatedAt 升序排列
 - [x] 返回分页元数据（page/size/total_count/total_pages）
-- [x] 客户端分组聚合（SQLite 兼容性）
+- [x] 客户端分组聚合
 
 ## 范围外
 

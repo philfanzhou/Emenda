@@ -50,8 +50,7 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 
 ## 数据库类型
 
-- 生产环境：PostgreSQL
-- 开发环境：SQLite（自动识别，跳过迁移逻辑）
+- PostgreSQL（Npgsql 提供程序）
 
 ## 旧表迁移
 
