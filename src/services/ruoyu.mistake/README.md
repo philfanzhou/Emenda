@@ -6,10 +6,10 @@
 
 ## 2. 📚 文档导航
 
-- [设计文档](docs/Design.md) - 完整架构设计、数据模型、接口定义和关键流程
-- [需求文档](docs/Requirements.md) - 详细功能性和非功能性需求
-- [数据库设计](docs/database.md) - 包含 PostgreSQL 错题记录、重答记录和日志的建表规范
-- [编码规范](../../.agent/rules/coding-policy.md) - 仓库级共享 .NET 项目编码规范
+- [设计文档](docs/overview/Design.md) - 完整架构设计、数据模型、接口定义和关键流程
+- [需求文档](docs/overview/Requirements.md) - 详细功能性和非功能性需求
+- [数据库设计](docs/database/README.md) - 包含 PostgreSQL 错题记录、重答记录和日志的建表规范
+- [编码规范](../../../.agent/rules/coding-policy.md) - 仓库级共享 .NET 项目编码规范
 
 ## 3. 技术栈
 
