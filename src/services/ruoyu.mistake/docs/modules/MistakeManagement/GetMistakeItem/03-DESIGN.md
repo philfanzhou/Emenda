@@ -63,8 +63,8 @@ MistakeItemRepository.GetByIdAsync:
 
 | 表 | 字段 | 用途 |
 |----|------|------|
-| [mistake_item](../../database/tables/mistake_item.md) | id (PK) | 主键查询 |
-| [mistake_item](../../database/tables/mistake_item.md) | 全部字段 | 返回数据 |
+| [mistake_item](../../../database/tables/mistake_item.md) | id (PK) | 主键查询 |
+| [mistake_item](../../../database/tables/mistake_item.md) | 全部字段 | 返回数据 |
 
 ## 关键设计决策
 

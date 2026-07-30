@@ -66,9 +66,9 @@ MistakeItemRepository.GetBySourceUploadIdAsync:
 
 | 表 | 字段 | 用途 |
 |----|------|------|
-| [mistake_item](../../database/tables/mistake_item.md) | source_upload_id | 筛选条件 |
-| [mistake_item](../../database/tables/mistake_item.md) | created_at | 客户端排序 |
-| [mistake_item](../../database/tables/mistake_item.md) | 全部字段 | 返回数据 |
+| [mistake_item](../../../database/tables/mistake_item.md) | source_upload_id | 筛选条件 |
+| [mistake_item](../../../database/tables/mistake_item.md) | created_at | 客户端排序 |
+| [mistake_item](../../../database/tables/mistake_item.md) | 全部字段 | 返回数据 |
 
 ## 关键设计决策
 

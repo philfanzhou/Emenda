@@ -78,9 +78,9 @@ MistakeItemRepository.GetListAsync:
 
 | 表 | 字段 | 用途 |
 |----|------|------|
-| [mistake_item](../../database/tables/mistake_item.md) | student_id, subject, grade, review_status | 筛选条件 |
-| [mistake_item](../../database/tables/mistake_item.md) | created_at | 排序 |
-| [mistake_item](../../database/tables/mistake_item.md) | 全部字段 | 返回数据 |
+| [mistake_item](../../../database/tables/mistake_item.md) | student_id, subject, grade, review_status | 筛选条件 |
+| [mistake_item](../../../database/tables/mistake_item.md) | created_at | 排序 |
+| [mistake_item](../../../database/tables/mistake_item.md) | 全部字段 | 返回数据 |
 
 ## 关键设计决策
 

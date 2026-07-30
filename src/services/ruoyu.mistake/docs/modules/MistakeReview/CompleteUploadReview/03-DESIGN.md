@@ -86,10 +86,10 @@ MistakeDomainService.CompleteUploadReviewAsync:
 
 | 表 | 字段 | 用途 |
 |----|------|------|
-| [mistake_item](../../database/tables/mistake_item.md) | source_upload_id, review_status | 查询待审核数量 |
-| [mistake_item](../../database/tables/mistake_item.md) | source_upload_id | 查询该上传记录下所有错题 |
-| [mistake_item](../../database/tables/mistake_item.md) | source_regions | 读取/更新图片路径 |
-| [mistake_item](../../database/tables/mistake_item.md) | student_id | 返回学生ID |
+| [mistake_item](../../../database/tables/mistake_item.md) | source_upload_id, review_status | 查询待审核数量 |
+| [mistake_item](../../../database/tables/mistake_item.md) | source_upload_id | 查询该上传记录下所有错题 |
+| [mistake_item](../../../database/tables/mistake_item.md) | source_regions | 读取/更新图片路径 |
+| [mistake_item](../../../database/tables/mistake_item.md) | student_id | 返回学生ID |
 
 ## 关键设计决策
 
