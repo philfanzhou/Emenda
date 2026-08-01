@@ -32,7 +32,7 @@
 
 ## 配置
 
-- [ ] 生产模式配置项（Oss:Endpoint, AccessKey, SecretKey, BucketName）
+- [ ] 生产模式配置项（Oss:InternalEndpoint, InternalSecure, AccessKey, SecretKey, BucketName, PublicBaseUrl）
 - [ ] 开发模式配置项（USE_LOCAL_OSS, OSS_LOCAL_PATH）
 - [ ] Program.cs 中的模式切换逻辑
 

@@ -72,14 +72,14 @@
 
 ## 配置约定
 
-- 生产环境必须配置 `Oss:Endpoint`、`Oss:AccessKey`、`Oss:SecretKey`、`Oss:BucketName`
+- 生产环境必须配置 `Oss:InternalEndpoint`、`Oss:InternalSecure`、`Oss:AccessKey`、`Oss:SecretKey`、`Oss:BucketName`
 - 开发环境设置 `USE_LOCAL_OSS=1` 启用本地模式，`OSS_LOCAL_PATH` 可选（默认 `data/oss`）
 - 两种模式通过 `Program.cs` 中的条件逻辑切换，不共存
 
-## PublicEndpoint 配置约定（oss-nginx-proxy 变更）
+## OSS 地址配置约定
 
-- `OssOptions.PublicEndpoint` 为可选配置，默认为 `null`（不替换 URL）
-- 非空时必须为完整的 scheme+host（如 `https://admin.example.com`），不含尾部斜杠
-- 替换后的 URL 路径前缀为 `/oss`，对应 Nginx 反向代理的 `/oss/` location
-- 各服务在 DI 注册 `S3OssService` 时传入 `ossOptions.PublicEndpoint`
-- 开发环境（`LocalFileOssService`）不使用 PublicEndpoint
+- `OssOptions.InternalEndpoint` 使用 `host:port` 格式；协议由 `InternalSecure` 决定
+- `OssOptions.PublicBaseUrl` 为可选绝对 HTTP/HTTPS URL，可包含公共路径前缀
+- 当前公共值为 `https://ry.zhoufan.asia/oss`，对应 User Web Nginx 的 `/oss/` location
+- 公共 authority 参与 S3 签名；不得先按内部 Host 签名后再替换域名
+- 开发环境使用 `LocalFileOssService` 时不读取这些 S3 地址

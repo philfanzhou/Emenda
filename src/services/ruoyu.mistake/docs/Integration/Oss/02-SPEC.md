@@ -98,13 +98,14 @@ Mistake 服务恢复直连 OSS，`GetPresignedUrl` 直接调用 `IOssService` + 
 
 | 配置键 | 说明 | 示例 |
 |--------|------|------|
-| Oss:Endpoint | S3 服务端点 | `http://minio:9000` |
+| Oss:InternalEndpoint | 后端实际连接的 S3 地址（`host:port`） | `10.20.30.40:8333` |
+| Oss:InternalSecure | 内部 S3 连接是否使用 HTTPS | `false` |
 | Oss:AccessKey | 访问密钥 | `minioadmin` |
 | Oss:SecretKey | 密钥 | `minioadmin` |
 | Oss:BucketName | 存储桶名称 | `ruoyu-study` |
-| Oss:PublicEndpoint | 公共访问端点（可选） | `https://admin.example.com` |
+| Oss:PublicBaseUrl | 公共预签名基础 URL（可选） | `https://ry.zhoufan.asia/oss` |
 
-> `Oss:PublicEndpoint` 非空时，`GetPresignedUrlAsync` 生成的预签名 URL 会将 scheme+host 替换为 `{PublicEndpoint}/oss`，保留原始 path 和 query string（含签名参数）。前端通过 Nginx `/oss/` 反向代理访问 OSS 对象。
+> `Oss:PublicBaseUrl` 非空时，`GetPresignedUrlAsync` 使用其公共 authority 生成签名，再加入其路径前缀。仓库内由 User Web Nginx 唯一代理 `/oss/`，strip 前缀并保留公共 Host。
 
 ### 开发模式（LocalFileOssService）
 

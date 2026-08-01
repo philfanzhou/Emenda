@@ -221,7 +221,7 @@
 1. 确认 OSS 服务可用：检查 S3 endpoint 或本地文件系统权限
 2. 查看日志中 `{Path}` 的具体值，确认源路径是否以 `uploads/` 开头
 3. 手动验证：用 OSS 工具检查源文件是否存在
-4. 检查 `Oss` 配置节（`Endpoint`/`AccessKey`/`SecretKey`/`BucketName`）是否正确
+4. 检查 `Oss` 配置节（`InternalEndpoint`/`InternalSecure`/`AccessKey`/`SecretKey`/`BucketName`）是否正确
 
 **临时绕过**：单个图片迁移失败不阻塞整体流程（代码 L325-330 catch 后继续），可手动补迁移
 
@@ -341,7 +341,7 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 - 连接超时异常
 
 **可能根因**：
-- `Oss:Endpoint` 配置错误（如缺少协议前缀、端口错误）
+- `Oss:InternalEndpoint` 配置错误（格式应为 `host:port`），或 `Oss:InternalSecure` 与服务协议不匹配
 - `Oss:AccessKey` / `Oss:SecretKey` 无效
 - `Oss:BucketName` 对应的 Bucket 不存在
 
@@ -529,7 +529,9 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 | HTTP 监听端口 | `Program.cs` 硬编码 | 5007 | HTTP/1.1 端口（容器内固定，不可配置） |
 | `Port` | `start.sh` 变量 | 5007 | host 端口映射（`-p ${Port}:5007`） |
 | `ConnectionStrings:Default` | appsettings.json | （无） | PostgreSQL 连接字符串（本地开发兜底） |
-| `Oss:Endpoint` | appsettings.json | localhost:8333 | S3 兼容 OSS 端点 |
+| `Oss:InternalEndpoint` | appsettings.json / Consul | localhost:8333 | 后端实际连接的 S3 地址 |
+| `Oss:InternalSecure` | appsettings.json / Consul | false | 内部 S3 连接是否使用 HTTPS |
+| `Oss:PublicBaseUrl` | appsettings.json / Consul | https://ry.zhoufan.asia/oss | 浏览器使用的预签名公共基础 URL |
 | `Oss:AccessKey` | appsettings.json | mock_access_key | OSS AccessKey |
 | `Oss:SecretKey` | appsettings.json | mock_secret_key | OSS SecretKey |
 | `Oss:BucketName` | appsettings.json | ruoyu-study | OSS Bucket 名称 |
