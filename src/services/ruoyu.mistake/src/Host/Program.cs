@@ -58,8 +58,7 @@ var ossConfig = new OssOptions();
 builder.Configuration.GetSection("Oss").Bind(ossConfig);
 builder.Services.AddSingleton<IOssService>(sp =>
 {
-    return new S3OssService(ossConfig.Endpoint, ossConfig.AccessKey, ossConfig.SecretKey, ossConfig.BucketName,
-        new[] { "mistakes/", "uploads/" }, ossConfig.PublicEndpoint);
+    return new S3OssService(ossConfig, new[] { "mistakes/", "uploads/" });
 });
 
 // VL Analyzer for image grouping
@@ -133,7 +132,7 @@ app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}
 app.Logger.LogInformation("Student Service: BaseUrl={Url}", studentBaseUrl);
 
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
-    ossConfig.Endpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
+    ossConfig.InternalEndpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
 app.Logger.LogInformation("UploadPollingWorker: Enabled=true, PollInterval=60s");
 app.Logger.LogInformation("ReanalyzeJobHostedService: Enabled=true, MaxConcurrency=2 (hardcoded)");
 app.Logger.LogInformation("ReanalyzeJobCleanupService: Enabled=true, RetentionDays=30 (hardcoded)");
