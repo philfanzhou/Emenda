@@ -17,13 +17,13 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 ┌──────────────┐  轮询 gRPC  ┌──────────────────────────────┐     S3 API    ┌──────────────┐
 │              │◀────────────│                              │─────────────▶│              │
 │  ruoyu.      │  :5005      │       ruoyu.mistake          │              │  MinIO /     │
-│  student     │             │   (错题本 gRPC 微服务)        │              │  SeaweedFS   │
+│  student     │             │    (错题本 HTTP 服务)         │              │  SeaweedFS   │
 │              │             │                              │◀─────────────│  (S3 兼容)   │
-└──────────────┘             │  端口: gRPC=5006, HTTP=5007  │              └──────────────┘
+└──────────────┘             │       HTTP 端口: 5007         │              └──────────────┘
   GetProcessing              │                              │        ┌──────────────┐
   UploadRecords              │              │               │        │  VL Provider │
-  RemoveProcessed            │              │ EF Core       │        │ (SiliconFlow │
-  Images                     │              ▼               │        │  Qwen3-VL)   │
+  RemoveProcessed            │              │ EF Core       │        │ OpenAI API   │
+  Images                     │              ▼               │        │ compatible   │
   CreateReturned                 │       ┌──────────────┐       │        └──────────────┘
   Record                     │       │ PostgreSQL   │       │              ▲
                              │       └──────────────┘       │              │ HTTP
@@ -94,8 +94,8 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
   | 启动脚本变量 | 环境变量 | 配置键 | 默认 | 必填 |
   |---|---|---|---|---|
   | `VL_API_KEY` | `VlAnalyzer__ApiKey` | `VlAnalyzer:ApiKey` | 空 | 是（生产） |
-  | `VL_API_BASE_URL` | `VlAnalyzer__BaseUrl` | `VlAnalyzer:BaseUrl` | `https://api.siliconflow.cn/v1` | 否 |
-  | `VL_MODEL` | `VlAnalyzer__Model` | `VlAnalyzer:Model` | `Qwen/Qwen3-VL-30B-A3B-Instruct` | 否 |
+  | `VL_API_BASE_URL` | `VlAnalyzer__BaseUrl` | `VlAnalyzer:BaseUrl` | `https://api.stepfun.com/v1`（部署脚本） | 否 |
+  | `VL_MODEL` | `VlAnalyzer__Model` | `VlAnalyzer:Model` | `step-3.7-flash`（部署脚本） | 否 |
 - **请求体约定**: 请求体**不发送** `max_tokens` 字段，让 API provider 使用自身的默认输出限制。当前使用的模型（mimo 1M 上下文、stepfun 256K 上下文）均无需显式指定输出上限。同理，不设置总上下文长度限制——该值是 provider 端模型的固有能力，API 调用中设置不会让超长输入自动截断，超限时 provider 会直接返回错误
 - **响应格式兼容**: 部分 provider（如 stepfun）的 `content` 字段会被 markdown 代码块包裹（` ```json ... ``` `），现有解析逻辑通过 `IndexOf('[')` + `LastIndexOf(']')` 提取 JSON 子串，能稳定处理
 - **失败策略**: HTTP 失败自动重试（`MaxRetries`）；4xx（除 429）立即抛错；解析失败（content 为空 / JSON 解析失败）不重试，由 `ReanalyzeJobHostedService` 标记 Job 为 `Failed`、由 `UploadPollingWorker` 走默认 "Mistake upload (VL skipped)" 兜底分组

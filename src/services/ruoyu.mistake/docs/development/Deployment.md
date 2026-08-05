@@ -6,7 +6,7 @@
 
 ## Consul 接入约束
 
-`ruoyu.mistake` 现在固定接入 Consul，通过 `ruoyu.common` 下的共享 Consul 代码读取共享配置并注册服务。
+`ruoyu.mistake` 固定接入 Consul，通过 `ruoyu.common` 下的共享 Consul 代码读取共享配置。Mistake 不向 Consul 注册服务实例；调用方直接读取 `MistakeService:Url`。
 
 共享 Consul 配置承载：
 
@@ -16,7 +16,7 @@
   - `PostgreSql:Username`
   - `PostgreSql:Password`
   - `Oss:*`
-  - `Loki:Uri`（Loki 日志地址，如 `http://ruoyu-loki:3100`，由 `Program.cs` 读取并覆盖 Serilog Loki Sink 的 uri）
+  - `Loki:Uri`（Loki 日志地址；跨主机示例为 `http://192.168.100.10:3100`，由 `Program.cs` 读取并覆盖 Serilog Loki Sink 的 uri）
 - `config/ruoyu/service-endpoints.json`
   - `StudentService:Url`（Student 服务 HTTP 地址；跨主机示例为 `http://192.168.100.10:5005`）
 
@@ -26,6 +26,8 @@
 - `VlAnalyzer:*`
 
 > **HTTP 监听端口固定为 5007**：硬编码在 `Program.cs` 的 `ConfigureKestrel` 中，不通过配置键 `Endpoints:Http` 读取，启动脚本也不再注入 `Endpoints__Http` 环境变量。host 端口映射通过 `start.sh` 的 `Port` 变量控制（`-p ${Port}:5007`）。
+
+仓库启动脚本面向局域网独立宿主机部署：不创建或加入 `ruoyu-net`，通过 `-p 5007:5007` 发布服务。`CONSUL_HTTP_ADDR` 的仓库示例为 `192.168.100.10:8500`，部署时必须替换为实际可达地址；Portal 通过 Consul `MistakeService:Url` 访问发布后的 host 端口。
 
 启动脚本 `start.sh` 只保留：
 
@@ -37,14 +39,6 @@
 - `VlAnalyzer__Model`
 
 > 协议策略遵循 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)：WebAPI-Only，gRPC 端口 5006 已于 2026-07-12 下线。
-
-并补充：
-
-```bash
---add-host=host.docker.internal:host-gateway
-```
-
-确保 Linux Docker 容器能访问宿主机上的 Consul。
 
 ---
 
@@ -77,7 +71,7 @@
 ```json
 {
   "Consul": {
-    "Host": "host.docker.internal",
+    "Host": "192.168.100.10",
     "Port": 8500,
     "KvPrefix": "config/ruoyu"
   },
@@ -85,11 +79,11 @@
     "Name": "ruoyu_study_mistake"
   },
   "VlAnalyzer": {
-    "BaseUrl": "https://api.siliconflow.cn/v1",
-    "Model": "Qwen/Qwen3-VL-30B-A3B-Instruct"
+    "BaseUrl": "https://api.stepfun.com/v1",
+    "Model": "step-3.7-flash"
   },
   "Loki": {
-    "Uri": "http://localhost:3100"
+    "Uri": "http://192.168.100.10:3100"
   },
   "Serilog": {
     "MinimumLevel": {
@@ -104,7 +98,7 @@
       {
         "Name": "GrafanaLoki",
         "Args": {
-          "uri": "http://ruoyu-loki:3100",
+          "uri": "http://192.168.100.10:3100",
           "labels": [
             { "key": "service", "value": "Ruoyu.Study.Mistake" }
           ]
@@ -204,14 +198,14 @@
 
 ### 各 portal 的 mistake 地址配置
 
-| Portal | 配置键 | 默认值 |
-|--------|--------|--------|
-| admin_portal | `MistakeService:Url` | `http://localhost:5007` |
-| teacher_portal | `MistakeService:Url` | `http://localhost:5007` |
-| user_portal | `MistakeService:Url` | `http://localhost:5007` |
-| assistant_portal | `MistakeService:Url` | `http://localhost:5007` |
+| Portal | 配置键 | 仓库部署示例 |
+|--------|--------|--------------|
+| admin_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
+| teacher_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
+| user_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
+| assistant_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
 
-如果 mistake 的 HTTP 端口不是默认的 5007，需要同步修改所有 portal 的配置。
+实际地址只在 Consul `config/ruoyu/service-endpoints.json` 中维护。修改 live KV 后，需要重启读取该配置的 Portal API；如果 API 容器被重建，对应前端 Nginx 也应重启以重新解析 Docker 上游地址。
 
 ---
 
@@ -222,7 +216,7 @@
 | **节点名称** | 服务启动 |
 | **前置条件** | 配置准备、数据库准备、OSS 准备、依赖服务准备均已完成 |
 | **输入条件** | 编译产物、appsettings.json、环境变量 |
-| **操作步骤** | 1. 确认编译产物完整<br>2. 确认 appsettings.json 已正确配置<br>3. 如需本地 OSS，设置环境变量 `USE_LOCAL_OSS=1`<br>4. 执行 `dotnet Ruoyu.Study.Mistake.Host.dll`（或对应可执行文件）<br>5. 观察启动日志 |
+| **操作步骤** | 1. 确认镜像 `ruoyu.study.mistake:20260501` 已构建<br>2. 设置实际 `CONSUL_HTTP_ADDR`、`CONSUL_TOKEN` 和 VL 私有配置<br>3. 执行 `bash start.sh`<br>4. 观察启动日志 |
 | **成功判定** | 日志中出现监听端口信息，无异常；数据库初始化日志正常 |
 | **失败后排查方向** | 1. 端口绑定失败 → 检查端口占用<br>2. 数据库连接失败 → 检查连接串和数据库状态<br>3. 依赖注入失败 → 检查配置项完整性 |
 
