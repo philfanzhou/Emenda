@@ -18,7 +18,7 @@
   - `Oss:*`
   - `Loki:Uri`（Loki 日志地址，如 `http://ruoyu-loki:3100`，由 `Program.cs` 读取并覆盖 Serilog Loki Sink 的 uri）
 - `config/ruoyu/service-endpoints.json`
-  - `StudentService:Url`（student 服务 HTTP 地址，如 `http://ruoyu-student:5005`）
+  - `StudentService:Url`（Student 服务 HTTP 地址；跨主机示例为 `http://192.168.100.10:5005`）
 
 服务私有配置仍保留在 Mistake 自身：
 
