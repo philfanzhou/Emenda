@@ -1,24 +1,29 @@
 # ruoyu.mistake 集成接口清单
 
+> **消费方迁出说明（2026-09-24）**：本文中的 `Ruoyu.Admin`（原 `admin_portal` / Admin Portal）已于 [ADR-0010](../../../../../docs/adr/0010-extract-ruoyu-admin.md) 迁出为独立开源仓库 [Ruoyu.Admin](https://github.com/philfanzhou/Ruoyu.Admin)。**本文件描述的端点契约仍由本仓库该服务主责**，消费方改为外部仓库；契约变更不会在该仓库产生编译错误（它持有手写镜像 DTO），因此变更时必须把 Ruoyu.Admin 视为受影响方并同步通知。
+>
+> **协议描述已过期**：本文中以 gRPC 描述的交互在实际实现中已改为 HTTP/JSON，gRPC 已整体移除。这是迁出前就已存在的文档漂移，尚未逐条重新核对；当前实现事实以本服务的 `Controllers/` 与路由配置为准。
+
+
 ## 集成总表
 
 | # | 交互点 | 接口类型 | 方向 | 对端系统 | 触发场景 |
 |---|--------|----------|------|----------|----------|
 | 1 | SubmitMistakeUpload | gRPC | 入 | ruoyu.student | 学生上传图片后自动分发创建错题 |
-| 2 | GetMistakeItem | gRPC | 入 | admin_portal, teacher_portal, user_portal | 按ID查询单条错题 |
-| 3 | GetMistakeItemsByUpload | gRPC | 入 | admin_portal, teacher_portal | 按上传批次查询错题列表 |
-| 4 | GetMistakeItemList | gRPC | 入 | admin_portal, teacher_portal, user_portal | 分页查询错题列表 |
+| 2 | GetMistakeItem | gRPC | 入 | Ruoyu.Admin, teacher_portal, user_portal | 按ID查询单条错题 |
+| 3 | GetMistakeItemsByUpload | gRPC | 入 | Ruoyu.Admin, teacher_portal | 按上传批次查询错题列表 |
+| 4 | GetMistakeItemList | gRPC | 入 | Ruoyu.Admin, teacher_portal, user_portal | 分页查询错题列表 |
 | 5 | GetPendingReviewUploads | gRPC | 入 | teacher_portal | 查询待审核上传批次 |
 | 6 | ReviewMistakeItem | gRPC | 入 | teacher_portal | 审核单条错题（确认/退回） |
 | 7 | AddMistakeItem | gRPC | 入 | teacher_portal | 手动添加错题条目 |
-| 8 | UpdateMistakeItem | gRPC | 入 | admin_portal | 更新错题条目 |
+| 8 | UpdateMistakeItem | gRPC | 入 | Ruoyu.Admin | 更新错题条目 |
 | 9 | DeleteMistakeItem | gRPC | 入 | teacher_portal, user_portal | 删除错题条目 |
 | 10 | CompleteUploadReview | gRPC | 入 | teacher_portal | ~~完成整批审核~~ **已废弃**，仅保留供 LegacyClean 运维兜底 |
 | 11 | AddMistakePractice | gRPC | 入 | — | 添加练习记录 |
 | 12 | GetMistakePractices | gRPC | 入 | — | 查询练习记录 |
 | 13 | LogMistakeProcess | gRPC | 入 | — | 记录处理日志 |
 | 14 | GetMistakeProcessHistory | gRPC | 入 | — | 查询处理历史 |
-| 15 | GetAllReferencedImagePaths | gRPC | 入 | admin_portal | 获取所有引用图片路径（OSS审计） |
+| 15 | GetAllReferencedImagePaths | gRPC | 入 | Ruoyu.Admin | 获取所有引用图片路径（OSS审计） |
 | 16 | StudentLearningGrpcServiceClient.MigrateImagesToMistake | gRPC | 出 | ruoyu.student | 图片迁移：uploads/ → mistakes/（替代直接 OSS CopyObject+DeleteObject） |
 | 17 | GetPresignedUrl | gRPC | 入 | user_portal, teacher_portal | 生成 mistakes/ 路径图片的预签名 URL；Mistake 恢复直连 OSS（oss-path-autonomy），直接调用 `IOssService` + `ThumbnailHelper`，不再代理到 Student gRPC；路径前缀校验仅允许 `mistakes/`；支持缩略图生成（当 `size` 参数不为空且不为 `full` 时触发）：尺寸映射 `full`=原图, `medium`=800px, `small`=400px, `thumbnail`=200px；缩放模式 `ResizeMode.Max`（保持宽高比，长边不超过指定像素）；缩略图与原图同目录，路径格式 `{dirname}/{stem}_{size}.jpg`（示例：原图 `mistakes/2025/06/14/def/image.jpg` → 缩略图 `mistakes/2025/06/14/def/image_small.jpg`）；缓存命中直接返回预签名 URL，缓存未命中则下载原图 → SixLabors.ImageSharp 缩放 → 上传到 OSS → 返回预签名 URL；降级策略：缩略图生成失败时返回原图 URL + Warning 日志；`IOssService.DeleteAsync` 自动清理关联缩略图 |
 | 18 | StudentLearningGrpcServiceClient.RemoveImagesFromRecord | gRPC | 出 | ruoyu.student | 审核确认时从上传记录移除已迁移图片 |

@@ -16,7 +16,7 @@
            │ gRPC              │ gRPC              │ gRPC
            ▼                   ▼                   ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│  admin_portal    │ │  teacher_portal  │ │  user_portal     │
+│  Ruoyu.Admin    │ │  teacher_portal  │ │  user_portal     │
 │                  │ │                  │ │                  │
 │ MistakeController│ │ MistakeController│ │ MistakeController│
 │ OssAuditWorker   │ │                  │ │                  │
@@ -34,7 +34,7 @@
 
 ## 各 Portal 的 gRPC 调用矩阵
 
-| gRPC 方法 | admin_portal | teacher_portal | user_portal |
+| gRPC 方法 | Ruoyu.Admin | teacher_portal | user_portal |
 |-----------|:---:|:---:|:---:|
 | GetMistakeItemList | ✅ | ✅ | ✅ |
 | GetMistakeItem | ✅ | ✅ | ✅ |
@@ -150,7 +150,7 @@ ReturnMistake(id, studentId, returnReason)
 - `ReviewStatus` 固定为 `Confirmed`，学生只能看到已确认的错题
 - 删除操作增加状态校验：`Confirmed` 状态不允许删除
 
-### admin_portal 无过滤
+### Ruoyu.Admin 无过滤
 
 - 管理员可查看所有数据
 - 所有筛选参数均为可选
@@ -173,7 +173,7 @@ ReturnMistake(id, studentId, returnReason)
 | 2 | pendingCount == 0 且 totalItems > 0 | `CompleteUploadReview(sourceUploadId, reviewerId)` | 记录日志，跳过 |
 | 3 | CompleteUploadReview 成功且含 StudentId | `DeleteUploadRecordAfterReview(recordId, studentId)` | 仅记录日志 |
 
-### admin_portal 学生姓名补充
+### Ruoyu.Admin 学生姓名补充
 
 - 每次查询错题后，提取所有不重复的 `studentId`
 - 逐个调用 `GetStudentAsync(studentId)` 获取学生姓名

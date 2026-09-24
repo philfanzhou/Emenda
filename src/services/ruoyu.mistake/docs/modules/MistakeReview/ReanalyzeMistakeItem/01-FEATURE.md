@@ -19,7 +19,7 @@
 - **保留期**：Job 记录保留 30 天；过期由 `ReanalyzeJobCleanupService` 每日清理
 - **审计必写**：每次重新分析必须写 ProcessLog（Action=Reanalyzed），details 含 `job_id` + 原 root_cause + 教师描述 + 新 root_cause（成功时）/ 失败原因（失败时）
 - **状态查询**：批量端点 `GET /api/mistake/reanalyze/jobs?ids=...` 与活跃 Job 端点 `GET /api/mistake/reanalyze/active-jobs`
-- **鉴权边界**：此功能**不**在 admin_portal 暴露（详见 [teacher_portal/MistakeList/02-SPEC.md](../../../../../../teacher_portal/docs/modules/MistakeReview/MistakeList/02-SPEC.md) AC-FR-10）
+- **鉴权边界**：此功能**不**在 Ruoyu.Admin 暴露（详见 [teacher_portal/MistakeList/02-SPEC.md](../../../../../../teacher_portal/docs/modules/MistakeReview/MistakeList/02-SPEC.md) AC-FR-10）
 
 ## 关键验收条件摘要
 
@@ -32,7 +32,7 @@
 - [x] VL 失败时保留原 root_cause，Job 标 `Failed` + error_message，仍写 ProcessLog（含失败原因）
 - [x] 全局并发上限 = 2（写死，不可配置）；超出的 Job 在内存队列中等待
 - [x] 服务重启时将 `Running` Job 标 `Failed`（崩溃恢复）
-- [x] 仅 teacher_portal BFF 暴露 3 个端点，admin_portal **不**实现
+- [x] 仅 teacher_portal BFF 暴露 3 个端点，Ruoyu.Admin **不**实现
 - [x] Job 30 天后由 Cleanup Service 自动删除
 - [x] 跨教师隔离：教师只能看自己提交的 Job
 

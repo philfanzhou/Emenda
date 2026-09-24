@@ -101,7 +101,7 @@ mistake 服务原先通过 student gRPC client 调用的 3 个方法，需新增
 | user_portal | mistake gRPC client → IMistakeHttpClient |
 | teacher_portal | mistake gRPC client → IMistakeHttpClient |
 | assistant_portal | mistake gRPC client → IMistakeHttpClient |
-| admin_portal | mistake gRPC client → IMistakeHttpClient |
+| Ruoyu.Admin | mistake gRPC client → IMistakeHttpClient |
 
 ## 迁移策略
 

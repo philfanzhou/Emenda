@@ -6,7 +6,7 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 
 ```
                           ┌──────────────────┐
-                          │  admin_portal    │
+                          │  Ruoyu.Admin    │
                           │  (管理后台)       │
                           └────────┬─────────┘
                                    │ gRPC :5006
@@ -57,7 +57,7 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 - **调用接口**: `GetProcessingUploadRecords`（轮询）、`RemoveProcessedImages`（处理完成通知）、`CreateReturnedUploadRecord`（退回）
 - **典型用途**: Mistake 每 60 秒轮询 Student 的 Processing 状态上传记录，获取标记为 "mistake" 的图片进行 VL 分析和错题创建
 
-### admin_portal
+### Ruoyu.Admin
 
 - **协议**: gRPC (HTTP/2)，目标端口 5006
 - **调用接口**: `GetMistakeItemList`, `GetMistakeItem`, `GetMistakeItemsByUpload`, `UpdateMistakeItem`, `GetAllReferencedImagePaths`

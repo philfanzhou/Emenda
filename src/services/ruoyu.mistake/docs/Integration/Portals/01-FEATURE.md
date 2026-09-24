@@ -1,14 +1,19 @@
 # Mistake 与 Portals 集成 — 功能概述
 
+> **消费方迁出说明（2026-09-24）**：本文中的 `Ruoyu.Admin`（原 `admin_portal` / Admin Portal）已于 [ADR-0010](../../../../../../docs/adr/0010-extract-ruoyu-admin.md) 迁出为独立开源仓库 [Ruoyu.Admin](https://github.com/philfanzhou/Ruoyu.Admin)。**本文件描述的端点契约仍由本仓库该服务主责**，消费方改为外部仓库；契约变更不会在该仓库产生编译错误（它持有手写镜像 DTO），因此变更时必须把 Ruoyu.Admin 视为受影响方并同步通知。
+>
+> **协议描述已过期**：本文中以 gRPC 描述的交互在实际实现中已改为 HTTP/JSON，gRPC 已整体移除。这是迁出前就已存在的文档漂移，尚未逐条重新核对；当前实现事实以本服务的 `Controllers/` 与路由配置为准。
+
+
 ## 概述
 
 Mistake 模块通过 HTTP 为三个 Portal 提供错题业务接口。Mistake 服务本身不做权限校验，权限控制在各 Portal 层完成。各 Portal 根据自身角色（管理员/教师/学生）调用不同的 HTTP 接口，并在 Portal 层补充额外业务逻辑。
 
 ## 三个 Portal 的集成角色
 
-### admin_portal — 管理查看与运维
+### Ruoyu.Admin — 管理查看与运维
 
-- **代码位置**：`admin_portal\backend\Controllers\MistakeController.cs`
+- **代码位置**：`Ruoyu.Admin\backend\Controllers\MistakeController.cs`
 - **HTTP 配置**：`MistakeService:Url` = `http://localhost:5007`
 - **核心职责**：
   - 分页查询错题列表（支持按学生/学科/年级/审核状态筛选）
@@ -57,7 +62,7 @@ Mistake 模块通过 HTTP 为三个 Portal 提供错题业务接口。Mistake �
 
 | Portal | 权限控制方式 | 说明 |
 |--------|-------------|------|
-| admin_portal | 无特殊控制 | 管理员可查看所有数据 |
+| Ruoyu.Admin | 无特殊控制 | 管理员可查看所有数据 |
 | teacher_portal | 学科过滤 | 通过 `TeacherDbService.GetSubjectsByUserId` 获取教师负责的学科，仅返回该学科下的数据 |
 | user_portal | 学生ID过滤 | 前端传入 `studentId`，仅查询该学生的错题 |
 

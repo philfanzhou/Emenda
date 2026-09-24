@@ -32,7 +32,7 @@
                           ▲
                           │
 ┌─────────────────────────┼─────────────────────────────┐
-│                 admin_portal                           │
+│                 Ruoyu.Admin                           │
 │                                                        │
 │  OssAuditWorker                                        │
 │  ├─ 调用 Mistake.GetAllReferencedImagePaths            │
@@ -115,7 +115,7 @@ ReviewMistakeItem(id, reviewStatus, reviewerId, ...)
 
 ## OssAuditWorker 审计流程
 
-代码位置：`admin_portal\backend\Services\OssAuditWorker.cs`
+代码位置：`Ruoyu.Admin\backend\Services\OssAuditWorker.cs`
 
 ```
 OssAuditWorker.ExecuteAsync()

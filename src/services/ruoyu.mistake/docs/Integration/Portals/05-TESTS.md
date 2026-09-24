@@ -1,6 +1,6 @@
 # Mistake 与 Portals 集成 — 测试用例
 
-## admin_portal
+## Ruoyu.Admin
 
 ### TC-ADM-001 分页查询错题列表
 

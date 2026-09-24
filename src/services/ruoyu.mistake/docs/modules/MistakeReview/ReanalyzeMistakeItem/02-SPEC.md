@@ -74,7 +74,7 @@
 ### 鉴权
 
 - [ ] FR-20：教师从 JWT 提取 `reviewer_id`（不接受请求体传入，防伪）；教师只能看/触发自己提交的 Job
-- [ ] FR-21：admin_portal BFF **不**实现以上端点（沿用 FR-12 历史约束）
+- [ ] FR-21：Ruoyu.Admin BFF **不**实现以上端点（沿用 FR-12 历史约束）
 
 ## 详细的验收标准（可自动验证）
 
@@ -191,9 +191,9 @@
 - **When** 调该端点
 - **Then** 返回 `400`，`message = "ids 数量必须在 1-100 之间"`
 
-### AC-FR-14：admin_portal 隔离
+### AC-FR-14：Ruoyu.Admin 隔离
 
-- **Given** admin_portal BFF 路由表
+- **Given** Ruoyu.Admin BFF 路由表
 - **When** 扫描 `api/admin/mistake` 路径
 - **Then** **不**存在 `reanalyze` / `reanalyze/jobs` / `reanalyze/active-jobs` 路由
 - **说明**：通过代码搜索（grep）或集成测试断言验证

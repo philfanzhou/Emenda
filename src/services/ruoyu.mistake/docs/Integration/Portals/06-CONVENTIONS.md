@@ -6,7 +6,7 @@
 
 | Portal | 前缀 | 说明 |
 |--------|------|------|
-| admin_portal | `api/admin/mistakes` | 管理端，复数名词 |
+| Ruoyu.Admin | `api/admin/mistakes` | 管理端，复数名词 |
 | teacher_portal | `api/mistake` | 教师端，单数名词 |
 | user_portal | `api/mistake` | 学生端，单数名词 |
 
@@ -58,7 +58,7 @@
 
 各 Portal 的错误响应格式略有不同：
 
-**admin_portal**：
+**Ruoyu.Admin**：
 ```json
 { "message": "Failed to get mistake items" }
 ```
@@ -109,7 +109,7 @@ HTTP 200 + 业务字段 `Success=false`，或 HTTP 502（gRPC 不可用）。
 
 | Portal | 策略 | 实现方式 |
 |--------|------|----------|
-| admin_portal | 无过滤 | 管理员可查看所有数据 |
+| Ruoyu.Admin | 无过滤 | 管理员可查看所有数据 |
 | teacher_portal | 学科过滤 | `GetTeacherSubjects()` → gRPC 请求中携带 Subjects → 内存二次过滤 |
 | user_portal | 学生ID过滤 | 必填 `studentId` 参数 + `ReviewStatus=Confirmed` 固定 |
 
@@ -137,7 +137,7 @@ HTTP 200 + 业务字段 `Success=false`，或 HTTP 502（gRPC 不可用）。
 
 | Portal | 默认页码 | 默认每页条数 | 最大每页条数 |
 |--------|----------|-------------|-------------|
-| admin_portal | 1 | 20 | 100 |
+| Ruoyu.Admin | 1 | 20 | 100 |
 | teacher_portal (pending-reviews) | 1 | 10 | 50 |
 | teacher_portal (pending-items) | 1 | 20 | 100 |
 | teacher_portal (list) | 1 | 10 | 50 |
@@ -145,7 +145,7 @@ HTTP 200 + 业务字段 `Success=false`，或 HTTP 502（gRPC 不可用）。
 
 ### 参数名约定
 
-| 含义 | admin_portal | teacher_portal | user_portal |
+| 含义 | Ruoyu.Admin | teacher_portal | user_portal |
 |------|-------------|----------------|-------------|
 | 页码 | page | page | page |
 | 每页条数 | size | pageSize | pageSize |

@@ -1,6 +1,6 @@
 # Mistake 与 Portals 集成 — 任务清单
 
-## admin_portal 集成
+## Ruoyu.Admin 集成
 
 ### HTTP 客户端注册
 - [ ] 配置 `MistakeService:Url` = `http://localhost:5007`

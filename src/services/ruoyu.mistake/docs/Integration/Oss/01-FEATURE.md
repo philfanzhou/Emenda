@@ -26,7 +26,7 @@ Mistake 模块通过 `IOssService` 接口与 OSS（对象存储服务）集成�
 
 ### 3. OSS 审计支持
 
-`admin_portal` 的 `OssAuditWorker` 利用 Mistake 模块提供的引用路径进行僵尸对象检测：
+`Ruoyu.Admin` 的 `OssAuditWorker` 利用 Mistake 模块提供的引用路径进行僵尸对象检测：
 
 - 调用 Mistake 的 `GetAllReferencedImagePaths` 获取错题引用路径
 - 调用 Student 的 `GetRegisteredOssPaths` 获取学生模块引用路径

@@ -1,6 +1,6 @@
 # Mistake 与 Portals 集成 — 接口规格
 
-## admin_portal
+## Ruoyu.Admin
 
 路由前缀：`api/admin/mistakes`
 

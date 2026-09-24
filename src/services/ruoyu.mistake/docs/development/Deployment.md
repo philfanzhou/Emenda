@@ -200,7 +200,7 @@
 
 | Portal | 配置键 | 仓库部署示例 |
 |--------|--------|--------------|
-| admin_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
+| Ruoyu.Admin | `MistakeService:Url` | `http://192.168.100.10:5007` |
 | teacher_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
 | user_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
 | assistant_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
@@ -273,7 +273,7 @@ curl http://<host>:5007/
 | 1 | student → mistake 连通 | student 端触发上传，观察 mistake 日志是否收到 `SubmitMistakeUpload` | 检查 student 的 mistake 地址配置、HTTP 端口是否正确 |
 | 2 | portal → mistake 连通 | 通过 portal 页面查询错题列表，观察是否返回数据 | 检查 portal 的 mistake 地址配置 |
 | 3 | mistake → OSS 操作 | 执行 `CompleteUploadReview`，确认图片从 `uploads/` 迁移到 `mistakes/` | 检查 OSS 配置和桶权限 |
-| 4 | admin_portal OSS 审计 | 触发 `GetAllReferencedImagePaths`，确认返回图片路径列表 | 检查 admin_portal 的 mistake 地址配置 |
+| 4 | Ruoyu.Admin OSS 审计 | 触发 `GetAllReferencedImagePaths`，确认返回图片路径列表 | 检查 Ruoyu.Admin 的 mistake 地址配置 |
 
 ### 推荐联调顺序
 
@@ -284,7 +284,7 @@ teacher_portal → mistake（GetPendingReviewUploads → ReviewMistakeItem）
     ↓
 teacher_portal → mistake → OSS（CompleteUploadReview）
     ↓
-admin_portal → mistake（GetMistakeItemList、GetAllReferencedImagePaths）
+Ruoyu.Admin → mistake（GetMistakeItemList、GetAllReferencedImagePaths）
     ↓
 user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 ```
