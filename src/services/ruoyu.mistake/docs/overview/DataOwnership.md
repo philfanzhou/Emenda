@@ -42,7 +42,7 @@ mistake 服务对以下表拥有完整的 CRUD 权限和生命周期管理责任
 |-------------|----------|------|
 | image_upload_record | ruoyu.student | student 服务的数据权威，mistake 仅通过 gRPC 回调间接影响 |
 | student 相关表 | ruoyu.student | 跨服务数据隔离，仅通过 API 交互 |
-| questionbank 相关表 | ruoyu.questionbank | 物理隔离的独立数据库，无直接访问 |
+| Quaestura（原 questionbank）相关表 | 外部仓库 Quaestura | 物理隔离的独立数据库，无直接访问 |
 | homework 相关表 | ruoyu.homework | 无直接集成，mistake 与 homework 之间无 gRPC 调用 |
 
 ## OSS 路径归属

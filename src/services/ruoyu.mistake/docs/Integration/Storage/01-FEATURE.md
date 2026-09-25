@@ -9,7 +9,7 @@ Mistake 服务提供错题管理的数据库与存储层集成，使用 PostgreS
 ### 1. PostgreSQL 数据库
 
 - 使用 Npgsql EF Core 提供程序
-- 数据库名：`ruoyu_study_mistake`，与 `ruoyu_study_questionbank` 和 `ruoyu_study_student` 物理隔离
+- 数据库名：`ruoyu_study_mistake`，与 `ruoyu_study_student` 物理隔离（原 `ruoyu_study_questionbank` 已随 QuestionBank 迁出为外部仓库 Quaestura，ADR-0011）
 
 ### 2. 自动迁移和初始化
 

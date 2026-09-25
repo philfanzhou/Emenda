@@ -121,6 +121,6 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 | 数据权威 | mistake 是 `mistake_item`、`mistake_practice`、`process_log` 三张表的唯一写入者 |
 | 只读引用 | `student_id`、`source_upload_id`、`reviewer_id` 为外部引用字段，mistake 不校验其存在性 |
 | 主动调用 Student | 通过 `UploadPollingWorker` 轮询 Student 的 Processing 记录；审核退回时调用 `CreateReturnedUploadRecord` |
-| 不调用其他业务服务 | 不调用 Homework、QuestionBank 等其他业务微服务 |
+| 不调用其他业务服务 | 不调用 Homework、Quaestura（原 QuestionBank，已迁出为独立仓库，ADR-0011）等其他业务微服务 |
 | 不做认证鉴权 | 认证在 portal 层完成，mistake 信任调用方传入的身份参数 |
 | OSS 路径归属 | `mistakes/` 前缀由 mistake 主责；`uploads/` 前缀由 student 主责；轮询期间 mistake 可读写两个前缀 |

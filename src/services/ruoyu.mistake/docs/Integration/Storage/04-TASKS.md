@@ -4,7 +4,7 @@
 
 - [ ] 配置 `ConnectionStrings:Default` 连接字符串（PostgreSQL）
 - [ ] 验证 PostgreSQL 连接（含 `Host=` 或 `Server=`）
-- [ ] 确认数据库与 questionbank、student 服务物理隔离
+- [ ] 确认数据库与 Quaestura（原 questionbank，已迁出）、student 服务物理隔离
 
 ## 表结构创建
 
