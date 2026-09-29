@@ -12,7 +12,7 @@ using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service.Dtos;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.Service.StudentIntegration;
 using MistakeItemDto = Ruoyu.Study.Mistake.Service.Dtos.MistakeItemDto;
 using ReanalyzeJobDto = Ruoyu.Study.Mistake.Service.Dtos.ReanalyzeJobDto;
 using MistakeItemPageResult = Ruoyu.Study.Mistake.Service.Dtos.MistakeItemPageResult;
@@ -235,7 +235,7 @@ public static partial class MistakeHttpEndpoints
         Guid id,
         [FromBody] ReviewMistakeItemRequest request,
         IMistakeDomainService mistakeService,
-        IStudentHttpClient studentClient,
+        IUploadSourceGateway studentClient,
         IOssService ossService,
         ILoggerFactory loggerFactory)
     {
@@ -306,7 +306,7 @@ public static partial class MistakeHttpEndpoints
                 {
                     try
                     {
-                        var imageEntries = migratedBackPaths.Select(p => new ImageEntryDto
+                        var imageEntries = migratedBackPaths.Select(p => new UploadImageEntry
                         {
                             Path = p,
                             Type = "mistake"

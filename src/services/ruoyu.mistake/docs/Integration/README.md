@@ -5,4 +5,4 @@
 | Oss | [Oss](./Oss/01-FEATURE.md) |
 | Portals | [Portals](./Portals/01-FEATURE.md) |
 | Storage | [Storage](./Storage.md) |
-| Student | [Student](./Student/01-FEATURE.md) |
+| Student | [Student](./Student.md) |
