@@ -13,11 +13,11 @@
 
 ### 启动与显式升级
 
-普通 Host 启动只在只读事务中读取 PostgreSQL catalog 和迁移历史，核对关系、列、类型、空值性、默认值、索引及约束。空库、旧 `public.mistake`、不完整或未知结构及不一致历史都拒绝启动，数据库保持原状。只接受两种形态：前三条 EF 迁移历史加上历史运行时已重命名的 `root_cause`，或下述四条 EF 迁移历史的目标结构。
+普通 Host 启动只在只读事务中读取 PostgreSQL catalog 和迁移历史，核对关系、列、类型、空值性、默认值、索引及约束。空库、旧 `public.mistake`、不完整或未知结构及不一致历史都拒绝启动，数据库保持原状。只接受精确第五条迁移后的目标结构；此前所有受支持历史形态均须经显式升级。
 
 创建全新空库后须单独执行 `--upgrade-empty-db`。该命令以 advisory transaction lock 串行化，仅在 public schema 为空时于单个事务中应用迁移并核验目标；目标已存在时可重复执行。其余形态不修改。
 
-受支持的带数据 EF 历史库另用 `--upgrade-known-db`。它要求显式确认目标库名、已停写和可恢复备份，在同一事务的 advisory lock 下核对 public 的关系、列/类型/空值性、默认值、索引、约束、触发器及历史记录。精确 InitialCreate（1 条历史）执行后三条正规迁移；前两条历史执行后两条；前三条历史的 `review_comment` 执行列重命名；前三条历史但已由旧运行时重命名的 `root_cause`，在目标 catalog 精确核验后只补第四条历史；四条历史的目标库仅复核。另一种**精确三历史误盖章形态**也受显式入口支持：`root_cause` 已重命名，`process_log.student_id` 及索引和 `reanalyze_job` 已存在，但 `mistake_practice.image_paths` 仍为 `text`，其余完整指纹与该历史运行时一致。入口先锁定练习表并核验每行均为 JSON 字符串数组，保存 ID 与路径序列清单，在同一事务中用显式 `USING image_paths::jsonb` 转换、复核每行语义与完整目标结构，再补第四历史。空数组、中文、大小写、顺序与重复字符串保留；无效 JSON 或非字符串数组拒绝并回滚，不打印原始路径。迁移及最终核验成功后才提交，重复执行目标状态不写入。两个显式命令复用同一锁。普通启动仍只读，且不接受该误盖章形态；升级前只接受三历史且已重命名、路径已是 `jsonb` 的结构及四历史目标结构。
+受支持的带数据 EF 历史库另用 `--upgrade-known-db`。它要求显式确认目标库名、已停写和可恢复备份，在同一事务的 advisory lock 下核对 public 的关系、列/类型/空值性、默认值、索引、约束、触发器及历史记录。精确 InitialCreate（1 条历史）执行后四条正规迁移；前两条历史执行后三条；前三条历史的 `review_comment` 执行列重命名与第五条迁移；前三条历史但已由旧运行时重命名的 `root_cause`，在目标 catalog 精确核验后补第四条历史并应用第五条迁移；四条历史的库继续应用第五条迁移；五条历史的目标库仅复核。另一种**精确三历史误盖章形态**也受显式入口支持：`root_cause` 已重命名，`process_log.student_id` 及索引和 `reanalyze_job` 已存在，但 `mistake_practice.image_paths` 仍为 `text`，其余完整指纹与该历史运行时一致。入口先锁定练习表并核验每行均为 JSON 字符串数组，保存 ID 与路径序列清单，在同一事务中用显式 `USING image_paths::jsonb` 转换、复核每行语义与完整目标结构，再补第四历史并应用第五条迁移。空数组、中文、大小写、顺序与重复字符串保留；无效 JSON 或非字符串数组拒绝并回滚，不打印原始路径。迁移及最终核验成功后才提交，重复执行目标状态不写入。两个显式命令复用同一锁。普通启动仍只读，升级前历史形态也必须先完成显式升级。
 
 此入口仅支持仓库迁移生成的上述精确形态及这一种完整识别的误盖章形态。`public.mistake`、历史表独存、部分对象、额外对象、其他误盖章或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。PostgreSQL 15 隔离备份恢复校验见[演练说明](../development/BackupRestoreDrill.md)；旧表数据映射、未知/混合结构仍由父项 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。操作和故障恢复见[部署说明](../development/Deployment.md)。
 
@@ -72,10 +72,14 @@
 
 ## 20260929000001_RenameReviewCommentToRootCause
 
-**类型**：版本化列重命名。新建空库及受支持带数据历史库按迁移链将 `mistake_item.review_comment` 重命名为 `root_cause`，并写入第四条 EF 历史记录。此前运行时已重命名且只有前三条历史记录的已知结构允许只读启动；普通启动不会补写第四条记录，显式带数据升级在精确核验后仅补史，不重复重命名。目标字段为纯文本，保存错题根因。
+**类型**：版本化列重命名。新建空库及受支持带数据历史库按迁移链将 `mistake_item.review_comment` 重命名为 `root_cause`，并写入第四条 EF 历史记录。此前运行时已重命名且只有前三条历史记录的已知结构须经显式升级：精确核验后补第四条历史并应用第五条迁移，不重复重命名。普通启动不补写历史。目标字段为纯文本，保存错题根因。
 
 ## 相关文档
 
 - [表结构文档](./tables/)
 - [实体关系](./relations.md)
 - [总览](./README.md)
+
+## 20260930000001_LeaseReanalyzeJobs
+
+第五条版本化迁移在 `reanalyze_job` 添加 `owner_id`、`lease_until`、`fencing_version`、`attempt`、`execution_root_cause`、`execution_input_digest`。旧无租约 Running 在同一事务转 Failed，原因码为 `upgrade_interrupted`；关联 Item 存在时写一条 jobId 日志。Pending 与已有终态不变。前置条件是所有旧 worker 和写入均已停止、精确库名及可恢复备份已核验。正常启动只接受五历史目标；未知形态拒绝且不写。升级与回退操作见[部署说明](../development/Deployment.md)。

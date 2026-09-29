@@ -4,8 +4,8 @@ namespace Ruoyu.Study.Mistake.Domain.Models;
 
 /// <summary>
 /// Reanalyze job lifecycle status. The state machine is:
-///   Pending -> Running -> Completed
-///           \-> Running -> Failed
+///   Pending -> Running -> Completed | Failed
+///   Expired Running can be reclaimed with a new owner and fencing version.
 /// Cancelled is intentionally not supported (per product decision).
 /// Renamed from ReanalyzeJobStatus to avoid name collision with the
 /// proto-generated enum in Ruoyu.Study.Mistake.Contract.Protos.
@@ -34,4 +34,13 @@ public class ReanalyzeJobModel
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public long? VlDurationMs { get; set; }
+    public Guid? OwnerId { get; set; }
+    public DateTimeOffset? LeaseUntil { get; set; }
+    public long FencingVersion { get; set; }
+    public int Attempt { get; set; }
+    public string? ExecutionRootCause { get; set; }
+    public string? ExecutionInputDigest { get; set; }
+    // Populated only when a worker claims the job. Never stored in the job table.
+    public IReadOnlyList<string> ExecutionImagePaths { get; set; } = Array.Empty<string>();
+    public string? ExecutionStudentId { get; set; }
 }

@@ -9,7 +9,7 @@
 | `mistake_item` | 错题条目，核心业务表 | [tables/mistake_item.md](./tables/mistake_item.md) |
 | `mistake_practice` | 错题练习记录 | [tables/mistake_practice.md](./tables/mistake_practice.md) |
 | `process_log` | 处理日志，记录错题生命周期 | [tables/process_log.md](./tables/process_log.md) |
-| `reanalyze_job` | 错题再分析任务 | [迁移历史](./migrations.md) |
+| `reanalyze_job` | 错题再分析任务 | [tables/reanalyze_job.md](./tables/reanalyze_job.md) |
 
 ## 实体关系
 
@@ -49,6 +49,7 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 - `20260612030015_AddStudentIdToProcessLog`：日志 student_id 与练习路径 jsonb
 - `20260626000000_AddReanalyzeJob`：再分析任务
 - `20260929000001_RenameReviewCommentToRootCause`：版本化根因列重命名
+- `20260930000001_LeaseReanalyzeJobs`：全局领取租约与终态栅栏
 
 普通启动只读核验结构和历史；全新空库须显式执行 `--upgrade-empty-db`。精确匹配 EF 历史链的带数据旧库使用 `--upgrade-known-db`，详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
 

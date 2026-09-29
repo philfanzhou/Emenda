@@ -144,150 +144,19 @@ public class ReanalyzeJobService : IReanalyzeJobService
         return await _jobRepository.GetActiveByReviewerAsync(reviewerId, ct);
     }
 
-    public async Task<List<ReanalyzeJobModel>> ClaimPendingJobsAsync(
-        int maxCount,
-        CancellationToken ct = default)
-    {
-        if (maxCount <= 0) return new List<ReanalyzeJobModel>();
-        return await _jobRepository.ClaimPendingAsync(maxCount, ct);
-    }
+    public Task<List<ReanalyzeJobModel>> ClaimJobsAsync(int maxCount, CancellationToken ct = default) =>
+        _jobRepository.ClaimAsync(Math.Clamp(maxCount, 0, 2), ct);
 
-    public async Task<bool> MarkRunningAsync(Guid jobId, CancellationToken ct = default)
-    {
-        var job = await _jobRepository.GetByIdAsync(jobId, ct);
-        if (job == null) return false;
-        if (job.Status != ReanalyzeJobState.Pending) return false;
+    public Task<bool> RenewLeaseAsync(Guid jobId, Guid ownerId, long version, CancellationToken ct = default) =>
+        _jobRepository.RenewAsync(jobId, ownerId, version, ct);
 
-        job.Status = ReanalyzeJobState.Running;
-        job.StartedAt = DateTimeOffset.UtcNow;
-        await _jobRepository.UpdateStatusAsync(job, ct);
-        // MarkRunningAsync is a single-entity write; commit immediately so that
-        // subsequent claim cycles see this row as Running (not Pending) and skip it.
-        await _unitOfWork.SaveChangesAsync(ct);
-        return true;
-    }
+    public Task<bool> MarkCompletedAsync(Guid jobId, Guid ownerId, long version,
+        string newRootCause, long vlDurationMs, CancellationToken ct = default) =>
+        _jobRepository.CompleteAsync(jobId, ownerId, version, newRootCause, vlDurationMs, ct);
 
-    public async Task<bool> MarkCompletedAsync(
-        Guid jobId,
-        string newRootCause,
-        long vlDurationMs,
-        CancellationToken ct = default)
-    {
-        var job = await _jobRepository.GetByIdAsync(jobId, ct);
-        if (job == null) return false;
-        if (job.Status != ReanalyzeJobState.Running) return false;
-
-        var item = await _mistakeItemRepository.GetByIdAsync(job.ItemId, ct);
-        if (item == null)
-        {
-            // Item was deleted while job was in flight. Mark failed and bail.
-            job.Status = ReanalyzeJobState.Failed;
-            job.ErrorMessage = "错题已删除";
-            job.CompletedAt = DateTimeOffset.UtcNow;
-            await _jobRepository.UpdateStatusAsync(job, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
-            return false;
-        }
-
-        var previousRootCause = job.PreviousRootCause ?? item.RootCause ?? string.Empty;
-        var now = DateTimeOffset.UtcNow;
-
-        // Atomic: item.RootCause + job.Status: Completed + ProcessLog in one SaveChanges.
-        // SetRootCauseDeferredAsync does NOT save; caller (us) commits via UoW.
-        await _mistakeItemRepository.SetRootCauseDeferredAsync(item.Id, newRootCause, now, ct);
-
-        job.NewRootCause = newRootCause;
-        job.Status = ReanalyzeJobState.Completed;
-        job.CompletedAt = now;
-        job.VlDurationMs = vlDurationMs;
-        await _jobRepository.UpdateStatusAsync(job, ct);
-
-        await AddProcessLogAsync(item.Id, job, previousRootCause, newRootCause, studentId: item.StudentId, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        _logger.LogInformation(
-            "ReanalyzeJob completed: JobId={JobId}, ItemId={ItemId}, VlDurationMs={VlDurationMs}, NewLength={NewLength}",
-            job.Id, job.ItemId, vlDurationMs, newRootCause.Length);
-
-        return true;
-    }
-
-    public async Task<bool> MarkFailedAsync(
-        Guid jobId,
-        string errorMessage,
-        CancellationToken ct = default)
-    {
-        var job = await _jobRepository.GetByIdAsync(jobId, ct);
-        if (job == null) return false;
-        if (job.Status != ReanalyzeJobState.Running && job.Status != ReanalyzeJobState.Pending)
-        {
-            return false;
-        }
-
-        var item = await _mistakeItemRepository.GetByIdAsync(job.ItemId, ct);
-        if (item == null)
-        {
-            job.Status = ReanalyzeJobState.Failed;
-            job.ErrorMessage = errorMessage;
-            job.CompletedAt = DateTimeOffset.UtcNow;
-            await _jobRepository.UpdateStatusAsync(job, ct);
-            await _unitOfWork.SaveChangesAsync(ct);
-            return false;
-        }
-
-        var previousRootCause = job.PreviousRootCause ?? item.RootCause ?? string.Empty;
-        var now = DateTimeOffset.UtcNow;
-
-        // VL failure: do NOT change item.RootCause. Only commit job status + ProcessLog.
-        job.Status = ReanalyzeJobState.Failed;
-        job.ErrorMessage = errorMessage;
-        job.CompletedAt = now;
-        await _jobRepository.UpdateStatusAsync(job, ct);
-
-        await AddProcessLogAsync(
-            item.Id, job, previousRootCause, $"FAILED: {errorMessage}", studentId: item.StudentId, ct);
-        await _unitOfWork.SaveChangesAsync(ct);
-
-        _logger.LogWarning(
-            "ReanalyzeJob failed: JobId={JobId}, ItemId={ItemId}, Reason={Reason}",
-            job.Id, job.ItemId, errorMessage);
-
-        return true;
-    }
-
-    public async Task<int> RecoverStaleRunningJobsAsync(CancellationToken ct = default)
-    {
-        var staleJobs = await _jobRepository.GetStaleRunningAsync(ct);
-        if (staleJobs.Count == 0) return 0;
-
-        var now = DateTimeOffset.UtcNow;
-        var recovered = 0;
-        foreach (var job in staleJobs)
-        {
-            job.Status = ReanalyzeJobState.Failed;
-            job.ErrorMessage = "服务重启导致任务中断";
-            job.CompletedAt = now;
-            await _jobRepository.UpdateStatusAsync(job, ct);
-
-            var item = await _mistakeItemRepository.GetByIdAsync(job.ItemId, ct);
-            if (item != null)
-            {
-                var previousRootCause = job.PreviousRootCause ?? item.RootCause ?? string.Empty;
-                await AddProcessLogAsync(
-                    item.Id, job, previousRootCause, "FAILED: 服务重启导致任务中断",
-                    studentId: item.StudentId, ct);
-            }
-            recovered++;
-        }
-
-        // Single commit covers all N jobs + N logs.
-        await _unitOfWork.SaveChangesAsync(ct);
-        if (recovered > 0)
-        {
-            _logger.LogInformation("ReanalyzeJob: recovered {Count} stale running jobs", recovered);
-        }
-        return recovered;
-    }
+    public Task<bool> MarkFailedAsync(Guid jobId, Guid ownerId, long version,
+        string reasonCode, CancellationToken ct = default) =>
+        _jobRepository.FailAsync(jobId, ownerId, version, reasonCode, ct);
 
     public async Task<int> DeleteExpiredJobsAsync(DateTimeOffset cutoff, CancellationToken ct = default)
     {
@@ -299,33 +168,4 @@ public class ReanalyzeJobService : IReanalyzeJobService
         return deleted;
     }
 
-    private async Task AddProcessLogAsync(
-        Guid mistakeItemId,
-        ReanalyzeJobModel job,
-        string previousRootCause,
-        string newRootCauseOrFailure,
-        string? studentId,
-        CancellationToken ct)
-    {
-        var noteProvided = !string.IsNullOrWhiteSpace(job.TeacherDescription);
-        var noteLength = noteProvided ? job.TeacherDescription!.Length : 0;
-
-        var log = new ProcessLogModel
-        {
-            Id = Guid.NewGuid(),
-            MistakeItemId = mistakeItemId,
-            StudentId = studentId,
-            Action = (int)ProcessAction.Reanalyzed,
-            Details = JsonSerializer.Serialize(new
-            {
-                job_id = job.Id,
-                previous_root_cause = previousRootCause,
-                teacher_description_provided = noteProvided,
-                teacher_description_length = noteLength,
-                new_root_cause = newRootCauseOrFailure
-            }),
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-        await _processLogRepository.AddAsync(log, ct);
-    }
 }

@@ -176,193 +176,27 @@ public class ReanalyzeJobServiceTests
         result.Job!.PreviousRootCause.Should().Be("v1");
     }
 
-    // ===== MarkRunningAsync =====
-
     [Fact]
-    public async Task MarkRunningAsync_TransitionsPendingToRunning_SetsStartedAt()
+    public async Task ClaimJobsAsync_ClampsAtTwoAndDelegatesAtomicClaim()
     {
-        var job = new ReanalyzeJobModel { Id = Guid.NewGuid(), Status = ReanalyzeJobState.Pending };
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(job);
-
-        var ok = await _service.MarkRunningAsync(job.Id);
-
-        ok.Should().BeTrue();
-        _mockJobRepo.Verify(r => r.UpdateStatusAsync(
-            It.Is<ReanalyzeJobModel>(j => j.Status == ReanalyzeJobState.Running && j.StartedAt != null),
-            It.IsAny<CancellationToken>()), Times.Once);
-        // MarkRunningAsync is a single-entity write that commits immediately
-        // so subsequent claim cycles see the row as Running (not Pending).
-        _mockUow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _mockJobRepo.Setup(r => r.ClaimAsync(2, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ReanalyzeJobModel> { new(), new() });
+        var jobs = await _service.ClaimJobsAsync(50);
+        jobs.Should().HaveCount(2);
+        _mockJobRepo.Verify(r => r.ClaimAsync(2, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task MarkRunningAsync_WithNonPendingJob_ReturnsFalse()
+    public async Task TerminalAndHeartbeatForwardOwnerAndVersion()
     {
-        var job = new ReanalyzeJobModel { Id = Guid.NewGuid(), Status = ReanalyzeJobState.Completed };
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(job);
-
-        var ok = await _service.MarkRunningAsync(job.Id);
-        ok.Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task MarkRunningAsync_WithMissingJob_ReturnsFalse()
-    {
-        _mockJobRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ReanalyzeJobModel?)null);
-        var ok = await _service.MarkRunningAsync(Guid.NewGuid());
-        ok.Should().BeFalse();
-    }
-
-    // ===== MarkCompletedAsync =====
-
-    [Fact]
-    public async Task MarkCompletedAsync_TransitionsRunningToCompleted_UpdatesRootCauseAndLog()
-    {
-        var itemId = Guid.NewGuid();
-        var job = new ReanalyzeJobModel
-        {
-            Id = Guid.NewGuid(),
-            ItemId = itemId,
-            Status = ReanalyzeJobState.Running,
-            PreviousRootCause = "old",
-            TeacherDescription = "note"
-        };
-        var item = BuildItem(itemId, rootCause: "old");
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>())).ReturnsAsync(job);
-        _mockItemRepo.Setup(r => r.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-        // The "deferred" semantics: the mock mutates the entity in place to
-        // mimic what EF Core would do at SaveChanges time. This is what
-        // production would observe.
-        _mockItemRepo
-            .Setup(r => r.SetRootCauseDeferredAsync(itemId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .Callback<Guid, string, DateTimeOffset, CancellationToken>((_, newRoot, updatedAt, _) =>
-            {
-                item.RootCause = newRoot;
-                item.UpdatedAt = updatedAt;
-            })
-            .Returns(Task.CompletedTask);
-
-        var ok = await _service.MarkCompletedAsync(job.Id, "new", 1234);
-
-        ok.Should().BeTrue();
-        item.RootCause.Should().Be("new");
-        // MarkCompletedAsync uses deferred update + single SaveChanges to keep
-        // item + job + process_log atomic.
-        _mockItemRepo.Verify(r => r.SetRootCauseDeferredAsync(itemId, "new", It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()), Times.Once);
-        _mockJobRepo.Verify(r => r.UpdateStatusAsync(
-            It.Is<ReanalyzeJobModel>(j => j.Status == ReanalyzeJobState.Completed
-                && j.NewRootCause == "new"
-                && j.VlDurationMs == 1234
-                && j.CompletedAt != null),
-            It.IsAny<CancellationToken>()), Times.Once);
-        _mockLogRepo.Verify(r => r.AddAsync(
-            It.Is<ProcessLogModel>(p => p.Action == (int)ProcessAction.Reanalyzed && p.Details!.Contains("new")),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task MarkCompletedAsync_WhenItemDeleted_MarksJobFailed()
-    {
-        var itemId = Guid.NewGuid();
-        var job = new ReanalyzeJobModel { Id = Guid.NewGuid(), ItemId = itemId, Status = ReanalyzeJobState.Running };
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>())).ReturnsAsync(job);
-        _mockItemRepo.Setup(r => r.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
-
-        var ok = await _service.MarkCompletedAsync(job.Id, "new", 1000);
-
-        ok.Should().BeFalse();
-        _mockJobRepo.Verify(r => r.UpdateStatusAsync(
-            It.Is<ReanalyzeJobModel>(j => j.Status == ReanalyzeJobState.Failed && j.ErrorMessage == "错题已删除"),
-            It.IsAny<CancellationToken>()), Times.Once);
-        _mockLogRepo.Verify(r => r.AddAsync(It.IsAny<ProcessLogModel>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task MarkCompletedAsync_DoesNotChangeReviewStatus()
-    {
-        var itemId = Guid.NewGuid();
-        var job = new ReanalyzeJobModel { Id = Guid.NewGuid(), ItemId = itemId, Status = ReanalyzeJobState.Running };
-        var item = BuildItem(itemId, reviewStatus: (int)ReviewStatus.Confirmed);
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>())).ReturnsAsync(job);
-        _mockItemRepo.Setup(r => r.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-
-        await _service.MarkCompletedAsync(job.Id, "new", 1000);
-        item.ReviewStatus.Should().Be((int)ReviewStatus.Confirmed);
-    }
-
-    [Fact]
-    public async Task MarkCompletedAsync_WithNonRunningJob_ReturnsFalse()
-    {
-        var job = new ReanalyzeJobModel { Id = Guid.NewGuid(), Status = ReanalyzeJobState.Pending };
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>())).ReturnsAsync(job);
-
-        var ok = await _service.MarkCompletedAsync(job.Id, "x", 0);
-        ok.Should().BeFalse();
-    }
-
-    // ===== MarkFailedAsync =====
-
-    [Fact]
-    public async Task MarkFailedAsync_DoesNotChangeRootCause_WritesLog()
-    {
-        var itemId = Guid.NewGuid();
-        var job = new ReanalyzeJobModel
-        {
-            Id = Guid.NewGuid(),
-            ItemId = itemId,
-            Status = ReanalyzeJobState.Running,
-            PreviousRootCause = "old"
-        };
-        var item = BuildItem(itemId, rootCause: "old");
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>())).ReturnsAsync(job);
-        _mockItemRepo.Setup(r => r.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-
-        var ok = await _service.MarkFailedAsync(job.Id, "VL 500");
-
-        ok.Should().BeTrue();
-        item.RootCause.Should().Be("old");
-        _mockJobRepo.Verify(r => r.UpdateStatusAsync(
-            It.Is<ReanalyzeJobModel>(j => j.Status == ReanalyzeJobState.Failed && j.ErrorMessage == "VL 500"),
-            It.IsAny<CancellationToken>()), Times.Once);
-        _mockLogRepo.Verify(r => r.AddAsync(
-            It.Is<ProcessLogModel>(p => p.Details!.Contains("FAILED: VL 500")),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    // ===== Atomicity: single SaveChanges for the multi-write path =====
-
-    [Fact]
-    public async Task MarkCompletedAsync_CommitsAllThreeTablesInOneSaveChanges()
-    {
-        var itemId = Guid.NewGuid();
-        var job = new ReanalyzeJobModel
-        {
-            Id = Guid.NewGuid(),
-            ItemId = itemId,
-            Status = ReanalyzeJobState.Running,
-            PreviousRootCause = "old"
-        };
-        var item = BuildItem(itemId, rootCause: "old");
-        _mockJobRepo.Setup(r => r.GetByIdAsync(job.Id, It.IsAny<CancellationToken>())).ReturnsAsync(job);
-        _mockItemRepo.Setup(r => r.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-        _mockItemRepo
-            .Setup(r => r.SetRootCauseDeferredAsync(itemId, It.IsAny<string>(), It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
-            .Callback<Guid, string, DateTimeOffset, CancellationToken>((_, newRoot, updatedAt, _) =>
-            {
-                item.RootCause = newRoot;
-                item.UpdatedAt = updatedAt;
-            })
-            .Returns(Task.CompletedTask);
-
-        await _service.MarkCompletedAsync(job.Id, "new", 1000);
-
-        // Exactly ONE SaveChanges for the multi-table write path.
-        // (MarkRunningAsync may also call SaveChanges but it runs first
-        // before the test's MarkCompleted path.)
-        _mockUow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        var id = Guid.NewGuid();
+        var owner = Guid.NewGuid();
+        _mockJobRepo.Setup(r => r.RenewAsync(id, owner, 3, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _mockJobRepo.Setup(r => r.CompleteAsync(id, owner, 3, "new", 12, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _mockJobRepo.Setup(r => r.FailAsync(id, owner, 3, "vl_failed", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        (await _service.RenewLeaseAsync(id, owner, 3)).Should().BeTrue();
+        (await _service.MarkCompletedAsync(id, owner, 3, "new", 12)).Should().BeTrue();
+        (await _service.MarkFailedAsync(id, owner, 3, "vl_failed")).Should().BeTrue();
     }
 
     // ===== Cross-teacher isolation =====
@@ -390,40 +224,6 @@ public class ReanalyzeJobServiceTests
 
         var result = await _service.GetActiveJobsAsync("t1");
         result.Should().HaveCount(2);
-    }
-
-    // ===== Crash recovery =====
-
-    [Fact]
-    public async Task RecoverStaleRunningJobsAsync_MarksAllRunningAsFailed()
-    {
-        var itemId1 = Guid.NewGuid();
-        var itemId2 = Guid.NewGuid();
-        var stale1 = new ReanalyzeJobModel { Id = Guid.NewGuid(), Status = ReanalyzeJobState.Running, ItemId = itemId1 };
-        var stale2 = new ReanalyzeJobModel { Id = Guid.NewGuid(), Status = ReanalyzeJobState.Running, ItemId = itemId2 };
-        _mockJobRepo.Setup(r => r.GetStaleRunningAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ReanalyzeJobModel> { stale1, stale2 });
-        _mockItemRepo.Setup(r => r.GetByIdAsync(itemId1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(BuildItem(itemId1));
-        _mockItemRepo.Setup(r => r.GetByIdAsync(itemId2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(BuildItem(itemId2));
-
-        var count = await _service.RecoverStaleRunningJobsAsync();
-
-        count.Should().Be(2);
-        _mockJobRepo.Verify(r => r.UpdateStatusAsync(
-            It.Is<ReanalyzeJobModel>(j => j.Status == ReanalyzeJobState.Failed && j.ErrorMessage!.Contains("服务重启")),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
-    }
-
-    [Fact]
-    public async Task RecoverStaleRunningJobsAsync_WithNone_ReturnsZero()
-    {
-        _mockJobRepo.Setup(r => r.GetStaleRunningAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ReanalyzeJobModel>());
-
-        var count = await _service.RecoverStaleRunningJobsAsync();
-        count.Should().Be(0);
     }
 
     // ===== Cleanup =====

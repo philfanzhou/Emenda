@@ -50,4 +50,23 @@ public class ReanalyzeJobEntity
 
     [Column("vl_duration_ms")]
     public long? VlDurationMs { get; set; }
+
+    [Column("owner_id")]
+    public Guid? OwnerId { get; set; }
+
+    [Column("lease_until")]
+    public DateTimeOffset? LeaseUntil { get; set; }
+
+    [Column("fencing_version")]
+    public long FencingVersion { get; set; }
+
+    [Column("attempt")]
+    public int Attempt { get; set; }
+
+    [Column("execution_root_cause")]
+    public string? ExecutionRootCause { get; set; }
+
+    [Column("execution_input_digest")]
+    [MaxLength(64)]
+    public string? ExecutionInputDigest { get; set; }
 }

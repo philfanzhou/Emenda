@@ -14,6 +14,7 @@ public static class DatabaseInitializer
     private const string ProcessLog = "20260612030015_AddStudentIdToProcessLog";
     private const string Reanalyze = "20260626000000_AddReanalyzeJob";
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
+    private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
@@ -65,6 +66,12 @@ public static class DatabaseInitializer
         reanalyze_job|started_at|timestamp with time zone|Y
         reanalyze_job|completed_at|timestamp with time zone|Y
         reanalyze_job|vl_duration_ms|bigint|Y
+        reanalyze_job|owner_id|uuid|Y
+        reanalyze_job|lease_until|timestamp with time zone|Y
+        reanalyze_job|fencing_version|bigint|N
+        reanalyze_job|attempt|integer|N
+        reanalyze_job|execution_root_cause|text|Y
+        reanalyze_job|execution_input_digest|character varying(64)|Y
         __EFMigrationsHistory|MigrationId|character varying(150)|N
         __EFMigrationsHistory|ProductVersion|character varying(32)|N
         """);
@@ -108,7 +115,7 @@ public static class DatabaseInitializer
             .ConfigureAwait(false);
         await context.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY", cancellationToken).ConfigureAwait(false);
         var state = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-        if (state.Kind != SchemaKind.Ready && state.Kind != SchemaKind.LegacyRuntime)
+        if (state.Kind != SchemaKind.Ready)
             throw new InvalidOperationException(state.Diagnostic);
         loggerFactory.CreateLogger("DatabaseInitializer").LogInformation("Mistake database schema verified for read-only startup");
     }
@@ -172,10 +179,12 @@ public static class DatabaseInitializer
                 // The column was already renamed by an older runtime. Only the verified history row is missing.
                 await InsertRootCauseHistoryAsync(context, cancellationToken).ConfigureAwait(false);
             }
-            else
+            else if (before.Version < 4)
             {
                 await context.GetService<IMigrator>().MigrateAsync(RootCause, cancellationToken).ConfigureAwait(false);
             }
+
+            await context.GetService<IMigrator>().MigrateAsync(Lease, cancellationToken).ConfigureAwait(false);
 
             var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
             if (after.Kind != SchemaKind.Ready || !after.Target)
@@ -237,7 +246,7 @@ public static class DatabaseInitializer
         if (routines.Count > 0)
             return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
         if (relations.Count == 0)
-            return new SchemaState(SchemaKind.Empty, false, "Mistake database is empty; run --upgrade-empty-db before normal startup.");
+            return new SchemaState(SchemaKind.Empty, false, 0, "Mistake database is empty; run --upgrade-empty-db before normal startup.");
         if (relations.Contains("mistake"))
             return Invalid("legacy relation public.mistake exists; back up and use a supported explicit upgrade.");
         if (!relations.Contains("__EFMigrationsHistory"))
@@ -249,10 +258,12 @@ public static class DatabaseInitializer
         var processHistory = new HashSet<string>(initialHistory, StringComparer.Ordinal) { $"{ProcessLog}|8.0.11" };
         var reanalyzeHistory = new HashSet<string>(processHistory, StringComparer.Ordinal) { $"{Reanalyze}|8.0.11" };
         var targetHistory = new HashSet<string>(reanalyzeHistory, StringComparer.Ordinal) { $"{RootCause}|8.0.11" };
+        var leaseHistory = new HashSet<string>(targetHistory, StringComparer.Ordinal) { $"{Lease}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
-            history.SetEquals(targetHistory) ? 4 : 0;
+            history.SetEquals(targetHistory) ? 4 :
+            history.SetEquals(leaseHistory) ? 5 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
 
@@ -271,6 +282,13 @@ public static class DatabaseInitializer
         var expectedColumns = new HashSet<string>(ExpectedColumns, StringComparer.Ordinal);
         if (version < 3)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
+        else if (version < 5)
+            expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|owner_id|", StringComparison.Ordinal)
+                || column.StartsWith("reanalyze_job|lease_until|", StringComparison.Ordinal)
+                || column.StartsWith("reanalyze_job|fencing_version|", StringComparison.Ordinal)
+                || column.StartsWith("reanalyze_job|attempt|", StringComparison.Ordinal)
+                || column.StartsWith("reanalyze_job|execution_root_cause|", StringComparison.Ordinal)
+                || column.StartsWith("reanalyze_job|execution_input_digest|", StringComparison.Ordinal));
         if (version < 2)
         {
             expectedColumns.Remove("process_log|student_id|character varying(36)|Y");
@@ -282,12 +300,16 @@ public static class DatabaseInitializer
             expectedColumns.Remove("mistake_item|root_cause|text|Y");
             expectedColumns.Add("mistake_item|review_comment|text|Y");
         }
-        var legacyRuntime = version == 3 && columns.SetEquals(ExpectedColumns);
-        var misstampedColumns = Without(ExpectedColumns, "mistake_practice|image_paths|jsonb|N");
+        var legacyColumns = new HashSet<string>(expectedColumns, StringComparer.Ordinal);
+        legacyColumns.Remove("mistake_item|review_comment|text|Y");
+        legacyColumns.Add("mistake_item|root_cause|text|Y");
+        var legacyRuntime = version == 3 && columns.SetEquals(legacyColumns);
+        var misstampedColumns = new HashSet<string>(legacyColumns, StringComparer.Ordinal);
+        misstampedColumns.Remove("mistake_practice|image_paths|jsonb|N");
         misstampedColumns.Add("mistake_practice|image_paths|text|N");
         var misstampedTextPaths = version == 3 && columns.SetEquals(misstampedColumns);
         mismatch = Compare("column/type/nullability",
-            legacyRuntime ? ExpectedColumns : misstampedTextPaths ? misstampedColumns : expectedColumns, columns);
+            legacyRuntime ? legacyColumns : misstampedTextPaths ? misstampedColumns : expectedColumns, columns);
         if (mismatch is not null) return Invalid(mismatch);
 
         var defaults = await ReadSetAsync(connection, """
@@ -296,7 +318,9 @@ public static class DatabaseInitializer
                 JOIN pg_class c ON c.oid=d.adrelid
             WHERE c.relnamespace='public'::regnamespace ORDER BY c.relname,a.attname
             """, cancellationToken).ConfigureAwait(false);
-        mismatch = Compare("column default", version >= 3 ? Set("reanalyze_job|status|1") : Set(""), defaults);
+        mismatch = Compare("column default", version >= 5
+            ? Set("reanalyze_job|status|1\nreanalyze_job|attempt|0\nreanalyze_job|fencing_version|0")
+            : version >= 3 ? Set("reanalyze_job|status|1") : Set(""), defaults);
         if (mismatch is not null) return Invalid(mismatch);
 
         var triggers = await ReadSetAsync(connection, """
@@ -342,18 +366,18 @@ public static class DatabaseInitializer
         mismatch = Compare("constraint", expectedConstraints, constraints);
         if (mismatch is not null) return Invalid(mismatch);
 
-        if (version == 4)
-            return new SchemaState(SchemaKind.Ready, true, "Mistake target schema and history are consistent.");
+        if (version == 5)
+            return new SchemaState(SchemaKind.Ready, true, 5, "Mistake target schema and history are consistent.");
         if (legacyRuntime)
-            return new SchemaState(SchemaKind.LegacyRuntime, false,
+            return new SchemaState(SchemaKind.LegacyRuntime, false, version,
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
         if (misstampedTextPaths)
-            return new SchemaState(SchemaKind.MisstampedTextPaths, false,
+            return new SchemaState(SchemaKind.MisstampedTextPaths, false, version,
                 "Mistake exact three-history text paths shape requires --upgrade-known-db.");
-        return new SchemaState(SchemaKind.Known, false, $"Mistake known EF migration version {version} requires --upgrade-known-db.");
+        return new SchemaState(SchemaKind.Known, false, version, $"Mistake known EF migration version {version} requires --upgrade-known-db.");
     }
 
-    private static SchemaState Invalid(string diagnostic) => new(SchemaKind.Invalid, false,
+    private static SchemaState Invalid(string diagnostic) => new(SchemaKind.Invalid, false, 0,
         $"Mistake database incompatible: {diagnostic} Database unchanged.");
 
     private static string? Compare(string kind, HashSet<string> expected, HashSet<string> actual)
@@ -387,5 +411,5 @@ public static class DatabaseInitializer
     }
 
     private enum SchemaKind { Empty, Known, LegacyRuntime, MisstampedTextPaths, Ready, Invalid }
-    private sealed record SchemaState(SchemaKind Kind, bool Target, string Diagnostic);
+    private sealed record SchemaState(SchemaKind Kind, bool Target, int Version, string Diagnostic);
 }
