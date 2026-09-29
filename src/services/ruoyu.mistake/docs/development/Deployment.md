@@ -21,6 +21,32 @@ dotnet Ruoyu.Study.Mistake.Host.dll
 
 正常启动对数据库只读核验，空库须先显式升级。带数据且精确受支持的旧库应按下文备份恢复演练后使用 `--upgrade-known-db --database <test-database> --writes-stopped --backup-verified`。Local 模式缺连接时会报告 `Local mode requires ConnectionStrings:MistakeLocal`；模式拼写错误会报告允许值；连接失败时检查来源和目标库而不打印密码。默认 Platform 的 Consul/缓存诊断与 Loki URI 覆盖保持原样。
 
+### 后台 worker 启动开关
+
+Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺失时 Platform（包括未显式设置模式）默认为 `true`，Local 默认为 `false`。文件中的 `true` / `false` 可由同名双下划线环境变量逐项覆盖；其他值在数据库初始化和 worker 启动前报出具体键并拒绝启动。Platform 先加载 Consul，再校验最终值，因此非法值不保证阻止 Consul 访问。
+
+| 文件配置键 | 环境变量 | 控制的启动行为 |
+|---|---|---|
+| `Mistake:Workers:UploadPollingWorker:Enabled` | `Mistake__Workers__UploadPollingWorker__Enabled` | Student 轮询采集 |
+| `Mistake:Workers:ReanalyzeJobHostedService:Enabled` | `Mistake__Workers__ReanalyzeJobHostedService__Enabled` | 重分析任务领取及启动时的 Running 恢复 |
+| `Mistake:Workers:ReanalyzeJobCleanupService:Enabled` | `Mistake__Workers__ReanalyzeJobCleanupService__Enabled` | 终态任务 30 天清理 |
+
+例如在 `appsettings.Production.json` 中只关闭采集：
+
+```json
+{
+  "Mistake": {
+    "Workers": {
+      "UploadPollingWorker": { "Enabled": false }
+    }
+  }
+}
+```
+
+也可设置 `Mistake__Workers__UploadPollingWorker__Enabled=false` 覆盖文件值。启动日志只打印各 worker 的最终 `Enabled` 状态；值在进程启动时固定，修改文件、环境或 Consul 配置后必须重启。关闭某 worker 后，本进程不会启动其轮询、恢复或清理；数据库中已有 Pending/Running、终态与对象引用不会因关闭而被改写。重新启用时只恢复原 worker 行为，不重置任务状态；重分析 worker 目前会在启动时把所有 Running 标为 Failed，此行为**不具备多实例安全恢复保证**。
+
+开关只作用于本进程。运维须核对所有实例的最终开关以及停机时的在途请求和任务；其他实例可能继续处理，在途外部请求也不会回滚。回退到旧二进制前应重新核对三项状态：旧版即使在 Local 模式也会无条件启动三个 worker，降级本身不能用作安全停机。禁用采集不禁用手动上传或退回 HTTP 入口；Local 模式仍不能因此匿名对公网开放，完整能力与身份边界由后续任务处理。
+
 共享 Consul 配置承载：
 
 - `config/ruoyu/shared.json`

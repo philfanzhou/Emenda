@@ -42,6 +42,20 @@ else
 var consulOptions = localMode ? null : RuoyuConsulOptions.Bind(builder.Configuration);
 var consulRuntimeState = localMode ? null : RuoyuConsulRuntimeState.Instance;
 
+bool ReadWorkerEnabled(string key)
+{
+    var value = builder.Configuration[key];
+    if (value is null) return !localMode;
+    if (bool.TryParse(value, out var enabled)) return enabled;
+    throw new InvalidOperationException($"{key} must be true or false.");
+}
+
+// Resolve all switches after Platform Consul configuration and before database access
+// or any hosted service can start. Values are fixed for this process lifetime.
+var uploadPollingEnabled = ReadWorkerEnabled("Mistake:Workers:UploadPollingWorker:Enabled");
+var reanalyzeJobEnabled = ReadWorkerEnabled("Mistake:Workers:ReanalyzeJobHostedService:Enabled");
+var reanalyzeCleanupEnabled = ReadWorkerEnabled("Mistake:Workers:ReanalyzeJobCleanupService:Enabled");
+
 // HTTP listen port is hardcoded to 5007 (not configurable via Endpoints:Http).
 // host port mapping is controlled by start.sh: -p ${Port}:5007.
 const int httpPort = 5007;
@@ -145,12 +159,12 @@ builder.Services.AddSingleton<OpenAiCompatibleClient>(sp =>
 builder.Services.AddSingleton<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer, VlUploadAnalyzer>();
 
 // Polling worker: polls Student service for Processing records and processes them
-builder.Services.AddHostedService<UploadPollingWorker>();
+if (uploadPollingEnabled) builder.Services.AddHostedService<UploadPollingWorker>();
 
 // Reanalyze job workers: process AI re-analysis jobs asynchronously.
 // MaxConcurrency is hardcoded to 2 inside the service (do not externalize).
-builder.Services.AddHostedService<ReanalyzeJobHostedService>();
-builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
+if (reanalyzeJobEnabled) builder.Services.AddHostedService<ReanalyzeJobHostedService>();
+if (reanalyzeCleanupEnabled) builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
 
 // Student HTTP client (used by polling worker and review flow).
 // Prefer the new HTTP key, but keep legacy fallbacks so old local/test configs do not break.
@@ -201,9 +215,9 @@ app.Logger.LogInformation("Student Service: BaseUrl={Url}", studentBaseUrl);
 
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
     ossConfig.InternalEndpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
-app.Logger.LogInformation("UploadPollingWorker: Enabled=true, PollInterval=60s");
-app.Logger.LogInformation("ReanalyzeJobHostedService: Enabled=true, MaxConcurrency=2 (hardcoded)");
-app.Logger.LogInformation("ReanalyzeJobCleanupService: Enabled=true, RetentionDays=30 (hardcoded)");
+app.Logger.LogInformation("UploadPollingWorker: Enabled={Enabled}, PollInterval=60s", uploadPollingEnabled);
+app.Logger.LogInformation("ReanalyzeJobHostedService: Enabled={Enabled}, MaxConcurrency=2 (hardcoded)", reanalyzeJobEnabled);
+app.Logger.LogInformation("ReanalyzeJobCleanupService: Enabled={Enabled}, RetentionDays=30 (hardcoded)", reanalyzeCleanupEnabled);
 
 using (var scope = app.Services.CreateScope())
 {

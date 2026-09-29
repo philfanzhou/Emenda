@@ -199,8 +199,155 @@ public sealed class LocalBootstrapPostgresTests
         Assert.Equal(0, consul.RequestCount);
     }
 
+    [Theory]
+    [InlineData("Local", null, false, false, false)]
+    [InlineData("Local", "UploadPollingWorker", true, false, false)]
+    [InlineData("Local", "ReanalyzeJobHostedService", false, true, false)]
+    [InlineData("Local", "ReanalyzeJobCleanupService", false, false, true)]
+    [InlineData(null, null, true, true, true)]
+    [InlineData("Platform", null, true, true, true)]
+    [InlineData("Platform", "UploadPollingWorker", false, true, true)]
+    [InlineData("Platform", "ReanalyzeJobHostedService", true, false, true)]
+    [InlineData("Platform", "ReanalyzeJobCleanupService", true, true, false)]
+    public async Task WorkerSwitchesControlStartupAndDatabaseSideEffectsAsync(
+        string? mode, string? overrideWorker, bool polling, bool reanalyze, bool cleanup)
+    {
+        var admin = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(admin))
+            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
+        await using var database = await TestDatabase.CreateAsync(admin);
+        await using var student = new RequestProbe();
+        var connection = new NpgsqlConnectionStringBuilder(admin) { Database = database.Name }.ConnectionString;
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = mode,
+            ["ConnectionStrings__MistakeLocal"] = connection,
+            ["ConnectionStrings__Default"] = connection,
+            ["StudentService__Url"] = $"http://127.0.0.1:{student.Port}",
+            ["CONSUL_HTTP_ADDR"] = "127.0.0.1:9",
+            ["CONSUL_RETRY_COUNT"] = "1",
+            ["CONSUL_TIMEOUT_MS"] = "100",
+            ["CONSUL_CACHE_DIR"] = "/dev/null/not-a-cache-directory"
+        };
+        if (overrideWorker is not null)
+            settings[$"Mistake__Workers__{overrideWorker}__Enabled"] = mode == "Local" ? "true" : "false";
+
+        var upgraded = await RunHostAsync(["--upgrade-empty-db"], settings);
+        Assert.Equal(0, upgraded.ExitCode);
+        var item = Guid.NewGuid();
+        var running = Guid.NewGuid();
+        var pending = Guid.NewGuid();
+        var expired = Guid.NewGuid();
+        await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at) VALUES ('{item}','student-1',1,7,'upload-marker','[]'::jsonb,1,'root-marker',now())");
+        await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,status,created_at,started_at) VALUES ('{running}','{item}','teacher-1','student-1',2,now(),now())");
+        await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,status,created_at) VALUES ('{pending}','{item}','teacher-1','student-1',1,now())");
+        await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,status,created_at,completed_at) VALUES ('{expired}','{item}','teacher-1','student-1',3,now()-interval '40 days',now()-interval '40 days')");
+
+        var runningHost = await RunHostAsync([], settings, waitForStartup: true,
+            startupDelay: polling ? TimeSpan.FromSeconds(14) : TimeSpan.FromSeconds(12));
+        Assert.Contains("Mistake database schema verified for read-only startup", runningHost.Output);
+        Assert.Contains($"UploadPollingWorker: Enabled={polling}", runningHost.Output);
+        Assert.Contains($"ReanalyzeJobHostedService: Enabled={reanalyze}", runningHost.Output);
+        Assert.Contains($"ReanalyzeJobCleanupService: Enabled={cleanup}", runningHost.Output);
+        Assert.Equal(reanalyze ? "4" : "2", await database.ScalarAsync($"SELECT status FROM reanalyze_job WHERE id='{running}'"));
+        Assert.Equal(cleanup ? "0" : "1", await database.ScalarAsync($"SELECT count(*) FROM reanalyze_job WHERE id='{expired}'"));
+        if (!reanalyze)
+        {
+            Assert.Equal("1", await database.ScalarAsync($"SELECT status FROM reanalyze_job WHERE id='{pending}'"));
+            Assert.Equal("0", await database.ScalarAsync("SELECT count(*) FROM process_log"));
+        }
+        Assert.Equal("root-marker", await database.ScalarAsync($"SELECT root_cause FROM mistake_item WHERE id='{item}'"));
+        Assert.Equal("upload-marker", await database.ScalarAsync($"SELECT source_upload_id FROM mistake_item WHERE id='{item}'"));
+        Assert.Equal("[]", await database.ScalarAsync($"SELECT source_regions::text FROM mistake_item WHERE id='{item}'"));
+        Assert.Equal(polling, student.RequestCount > 0);
+    }
+
+    [Theory]
+    [InlineData("not-a-boolean", "Mistake:Workers:UploadPollingWorker:Enabled")]
+    [InlineData("1", "Mistake:Workers:ReanalyzeJobHostedService:Enabled")]
+    [InlineData("off", "Mistake:Workers:ReanalyzeJobCleanupService:Enabled")]
+    public async Task InvalidWorkerSwitchFailsBeforeDatabaseOrWorkerStartupAsync(string value, string key)
+    {
+        await using var student = new RequestProbe();
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = "Local",
+            ["ConnectionStrings__MistakeLocal"] = "Host=127.0.0.1;Port=1;Database=unavailable;Username=none",
+            [key.Replace(':', '_').Replace("_", "__")] = value,
+            ["StudentService__Url"] = $"http://127.0.0.1:{student.Port}"
+        };
+        var result = await RunHostAsync([], settings);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains($"{key} must be true or false", result.Output);
+        Assert.DoesNotContain("Database: PostgreSQL", result.Output);
+        Assert.Equal(0, student.RequestCount);
+    }
+
+    [Fact]
+    public async Task PlatformLoadsConsulBeforeRejectingInvalidWorkerSwitchAsync()
+    {
+        await using var consul = new RequestProbe(serverError: true);
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = "Platform",
+            ["Mistake__Workers__UploadPollingWorker__Enabled"] = "invalid",
+            ["CONSUL_HTTP_ADDR"] = $"127.0.0.1:{consul.Port}",
+            ["CONSUL_RETRY_COUNT"] = "1",
+            ["CONSUL_TIMEOUT_MS"] = "100",
+            ["CONSUL_CACHE_DIR"] = "/dev/null/not-a-cache-directory"
+        };
+        var result = await RunHostAsync([], settings);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Mistake:Workers:UploadPollingWorker:Enabled must be true or false", result.Output);
+        Assert.True(consul.RequestCount > 0);
+    }
+
+    [Fact]
+    public async Task EnvironmentOverridesWorkerFileValueAndRestartAppliesNewValueAsync()
+    {
+        var admin = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(admin))
+            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
+        await using var database = await TestDatabase.CreateAsync(admin);
+        await using var student = new RequestProbe();
+        var directory = Path.Combine(Path.GetTempPath(), "mistake-workers-config-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var connection = new NpgsqlConnectionStringBuilder(admin) { Database = database.Name }.ConnectionString;
+            await File.WriteAllTextAsync(Path.Combine(directory, "appsettings.json"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Mistake = new { ConfigMode = "Local", Workers = new { UploadPollingWorker = new { Enabled = true } } },
+                    ConnectionStrings = new { MistakeLocal = connection },
+                    StudentService = new { Url = $"http://127.0.0.1:{student.Port}" }
+                }));
+            var settings = new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_CONTENTROOT"] = directory,
+                ["Mistake__Workers__UploadPollingWorker__Enabled"] = "false"
+            };
+            Assert.Equal(0, (await RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
+            var disabled = await RunHostAsync([], settings, waitForStartup: true,
+                startupDelay: TimeSpan.FromSeconds(12));
+            Assert.Contains("UploadPollingWorker: Enabled=False", disabled.Output);
+            Assert.Equal(0, student.RequestCount);
+
+            settings.Remove("Mistake__Workers__UploadPollingWorker__Enabled");
+            var enabled = await RunHostAsync([], settings, waitForStartup: true,
+                startupDelay: TimeSpan.FromSeconds(14));
+            Assert.Contains("UploadPollingWorker: Enabled=True", enabled.Output);
+            Assert.True(student.RequestCount > 0);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static async Task<RunResult> RunHostAsync(string[] arguments,
-        IReadOnlyDictionary<string, string?> settings, bool waitForStartup = false)
+        IReadOnlyDictionary<string, string?> settings, bool waitForStartup = false,
+        TimeSpan? startupDelay = null)
     {
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
         var sourceRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -224,13 +371,27 @@ public sealed class LocalBootstrapPostgresTests
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Cannot start Mistake Host.");
         var output = process.StandardOutput.ReadToEndAsync();
         var errors = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         try
         {
             if (waitForStartup)
             {
-                await Task.WhenAny(process.WaitForExitAsync(timeout.Token), Task.Delay(2000, timeout.Token));
-                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                await Task.WhenAny(process.WaitForExitAsync(timeout.Token),
+                    Task.Delay(startupDelay ?? TimeSpan.FromSeconds(2), timeout.Token));
+                if (!process.HasExited)
+                {
+                    if (!OperatingSystem.IsWindows())
+                    {
+                        using var signal = Process.Start(new ProcessStartInfo("/bin/kill")
+                        {
+                            ArgumentList = { "-TERM", process.Id.ToString() },
+                            UseShellExecute = false
+                        });
+                        if (signal is not null) await signal.WaitForExitAsync();
+                        await Task.WhenAny(process.WaitForExitAsync(), Task.Delay(TimeSpan.FromSeconds(3)));
+                    }
+                    if (!process.HasExited) process.Kill(entireProcessTree: true);
+                }
             }
             else await process.WaitForExitAsync(timeout.Token);
         }
@@ -316,6 +477,15 @@ public sealed class LocalBootstrapPostgresTests
             await connection.OpenAsync();
             await using var command = new NpgsqlCommand(sql, connection);
             return Convert.ToString(await command.ExecuteScalarAsync()) ?? "";
+        }
+
+        public async Task ExecuteAsync(string sql)
+        {
+            await using var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(_admin)
+                { Database = Name }.ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(sql, connection);
+            await command.ExecuteNonQueryAsync();
         }
 
         public async ValueTask DisposeAsync()
