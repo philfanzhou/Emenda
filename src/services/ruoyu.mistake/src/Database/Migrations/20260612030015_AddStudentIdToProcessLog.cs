@@ -17,13 +17,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                 maxLength: 36,
                 nullable: true);
 
-            migrationBuilder.AlterColumn<string>(
-                name: "image_paths",
-                table: "mistake_practice",
-                type: "jsonb",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "text");
+            migrationBuilder.Sql("ALTER TABLE mistake_practice ALTER COLUMN image_paths TYPE jsonb USING image_paths::jsonb");
 
             migrationBuilder.CreateIndex(
                 name: "IX_process_log_student_id",
@@ -42,13 +36,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                 name: "student_id",
                 table: "process_log");
 
-            migrationBuilder.AlterColumn<string>(
-                name: "image_paths",
-                table: "mistake_practice",
-                type: "text",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "jsonb");
+            migrationBuilder.Sql("ALTER TABLE mistake_practice ALTER COLUMN image_paths TYPE text USING image_paths::text");
         }
     }
 }
