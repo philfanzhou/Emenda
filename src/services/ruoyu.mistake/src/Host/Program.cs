@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -56,9 +57,15 @@ var uploadPollingEnabled = ReadWorkerEnabled("Mistake:Workers:UploadPollingWorke
 var reanalyzeJobEnabled = ReadWorkerEnabled("Mistake:Workers:ReanalyzeJobHostedService:Enabled");
 var reanalyzeCleanupEnabled = ReadWorkerEnabled("Mistake:Workers:ReanalyzeJobCleanupService:Enabled");
 
-// HTTP listen port is hardcoded to 5007 (not configurable via Endpoints:Http).
-// host port mapping is controlled by start.sh: -p ${Port}:5007.
-const int httpPort = 5007;
+// Kestrel has one HTTP/1 listener. Resolve the final value after Platform
+// configuration is loaded; URLS and Endpoints:Http are not listener authorities.
+const string httpPortKey = "Mistake:Http:Port";
+var configuredHttpPort = builder.Configuration[httpPortKey];
+var httpPort = configuredHttpPort is null ? 5007 :
+    int.TryParse(configuredHttpPort, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedHttpPort) &&
+    parsedHttpPort is >= 1 and <= 65535
+        ? parsedHttpPort
+        : throw new InvalidOperationException($"{httpPortKey} must be an integer from 1 to 65535.");
 
 builder.WebHost.ConfigureKestrel(options =>
 {

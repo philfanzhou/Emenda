@@ -332,23 +332,23 @@
 **常见日志特征**：无报错，但监听端口与预期不符
 
 **可能根因**：
-- HTTP 监听端口固定为 5007（`Program.cs` 硬编码），不再通过配置键读取
+- `Mistake:Http:Port`（`Mistake__Http__Port`）覆盖了默认 5007，或显式值无效
 - host 端口映射未配置（`start.sh` 的 `Port` 变量缺失或被占用）
 - gRPC 端口 5006 已于 2026-07-12 下线，不再监听（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）
 
 **排查步骤**：
-1. 启动日志中查看 Kestrel 实际监听端口（应为 5007）
-2. 确认 `start.sh` 的 `Port` 变量配置正确，且 `-p ${Port}:5007` 映射生效
+1. 检查 `Mistake:Http:Port` 的最终值和启动日志中的 HTTP 端口；缺失时应为 5007，无效值会在数据库连接前报出键名
+2. 确认容器发布端口映射到实际内部监听端口；默认 `start.sh` 为 `-p ${Port}:5007`
 3. 确认调用方连接的端口与 mistake 实际监听端口一致
 
 | 端口 | 协议 | 配置方式 |
 |------|------|---------|
-| 5007（容器内固定） | HTTP/1.1 | `Program.cs` 硬编码，不可配置 |
+| 5007（容器内默认） | HTTP/1.1 | `Mistake:Http:Port`；环境键 `Mistake__Http__Port` |
 | host 映射端口 | — | `start.sh` 的 `Port` 变量（`-p ${Port}:5007`） |
 
-**临时绕过**：使用默认端口 5007
+**回退**：移除端口覆盖，重启进程，并同步容器映射和调用方地址到 5007。
 
-**根治建议**：HTTP 监听端口已硬编码为 5007，无需在 `appsettings.json` 中配置 `Endpoints:Http`。如需 host 端口映射，在 `start.sh` 设置 `Port` 变量。
+**根治建议**：仅用 `Mistake:Http:Port` 设置内部监听端口；`Endpoints:Http` 与 `ASPNETCORE_URLS` 不决定本服务端口。端口占用时排除占用或选择其他端口，并同步容器映射及 `MistakeService:Url`。
 
 ### 7.2 ConnectionStrings:Default 缺失
 
@@ -453,7 +453,7 @@
 
 | 配置项 | 位置 | 默认值 | 说明 |
 |--------|------|--------|------|
-| HTTP 监听端口 | `Program.cs` 硬编码 | 5007 | HTTP/1.1 端口（容器内固定，不可配置） |
+| HTTP 监听端口 | `Mistake:Http:Port` / `Mistake__Http__Port` | 5007 | HTTP/1.1 端口（容器内默认） |
 | `Port` | `start.sh` 变量 | 5007 | host 端口映射（`-p ${Port}:5007`） |
 | `ConnectionStrings:Default` | appsettings.json | （无） | PostgreSQL 连接字符串（本地开发兜底） |
 | `Oss:InternalEndpoint` | appsettings.json / Consul | localhost:8333 | 后端实际连接的 S3 地址 |
