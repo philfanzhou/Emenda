@@ -124,34 +124,16 @@
 
 ## 流程二：数据库准备
 
-| 项目 | 内容 |
-|------|------|
-| **节点名称** | 数据库准备 |
-| **前置条件** | 配置准备完成；PostgreSQL 数据库服务器已运行 |
-| **输入条件** | 有效的 `ConnectionStrings:Default` 或 Consul `PostgreSql:*` 配置 |
-| **操作步骤** | 1. 创建数据库 `ruoyu_study_mistake`（或连接串中指定的数据库名）<br>2. 确认 `public.mistake` 旧关系名不存在<br>3. 启动服务，`DatabaseInitializer` 执行当前初始化路径 |
-| **成功判定** | 服务启动日志中出现初始化完成信息，无异常；数据库中存在 `mistake_item`、`mistake_practice`、`process_log` 三张表 |
-| **失败后排查方向** | 1. 连接失败 → 检查连接串、数据库是否已创建、网络是否可达<br>2. 权限不足 → 检查数据库用户是否有 CREATE TABLE 权限<br>3. 迁移失败 → 查看启动日志中的异常堆栈，见下方"数据库迁移失败判断" |
+1. 停止 Mistake 应用写入并备份目标 PostgreSQL 数据库。确认连接配置指向预期库。
+2. 对**全新空库**，使用与 Host 相同配置运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`（或在容器内以该参数运行 Host）。命令完成且打印 `Mistake empty database upgrade verified.` 后，检查四条 `__EFMigrationsHistory` 记录和 `mistake_item`、`mistake_practice`、`process_log`、`reanalyze_job` 四张表，再正常启动服务。
+3. 对已知运行时结构，即前三条 EF 迁移历史且 `mistake_item.root_cause` 已存在、`review_comment` 不存在，直接正常启动。启动仅作只读 catalog/历史核验，不执行 DDL、stamp 或 `MigrateAsync`；历史保持三条。
+4. 对已完成第四条迁移的目标结构，正常启动，同样只读核验。显式空库升级命令在该结构上可重复执行，无数据或结构变更。
 
-### PostgreSQL 自动迁移逻辑
+`--upgrade-empty-db` 在事务中取得 PostgreSQL advisory lock，仅为空库创建目标结构；DDL 或核验失败时回滚。它不迁移已有数据。`public.mistake` 旧表、只有历史表、部分表、旧列、`image_paths` 类型不符、未知迁移记录或其他不一致结构都会拒绝启动和显式升级，保持数据库原状。保留备份及诊断，按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理带数据历史库，勿手工 stamp 或删表绕过检查。
 
-服务启动时 `DatabaseInitializer.InitializeAsync` 按以下顺序执行：
+普通启动账号至少需要读取 public schema 的 catalog、四张业务表和 `__EFMigrationsHistory`；只读数据库连接可完成启动核验。执行空库升级的账号另需建表、建索引和写迁移历史权限。连接失败或权限不足会中止对应操作。
 
-1. **旧表保护**：只读检查 `to_regclass('public.mistake')`；该名称存在或检查失败时，直接中止启动，且不执行后续 DDL/stamp。先保留备份，等待显式升级流程验收；不得通过回退旧版本或手工 stamp 绕过保护。
-2. **列名修正**：检测 `process_log` 和 `mistake_practice` 表中是否存在 `mistake_id` 列，存在则重命名为 `mistake_item_id`
-3. **外键补全**：为 `process_log` 和 `mistake_practice` 添加指向 `mistake_item` 的外键约束（如不存在）
-4. **迁移标记**：如果 `mistake_item` 表已存在但 `__EFMigrationsHistory` 中没有 `20260514051544_InitialCreate` 记录，自动插入标记行
-5. **建表保障**：通过 `Common.Database.DatabaseInitializer.InitializeAsync` 确保三张表存在
-
-### 数据库不存在或迁移失败时怎么判断
-
-| 现象 | 原因 | 判断方法 |
-|------|------|---------|
-| 服务启动抛出 `NpgsqlException` | PostgreSQL 未运行或连接串错误 | 查看启动日志中的异常信息，确认 Host/Port/Username/Database |
-| 启动错误包含 `Legacy schema detected: public.mistake` | 旧关系名存在 | 保持数据库不变，备份后按显式升级流程处理；服务不会监听请求 |
-| 日志出现"已将 InitialCreate 迁移标记为已应用" | 正常，表示已有表被标记 | 无需处理 |
-| 表存在但 `__EFMigrationsHistory` 为空且未 stamp | stamp 逻辑未执行 | 手动检查 `mistake_item` 表是否存在，确认 stamp SQL 是否被跳过 |
-| EF Core 后续 `Migrate()` 报错"已有列" | stamp 与实际 schema 不一致 | 停止升级并保留备份，按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 核验 schema 与历史；不要手工 stamp |
+详见[迁移历史](../database/migrations.md)及[故障排查](./Troubleshooting.md)。
 
 ---
 
@@ -215,7 +197,7 @@
 | **前置条件** | 配置准备、数据库准备、OSS 准备、依赖服务准备均已完成 |
 | **输入条件** | 编译产物、appsettings.json、环境变量 |
 | **操作步骤** | 1. 确认镜像 `ruoyu.study.mistake:20260501` 已构建<br>2. 设置实际 `CONSUL_HTTP_ADDR`、`CONSUL_TOKEN` 和 VL 私有配置<br>3. 执行 `bash start.sh`<br>4. 观察启动日志 |
-| **成功判定** | 日志中出现监听端口信息，无异常；数据库初始化日志正常 |
+| **成功判定** | 日志中出现监听端口信息，无异常；数据库只读核验日志正常 |
 | **失败后排查方向** | 1. 端口绑定失败 → 检查端口占用<br>2. 数据库连接失败 → 检查连接串和数据库状态<br>3. 依赖注入失败 → 检查配置项完整性 |
 
 ### 启动顺序
@@ -310,7 +292,7 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 | 4 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |
 | 5 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` 和实际 schema | 历史与表结构一致 | 保留备份，核验迁移日志与 schema，不手动 stamp |
 | 6 | 旧表保护 | 检查 `public.mistake` 是否存在 | 不存在；存在时服务拒绝启动 | 保留数据库及备份，走显式升级流程，不使用旧版本绕过 |
-| 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 手动执行列重命名 SQL |
-| 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 手动添加外键约束 |
-| 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 手动创建缺失索引 |
+| 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工改列 |
+| 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补外键 |
+| 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补索引 |
 | 10 | HTTP 请求大小 | 上传含大量图片的错题 | 不超过服务器请求体大小限制 | 如需更大限制，修改 Kestrel `MaxRequestBodySize` |

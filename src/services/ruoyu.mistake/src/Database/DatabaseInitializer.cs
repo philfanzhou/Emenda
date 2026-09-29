@@ -1,320 +1,248 @@
-using System.Reflection;
+using System.Data;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Common.Database;
 
 namespace Ruoyu.Study.Mistake.Database;
 
 public static class DatabaseInitializer
 {
-    public static async Task InitializeAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory)
+    private const string Initial = "20260514051544_InitialCreate";
+    private const string ProcessLog = "20260612030015_AddStudentIdToProcessLog";
+    private const string Reanalyze = "20260626000000_AddReanalyzeJob";
+    private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
+    private const long UpgradeLockKey = 0x52554F59554D4953;
+
+    private static readonly HashSet<string> ExpectedTables = Set("""
+        mistake_item
+        mistake_practice
+        process_log
+        reanalyze_job
+        __EFMigrationsHistory
+        """);
+
+    private static readonly HashSet<string> ExpectedColumns = Set("""
+        mistake_item|id|uuid|N
+        mistake_item|student_id|character varying(36)|N
+        mistake_item|subject|integer|N
+        mistake_item|grade|integer|N
+        mistake_item|source_upload_id|character varying(64)|N
+        mistake_item|source_regions|jsonb|N
+        mistake_item|review_status|integer|N
+        mistake_item|reviewer_id|character varying(36)|Y
+        mistake_item|reviewed_at|timestamp with time zone|Y
+        mistake_item|root_cause|text|Y
+        mistake_item|question_id|character varying(36)|Y
+        mistake_item|created_at|timestamp with time zone|N
+        mistake_item|updated_at|timestamp with time zone|Y
+        mistake_practice|id|uuid|N
+        mistake_practice|mistake_item_id|uuid|N
+        mistake_practice|student_id|character varying(36)|N
+        mistake_practice|practice_date|timestamp with time zone|N
+        mistake_practice|image_paths|jsonb|N
+        mistake_practice|student_answer|text|Y
+        mistake_practice|is_correct|boolean|N
+        mistake_practice|comments|text|Y
+        process_log|id|uuid|N
+        process_log|mistake_item_id|uuid|N
+        process_log|student_id|character varying(36)|Y
+        process_log|action|integer|N
+        process_log|details|text|Y
+        process_log|created_at|timestamp with time zone|N
+        reanalyze_job|id|uuid|N
+        reanalyze_job|item_id|uuid|N
+        reanalyze_job|reviewer_id|character varying(36)|N
+        reanalyze_job|student_id|character varying(36)|N
+        reanalyze_job|teacher_description|text|Y
+        reanalyze_job|previous_root_cause|text|Y
+        reanalyze_job|status|integer|N
+        reanalyze_job|error_message|text|Y
+        reanalyze_job|new_root_cause|text|Y
+        reanalyze_job|created_at|timestamp with time zone|N
+        reanalyze_job|started_at|timestamp with time zone|Y
+        reanalyze_job|completed_at|timestamp with time zone|Y
+        reanalyze_job|vl_duration_ms|bigint|Y
+        __EFMigrationsHistory|MigrationId|character varying(150)|N
+        __EFMigrationsHistory|ProductVersion|character varying(32)|N
+        """);
+
+    private static readonly HashSet<string> ExpectedIndexes = Set("""
+        PK_mistake_item|mistake_item|id|U
+        IX_mistake_item_created_at|mistake_item|created_at|N
+        IX_mistake_item_review_status|mistake_item|review_status|N
+        IX_mistake_item_source_upload_id|mistake_item|source_upload_id|N
+        IX_mistake_item_student_id|mistake_item|student_id|N
+        IX_mistake_item_student_id_subject_grade_review_status|mistake_item|student_id,subject,grade,review_status|N
+        PK_mistake_practice|mistake_practice|id|U
+        IX_mistake_practice_mistake_item_id|mistake_practice|mistake_item_id|N
+        IX_mistake_practice_practice_date|mistake_practice|practice_date|N
+        IX_mistake_practice_student_id|mistake_practice|student_id|N
+        PK_process_log|process_log|id|U
+        IX_process_log_created_at|process_log|created_at|N
+        IX_process_log_mistake_item_id_created_at|process_log|mistake_item_id,created_at|N
+        IX_process_log_student_id|process_log|student_id|N
+        PK_reanalyze_job|reanalyze_job|id|U
+        IX_reanalyze_job_Status_CreatedAt|reanalyze_job|status,created_at|N
+        IX_reanalyze_job_ReviewerId_Status|reanalyze_job|reviewer_id,status|N
+        IX_reanalyze_job_CompletedAt|reanalyze_job|completed_at|N
+        PK___EFMigrationsHistory|__EFMigrationsHistory|MigrationId|U
+        """);
+
+    private static readonly HashSet<string> ExpectedConstraints = Set("""
+        PK_mistake_item|p|id|-|-|-|V
+        PK_mistake_practice|p|id|-|-|-|V
+        FK_mistake_practice_mistake_item_mistake_item_id|f|mistake_item_id|mistake_item|id|c|V
+        PK_process_log|p|id|-|-|-|V
+        FK_process_log_mistake_item_mistake_item_id|f|mistake_item_id|mistake_item|id|c|V
+        PK_reanalyze_job|p|id|-|-|-|V
+        PK___EFMigrationsHistory|p|MigrationId|-|-|-|V
+        """);
+
+    public static async Task InitializeAsync(MistakeDbContext context, ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken = default)
     {
-        var logger = loggerFactory.CreateLogger("DatabaseInitializer");
-        await RejectLegacySchemaAsync(context);
-        await context.Database.OpenConnectionAsync();
-        try
-        {
-            await EnsureColumnRenamesAsync(context);
-        }
-        finally
-        {
-            await context.Database.CloseConnectionAsync();
-        }
-        await StampMigrationsIfTablesExistAsync(context, logger);
-        await Common.Database.DatabaseInitializer.InitializeAsync(context, loggerFactory, GetTableCreationSql);
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
+            .ConfigureAwait(false);
+        await context.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY", cancellationToken).ConfigureAwait(false);
+        var state = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+        if (state.Kind != SchemaKind.Ready)
+            throw new InvalidOperationException(state.Diagnostic);
+        loggerFactory.CreateLogger("DatabaseInitializer").LogInformation("Mistake database schema verified for read-only startup");
     }
 
-    private static async Task RejectLegacySchemaAsync(MistakeDbContext context)
+    public static async Task UpgradeEmptyAsync(MistakeDbContext context, CancellationToken cancellationToken = default)
     {
-        await context.Database.OpenConnectionAsync();
-        try
-        {
-            await using var command = context.Database.GetDbConnection().CreateCommand();
-            command.CommandText = "SELECT to_regclass('public.mistake') IS NOT NULL";
-            if ((bool)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Legacy schema check returned no result.")))
-                throw new InvalidOperationException(
-                    "Legacy schema detected: public.mistake exists. Database unchanged. Back up the database and use the explicit upgrade process before starting Mistake.");
-        }
-        finally
-        {
-            await context.Database.CloseConnectionAsync();
-        }
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            .ConfigureAwait(false);
+        await context.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({UpgradeLockKey})", cancellationToken)
+            .ConfigureAwait(false);
+        var before = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+        if (before.Kind == SchemaKind.Ready && before.Target)
+            return;
+        if (before.Kind != SchemaKind.Empty)
+            throw new InvalidOperationException(before.Diagnostic);
+
+        await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+        var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+        if (after.Kind != SchemaKind.Ready || !after.Target)
+            throw new InvalidOperationException($"Mistake upgrade verification failed: {after.Diagnostic}");
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task StampMigrationsIfTablesExistAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILogger logger)
+    private static async Task<SchemaState> ClassifyAsync(DbConnection connection, CancellationToken cancellationToken)
     {
-        await context.Database.OpenConnectionAsync();
-        try
-        {
-            await using var checkCmd = context.Database.GetDbConnection().CreateCommand();
-            checkCmd.CommandText = @"
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'mistake_item'
-                )";
-            var tableExists = (bool)(await checkCmd.ExecuteScalarAsync())!;
-            if (!tableExists) return;
+        var relations = await ReadSetAsync(connection, """
+            SELECT relname FROM pg_class WHERE relnamespace = 'public'::regnamespace
+            AND relkind IN ('r','p','v','m','f','S') ORDER BY relname
+            """, cancellationToken).ConfigureAwait(false);
+        var routines = await ReadSetAsync(connection,
+            "SELECT proname FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY proname",
+            cancellationToken).ConfigureAwait(false);
+        if (routines.Count > 0)
+            return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
+        if (relations.Count == 0)
+            return new SchemaState(SchemaKind.Empty, false, "Mistake database is empty; run --upgrade-empty-db before normal startup.");
+        if (relations.Contains("mistake"))
+            return Invalid("legacy relation public.mistake exists; back up and use a supported explicit upgrade.");
+        var mismatch = Compare("relation", ExpectedTables, relations);
+        if (mismatch is not null) return Invalid(mismatch);
 
-            await using var historyCmd = context.Database.GetDbConnection().CreateCommand();
-            historyCmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
-                    ""MigrationId"" character varying(150) NOT NULL,
-                    ""ProductVersion"" character varying(32) NOT NULL,
-                    CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY (""MigrationId"")
-                )";
-            await historyCmd.ExecuteNonQueryAsync();
+        var columns = await ReadSetAsync(connection, """
+            SELECT c.relname || '|' || a.attname || '|' || format_type(a.atttypid,a.atttypmod) || '|' ||
+                   CASE WHEN a.attnotnull THEN 'N' ELSE 'Y' END
+            FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+            WHERE c.relnamespace='public'::regnamespace AND c.relkind='r'
+              AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum
+            """, cancellationToken).ConfigureAwait(false);
+        mismatch = Compare("column/type/nullability", ExpectedColumns, columns);
+        if (mismatch is not null) return Invalid(mismatch);
 
-            var productVersion = typeof(DbContext).Assembly
-                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-                .InformationalVersion ?? "8.0.0";
+        var defaults = await ReadSetAsync(connection, """
+            SELECT c.relname || '|' || a.attname || '|' || pg_get_expr(d.adbin,d.adrelid)
+            FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
+                JOIN pg_class c ON c.oid=d.adrelid
+            WHERE c.relnamespace='public'::regnamespace ORDER BY c.relname,a.attname
+            """, cancellationToken).ConfigureAwait(false);
+        mismatch = Compare("column default", Set("reanalyze_job|status|1"), defaults);
+        if (mismatch is not null) return Invalid(mismatch);
 
-            // Stamp InitialCreate if tables already exist
-            await using var checkStampCmd = context.Database.GetDbConnection().CreateCommand();
-            checkStampCmd.CommandText = @"
-                SELECT COUNT(*) FROM ""__EFMigrationsHistory"" 
-                WHERE ""MigrationId"" = '20260514051544_InitialCreate'";
-            var count = (long)(await checkStampCmd.ExecuteScalarAsync())!;
-            if (count == 0)
-            {
-                await using var insertCmd = context.Database.GetDbConnection().CreateCommand();
-                insertCmd.CommandText = @"
-                    INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
-                    VALUES (@mid, @pv)";
-                var midParam = insertCmd.CreateParameter();
-                midParam.ParameterName = "@mid";
-                midParam.Value = "20260514051544_InitialCreate";
-                insertCmd.Parameters.Add(midParam);
-                var pvParam = insertCmd.CreateParameter();
-                pvParam.ParameterName = "@pv";
-                pvParam.Value = productVersion;
-                insertCmd.Parameters.Add(pvParam);
-                await insertCmd.ExecuteNonQueryAsync();
+        var triggers = await ReadSetAsync(connection, """
+            SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+            WHERE c.relnamespace='public'::regnamespace AND NOT t.tgisinternal ORDER BY t.tgname
+            """, cancellationToken).ConfigureAwait(false);
+        if (triggers.Count > 0)
+            return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");
 
-                logger.LogInformation("已将 InitialCreate 迁移标记为已应用");
-            }
+        var indexes = await ReadSetAsync(connection, """
+            SELECT idx.relname || '|' || tbl.relname || '|' ||
+                   CASE WHEN i.indisvalid AND i.indpred IS NULL AND i.indexprs IS NULL THEN
+                       array_to_string(ARRAY(SELECT replace(pg_get_indexdef(i.indexrelid,n,true), '"', '')
+                           FROM generate_series(1,i.indnkeyatts) n), ',') ELSE '#invalid' END || '|' ||
+                   CASE WHEN i.indisunique THEN 'U' ELSE 'N' END
+            FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid
+                JOIN pg_class tbl ON tbl.oid=i.indrelid
+            WHERE tbl.relnamespace='public'::regnamespace ORDER BY idx.relname
+            """, cancellationToken).ConfigureAwait(false);
+        mismatch = Compare("index", ExpectedIndexes, indexes);
+        if (mismatch is not null) return Invalid(mismatch);
 
-            // Stamp AddStudentIdToProcessLog if student_id column already exists in process_log
-            await using var checkStudentIdCmd = context.Database.GetDbConnection().CreateCommand();
-            checkStudentIdCmd.CommandText = @"
-                SELECT EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                    AND table_name = 'process_log'
-                    AND column_name = 'student_id'
-                )";
-            var studentIdExists = (bool)(await checkStudentIdCmd.ExecuteScalarAsync())!;
+        var constraints = await ReadSetAsync(connection, """
+            SELECT c.conname || '|' || c.contype::text || '|' ||
+                   array_to_string(ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord)
+                       JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord), ',') || '|' ||
+                   COALESCE(ref.relname,'-') || '|' ||
+                   CASE WHEN c.contype='f' THEN array_to_string(ARRAY(SELECT a.attname
+                       FROM unnest(c.confkey) WITH ORDINALITY k(attnum,ord)
+                       JOIN pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.attnum ORDER BY k.ord), ',') ELSE '-' END || '|' ||
+                   CASE WHEN c.contype='f' THEN c.confdeltype::text ELSE '-' END || '|' ||
+                   CASE WHEN c.convalidated THEN 'V' ELSE 'U' END
+            FROM pg_constraint c LEFT JOIN pg_class ref ON ref.oid=c.confrelid
+            WHERE c.connamespace='public'::regnamespace ORDER BY c.conname
+            """, cancellationToken).ConfigureAwait(false);
+        mismatch = Compare("constraint", ExpectedConstraints, constraints);
+        if (mismatch is not null) return Invalid(mismatch);
 
-            if (studentIdExists)
-            {
-                await using var checkStamp2Cmd = context.Database.GetDbConnection().CreateCommand();
-                checkStamp2Cmd.CommandText = @"
-                    SELECT COUNT(*) FROM ""__EFMigrationsHistory""
-                    WHERE ""MigrationId"" = '20260612030015_AddStudentIdToProcessLog'";
-                var count2 = (long)(await checkStamp2Cmd.ExecuteScalarAsync())!;
-                if (count2 == 0)
-                {
-                    await using var insertStamp2Cmd = context.Database.GetDbConnection().CreateCommand();
-                    insertStamp2Cmd.CommandText = @"
-                        INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
-                        VALUES (@mid, @pv)";
-                    var midParam2 = insertStamp2Cmd.CreateParameter();
-                    midParam2.ParameterName = "@mid";
-                    midParam2.Value = "20260612030015_AddStudentIdToProcessLog";
-                    insertStamp2Cmd.Parameters.Add(midParam2);
-                    var pvParam2 = insertStamp2Cmd.CreateParameter();
-                    pvParam2.ParameterName = "@pv";
-                    pvParam2.Value = productVersion;
-                    insertStamp2Cmd.Parameters.Add(pvParam2);
-                    await insertStamp2Cmd.ExecuteNonQueryAsync();
-
-                    logger.LogInformation("已将 AddStudentIdToProcessLog 迁移标记为已应用");
-                }
-            }
-        }
-        finally
-        {
-            await context.Database.CloseConnectionAsync();
-        }
+        var history = await ReadSetAsync(connection,
+            "SELECT \"MigrationId\" FROM public.\"__EFMigrationsHistory\" ORDER BY \"MigrationId\"",
+            cancellationToken).ConfigureAwait(false);
+        var oldHistory = new HashSet<string>(StringComparer.Ordinal) { Initial, ProcessLog, Reanalyze };
+        var newHistory = new HashSet<string>(oldHistory, StringComparer.Ordinal) { RootCause };
+        if (history.SetEquals(newHistory))
+            return new SchemaState(SchemaKind.Ready, true, "Mistake target schema and history are consistent.");
+        if (history.SetEquals(oldHistory))
+            return new SchemaState(SchemaKind.Ready, false,
+                "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
+        return Invalid("migration history does not match a supported three- or four-version chain.");
     }
 
-    private static async Task EnsureColumnRenamesAsync(MistakeDbContext context)
+    private static SchemaState Invalid(string diagnostic) => new(SchemaKind.Invalid, false,
+        $"Mistake database incompatible: {diagnostic} Database unchanged.");
+
+    private static string? Compare(string kind, HashSet<string> expected, HashSet<string> actual)
     {
-        // Rename review_comment -> root_cause in mistake_item table
-        await using var renameReviewCommentCmd = context.Database.GetDbConnection().CreateCommand();
-        renameReviewCommentCmd.CommandText = @"
-            DO $$
-            BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'mistake_item' AND column_name = 'review_comment'
-                ) THEN
-                    ALTER TABLE mistake_item RENAME COLUMN review_comment TO root_cause;
-                END IF;
-            END $$;";
-        await renameReviewCommentCmd.ExecuteNonQueryAsync();
-
-        await using var checkTablesCmd = context.Database.GetDbConnection().CreateCommand();
-        checkTablesCmd.CommandText = @"
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'process_log'
-            ),
-            EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'mistake_practice'
-            )";
-        using var reader = await checkTablesCmd.ExecuteReaderAsync();
-        await reader.ReadAsync();
-        var processLogExists = reader.GetBoolean(0);
-        var practiceExists = reader.GetBoolean(1);
-        await reader.CloseAsync();
-
-        if (processLogExists)
-        {
-            await using var fixProcessLogCmd = context.Database.GetDbConnection().CreateCommand();
-            fixProcessLogCmd.CommandText = @"
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name = 'process_log' AND column_name = 'mistake_id'
-                    ) THEN
-                        ALTER TABLE process_log RENAME COLUMN mistake_id TO mistake_item_id;
-                    END IF;
-                END $$;";
-            await fixProcessLogCmd.ExecuteNonQueryAsync();
-
-            await using var addStudentIdCmd = context.Database.GetDbConnection().CreateCommand();
-            addStudentIdCmd.CommandText = @"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name = 'process_log' AND column_name = 'student_id'
-                    ) THEN
-                        ALTER TABLE process_log ADD COLUMN student_id character varying(36) NULL;
-                    END IF;
-                END $$;";
-            await addStudentIdCmd.ExecuteNonQueryAsync();
-
-            await using var addStudentIdIndexCmd = context.Database.GetDbConnection().CreateCommand();
-            addStudentIdIndexCmd.CommandText = @"
-                CREATE INDEX IF NOT EXISTS IX_process_log_student_id ON process_log (student_id);";
-            await addStudentIdIndexCmd.ExecuteNonQueryAsync();
-
-            await using var addProcessLogFkCmd = context.Database.GetDbConnection().CreateCommand();
-            addProcessLogFkCmd.CommandText = @"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint
-                        WHERE LOWER(conname) = 'fk_process_log_mistake_item_mistake_item_id'
-                    ) THEN
-                        ALTER TABLE process_log
-                            ADD CONSTRAINT FK_process_log_mistake_item_mistake_item_id
-                            FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE;
-                    END IF;
-                END $$;";
-            await addProcessLogFkCmd.ExecuteNonQueryAsync();
-        }
-
-        if (practiceExists)
-        {
-            await using var fixPracticeCmd = context.Database.GetDbConnection().CreateCommand();
-            fixPracticeCmd.CommandText = @"
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name = 'mistake_practice' AND column_name = 'mistake_id'
-                    ) THEN
-                        ALTER TABLE mistake_practice RENAME COLUMN mistake_id TO mistake_item_id;
-                    END IF;
-                END $$;";
-            await fixPracticeCmd.ExecuteNonQueryAsync();
-
-            await using var addPracticeFkCmd = context.Database.GetDbConnection().CreateCommand();
-            addPracticeFkCmd.CommandText = @"
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint
-                        WHERE LOWER(conname) = 'fk_mistake_practice_mistake_item_mistake_item_id'
-                    ) THEN
-                        ALTER TABLE mistake_practice
-                            ADD CONSTRAINT FK_mistake_practice_mistake_item_mistake_item_id
-                            FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE;
-                    END IF;
-                END $$;";
-            await addPracticeFkCmd.ExecuteNonQueryAsync();
-        }
+        var missing = expected.Except(actual).Order(StringComparer.Ordinal).FirstOrDefault();
+        if (missing is not null) return $"missing {kind} {missing}.";
+        var unexpected = actual.Except(expected).Order(StringComparer.Ordinal).FirstOrDefault();
+        return unexpected is null ? null : $"unexpected {kind} {unexpected}.";
     }
 
-    private static string? GetTableCreationSql(string tableName)
+    private static async Task<HashSet<string>> ReadSetAsync(DbConnection connection, string sql, CancellationToken cancellationToken)
     {
-        return tableName switch
-        {
-            "mistake_item" => @"
-                CREATE TABLE IF NOT EXISTS mistake_item (
-                    id uuid NOT NULL,
-                    student_id character varying(36) NOT NULL,
-                    subject integer NOT NULL,
-                    grade integer NOT NULL,
-                    source_upload_id character varying(64) NOT NULL,
-                    source_regions jsonb NOT NULL DEFAULT '[]',
-                    review_status integer NOT NULL,
-                    reviewer_id character varying(36) NULL,
-                    reviewed_at timestamp with time zone NULL,
-                    root_cause text NULL,
-                    question_id character varying(36) NULL,
-                    created_at timestamp with time zone NOT NULL,
-                    updated_at timestamp with time zone NULL,
-                    CONSTRAINT PK_mistake_item PRIMARY KEY (id)
-                );
-                CREATE INDEX IF NOT EXISTS IX_mistake_item_student_id ON mistake_item (student_id);
-                CREATE INDEX IF NOT EXISTS IX_mistake_item_student_id_subject_grade_review_status ON mistake_item (student_id, subject, grade, review_status);
-                CREATE INDEX IF NOT EXISTS IX_mistake_item_source_upload_id ON mistake_item (source_upload_id);
-                CREATE INDEX IF NOT EXISTS IX_mistake_item_review_status ON mistake_item (review_status);
-                CREATE INDEX IF NOT EXISTS IX_mistake_item_created_at ON mistake_item (created_at);",
-
-            "mistake_practice" => @"
-                CREATE TABLE IF NOT EXISTS mistake_practice (
-                    id uuid NOT NULL,
-                    mistake_item_id uuid NOT NULL,
-                    student_id character varying(36) NOT NULL,
-                    practice_date timestamp with time zone NOT NULL,
-                    image_paths text NOT NULL DEFAULT '[]',
-                    student_answer text NULL,
-                    is_correct boolean NOT NULL,
-                    comments text NULL,
-                    CONSTRAINT PK_mistake_practice PRIMARY KEY (id),
-                    CONSTRAINT FK_mistake_practice_mistake_item_mistake_item_id 
-                        FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS IX_mistake_practice_mistake_item_id ON mistake_practice (mistake_item_id);
-                CREATE INDEX IF NOT EXISTS IX_mistake_practice_student_id ON mistake_practice (student_id);
-                CREATE INDEX IF NOT EXISTS IX_mistake_practice_practice_date ON mistake_practice (practice_date);",
-
-            "process_log" => @"
-                CREATE TABLE IF NOT EXISTS process_log (
-                    id uuid NOT NULL,
-                    mistake_item_id uuid NOT NULL,
-                    student_id character varying(36) NULL,
-                    action integer NOT NULL,
-                    details text NULL,
-                    created_at timestamp with time zone NOT NULL,
-                    CONSTRAINT PK_process_log PRIMARY KEY (id),
-                    CONSTRAINT FK_process_log_mistake_item_mistake_item_id 
-                        FOREIGN KEY (mistake_item_id) REFERENCES mistake_item(id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS IX_process_log_mistake_item_id_created_at ON process_log (mistake_item_id, created_at);
-                CREATE INDEX IF NOT EXISTS IX_process_log_created_at ON process_log (created_at);
-                CREATE INDEX IF NOT EXISTS IX_process_log_student_id ON process_log (student_id);",
-
-            _ => null
-        };
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var rows = new HashSet<string>(StringComparer.Ordinal);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            rows.Add(reader.GetString(0));
+        return rows;
     }
+
+    private static HashSet<string> Set(string lines) =>
+        lines.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.Ordinal);
+
+    private enum SchemaKind { Empty, Ready, Invalid }
+    private sealed record SchemaState(SchemaKind Kind, bool Target, string Diagnostic);
 }

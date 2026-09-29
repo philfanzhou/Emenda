@@ -186,9 +186,9 @@
 | **预期结果** | 1. 返回 success=true<br>2. 所有图片迁移均失败，日志中每张图片均有 "Error migrating image" 记录<br>3. sourceImagePath 未更新（仍为 uploads/ 前缀） |
 | **失败判断** | 返回 success=false；流程被中断；抛出未捕获异常 |
 
-### TC-17 数据库初始化 (PostgreSQL)
+### TC-17 数据库只读启动与显式空库升级 (PostgreSQL)
 
-在专用 PostgreSQL 数据库中分别验证以下输入：仅有 `public.mistake`、新旧表并存、空旧表、被外键引用的旧表、已有与不存在的迁移历史。调用 `DatabaseInitializer.InitializeAsync` 均应在任何写库步骤前抛出固定的旧 schema 错误；行、索引、外键和历史前后相同，多进程同时启动也全部拒绝。连接检查失败必须中止初始化。其他 schema 中同名表不触发此保护。无 `public.mistake` 时继续既有初始化路径；独立迁移问题可能导致后续失败，不能将其误报为本保护回归。自动化证据位于 `LegacySchemaGuardPostgresTests`，需设置专用的 `MISTAKE_LEGACY_GUARD_TEST_CONNECTION`。
+在专用 PostgreSQL 库分别验证：空库普通启动拒绝而 `--upgrade-empty-db` 成功且可重复；已知三条历史加运行时 `root_cause` 和四条历史目标均只读启动；`public.mistake`、新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；并发空库升级只产生一个完整目标；DDL 失败回滚。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
 
 ### TC-20 地址错误 (MistakeGrpcService:Address)
 

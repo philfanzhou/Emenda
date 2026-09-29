@@ -258,53 +258,21 @@
 
 **根治建议**：确保 PostgreSQL 服务稳定运行，配置正确的连接字符串。
 
-### 5.3 旧 schema 启动拒绝
+### 5.3 结构或迁移历史不匹配
 
-**典型症状**：初始化抛出 `Legacy schema detected: public.mistake exists`，服务未开始监听。
+**症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史。`public.mistake` 旧关系、空库、只有部分表以及列类型或历史不一致均不允许普通启动。
 
-**原因与处理**：`public.mistake` 名称已被关系占用。启动保护在 DDL、历史 stamp 和 Common initializer 之前执行，只读检查失败也中止启动。检查 `SELECT to_regclass('public.mistake') IS NOT NULL`，保留数据及备份，按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的显式升级流程验收后再恢复服务。不要运行旧版本或手工 stamp 绕过保护。
+**处理**：保持服务停止写入，备份数据库，核对提示所指对象及 `__EFMigrationsHistory`。启动核验是只读事务，不执行 DDL、stamp 或 EF 迁移。已知三条历史且 `root_cause` 已存在的运行时结构，以及四条历史的目标结构，可直接启动。其余带数据结构按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 核验并制定升级；不要删除旧表或手工补写历史。
 
-### 5.4 迁移 stamp 失败
+### 5.4 空库需要显式升级
 
-**典型症状**：服务每次启动都尝试执行 EF Core 迁移，或报 `__EFMigrationsHistory` 操作异常。
+**症状**：启动提示 `Mistake database is empty; run --upgrade-empty-db`。
 
-**常见日志特征**：
-- `"已将 InitialCreate 迁移标记为已应用"`（`DatabaseInitializer.cs` L70）— 正常
-- 若无此日志但表已存在，说明 stamp 未写入
+**处理**：确认连接的是预期的全新空库，停止应用写入并备份，再使用相同配置运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`。命令在锁和事务内创建目标结构，失败会回滚；成功后正常启动。它不处理旧库。普通启动账号只需读取 catalog、表和历史；显式升级账号另需 DDL 和写历史权限。
 
-**可能根因**：
-- `__EFMigrationsHistory` 表创建失败（权限不足）
-- stamp 插入被回滚（事务冲突）
+### 5.5 旧版本的列/历史冲突
 
-**排查步骤**：
-1. 查询 `SELECT * FROM "__EFMigrationsHistory"` 确认是否有 `20260514051544_InitialCreate` 记录
-2. 若缺少记录，先对照实际表结构与迁移内容核验，不得仅凭表名补写历史。
-
-**临时绕过**：无；保留备份并按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 排查。
-
-**根治建议**：确保数据库用户有创建表和插入数据的权限。
-
-### 5.5 迁移列已存在导致启动失败
-
-**典型症状**：服务启动时报 `42701: column "student_id" of relation "process_log" already exists`，服务崩溃。
-
-**常见日志特征**：
-- `Failed executing DbCommand ... ALTER TABLE process_log ADD student_id character varying(36)`
-- `Npgsql.PostgresException: 42701: column "student_id" of relation "process_log" already exists`
-
-**可能根因**：
-- `EnsureColumnRenamesAsync` 在启动时已通过 `IF NOT EXISTS` 安全地添加了 `student_id` 列
-- `StampMigrationsIfTablesExistAsync` 只标记了 `InitialCreate`，未标记 `AddStudentIdToProcessLog` 迁移
-- `MigrateAsync` 发现该迁移为 pending，尝试执行 `ALTER TABLE ADD COLUMN`，但列已存在
-
-**排查步骤**：
-1. 查询 `SELECT * FROM "__EFMigrationsHistory"` 确认是否缺少 `20260612030015_AddStudentIdToProcessLog` 记录
-2. 查询 `SELECT column_name FROM information_schema.columns WHERE table_name = 'process_log' AND column_name = 'student_id'` 确认列是否已存在
-3. 如果列已存在但迁移未标记，说明 stamp 逻辑未覆盖此迁移
-
-**临时绕过**：无；`student_id` 存在不代表 `image_paths` 已为 jsonb。保留备份并核验完整迁移效果，不要手动 stamp。
-
-**根治建议**：确保 `StampMigrationsIfTablesExistAsync` 中包含对 `AddStudentIdToProcessLog` 迁移的检测逻辑，当 `student_id` 列已存在时自动标记该迁移为已应用。
+旧启动路径可能添加了 `student_id`，但未记录 `20260612030015_AddStudentIdToProcessLog`；单有该列也不能证明 `image_paths` 已为 jsonb。新启动会拒绝此不一致结构，避免再次尝试 `ADD COLUMN`。保留备份，核对完整 schema 与历史，再按父项 IKJ0IK 处理，勿手工 stamp。
 
 ---
 
@@ -504,4 +472,4 @@
 | `"Mistake gRPC host is running."` | Program.cs L86 | 服务正常启动 |
 | `"Migrated image from {OldPath} to {NewPath}"` | MistakeServiceImpl.cs L322 | OSS 图片迁移成功 |
 | `"Error migrating image {Path}"` | MistakeServiceImpl.cs L328 | OSS 图片迁移失败 |
-| `"已将 InitialCreate 迁移标记为已应用"` | DatabaseInitializer.cs L70 | 迁移 stamp 写入成功 |
+| `"Mistake database schema verified for read-only startup"` | DatabaseInitializer.cs | 启动已完成只读结构核验 |
