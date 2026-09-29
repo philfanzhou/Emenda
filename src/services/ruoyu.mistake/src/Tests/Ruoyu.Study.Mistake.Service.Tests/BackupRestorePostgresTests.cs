@@ -14,7 +14,40 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 public sealed class BackupRestorePostgresTests
 {
     private const string Initial = "20260514051544_InitialCreate";
+    private const string ProcessLog = "20260612030015_AddStudentIdToProcessLog";
+    private const string Reanalyze = "20260626000000_AddReanalyzeJob";
     private static readonly string[] BusinessTables = ["mistake_item", "mistake_practice", "process_log", "reanalyze_job"];
+
+    [Fact]
+    public async Task MisstampedTextPathsRestoreIsVerifiedBeforeUpgradeAndSourceStaysUnchangedAsync()
+    {
+        await using var drill = await Drill.CreateAsync();
+        await using var source = drill.Context(drill.Source);
+        await source.GetService<IMigrator>().MigrateAsync(Initial);
+        await drill.ExecuteAsync(drill.Source, "ALTER TABLE mistake_item RENAME COLUMN review_comment TO root_cause");
+        await drill.ExecuteAsync(drill.Source, "ALTER TABLE process_log ADD COLUMN student_id character varying(36)");
+        await drill.ExecuteAsync(drill.Source, "CREATE INDEX \"IX_process_log_student_id\" ON process_log (student_id)");
+        await drill.ExecuteAsync(drill.Source, $"INSERT INTO \"__EFMigrationsHistory\" VALUES ('{ProcessLog}','8.0.11')");
+        await source.GetService<IMigrator>().MigrateAsync(Reanalyze);
+        await SeedAsync(drill, true);
+        var before = await drill.ManifestAsync(drill.Source, true);
+        Assert.Equal(3, before.HistoryCount);
+        var file = await drill.DumpAsync();
+        Assert.False(drill.IsBackupVerified);
+        var restored = await drill.NewDatabaseAsync();
+        await drill.RestoreAsync(file, restored);
+        Assert.True(drill.IsBackupVerified);
+        Assert.Equal(before, await drill.ManifestAsync(restored, true));
+        await using var restoredContext = drill.Context(restored);
+        await DatabaseInitializer.UpgradeKnownAsync(restoredContext, restored, true, drill.IsBackupVerified);
+        await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
+        Assert.Equal(4, (await drill.ManifestAsync(restored, true)).HistoryCount);
+        using var paths = JsonDocument.Parse(await drill.ScalarAsync(restored,
+            "SELECT image_paths::text FROM mistake_practice WHERE image_paths <> '[]'::jsonb"));
+        Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg" },
+            paths.RootElement.EnumerateArray().Select(path => path.GetString()));
+        Assert.Equal(before, await drill.ManifestAsync(drill.Source, true));
+    }
 
     [Theory]
     [InlineData(false)]
@@ -162,7 +195,7 @@ public sealed class BackupRestorePostgresTests
         private readonly HashSet<string> _attempted = [];
         private readonly string _source;
         private Manifest? _backupManifest;
-        private bool _backupIsTarget;
+        private bool _backupHasJob;
         private bool _backupVerified;
 
         private Drill(string admin, string container, string directory)
@@ -276,12 +309,12 @@ public sealed class BackupRestorePostgresTests
             _backupManifest = null;
             _backupVerified = false;
             var file = Path.Combine(Directory, "source.dump");
-            _backupIsTarget = await IsTargetAsync(Source);
-            var before = await ManifestAsync(Source, _backupIsTarget);
+            _backupHasJob = int.Parse(await ScalarAsync(Source, "SELECT count(*) FROM \"__EFMigrationsHistory\"")) >= 3;
+            var before = await ManifestAsync(Source, _backupHasJob);
             var result = await RunAsync(["exec", "-e", "PGPASSWORD", _container, "pg_dump", "-h", "127.0.0.1", "-U", denyAccess ? "missing_drill_role" : _settings.Username ?? "", "-d", Source, "-Fc", "--no-owner", "--no-acl"], file);
             if (result.ExitCode != 0 || new FileInfo(file).Length == 0)
                 throw new InvalidOperationException($"PostgreSQL backup failed (exit {result.ExitCode}); no backup is verified.");
-            var after = await ManifestAsync(Source, _backupIsTarget);
+            var after = await ManifestAsync(Source, _backupHasJob);
             if (before != after)
                 throw new InvalidOperationException("Source changed during the backup drill; no backup is verified.");
             _backupManifest = before;
@@ -302,15 +335,12 @@ public sealed class BackupRestorePostgresTests
             var result = await RunAsync(arguments, inputFile: file, cancellationToken: cancellationToken, onStarted: onStarted);
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"PostgreSQL restore failed (exit {result.ExitCode}); target remains unverified and must be discarded.");
-            var targetManifest = await ManifestAsync(target, _backupIsTarget);
+            var targetManifest = await ManifestAsync(target, _backupHasJob);
             if (_backupManifest is null || _backupManifest != targetManifest)
                 throw new InvalidOperationException("Restored catalog or data differs from the source manifest; target remains unverified.");
             _verified.Add(target);
             _backupVerified = true;
         }
-
-        private async Task<bool> IsTargetAsync(string name) =>
-            (await ScalarAsync(name, "SELECT count(*) FROM \"__EFMigrationsHistory\"")) == "4";
 
         private async Task<(int ExitCode, string Output)> RunAsync(IReadOnlyList<string> args, string? outputFile = null,
             string? inputFile = null, CancellationToken cancellationToken = default, Action? onStarted = null)

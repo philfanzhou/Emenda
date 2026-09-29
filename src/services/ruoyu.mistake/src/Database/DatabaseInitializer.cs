@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -152,12 +153,24 @@ public static class DatabaseInitializer
 
         try
         {
-            if (before.Kind == SchemaKind.LegacyRuntime)
+            if (before.Kind == SchemaKind.MisstampedTextPaths)
+            {
+                // Keep the source rows stable while checking their semantics and changing the column type.
+                await context.Database.ExecuteSqlRawAsync(
+                    "LOCK TABLE public.mistake_practice IN ACCESS EXCLUSIVE MODE", cancellationToken).ConfigureAwait(false);
+                var paths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+                await context.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE public.mistake_practice ALTER COLUMN image_paths TYPE jsonb USING image_paths::jsonb",
+                    cancellationToken).ConfigureAwait(false);
+                var convertedPaths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+                if (!SamePaths(paths, convertedPaths))
+                    throw new InvalidOperationException("Mistake practice paths changed during conversion.");
+                await InsertRootCauseHistoryAsync(context, cancellationToken).ConfigureAwait(false);
+            }
+            else if (before.Kind == SchemaKind.LegacyRuntime)
             {
                 // The column was already renamed by an older runtime. Only the verified history row is missing.
-                await context.Database.ExecuteSqlRawAsync(
-                    $"INSERT INTO public.\"__EFMigrationsHistory\" (\"MigrationId\",\"ProductVersion\") VALUES ('{RootCause}','8.0.11')",
-                    cancellationToken).ConfigureAwait(false);
+                await InsertRootCauseHistoryAsync(context, cancellationToken).ConfigureAwait(false);
             }
             else
             {
@@ -175,6 +188,42 @@ public static class DatabaseInitializer
         // A connection failure during COMMIT has an unknown outcome. The next run reclassifies the database.
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    private static Task<int> InsertRootCauseHistoryAsync(MistakeDbContext context, CancellationToken cancellationToken) =>
+        context.Database.ExecuteSqlRawAsync(
+            $"INSERT INTO public.\"__EFMigrationsHistory\" (\"MigrationId\",\"ProductVersion\") VALUES ('{RootCause}','8.0.11')",
+            cancellationToken);
+
+    private static async Task<Dictionary<Guid, string[]>> ReadPathsAsync(DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, image_paths::text FROM public.mistake_practice ORDER BY id";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var paths = new Dictionary<Guid, string[]>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            string[] values;
+            try
+            {
+                using var document = JsonDocument.Parse(reader.GetString(1));
+                if (document.RootElement.ValueKind != JsonValueKind.Array ||
+                    document.RootElement.EnumerateArray().Any(value => value.ValueKind != JsonValueKind.String))
+                    throw new InvalidOperationException("Mistake practice paths must be JSON arrays of strings.");
+                values = document.RootElement.EnumerateArray().Select(value => value.GetString()!).ToArray();
+            }
+            catch (JsonException)
+            {
+                throw new InvalidOperationException("Mistake practice paths must be JSON arrays of strings.");
+            }
+            paths.Add(reader.GetGuid(0), values);
+        }
+        return paths;
+    }
+
+    private static bool SamePaths(Dictionary<Guid, string[]> before, Dictionary<Guid, string[]> after) =>
+        before.Count == after.Count && before.All(row =>
+            after.TryGetValue(row.Key, out var values) && row.Value.SequenceEqual(values, StringComparer.Ordinal));
 
     private static async Task<SchemaState> ClassifyAsync(DbConnection connection, CancellationToken cancellationToken)
     {
@@ -234,7 +283,11 @@ public static class DatabaseInitializer
             expectedColumns.Add("mistake_item|review_comment|text|Y");
         }
         var legacyRuntime = version == 3 && columns.SetEquals(ExpectedColumns);
-        mismatch = Compare("column/type/nullability", legacyRuntime ? ExpectedColumns : expectedColumns, columns);
+        var misstampedColumns = Without(ExpectedColumns, "mistake_practice|image_paths|jsonb|N");
+        misstampedColumns.Add("mistake_practice|image_paths|text|N");
+        var misstampedTextPaths = version == 3 && columns.SetEquals(misstampedColumns);
+        mismatch = Compare("column/type/nullability",
+            legacyRuntime ? ExpectedColumns : misstampedTextPaths ? misstampedColumns : expectedColumns, columns);
         if (mismatch is not null) return Invalid(mismatch);
 
         var defaults = await ReadSetAsync(connection, """
@@ -294,6 +347,9 @@ public static class DatabaseInitializer
         if (legacyRuntime)
             return new SchemaState(SchemaKind.LegacyRuntime, false,
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
+        if (misstampedTextPaths)
+            return new SchemaState(SchemaKind.MisstampedTextPaths, false,
+                "Mistake exact three-history text paths shape requires --upgrade-known-db.");
         return new SchemaState(SchemaKind.Known, false, $"Mistake known EF migration version {version} requires --upgrade-known-db.");
     }
 
@@ -330,6 +386,6 @@ public static class DatabaseInitializer
         return result;
     }
 
-    private enum SchemaKind { Empty, Known, LegacyRuntime, Ready, Invalid }
+    private enum SchemaKind { Empty, Known, LegacyRuntime, MisstampedTextPaths, Ready, Invalid }
     private sealed record SchemaState(SchemaKind Kind, bool Target, string Diagnostic);
 }

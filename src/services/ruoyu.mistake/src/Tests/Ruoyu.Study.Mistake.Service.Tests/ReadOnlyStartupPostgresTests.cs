@@ -13,6 +13,137 @@ public sealed class ReadOnlyStartupPostgresTests
     private const string ProcessLog = "20260612030015_AddStudentIdToProcessLog";
     private const string Reanalyze = "20260626000000_AddReanalyzeJob";
 
+    [Fact]
+    public async Task ExactMisstampedTextPathsUpgradePreservesBusinessRowsAndIsRepeatable()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, context);
+        var item = Guid.NewGuid();
+        var practice = Guid.NewGuid();
+        var job = Guid.NewGuid();
+        var log = Guid.NewGuid();
+        await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at) VALUES ('{item}','student-1',1,7,'upload-1','[]'::jsonb,1,'原因',now())");
+        await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{practice}','{item}','student-1',now(),'[\"Pictures/中文/A.JPG\",\"pictures/a.jpg\",\"Pictures/中文/A.JPG\"]',false)");
+        await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-1',now(),'[]',true)");
+        await database.ExecuteAsync($"INSERT INTO process_log (id,mistake_item_id,student_id,action,created_at) VALUES ('{log}','{item}','student-1',1,now())");
+        await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,created_at) VALUES ('{job}','{item}','teacher-1','student-1',now())");
+        var before = await database.SnapshotAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
+        Assert.Equal(before, await database.SnapshotAsync());
+
+        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
+        Assert.Equal(job, (await context.ReanalyzeJobs.SingleAsync()).Id);
+        Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
+        var practices = await context.MistakePractices.OrderBy(row => row.Id).ToListAsync();
+        Assert.Equal(2, practices.Count);
+        Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg", "Pictures/中文/A.JPG" },
+            practices.Single(row => row.Id == practice).ImagePaths);
+        Assert.Empty(practices.Single(row => row.Id != practice).ImagePaths);
+        var target = await database.SnapshotAsync();
+        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        Assert.Equal(target, await database.SnapshotAsync());
+    }
+
+    [Theory]
+    [InlineData("invalid JSON secret")]
+    [InlineData("{\"path\":\"uploads/a\"}")]
+    [InlineData("[\"uploads/a\",null]")]
+    [InlineData("[\"uploads/a\",42]")]
+    public async Task MisstampedTextPathsRejectsNonStringArraysWithoutMutation(string value)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, context);
+        var item = Guid.NewGuid();
+        await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ('{item}','student-1',1,7,'upload-1','[]'::jsonb,1,now())");
+        await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-1',now(),'{value}',false)");
+        var before = await database.SnapshotAsync();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        Assert.DoesNotContain(value, error.ToString());
+        Assert.Equal(before, await database.SnapshotAsync());
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE public.mistake (id integer PRIMARY KEY)")]
+    [InlineData("DROP INDEX \"IX_process_log_student_id\"")]
+    [InlineData("ALTER TABLE mistake_practice DROP CONSTRAINT \"FK_mistake_practice_mistake_item_mistake_item_id\"")]
+    [InlineData("ALTER TABLE mistake_practice ADD COLUMN unknown text")]
+    [InlineData("DELETE FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\"='20260626000000_AddReanalyzeJob'")]
+    public async Task MisstampedTextPathsRejectsCatalogDifferencesWithoutMutation(string mutation)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, context);
+        await database.ExecuteAsync(mutation);
+        var before = await database.SnapshotAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        Assert.Equal(before, await database.SnapshotAsync());
+    }
+
+    [Fact]
+    public async Task MisstampedTextPathsConcurrentUpgradeAndCancellationAreSafe()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var setup = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, setup);
+        var before = await database.SnapshotAsync();
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            DatabaseInitializer.UpgradeKnownAsync(setup, database.Name, true, true, canceled.Token));
+        Assert.Equal(before, await database.SnapshotAsync());
+        await using (var readOnly = database.CreateReadOnlyContext())
+            await Assert.ThrowsAnyAsync<Exception>(() =>
+                DatabaseInitializer.UpgradeKnownAsync(readOnly, database.Name, true, true));
+        Assert.Equal(before, await database.SnapshotAsync());
+
+        await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
+        {
+            await using var context = database.CreateContext();
+            await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        }));
+        await using var check = database.CreateContext();
+        await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
+        Assert.Equal(4, (await check.Database.GetAppliedMigrationsAsync()).Count());
+    }
+
+    [Fact]
+    public async Task MisstampedTextPathsConversionFailureRollsBackColumnAndHistory()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, context);
+        await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
+        await database.ExecuteAsync("""
+            CREATE FUNCTION upgrade_guard.reject_conversion() RETURNS event_trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF TG_TAG = 'ALTER TABLE' THEN RAISE EXCEPTION 'injected conversion failure'; END IF;
+            END $$
+            """);
+        await database.ExecuteAsync("CREATE EVENT TRIGGER reject_misstamped_conversion ON ddl_command_end EXECUTE FUNCTION upgrade_guard.reject_conversion()");
+        var before = await database.SnapshotAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        Assert.Equal(before, await database.SnapshotAsync());
+    }
+
+    private static async Task CreateMisstampedTextPathsAsync(IsolatedDatabase database, MistakeDbContext context)
+    {
+        await context.GetService<IMigrator>().MigrateAsync(Initial);
+        await database.ExecuteAsync("ALTER TABLE mistake_item RENAME COLUMN review_comment TO root_cause");
+        await database.ExecuteAsync("ALTER TABLE process_log ADD COLUMN student_id character varying(36)");
+        await database.ExecuteAsync("CREATE INDEX \"IX_process_log_student_id\" ON process_log (student_id)");
+        await database.ExecuteAsync($"INSERT INTO \"__EFMigrationsHistory\" VALUES ('{ProcessLog}','8.0.11')");
+        await context.GetService<IMigrator>().MigrateAsync(Reanalyze);
+    }
+
     [Theory]
     [InlineData(1, false)]
     [InlineData(2, false)]
