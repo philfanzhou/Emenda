@@ -2,7 +2,7 @@ namespace Ruoyu.Study.Mistake.Service.StudentIntegration;
 
 public interface IUploadSourceGateway
 {
-    Task<ProcessingUploadsPage> GetProcessingUploadsAsync(int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<ProcessingUploadsPage> GetProcessingUploadsAsync(string? cursor, int pageSize, CancellationToken cancellationToken = default);
     Task<RemoveProcessedUploadImagesResult> RemoveProcessedImagesAsync(string recordId, List<string> imagePaths, CancellationToken cancellationToken = default);
     Task CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, CancellationToken cancellationToken = default);
 }
@@ -23,9 +23,8 @@ public sealed class ProcessingUploadRecord
 public sealed class ProcessingUploadsPage
 {
     public List<ProcessingUploadRecord> Items { get; set; } = new();
-    public int TotalCount { get; set; }
-    public int Page { get; set; }
-    public int PageSize { get; set; }
+    public bool HasMore { get; set; }
+    public string? NextCursor { get; set; }
 }
 
 public sealed class RemoveProcessedUploadImagesResult

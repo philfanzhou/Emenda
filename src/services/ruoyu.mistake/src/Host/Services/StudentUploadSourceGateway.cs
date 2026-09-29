@@ -9,12 +9,12 @@ public sealed class StudentUploadSourceGateway : IUploadSourceGateway
 
     public StudentUploadSourceGateway(IStudentHttpClient client) => _client = client;
 
-    public async Task<ProcessingUploadsPage> GetProcessingUploadsAsync(int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<ProcessingUploadsPage> GetProcessingUploadsAsync(string? cursor, int pageSize, CancellationToken cancellationToken = default)
     {
-        var source = await _client.GetProcessingUploadRecordsAsync(page, pageSize, cancellationToken).ConfigureAwait(false);
+        var source = await _client.ScanProcessingUploadRecordsAsync(cursor, pageSize, cancellationToken).ConfigureAwait(false);
         return new ProcessingUploadsPage
         {
-            Items = source.Items.Select(record => new ProcessingUploadRecord
+            Items = source.Items!.Select(record => new ProcessingUploadRecord
             {
                 Id = record.Id,
                 StudentId = record.StudentId,
@@ -24,9 +24,8 @@ public sealed class StudentUploadSourceGateway : IUploadSourceGateway
                     Type = entry.Type
                 }).ToList()
             }).ToList(),
-            TotalCount = source.TotalCount,
-            Page = source.Page,
-            PageSize = source.PageSize
+            HasMore = source.HasMore,
+            NextCursor = source.NextCursor
         };
     }
 
