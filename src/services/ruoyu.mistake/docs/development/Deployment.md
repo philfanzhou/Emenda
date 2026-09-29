@@ -64,7 +64,9 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 - `Database:Name=ruoyu_study_mistake`
 - `VlAnalyzer:*`
 
-> **HTTP 监听端口固定为 5007**：硬编码在 `Program.cs` 的 `ConfigureKestrel` 中，不通过配置键 `Endpoints:Http` 读取，启动脚本也不再注入 `Endpoints__Http` 环境变量。host 端口映射通过 `start.sh` 的 `Port` 变量控制（`-p ${Port}:5007`）。
+HTTP/1 监听端口由 `Mistake:Http:Port`（环境键 `Mistake__Http__Port`）控制；缺失时 Local、默认及显式 Platform 都使用 5007。显式值必须是 1–65535 的整数；空白、非整数或越界值会在数据库连接与监听前以键名报错，不回退默认端口。Local 读取文件与环境配置，环境值覆盖文件值；Platform 在加载 Consul 后读取最终配置。`Endpoints:Http` 与 `ASPNETCORE_URLS` 不决定监听端口。启动日志只记录最终端口，变更配置须重启进程。
+
+默认 Docker `EXPOSE 5007` 和 `start.sh` 的 `-p ${Port}:5007` 保持兼容。直接运行可设置 `Mistake__Http__Port`；容器内改用其他端口时，部署者还须调整 `-p host:container`、网络规则及各消费方的 `MistakeService:Url`。回退时移除该键、重启并将映射及调用方地址同步回 5007。端口被占用时启动失败，不会自动改用 5007 或其他端口；不要将目前的匿名业务 API 直接暴露公网。
 
 仓库启动脚本面向局域网独立宿主机部署：不创建或加入 `ruoyu-net`，通过 `-p 5007:5007` 发布服务。`CONSUL_HTTP_ADDR` 的仓库示例为 `192.168.100.10:8500`，部署时必须替换为实际可达地址；Portal 通过 Consul `MistakeService:Url` 访问发布后的 host 端口。
 
@@ -85,7 +87,7 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 
 | 端口 | 协议 | 用途 | 配置方式 |
 |------|------|------|---------|
-| HTTP 端口（容器内固定） | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /`） | `Program.cs` 硬编码 5007，不可配置 |
+| HTTP 端口（容器内默认 5007） | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /`） | `Mistake:Http:Port`，环境键 `Mistake__Http__Port` |
 | host 映射端口 | — | host 访问容器服务的映射端口 | `start.sh` 的 `Port` 变量（`-p ${Port}:5007`） |
 
 **HTTP 端口**承载全部业务接口（18 个端点，路由前缀 `/api/mistakes`），包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等。同时 `GET /` 返回服务状态字符串用于健康检查。
@@ -101,7 +103,7 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 | **节点名称** | 配置准备 |
 | **前置条件** | 已获取部署环境信息（Consul 地址、ACL token、VL 分析私有配置） |
 | **输入条件** | appsettings.json 模板、环境变量清单 |
-| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:Url`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`<br>4. HTTP 监听端口固定为 5007（`Program.cs` 硬编码），如需 host 端口映射，设置 `start.sh` 的 `Port` 变量 |
+| **操作步骤** | 1. 配置 `CONSUL_HTTP_ADDR` 和 `CONSUL_TOKEN`<br>2. 确认 Consul 中已存在 `PostgreSql:*`、`Oss:*`、`StudentService:Url`<br>3. 在 Mistake 自身配置中保留 `VlAnalyzer:*`、`Database:Name`<br>4. HTTP 监听默认 5007；如需覆盖，配置 `Mistake:Http:Port` 并同步容器映射及消费方地址 |
 | **成功判定** | 所有必填配置项均有有效值；host 映射端口不与已有服务冲突 |
 | **失败后排查方向** | 1. 配置键拼写错误 → 对照 appsettings.json 结构检查<br>2. 端口冲突 → `netstat` 检查端口占用<br>3. 环境变量未生效 → 确认运行环境是否正确注入 |
 

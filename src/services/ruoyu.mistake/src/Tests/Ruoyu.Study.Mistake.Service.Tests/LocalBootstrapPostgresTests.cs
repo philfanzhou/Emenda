@@ -47,6 +47,7 @@ public sealed class LocalBootstrapPostgresTests
 
         var normal = await RunHostAsync([], settings, waitForStartup: true);
         Assert.Contains("Mistake database schema verified for read-only startup", normal.Output);
+        Assert.Contains("Endpoint: HTTP=5007", normal.Output);
         Assert.Equal(0, consul.RequestCount);
         Assert.Equal(0, loki.RequestCount);
         Assert.Equal("4", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
@@ -126,12 +127,14 @@ public sealed class LocalBootstrapPostgresTests
                     ["PostgreSql:Username"] = settings.Username,
                     ["PostgreSql:Password"] = settings.Password,
                     ["Database:Name"] = cachedDatabase.Name,
+                    ["Mistake:Http:Port"] = "invalid-cached-port",
                     ["Loki:Uri"] = $"http://127.0.0.1:{loki.Port}"
                 }));
             var environment = new Dictionary<string, string?>
             {
                 ["CONSUL_HTTP_ADDR"] = $"127.0.0.1:{consul.Port}",
                 ["CONSUL_CACHE_DIR"] = directory,
+                ["Mistake__Http__Port"] = "51007",
                 ["CONSUL_RETRY_COUNT"] = "1",
                 ["CONSUL_TIMEOUT_MS"] = "1000"
             };
@@ -148,6 +151,11 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Equal(0, overrideResult.ExitCode);
             Assert.Contains("Mode=Platform", overrideResult.Output);
             Assert.Equal("4", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+
+            environment.Remove("Mistake__Http__Port");
+            var invalidCachedPort = await RunHostAsync(["--upgrade-empty-db"], environment);
+            Assert.NotEqual(0, invalidCachedPort.ExitCode);
+            Assert.Contains("Mistake:Http:Port must be an integer from 1 to 65535", invalidCachedPort.Output);
         }
         finally
         {
@@ -246,6 +254,7 @@ public sealed class LocalBootstrapPostgresTests
         var runningHost = await RunHostAsync([], settings, waitForStartup: true,
             startupDelay: polling ? TimeSpan.FromSeconds(14) : TimeSpan.FromSeconds(12));
         Assert.Contains("Mistake database schema verified for read-only startup", runningHost.Output);
+        Assert.Contains("Endpoint: HTTP=5007", runningHost.Output);
         Assert.Contains($"UploadPollingWorker: Enabled={polling}", runningHost.Output);
         Assert.Contains($"ReanalyzeJobHostedService: Enabled={reanalyze}", runningHost.Output);
         Assert.Contains($"ReanalyzeJobCleanupService: Enabled={cleanup}", runningHost.Output);
@@ -345,9 +354,139 @@ public sealed class LocalBootstrapPostgresTests
         }
     }
 
+    [Fact]
+    public async Task LocalHttpPortUsesEnvironmentBeforeFileAndRestartAppliesNewValueAsync()
+    {
+        var admin = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(admin))
+            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
+        await using var database = await TestDatabase.CreateAsync(admin);
+        var filePort = GetAvailablePort();
+        var environmentPort = GetAvailablePort();
+        var urlsPort = GetAvailablePort();
+        var directory = Path.Combine(Path.GetTempPath(), "mistake-http-port-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var connection = new NpgsqlConnectionStringBuilder(admin) { Database = database.Name }.ConnectionString;
+            await File.WriteAllTextAsync(Path.Combine(directory, "appsettings.json"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Mistake = new { ConfigMode = "Local", Http = new { Port = filePort } },
+                    ConnectionStrings = new { MistakeLocal = connection }
+                }));
+            var settings = new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_CONTENTROOT"] = directory,
+                ["ASPNETCORE_URLS"] = $"http://127.0.0.1:{urlsPort}",
+                ["Mistake__Http__Port"] = environmentPort.ToString(),
+                ["Endpoints__Http"] = urlsPort.ToString()
+            };
+            Assert.Equal(0, (await RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
+
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var environment = await RunHostAsync([], settings, waitForStartup: true,
+                duringStartup: async token =>
+                {
+                    Assert.Equal("Mistake WebAPI host is running.",
+                        await WaitForRootAsync(client, environmentPort, token));
+                    await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+                        client.GetAsync($"http://127.0.0.1:{urlsPort}/", token));
+                    await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+                        client.GetAsync($"http://127.0.0.1:{filePort}/", token));
+                });
+            Assert.Contains($"Endpoint: HTTP={environmentPort}", environment.Output);
+
+            settings.Remove("Mistake__Http__Port");
+            var file = await RunHostAsync([], settings, waitForStartup: true,
+                duringStartup: async token =>
+                {
+                    Assert.Equal("Mistake WebAPI host is running.",
+                        await WaitForRootAsync(client, filePort, token));
+                    await Assert.ThrowsAnyAsync<HttpRequestException>(() =>
+                        client.GetAsync($"http://127.0.0.1:{environmentPort}/", token));
+                });
+            Assert.Contains($"Endpoint: HTTP={filePort}", file.Output);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("65536")]
+    public async Task InvalidHttpPortFailsBeforeDatabaseAndNetworkAsync(string value)
+    {
+        await using var consul = new RequestProbe();
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = "Local",
+            ["Mistake__Http__Port"] = value,
+            ["ConnectionStrings__MistakeLocal"] = "Host=127.0.0.1;Port=1;Database=unavailable;Username=none;Password=secret-marker",
+            ["CONSUL_HTTP_ADDR"] = $"127.0.0.1:{consul.Port}"
+        };
+        var result = await RunHostAsync([], settings);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Mistake:Http:Port must be an integer from 1 to 65535", result.Output);
+        Assert.DoesNotContain("Database: PostgreSQL", result.Output);
+        Assert.DoesNotContain("secret-marker", result.Output);
+        Assert.Equal(0, consul.RequestCount);
+    }
+
+    [Fact]
+    public async Task OccupiedHttpPortDoesNotFallBackToDefaultAsync()
+    {
+        var admin = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(admin))
+            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
+        await using var database = await TestDatabase.CreateAsync(admin);
+        using var occupied = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp)
+            { DualMode = true };
+        occupied.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+        occupied.Listen();
+        var occupiedPort = ((IPEndPoint)occupied.LocalEndPoint!).Port;
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = "Local",
+            ["Mistake__Http__Port"] = occupiedPort.ToString(),
+            ["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
+                { Database = database.Name }.ConnectionString
+        };
+        Assert.Equal(0, (await RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
+        var result = await RunHostAsync([], settings);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains($"Endpoint: HTTP={occupiedPort}", result.Output);
+        Assert.Contains("address already in use", result.Output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int GetAvailablePort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
+    }
+
+    private static async Task<string> WaitForRootAsync(HttpClient client, int port, CancellationToken token)
+    {
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            try { return await client.GetStringAsync($"http://127.0.0.1:{port}/", token); }
+            catch (HttpRequestException) { await Task.Delay(100, token); }
+        }
+    }
+
     private static async Task<RunResult> RunHostAsync(string[] arguments,
         IReadOnlyDictionary<string, string?> settings, bool waitForStartup = false,
-        TimeSpan? startupDelay = null)
+        TimeSpan? startupDelay = null, Func<CancellationToken, Task>? duringStartup = null)
     {
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
         var sourceRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -376,11 +515,15 @@ public sealed class LocalBootstrapPostgresTests
         {
             if (waitForStartup)
             {
-                await Task.WhenAny(process.WaitForExitAsync(timeout.Token),
-                    Task.Delay(startupDelay ?? TimeSpan.FromSeconds(2), timeout.Token));
-                if (!process.HasExited)
+                try
                 {
-                    if (!OperatingSystem.IsWindows())
+                    if (duringStartup is not null) await duringStartup(timeout.Token);
+                    else await Task.WhenAny(process.WaitForExitAsync(timeout.Token),
+                        Task.Delay(startupDelay ?? TimeSpan.FromSeconds(2), timeout.Token));
+                }
+                finally
+                {
+                    if (!process.HasExited && !OperatingSystem.IsWindows())
                     {
                         using var signal = Process.Start(new ProcessStartInfo("/bin/kill")
                         {
