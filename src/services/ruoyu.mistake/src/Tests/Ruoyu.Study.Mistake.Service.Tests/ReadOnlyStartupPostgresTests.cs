@@ -1,4 +1,6 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -132,6 +134,112 @@ public sealed class ReadOnlyStartupPostgresTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
         Assert.Equal(before, await database.SnapshotAsync());
+    }
+
+    [Fact]
+    public async Task MisstampedTextPathsCancellationAfterConversionRollsBackRowsAndHistory()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var setup = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, setup);
+        var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
+        await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
+        await database.ExecuteAsync("""
+            CREATE FUNCTION upgrade_guard.pause_after_conversion() RETURNS event_trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF TG_TAG = 'ALTER TABLE' THEN PERFORM pg_sleep(20); END IF;
+            END $$
+            """);
+        await database.ExecuteAsync("CREATE EVENT TRIGGER pause_misstamped_conversion ON ddl_command_end EXECUTE FUNCTION upgrade_guard.pause_after_conversion()");
+        var before = await database.SnapshotAsync();
+        var rowsBefore = await database.BusinessRowsAsync();
+        var applicationName = "mistake_cancel_" + Guid.NewGuid().ToString("N");
+        await using var upgrading = database.CreateContext(applicationName: applicationName);
+        using var cancellation = new CancellationTokenSource();
+        var upgrade = DatabaseInitializer.UpgradeKnownAsync(upgrading, database.Name, true, true, cancellation.Token);
+        try
+        {
+            await database.WaitForConversionPauseAsync(applicationName);
+        }
+        finally
+        {
+            cancellation.Cancel();
+        }
+        await Assert.ThrowsAnyAsync<Exception>(() => upgrade);
+        Assert.Equal(before, await database.SnapshotAsync());
+        Assert.Equal(rowsBefore, await database.BusinessRowsAsync());
+        await database.ExecuteAsync("DROP EVENT TRIGGER pause_misstamped_conversion");
+        await database.ExecuteAsync("DROP SCHEMA upgrade_guard CASCADE");
+
+        await using var retry = database.CreateContext();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance));
+        await DatabaseInitializer.UpgradeKnownAsync(retry, database.Name, true, true);
+        await AssertMisstampedTargetAsync(retry, item, practice, log, job);
+    }
+
+    [Fact]
+    public async Task MisstampedTextPathsLostCommitAcknowledgementIsReadOnlyRecheckedBeforeRetry()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var setup = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, setup);
+        var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
+        var before = await database.SnapshotAsync();
+        var rowsBefore = await database.BusinessRowsAsync();
+        await using (var upgrading = database.CreateContext(new LostCommitAcknowledgementInterceptor()))
+        {
+            await Assert.ThrowsAsync<IOException>(() =>
+                DatabaseInitializer.UpgradeKnownAsync(upgrading, database.Name, true, true));
+        }
+
+        // The client saw no COMMIT result. Discard pooled sessions and inspect the durable state.
+        NpgsqlConnection.ClearAllPools();
+        var committed = await database.SnapshotAsync();
+        var committedRows = await database.BusinessRowsAsync();
+        Assert.NotEqual(before, committed);
+        Assert.NotEqual(rowsBefore, committedRows);
+        await using var recheck = database.CreateContext();
+        await DatabaseInitializer.InitializeAsync(recheck, NullLoggerFactory.Instance);
+        await AssertMisstampedTargetAsync(recheck, item, practice, log, job);
+        Assert.Equal(committed, await database.SnapshotAsync());
+        Assert.Equal(committedRows, await database.BusinessRowsAsync());
+        await using var retry = database.CreateContext();
+        await DatabaseInitializer.UpgradeKnownAsync(retry, database.Name, true, true);
+        Assert.Equal(committed, await database.SnapshotAsync());
+        Assert.Equal(committedRows, await database.BusinessRowsAsync());
+    }
+
+    private static async Task<(Guid Item, Guid Practice, Guid Log, Guid Job)> SeedMisstampedRowsAsync(IsolatedDatabase database)
+    {
+        var item = Guid.NewGuid();
+        var practice = Guid.NewGuid();
+        var log = Guid.NewGuid();
+        var job = Guid.NewGuid();
+        await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at) VALUES ('{item}','student-1',1,7,'upload-1','[]'::jsonb,1,'cause',now())");
+        await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{practice}','{item}','student-1',now(),'[\"Pictures/中文/A.JPG\",\"pictures/a.jpg\",\"Pictures/中文/A.JPG\"]',false)");
+        await database.ExecuteAsync($"INSERT INTO process_log (id,mistake_item_id,student_id,action,created_at) VALUES ('{log}','{item}','student-1',1,now())");
+        await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,created_at) VALUES ('{job}','{item}','teacher-1','student-1',now())");
+        return (item, practice, log, job);
+    }
+
+    private static async Task AssertMisstampedTargetAsync(MistakeDbContext context, Guid item, Guid practice, Guid log, Guid job)
+    {
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
+        var savedPractice = await context.MistakePractices.SingleAsync();
+        Assert.Equal(practice, savedPractice.Id);
+        Assert.Equal(item, savedPractice.MistakeItemId);
+        Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg", "Pictures/中文/A.JPG" }, savedPractice.ImagePaths);
+        Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
+        Assert.Equal(job, (await context.ReanalyzeJobs.SingleAsync()).Id);
+    }
+
+    private sealed class LostCommitAcknowledgementInterceptor : DbTransactionInterceptor
+    {
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default) =>
+            throw new IOException("Simulated lost COMMIT acknowledgement.");
     }
 
     private static async Task CreateMisstampedTextPathsAsync(IsolatedDatabase database, MistakeDbContext context)
@@ -490,8 +598,14 @@ public sealed class ReadOnlyStartupPostgresTests
             return new IsolatedDatabase(admin, name);
         }
 
-        public MistakeDbContext CreateContext() =>
-            new(new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(_connection).Options);
+        public MistakeDbContext CreateContext(DbTransactionInterceptor? interceptor = null, string? applicationName = null)
+        {
+            var connection = new NpgsqlConnectionStringBuilder(_connection);
+            if (applicationName != null) connection.ApplicationName = applicationName;
+            var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connection.ConnectionString);
+            if (interceptor != null) options.AddInterceptors(interceptor);
+            return new MistakeDbContext(options.Options);
+        }
 
         public MistakeDbContext CreateReadOnlyContext() =>
             new(new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(
@@ -503,6 +617,41 @@ public sealed class ReadOnlyStartupPostgresTests
             await connection.OpenAsync();
             await using var command = new NpgsqlCommand(sql, connection);
             await command.ExecuteNonQueryAsync();
+        }
+
+        public async Task<string> BusinessRowsAsync()
+        {
+            await using var connection = new NpgsqlConnection(_connection);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand("""
+                SELECT
+                    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM mistake_item t) || '|' ||
+                    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM mistake_practice t) || '|' ||
+                    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM process_log t) || '|' ||
+                    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM reanalyze_job t)
+                """, connection);
+            return (string)(await command.ExecuteScalarAsync())!;
+        }
+
+        public async Task WaitForConversionPauseAsync(string applicationName)
+        {
+            await using var connection = new NpgsqlConnection(_connection);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_stat_activity
+                    WHERE application_name = @application_name
+                      AND wait_event = 'PgSleep'
+                      AND query LIKE 'ALTER TABLE public.mistake_practice ALTER COLUMN image_paths TYPE jsonb%')
+                """, connection);
+            command.Parameters.AddWithValue("application_name", applicationName);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (!timeout.IsCancellationRequested)
+            {
+                if ((bool)(await command.ExecuteScalarAsync(timeout.Token))!) return;
+                await Task.Delay(25, timeout.Token);
+            }
+            Assert.Fail("Conversion did not reach the PostgreSQL DDL completion pause.");
         }
 
         public async Task<string> SnapshotAsync()
