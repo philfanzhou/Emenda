@@ -262,7 +262,7 @@
 
 **症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史。`public.mistake` 旧关系、空库、只有部分表以及列类型或历史不一致均不允许普通启动。
 
-**处理**：保持服务停止写入，备份数据库，核对提示所指对象及 `__EFMigrationsHistory`。启动核验是只读事务，不执行 DDL、stamp 或 EF 迁移。已知三条历史且 `root_cause` 已存在的运行时结构，以及四条历史的目标结构，可直接启动。其余带数据结构按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 核验并制定升级；不要删除旧表或手工补写历史。
+**处理**：保持服务停止写入，备份数据库，核对提示所指对象及 `__EFMigrationsHistory`。启动核验是只读事务，不执行 DDL、stamp 或 EF 迁移。已知三条历史且 `root_cause` 已存在的运行时结构，以及四条历史的目标结构，可直接启动。精确受支持的 1/2/3 历史库按[部署说明](./Deployment.md)使用显式 `--upgrade-known-db`；未知、混合或旧 `public.mistake` 结构仍按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。不要删除旧表或手工补写历史。
 
 ### 5.4 空库需要显式升级
 

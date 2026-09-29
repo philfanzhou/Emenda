@@ -50,7 +50,7 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 - `20260626000000_AddReanalyzeJob`：再分析任务
 - `20260929000001_RenameReviewCommentToRootCause`：版本化根因列重命名
 
-普通启动只读核验结构和历史；全新空库须显式执行 `--upgrade-empty-db`。详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
+普通启动只读核验结构和历史；全新空库须显式执行 `--upgrade-empty-db`。精确匹配 EF 历史链的带数据旧库使用 `--upgrade-known-db`，详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
 
 ## 数据库类型
 

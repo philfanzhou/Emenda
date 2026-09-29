@@ -107,7 +107,7 @@ public static class DatabaseInitializer
             .ConfigureAwait(false);
         await context.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY", cancellationToken).ConfigureAwait(false);
         var state = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-        if (state.Kind != SchemaKind.Ready)
+        if (state.Kind != SchemaKind.Ready && state.Kind != SchemaKind.LegacyRuntime)
             throw new InvalidOperationException(state.Diagnostic);
         loggerFactory.CreateLogger("DatabaseInitializer").LogInformation("Mistake database schema verified for read-only startup");
     }
@@ -131,6 +131,51 @@ public static class DatabaseInitializer
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public static async Task UpgradeKnownAsync(MistakeDbContext context, string expectedDatabase,
+        bool writesStopped, bool restorableBackupVerified, CancellationToken cancellationToken = default)
+    {
+        var actualDatabase = context.Database.GetDbConnection().Database;
+        if (string.IsNullOrWhiteSpace(expectedDatabase) ||
+            !string.Equals(expectedDatabase, actualDatabase, StringComparison.Ordinal) ||
+            !writesStopped || !restorableBackupVerified)
+            throw new InvalidOperationException(
+                "Known database upgrade requires the exact database name, stopped writes, and a verified restorable backup.");
+
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            .ConfigureAwait(false);
+        await context.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({UpgradeLockKey})", cancellationToken)
+            .ConfigureAwait(false);
+        var before = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+        if (before.Kind == SchemaKind.Invalid || before.Kind == SchemaKind.Empty)
+            throw new InvalidOperationException(before.Diagnostic);
+        if (before.Target) return;
+
+        try
+        {
+            if (before.Kind == SchemaKind.LegacyRuntime)
+            {
+                // The column was already renamed by an older runtime. Only the verified history row is missing.
+                await context.Database.ExecuteSqlRawAsync(
+                    $"INSERT INTO public.\"__EFMigrationsHistory\" (\"MigrationId\",\"ProductVersion\") VALUES ('{RootCause}','8.0.11')",
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await context.GetService<IMigrator>().MigrateAsync(RootCause, cancellationToken).ConfigureAwait(false);
+            }
+
+            var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+            if (after.Kind != SchemaKind.Ready || !after.Target)
+                throw new InvalidOperationException($"Mistake upgrade verification failed: {after.Diagnostic}");
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            throw new InvalidOperationException("Mistake known database upgrade failed before commit; transaction will roll back. Check server-side diagnostics and the backup.");
+        }
+        // A connection failure during COMMIT has an unknown outcome. The next run reclassifies the database.
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task<SchemaState> ClassifyAsync(DbConnection connection, CancellationToken cancellationToken)
     {
         var relations = await ReadSetAsync(connection, """
@@ -146,7 +191,25 @@ public static class DatabaseInitializer
             return new SchemaState(SchemaKind.Empty, false, "Mistake database is empty; run --upgrade-empty-db before normal startup.");
         if (relations.Contains("mistake"))
             return Invalid("legacy relation public.mistake exists; back up and use a supported explicit upgrade.");
-        var mismatch = Compare("relation", ExpectedTables, relations);
+        if (!relations.Contains("__EFMigrationsHistory"))
+            return Invalid("missing relation __EFMigrationsHistory.");
+        var history = await ReadSetAsync(connection,
+            "SELECT \"MigrationId\" || '|' || \"ProductVersion\" FROM public.\"__EFMigrationsHistory\" ORDER BY \"MigrationId\"",
+            cancellationToken).ConfigureAwait(false);
+        var initialHistory = Set($"{Initial}|8.0.11");
+        var processHistory = new HashSet<string>(initialHistory, StringComparer.Ordinal) { $"{ProcessLog}|8.0.11" };
+        var reanalyzeHistory = new HashSet<string>(processHistory, StringComparer.Ordinal) { $"{Reanalyze}|8.0.11" };
+        var targetHistory = new HashSet<string>(reanalyzeHistory, StringComparer.Ordinal) { $"{RootCause}|8.0.11" };
+        var version = history.SetEquals(initialHistory) ? 1 :
+            history.SetEquals(processHistory) ? 2 :
+            history.SetEquals(reanalyzeHistory) ? 3 :
+            history.SetEquals(targetHistory) ? 4 : 0;
+        if (version == 0)
+            return Invalid("migration history does not match a supported exact version chain.");
+
+        var expectedTables = version >= 3 ? ExpectedTables :
+            Without(ExpectedTables, "reanalyze_job");
+        var mismatch = Compare("relation", expectedTables, relations);
         if (mismatch is not null) return Invalid(mismatch);
 
         var columns = await ReadSetAsync(connection, """
@@ -156,7 +219,22 @@ public static class DatabaseInitializer
             WHERE c.relnamespace='public'::regnamespace AND c.relkind='r'
               AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum
             """, cancellationToken).ConfigureAwait(false);
-        mismatch = Compare("column/type/nullability", ExpectedColumns, columns);
+        var expectedColumns = new HashSet<string>(ExpectedColumns, StringComparer.Ordinal);
+        if (version < 3)
+            expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
+        if (version < 2)
+        {
+            expectedColumns.Remove("process_log|student_id|character varying(36)|Y");
+            expectedColumns.Remove("mistake_practice|image_paths|jsonb|N");
+            expectedColumns.Add("mistake_practice|image_paths|text|N");
+        }
+        if (version < 4)
+        {
+            expectedColumns.Remove("mistake_item|root_cause|text|Y");
+            expectedColumns.Add("mistake_item|review_comment|text|Y");
+        }
+        var legacyRuntime = version == 3 && columns.SetEquals(ExpectedColumns);
+        mismatch = Compare("column/type/nullability", legacyRuntime ? ExpectedColumns : expectedColumns, columns);
         if (mismatch is not null) return Invalid(mismatch);
 
         var defaults = await ReadSetAsync(connection, """
@@ -165,7 +243,7 @@ public static class DatabaseInitializer
                 JOIN pg_class c ON c.oid=d.adrelid
             WHERE c.relnamespace='public'::regnamespace ORDER BY c.relname,a.attname
             """, cancellationToken).ConfigureAwait(false);
-        mismatch = Compare("column default", Set("reanalyze_job|status|1"), defaults);
+        mismatch = Compare("column default", version >= 3 ? Set("reanalyze_job|status|1") : Set(""), defaults);
         if (mismatch is not null) return Invalid(mismatch);
 
         var triggers = await ReadSetAsync(connection, """
@@ -185,7 +263,12 @@ public static class DatabaseInitializer
                 JOIN pg_class tbl ON tbl.oid=i.indrelid
             WHERE tbl.relnamespace='public'::regnamespace ORDER BY idx.relname
             """, cancellationToken).ConfigureAwait(false);
-        mismatch = Compare("index", ExpectedIndexes, indexes);
+        var expectedIndexes = new HashSet<string>(ExpectedIndexes, StringComparer.Ordinal);
+        if (version < 3)
+            expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
+        if (version < 2)
+            expectedIndexes.Remove("IX_process_log_student_id|process_log|student_id|N");
+        mismatch = Compare("index", expectedIndexes, indexes);
         if (mismatch is not null) return Invalid(mismatch);
 
         var constraints = await ReadSetAsync(connection, """
@@ -201,20 +284,17 @@ public static class DatabaseInitializer
             FROM pg_constraint c LEFT JOIN pg_class ref ON ref.oid=c.confrelid
             WHERE c.connamespace='public'::regnamespace ORDER BY c.conname
             """, cancellationToken).ConfigureAwait(false);
-        mismatch = Compare("constraint", ExpectedConstraints, constraints);
+        var expectedConstraints = version >= 3 ? ExpectedConstraints :
+            Without(ExpectedConstraints, "PK_reanalyze_job|p|id|-|-|-|V");
+        mismatch = Compare("constraint", expectedConstraints, constraints);
         if (mismatch is not null) return Invalid(mismatch);
 
-        var history = await ReadSetAsync(connection,
-            "SELECT \"MigrationId\" FROM public.\"__EFMigrationsHistory\" ORDER BY \"MigrationId\"",
-            cancellationToken).ConfigureAwait(false);
-        var oldHistory = new HashSet<string>(StringComparer.Ordinal) { Initial, ProcessLog, Reanalyze };
-        var newHistory = new HashSet<string>(oldHistory, StringComparer.Ordinal) { RootCause };
-        if (history.SetEquals(newHistory))
+        if (version == 4)
             return new SchemaState(SchemaKind.Ready, true, "Mistake target schema and history are consistent.");
-        if (history.SetEquals(oldHistory))
-            return new SchemaState(SchemaKind.Ready, false,
+        if (legacyRuntime)
+            return new SchemaState(SchemaKind.LegacyRuntime, false,
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
-        return Invalid("migration history does not match a supported three- or four-version chain.");
+        return new SchemaState(SchemaKind.Known, false, $"Mistake known EF migration version {version} requires --upgrade-known-db.");
     }
 
     private static SchemaState Invalid(string diagnostic) => new(SchemaKind.Invalid, false,
@@ -243,6 +323,13 @@ public static class DatabaseInitializer
         lines.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.Ordinal);
 
-    private enum SchemaKind { Empty, Ready, Invalid }
+    private static HashSet<string> Without(HashSet<string> source, string member)
+    {
+        var result = new HashSet<string>(source, StringComparer.Ordinal);
+        result.Remove(member);
+        return result;
+    }
+
+    private enum SchemaKind { Empty, Known, LegacyRuntime, Ready, Invalid }
     private sealed record SchemaState(SchemaKind Kind, bool Target, string Diagnostic);
 }

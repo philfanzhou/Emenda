@@ -48,6 +48,18 @@ if (args.Length == 1 && args[0] == "--upgrade-empty-db")
     Console.WriteLine("Mistake empty database upgrade verified.");
     return;
 }
+if (args.Contains("--upgrade-known-db", StringComparer.Ordinal))
+{
+    var databaseIndex = Array.IndexOf(args, "--database");
+    var expectedDatabase = databaseIndex >= 0 && databaseIndex + 1 < args.Length ? args[databaseIndex + 1] : "";
+    var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connectionString).Options;
+    await using var upgradeContext = new MistakeDbContext(options);
+    await DatabaseInitializer.UpgradeKnownAsync(upgradeContext, expectedDatabase,
+        args.Contains("--writes-stopped", StringComparer.Ordinal),
+        args.Contains("--backup-verified", StringComparer.Ordinal));
+    Console.WriteLine("Mistake known database upgrade verified.");
+    return;
+}
 builder.Services.AddDbContext<MistakeDbContext>(options =>
 {
     options.UseNpgsql(connectionString);
