@@ -223,6 +223,84 @@ public sealed class ReanalyzeLeasePostgresTests
     }
 
     [Theory]
+    [InlineData("root_cause")]
+    [InlineData("source_regions")]
+    public async Task ExpiredClaimWithChangedInputFailsWithoutOverwritingManualEditAsync(string change)
+    {
+        var admin = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(admin))
+            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to an isolated PostgreSQL 15 admin connection.");
+        var name = "mistake_lease_" + Guid.NewGuid().ToString("N");
+        await using (var connection = new NpgsqlConnection(admin))
+        {
+            await connection.OpenAsync();
+            await new NpgsqlCommand($"CREATE DATABASE \"{name}\"", connection).ExecuteNonQueryAsync();
+        }
+        var connectionString = new NpgsqlConnectionStringBuilder(admin) { Database = name }.ConnectionString;
+        var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connectionString).Options;
+        try
+        {
+            var itemId = Guid.NewGuid();
+            var jobId = Guid.NewGuid();
+            await using (var setup = new MistakeDbContext(options))
+            {
+                await DatabaseInitializer.UpgradeEmptyAsync(setup);
+                setup.MistakeItems.Add(new MistakeItemEntity
+                {
+                    Id = itemId, StudentId = "student-1", Subject = 1, Grade = 7,
+                    SourceUploadId = "upload-1", SourceRegions = [new() { SourceImagePath = "uploads/a.png" }],
+                    ReviewStatus = (int)ReviewStatus.PendingReview, RootCause = "initial"
+                });
+                setup.ReanalyzeJobs.Add(new ReanalyzeJobEntity
+                {
+                    Id = jobId, ItemId = itemId, ReviewerId = "teacher-1", StudentId = "student-1", Status = 1
+                });
+                await setup.SaveChangesAsync();
+            }
+            await using var firstContext = new MistakeDbContext(options);
+            var first = Assert.Single(await new ReanalyzeJobRepository(firstContext).ClaimAsync(1));
+            await using (var manual = new MistakeDbContext(options))
+            {
+                if (change == "root_cause")
+                    await manual.MistakeItems.Where(i => i.Id == itemId)
+                        .ExecuteUpdateAsync(s => s.SetProperty(i => i.RootCause, "manual"));
+                else
+                    await manual.Database.ExecuteSqlInterpolatedAsync(
+                        $"UPDATE mistake_item SET source_regions='[{{\"sourceImagePath\":\"uploads/b.png\"}}]'::jsonb WHERE id={itemId}");
+                await manual.ReanalyzeJobs.Where(j => j.Id == jobId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(j => j.LeaseUntil, DateTimeOffset.UtcNow.AddSeconds(-1)));
+            }
+            await using var secondContext = new MistakeDbContext(options);
+            Assert.Empty(await new ReanalyzeJobRepository(secondContext).ClaimAsync(1));
+            Assert.False(await new ReanalyzeJobRepository(firstContext).CompleteAsync(
+                jobId, first.OwnerId!.Value, first.FencingVersion, "late-result", 1));
+            await using var verify = new MistakeDbContext(options);
+            var job = await verify.ReanalyzeJobs.SingleAsync();
+            var item = await verify.MistakeItems.SingleAsync();
+            var log = await verify.ProcessLogs.SingleAsync();
+            Assert.Equal(4, job.Status);
+            Assert.Equal("input_changed", job.ErrorMessage);
+            Assert.Equal(1, job.Attempt);
+            Assert.Equal(first.FencingVersion, job.FencingVersion);
+            Assert.Null(job.OwnerId);
+            Assert.Null(job.LeaseUntil);
+            Assert.Equal(change == "root_cause" ? "manual" : "initial", item.RootCause);
+            Assert.Equal(change == "source_regions" ? "uploads/b.png" : "uploads/a.png",
+                Assert.Single(item.SourceRegions).SourceImagePath);
+            Assert.Equal(itemId, log.MistakeItemId);
+            Assert.Contains(jobId.ToString(), log.Details);
+            Assert.Contains("FAILED: input_changed", log.Details);
+        }
+        finally
+        {
+            NpgsqlConnection.ClearAllPools();
+            await using var connection = new NpgsqlConnection(admin);
+            await connection.OpenAsync();
+            await new NpgsqlCommand($"DROP DATABASE \"{name}\" WITH (FORCE)", connection).ExecuteNonQueryAsync();
+        }
+    }
+
+    [Theory]
     [InlineData("deleted")]
     [InlineData("rejected")]
     [InlineData("image_changed")]

@@ -68,6 +68,11 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
                 await FailWithoutOwnerAsync(job, item, job.Attempt >= MaxAttempts ? "attempt_limit" : "input_unavailable", ct);
                 continue;
             }
+            if (job.Status == (int)ReanalyzeJobState.Running && job.ExecutionInputDigest != Digest(item))
+            {
+                await FailWithoutOwnerAsync(job, item, "input_changed", ct);
+                continue;
+            }
             var now = await ClockAsync(ct);
             job.Status = (int)ReanalyzeJobState.Running;
             job.OwnerId = Guid.NewGuid();
