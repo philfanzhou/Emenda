@@ -23,8 +23,8 @@ public class LegacySchemaGuardPostgresTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
 
-        Assert.Contains("Legacy schema detected: public.mistake", error.Message);
-        Assert.Contains("Back up", error.Message);
+        Assert.Contains("legacy relation public.mistake", error.Message);
+        Assert.Contains("back up", error.Message);
         Assert.DoesNotContain("Password", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(before, await database.SnapshotAsync());
     }
@@ -42,7 +42,7 @@ public class LegacySchemaGuardPostgresTests
                 () => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         });
         var errors = await Task.WhenAll(attempts);
-        Assert.All(errors, error => Assert.Contains("Legacy schema detected", error.Message));
+        Assert.All(errors, error => Assert.Contains("legacy relation public.mistake", error.Message));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -64,20 +64,16 @@ public class LegacySchemaGuardPostgresTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task NoPublicLegacyRelation_ContinuesToExistingInitializationPath(bool sameNameInOtherSchema)
+    public async Task NoPublicLegacyRelation_EmptyPublicSchemaRequiresExplicitUpgrade(bool sameNameInOtherSchema)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         if (sameNameInOtherSchema)
             await database.ExecuteAsync("CREATE SCHEMA alternate; CREATE TABLE alternate.mistake (id integer PRIMARY KEY)");
         await using var context = database.CreateContextWithConnection(database.ConnectionString);
 
-        var failure = await Record.ExceptionAsync(
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
             () => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-
-        // The independent migration defect on master may still fail with PostgreSQL 42804.
-        Assert.False(failure is InvalidOperationException invalid && invalid.Message.Contains("Legacy schema detected"));
-        Assert.True(failure is null || failure is PostgresException || failure is DbUpdateException,
-            $"Unexpected initializer failure: {failure}");
+        Assert.Contains("--upgrade-empty-db", failure.Message);
         if (sameNameInOtherSchema)
             Assert.Equal("alternate.mistake", await database.ScalarAsync<string>("SELECT to_regclass('alternate.mistake')::text"));
     }

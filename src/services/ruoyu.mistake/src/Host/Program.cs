@@ -40,6 +40,14 @@ builder.WebHost.ConfigureKestrel(options =>
 var connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
     builder.Configuration,
     builder.Configuration.GetConnectionString("Default"));
+if (args.Length == 1 && args[0] == "--upgrade-empty-db")
+{
+    var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connectionString).Options;
+    await using var upgradeContext = new MistakeDbContext(options);
+    await DatabaseInitializer.UpgradeEmptyAsync(upgradeContext);
+    Console.WriteLine("Mistake empty database upgrade verified.");
+    return;
+}
 builder.Services.AddDbContext<MistakeDbContext>(options =>
 {
     options.UseNpgsql(connectionString);

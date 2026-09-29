@@ -9,6 +9,7 @@
 | `mistake_item` | 错题条目，核心业务表 | [tables/mistake_item.md](./tables/mistake_item.md) |
 | `mistake_practice` | 错题练习记录 | [tables/mistake_practice.md](./tables/mistake_practice.md) |
 | `process_log` | 处理日志，记录错题生命周期 | [tables/process_log.md](./tables/process_log.md) |
+| `reanalyze_job` | 错题再分析任务 | [迁移历史](./migrations.md) |
 
 ## 实体关系
 
@@ -44,14 +45,13 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 
 ## 迁移历史
 
-- **20260514051544_InitialCreate**: 初始创建三张表及所有索引
+- `20260514051544_InitialCreate`：初始业务表与索引
+- `20260612030015_AddStudentIdToProcessLog`：日志 student_id 与练习路径 jsonb
+- `20260626000000_AddReanalyzeJob`：再分析任务
+- `20260929000001_RenameReviewCommentToRootCause`：版本化根因列重命名
 
-详见 [migrations.md](./migrations.md)
+普通启动只读核验结构和历史；全新空库须显式执行 `--upgrade-empty-db`。详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
 
 ## 数据库类型
 
-- PostgreSQL（Npgsql 提供程序）
-
-## 旧表保护
-
-启动初始化在任何写库步骤之前检查 `public.mistake`。该名称存在时直接失败并保留数据库；旧表升级须先备份并通过显式升级流程验收。当前启动路径不再自动重命名或删除旧表。参见[迁移历史](./migrations.md)与[部署说明](../development/Deployment.md)。
+PostgreSQL（Npgsql 提供程序）。
