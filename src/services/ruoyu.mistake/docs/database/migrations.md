@@ -58,6 +58,8 @@
 1. **process_log** — 新增 `student_id` 列 (`VARCHAR(36)`, NULL) 及索引 `IX_process_log_student_id`
 2. **mistake_practice** — `image_paths` 列类型从 `text` 改为 `jsonb`
 
+对于尚未应用本迁移的正规 EF 历史链，类型变更显式使用 `USING image_paths::jsonb`；回退到 InitialCreate 使用 `USING image_paths::text`。仅承诺 JSON 数组的路径字符串语义保留，不承诺 JSON 文本空白字节一致。已经真实应用本迁移的数据库不会重执行。非法 JSON 会使本迁移在 EF 事务中失败并回滚新增列、索引和历史记录；保留原始文本，先备份并修正非法数据，再运行 `MigrateAsync` 重试。不要使用 `EnsureCreated`、手工添加 `student_id` 或手工 stamp 绕过失败。本修复不处理历史库错误 stamp，也不代表启动初始化器的旧 schema 升级已安全。
+
 ### 幂等性问题与 stamp 机制
 
 此迁移存在与 `EnsureColumnRenamesAsync` 的竞态问题：
