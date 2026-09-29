@@ -27,8 +27,10 @@ public sealed class BackupRestorePostgresTests
         await SeedAsync(drill, targetVersion);
         var before = await drill.ManifestAsync(drill.Source, targetVersion);
         var file = await drill.DumpAsync();
+        Assert.False(drill.IsBackupVerified);
         var restored = await drill.NewDatabaseAsync();
         await drill.RestoreAsync(file, restored);
+        Assert.True(drill.IsBackupVerified);
         Assert.Equal(before, await drill.ManifestAsync(restored, targetVersion));
 
         await using var restoredContext = drill.Context(restored);
@@ -72,12 +74,14 @@ public sealed class BackupRestorePostgresTests
         Assert.False(drill.IsBackupVerified);
         Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
         var file = await drill.DumpAsync();
+        Assert.False(drill.IsBackupVerified);
         var truncated = Path.Combine(drill.Directory, "truncated.dump");
         var bytes = await File.ReadAllBytesAsync(file);
         await File.WriteAllBytesAsync(truncated, bytes[..Math.Min(100, bytes.Length)]);
         var failedTarget = await drill.NewDatabaseAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(truncated, failedTarget));
         Assert.False(drill.IsVerified(failedTarget));
+        Assert.False(drill.IsBackupVerified);
         Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
 
         var canceledTarget = await drill.NewDatabaseAsync();
@@ -85,11 +89,13 @@ public sealed class BackupRestorePostgresTests
         canceled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => drill.RestoreAsync(file, canceledTarget, canceled.Token));
         Assert.False(drill.IsVerified(canceledTarget));
+        Assert.False(drill.IsBackupVerified);
         var interruptedTarget = await drill.NewDatabaseAsync();
         using var interrupt = new CancellationTokenSource();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             drill.RestoreAsync(file, interruptedTarget, interrupt.Token, onStarted: interrupt.Cancel));
         Assert.False(drill.IsVerified(interruptedTarget));
+        Assert.False(drill.IsBackupVerified);
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(file, drill.Source));
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(file, "postgres"));
         Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
@@ -97,11 +103,13 @@ public sealed class BackupRestorePostgresTests
         var readonlyTarget = await drill.NewDatabaseAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(file, readonlyTarget, readOnly: true));
         Assert.False(drill.IsVerified(readonlyTarget));
+        Assert.False(drill.IsBackupVerified);
         Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
 
         var retry = await drill.NewDatabaseAsync();
         await drill.RestoreAsync(file, retry);
         Assert.True(drill.IsVerified(retry));
+        Assert.True(drill.IsBackupVerified);
         Assert.Equal(original, await drill.ManifestAsync(retry, false));
         Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
     }
@@ -155,6 +163,7 @@ public sealed class BackupRestorePostgresTests
         private readonly string _source;
         private Manifest? _backupManifest;
         private bool _backupIsTarget;
+        private bool _backupVerified;
 
         private Drill(string admin, string container, string directory)
         {
@@ -168,7 +177,7 @@ public sealed class BackupRestorePostgresTests
         public string Source => _source;
         public string Directory { get; }
         public bool IsVerified(string name) => _verified.Contains(name);
-        public bool IsBackupVerified => _backupManifest is not null;
+        public bool IsBackupVerified => _backupVerified;
 
         public static async Task<Drill> CreateAsync()
         {
@@ -265,6 +274,7 @@ public sealed class BackupRestorePostgresTests
         public async Task<string> DumpAsync(bool denyAccess = false)
         {
             _backupManifest = null;
+            _backupVerified = false;
             var file = Path.Combine(Directory, "source.dump");
             _backupIsTarget = await IsTargetAsync(Source);
             var before = await ManifestAsync(Source, _backupIsTarget);
@@ -296,6 +306,7 @@ public sealed class BackupRestorePostgresTests
             if (_backupManifest is null || _backupManifest != targetManifest)
                 throw new InvalidOperationException("Restored catalog or data differs from the source manifest; target remains unverified.");
             _verified.Add(target);
+            _backupVerified = true;
         }
 
         private async Task<bool> IsTargetAsync(string name) =>
