@@ -4,9 +4,22 @@
 
 ---
 
-## Consul 接入约束
+## 配置引导模式
 
-`ruoyu.mistake` 固定接入 Consul，通过 `ruoyu.common` 下的共享 Consul 代码读取共享配置。Mistake 不向 Consul 注册服务实例；调用方直接读取 `MistakeService:Url`。
+默认和显式 `Mistake:ConfigMode=Platform` 沿用 Consul→缓存→本地回退与 Console+Loki。Mistake 通过 `ruoyu.common` 下的共享 Consul 代码读取共享配置；不向 Consul 注册服务实例，调用方直接读取 `MistakeService:Url`。`Mistake:ConfigMode=Local` 在加载 Consul 前选择，仅使用标准 `appsettings*.json`/环境配置，不请求 Consul、不读取其缓存，日志仅写 Console。仅接受 `Local` 和 `Platform`（大小写不敏感）；非法值在外部连接前失败。此切片只隔离配置和日志引导，**不代表**无 Student/认证/OSS/AI 时业务能力已可安全独立运行；这些仍按现有依赖工作。
+
+Local 必须显式提供 `ConnectionStrings:MistakeLocal`（环境键 `ConnectionStrings__MistakeLocal`），仓库默认留空。不得使用 `PostgreSql:*`、Consul 缓存或示例 `ConnectionStrings:Default` 作为 Local 连接；缺失、无效或与平台示例相同会在连接前失败。环境变量优先于文件；引导仅记录 `Mode` 和数据库连接的 `Environment`/`File` 来源，不输出连接串。选择 Local 本身不授权 DDL；两个显式升级命令仍受原数据库指纹、停写、备份和库名门禁约束。凭据应由部署者通过受保护的环境或挂载文件提供。
+
+在仅供丢弃的隔离 PostgreSQL 15 测试库中，可按下列方式验证引导；`<...>` 必须替换为测试环境值，不要把凭据写入仓库：
+
+```bash
+export Mistake__ConfigMode=Local
+export ConnectionStrings__MistakeLocal='Host=<test-host>;Port=5432;Database=<test-database>;Username=<test-user>;Password=<test-password>'
+dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db
+dotnet Ruoyu.Study.Mistake.Host.dll
+```
+
+正常启动对数据库只读核验，空库须先显式升级。带数据且精确受支持的旧库应按下文备份恢复演练后使用 `--upgrade-known-db --database <test-database> --writes-stopped --backup-verified`。Local 模式缺连接时会报告 `Local mode requires ConnectionStrings:MistakeLocal`；模式拼写错误会报告允许值；连接失败时检查来源和目标库而不打印密码。默认 Platform 的 Consul/缓存诊断与 Loki URI 覆盖保持原样。
 
 共享 Consul 配置承载：
 
@@ -111,7 +124,7 @@
 
 ### 数据库类型判定逻辑
 
-连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 构建：优先从 Consul 共享配置（`PostgreSql:Host`/`Port`/`Username`/`Password` + `Database:Name`）合成 PostgreSQL 连接串，无法合成时回退到本地 `ConnectionStrings:Default`（必须为 PostgreSQL 连接串）。
+Platform 连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 构建：优先从 Consul 共享配置（`PostgreSql:Host`/`Port`/`Username`/`Password` + `Database:Name`）合成 PostgreSQL 连接串，无法合成时回退到本地 `ConnectionStrings:Default`（必须为 PostgreSQL 连接串）。Local 只读取显式 `ConnectionStrings:MistakeLocal`，环境值覆盖文件值。
 
 ### OSS 模式判定逻辑
 

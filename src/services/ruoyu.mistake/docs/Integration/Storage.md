@@ -1,6 +1,6 @@
 # PostgreSQL 存储集成
 
-Mistake 使用 Npgsql/EF Core 访问独立的 PostgreSQL 数据库。连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 从 Consul `PostgreSql:*` + `Database:Name` 构建，无法构建时使用 `ConnectionStrings:Default`。表、字段和关系的权威说明见[数据库文档](../database/README.md)。
+Mistake 使用 Npgsql/EF Core 访问独立的 PostgreSQL 数据库。默认 Platform 模式的连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 从 Consul `PostgreSql:*` + `Database:Name` 构建，无法构建时使用 `ConnectionStrings:Default`；显式 Local 模式仅使用 `ConnectionStrings:MistakeLocal`（详见[部署说明](../development/Deployment.md#配置引导模式)）。表、字段和关系的权威说明见[数据库文档](../database/README.md)。
 
 ## 启动核验与空库升级
 
