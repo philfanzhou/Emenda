@@ -11,23 +11,23 @@ public class StudentUploadSourceGatewayTests
     public async Task GetProcessingUploadsAsync_MapsAllUsedFieldsWithoutSharingMutableLists()
     {
         var sourceEntry = new ImageEntryDto { Path = "uploads/中文 A.png", Type = "mistake" };
-        var source = new UploadRecordsPage
+        var source = new ProcessingUploadScanPage
         {
             Items = new List<UploadRecordDto>
             {
                 new() { Id = "upload-1", StudentId = "student-1", ImageEntries = new List<ImageEntryDto> { sourceEntry } }
             },
-            TotalCount = 7,
-            Page = 2,
-            PageSize = 1
+            HasMore = true,
+            NextCursor = "next"
         };
         var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
         using var cancellation = new CancellationTokenSource();
-        client.Setup(c => c.GetProcessingUploadRecordsAsync(2, 1, cancellation.Token)).ReturnsAsync(source);
+        client.Setup(c => c.ScanProcessingUploadRecordsAsync("cursor", 1, cancellation.Token)).ReturnsAsync(source);
 
-        var actual = await new StudentUploadSourceGateway(client.Object).GetProcessingUploadsAsync(2, 1, cancellation.Token);
+        var actual = await new StudentUploadSourceGateway(client.Object).GetProcessingUploadsAsync("cursor", 1, cancellation.Token);
 
-        Assert.Equal((7, 2, 1), (actual.TotalCount, actual.Page, actual.PageSize));
+        Assert.True(actual.HasMore);
+        Assert.Equal("next", actual.NextCursor);
         var record = Assert.Single(actual.Items);
         Assert.Equal(("upload-1", "student-1"), (record.Id, record.StudentId));
         var entry = Assert.Single(record.ImageEntries);
@@ -43,13 +43,13 @@ public class StudentUploadSourceGatewayTests
     public async Task GetProcessingUploadsAsync_PreservesEmptyPage()
     {
         var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
-        client.Setup(c => c.GetProcessingUploadRecordsAsync(1, 50, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UploadRecordsPage { TotalCount = 0, Page = 1, PageSize = 50 });
+        client.Setup(c => c.ScanProcessingUploadRecordsAsync(null, 50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProcessingUploadScanPage { Items = new(), HasMore = false });
 
-        var actual = await new StudentUploadSourceGateway(client.Object).GetProcessingUploadsAsync(1, 50);
+        var actual = await new StudentUploadSourceGateway(client.Object).GetProcessingUploadsAsync(null, 50);
 
         Assert.Empty(actual.Items);
-        Assert.Equal(0, actual.TotalCount);
+        Assert.False(actual.HasMore);
         client.VerifyAll();
     }
 
@@ -110,14 +110,14 @@ public class StudentUploadSourceGatewayTests
         using var cancellation = new CancellationTokenSource();
         var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
         var failure = new InvalidOperationException("upstream failure");
-        client.Setup(c => c.GetProcessingUploadRecordsAsync(1, 50, cancellation.Token))
+        client.Setup(c => c.ScanProcessingUploadRecordsAsync(null, 50, cancellation.Token))
             .ThrowsAsync(failure);
         client.Setup(c => c.RemoveProcessedImagesAsync("record", It.IsAny<List<string>>(), cancellation.Token))
             .ThrowsAsync(new OperationCanceledException(cancellation.Token));
 
         var gateway = new StudentUploadSourceGateway(client.Object);
         Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(
-            () => gateway.GetProcessingUploadsAsync(1, 50, cancellation.Token)));
+            () => gateway.GetProcessingUploadsAsync(null, 50, cancellation.Token)));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => gateway.RemoveProcessedImagesAsync("record", new List<string>(), cancellation.Token));
         client.VerifyAll();

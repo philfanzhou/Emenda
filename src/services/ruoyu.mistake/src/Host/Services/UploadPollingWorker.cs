@@ -73,20 +73,25 @@ public class UploadPollingWorker : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var studentClient = scope.ServiceProvider.GetRequiredService<IUploadSourceGateway>();
 
-        var page = 1;
+        string? cursor = null;
         var hasMore = true;
 
-        while (hasMore && !ct.IsCancellationRequested)
+        while (hasMore)
         {
+            ct.ThrowIfCancellationRequested();
             ProcessingUploadsPage pageResult;
             try
             {
                 pageResult = await studentClient.GetProcessingUploadsAsync(
-                    page, PageSize, ct).ConfigureAwait(false);
+                    cursor, PageSize, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "UploadPollingWorker: Failed to fetch Processing records (page {Page})", page);
+                _logger.LogError(ex, "UploadPollingWorker: Failed to fetch Processing records");
                 return;
             }
 
@@ -97,8 +102,7 @@ public class UploadPollingWorker : BackgroundService
                 return;
             }
 
-            _logger.LogInformation("UploadPollingWorker: Found {Count} Processing records (page {Page}, total {Total})",
-                records.Count, page, pageResult.TotalCount);
+            _logger.LogInformation("UploadPollingWorker: Found {Count} Processing records", records.Count);
 
             foreach (var record in records)
             {
@@ -119,8 +123,8 @@ public class UploadPollingWorker : BackgroundService
                 }
             }
 
-            hasMore = page * PageSize < pageResult.TotalCount;
-            page++;
+            hasMore = pageResult.HasMore;
+            cursor = pageResult.NextCursor;
         }
     }
 
