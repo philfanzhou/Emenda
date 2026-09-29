@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Domain\Ruoyu.Study.Mistake.Domain.csproj" />
-    <ProjectReference Include="..\..\..\..\ruoyu.common\backend\Ruoyu.Study.MistakeBff.HttpClients\Ruoyu.Study.MistakeBff.HttpClients.csproj" />
   </ItemGroup>
 
   <ItemGroup>

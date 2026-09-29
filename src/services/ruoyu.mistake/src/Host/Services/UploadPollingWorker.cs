@@ -4,7 +4,7 @@ using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service.Services;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.Service.StudentIntegration;
 
 namespace Ruoyu.Study.Mistake.Host.Services;
 
@@ -71,17 +71,17 @@ public class UploadPollingWorker : BackgroundService
     private async Task PollAndProcessAsync(CancellationToken ct)
     {
         using var scope = _serviceProvider.CreateScope();
-        var studentClient = scope.ServiceProvider.GetRequiredService<IStudentHttpClient>();
+        var studentClient = scope.ServiceProvider.GetRequiredService<IUploadSourceGateway>();
 
         var page = 1;
         var hasMore = true;
 
         while (hasMore && !ct.IsCancellationRequested)
         {
-            UploadRecordsPage pageResult;
+            ProcessingUploadsPage pageResult;
             try
             {
-                pageResult = await studentClient.GetProcessingUploadRecordsAsync(
+                pageResult = await studentClient.GetProcessingUploadsAsync(
                     page, PageSize, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -125,7 +125,7 @@ public class UploadPollingWorker : BackgroundService
     }
 
     private async Task ProcessRecordAsync(
-        UploadRecordDto record,
+        ProcessingUploadRecord record,
         IServiceProvider scopedServices,
         CancellationToken ct)
     {
@@ -361,7 +361,7 @@ public class UploadPollingWorker : BackgroundService
     {
         try
         {
-            var studentClient = scopedServices.GetRequiredService<IStudentHttpClient>();
+            var studentClient = scopedServices.GetRequiredService<IUploadSourceGateway>();
             var removeResponse = await studentClient.RemoveProcessedImagesAsync(
                 recordId, imagePaths, ct).ConfigureAwait(false);
 

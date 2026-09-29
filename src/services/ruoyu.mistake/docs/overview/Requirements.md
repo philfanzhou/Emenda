@@ -38,6 +38,6 @@
 | 集成点 | 详细文档 |
 |--------|----------|
 | OSS (MinIO/S3) | [docs/Integration/Oss/](../Integration/Oss/) |
-| Student 服务 | [docs/Integration/Student/](../Integration/Student/) |
+| Student 服务 | [Student HTTP 集成](../Integration/Student.md) |
 | Storage 服务 | [docs/Integration/Storage/](../Integration/Storage/) |
 | Portals (前端门户) | [docs/Integration/Portals/](../Integration/Portals/) |

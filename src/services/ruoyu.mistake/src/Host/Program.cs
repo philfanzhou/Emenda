@@ -12,6 +12,7 @@ using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service;
 using Ruoyu.Study.Consul.Shared;
 using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.Service.StudentIntegration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -93,6 +94,7 @@ var studentBaseUrl = builder.Configuration["StudentService:Url"]
                      ?? builder.Configuration["StudentService:GrpcUrl"]
                      ?? "http://localhost:5005";
 builder.Services.AddStudentHttpClient(studentBaseUrl);
+builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 
 var app = builder.Build();
 
