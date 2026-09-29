@@ -12,6 +12,7 @@ using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
+using Ruoyu.Study.Mistake.Host;
 using Ruoyu.Study.Mistake.Service;
 using Ruoyu.Study.Consul.Shared;
 using Ruoyu.Study.MistakeBff.HttpClients;
@@ -126,6 +127,14 @@ if (args.Contains("--upgrade-known-db", StringComparer.Ordinal))
     Console.WriteLine("Mistake known database upgrade verified.");
     return;
 }
+// Local runtime must resolve its own OSS settings before database initialization
+// or any hosted service can contact Student or S3. Upgrade commands return above.
+var ossConfig = new OssOptions();
+if (localMode)
+    ossConfig = LocalOssConfiguration.Read(builder.Configuration);
+else
+    builder.Configuration.GetSection("Oss").Bind(ossConfig);
+
 builder.Services.AddDbContext<MistakeDbContext>(options =>
 {
     options.UseNpgsql(connectionString);
@@ -141,8 +150,6 @@ builder.Services.AddScoped<IReanalyzeJobService, ReanalyzeJobService>();
 
 // OSS service (Mistake direct access, allowed prefixes: mistakes/, uploads/)
 // uploads/ prefix needed for polling worker to read and migrate images
-var ossConfig = new OssOptions();
-builder.Configuration.GetSection("Oss").Bind(ossConfig);
 builder.Services.AddSingleton<IOssService>(sp =>
 {
     return new S3OssService(ossConfig, new[] { "mistakes/", "uploads/" });

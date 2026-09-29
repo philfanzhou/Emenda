@@ -755,6 +755,8 @@ public static partial class MistakeHttpEndpoints
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
             return MistakeHttpResponse.BadRequest("object_path is required");
+        if (!request.ObjectPath.StartsWith("mistakes/", StringComparison.Ordinal))
+            return MistakeHttpResponse.BadRequest("object_path must start with mistakes/");
 
         var expirySeconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
         var size = string.IsNullOrWhiteSpace(request.Size) ? "full" : request.Size.ToLowerInvariant();
