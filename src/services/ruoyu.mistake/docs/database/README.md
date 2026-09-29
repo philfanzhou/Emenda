@@ -52,11 +52,6 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 
 - PostgreSQL（Npgsql 提供程序）
 
-## 旧表迁移
+## 旧表保护
 
-旧表 `mistake` 已通过 `DatabaseInitializer.MigrateOldSchemaAsync` 迁移到 `mistake_item`，主要变更：
-- 表名 `mistake` → `mistake_item`
-- 列 `status` → `review_status`
-- 列 `mistake_id` → `mistake_item_id`（process_log / mistake_practice）
-- 新增 `source_upload_id`, `source_regions`, `reviewer_id`, `reviewed_at`, `root_cause`, `type`, `question_id`
-- 移除 `date`, `image_paths`, `fingerprint`
+启动初始化在任何写库步骤之前检查 `public.mistake`。该名称存在时直接失败并保留数据库；旧表升级须先备份并通过显式升级流程验收。当前启动路径不再自动重命名或删除旧表。参见[迁移历史](./migrations.md)与[部署说明](../development/Deployment.md)。

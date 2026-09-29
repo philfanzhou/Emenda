@@ -10,9 +10,35 @@ public static class DatabaseInitializer
     public static async Task InitializeAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("DatabaseInitializer");
-        await MigrateOldSchemaAsync(context, logger);
+        await RejectLegacySchemaAsync(context);
+        await context.Database.OpenConnectionAsync();
+        try
+        {
+            await EnsureColumnRenamesAsync(context);
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync();
+        }
         await StampMigrationsIfTablesExistAsync(context, logger);
         await Common.Database.DatabaseInitializer.InitializeAsync(context, loggerFactory, GetTableCreationSql);
+    }
+
+    private static async Task RejectLegacySchemaAsync(MistakeDbContext context)
+    {
+        await context.Database.OpenConnectionAsync();
+        try
+        {
+            await using var command = context.Database.GetDbConnection().CreateCommand();
+            command.CommandText = "SELECT to_regclass('public.mistake') IS NOT NULL";
+            if ((bool)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Legacy schema check returned no result.")))
+                throw new InvalidOperationException(
+                    "Legacy schema detected: public.mistake exists. Database unchanged. Back up the database and use the explicit upgrade process before starting Mistake.");
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync();
+        }
     }
 
     private static async Task StampMigrationsIfTablesExistAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILogger logger)
@@ -105,120 +131,6 @@ public static class DatabaseInitializer
                     logger.LogInformation("已将 AddStudentIdToProcessLog 迁移标记为已应用");
                 }
             }
-        }
-        finally
-        {
-            await context.Database.CloseConnectionAsync();
-        }
-    }
-
-    private static async Task MigrateOldSchemaAsync(MistakeDbContext context, Microsoft.Extensions.Logging.ILogger logger)
-    {
-        await context.Database.OpenConnectionAsync();
-        try
-        {
-            await using var checkOldCmd = context.Database.GetDbConnection().CreateCommand();
-            checkOldCmd.CommandText = @"
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'mistake'
-                )";
-            var oldTableExists = (bool)(await checkOldCmd.ExecuteScalarAsync())!;
-
-            if (!oldTableExists)
-            {
-                await EnsureColumnRenamesAsync(context);
-                return;
-            }
-
-            logger.LogInformation("检测到旧表 mistake，正在迁移到新表结构...");
-
-            await using var dropOldFksCmd = context.Database.GetDbConnection().CreateCommand();
-            dropOldFksCmd.CommandText = @"
-                DO $$
-                DECLARE
-                    fk_record RECORD;
-                BEGIN
-                    FOR fk_record IN
-                        SELECT conname, conrelid::regclass AS tbl
-                        FROM pg_constraint
-                        WHERE contype = 'f'
-                        AND confrelid = 'public.mistake'::regclass
-                    LOOP
-                        EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', fk_record.tbl, fk_record.conname);
-                    END LOOP;
-                END $$;";
-            await dropOldFksCmd.ExecuteNonQueryAsync();
-
-            await using var checkNewCmd = context.Database.GetDbConnection().CreateCommand();
-            checkNewCmd.CommandText = @"
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'mistake_item'
-                )";
-            var newTableExists = (bool)(await checkNewCmd.ExecuteScalarAsync())!;
-
-            if (newTableExists)
-            {
-                await using var dropOldCmd = context.Database.GetDbConnection().CreateCommand();
-                dropOldCmd.CommandText = "DROP TABLE IF EXISTS mistake CASCADE";
-                await dropOldCmd.ExecuteNonQueryAsync();
-                logger.LogInformation("mistake_item 已存在，删除旧表 mistake");
-            }
-            else
-            {
-                await using var renameCmd = context.Database.GetDbConnection().CreateCommand();
-                renameCmd.CommandText = "ALTER TABLE mistake RENAME TO mistake_item";
-                await renameCmd.ExecuteNonQueryAsync();
-
-                await using var addMissingColsCmd = context.Database.GetDbConnection().CreateCommand();
-                addMissingColsCmd.CommandText = @"
-                    ALTER TABLE mistake_item
-                        ADD COLUMN IF NOT EXISTS source_upload_id character varying(64) NOT NULL DEFAULT '',
-                        ADD COLUMN IF NOT EXISTS source_regions jsonb NOT NULL DEFAULT '[]',
-                        ADD COLUMN IF NOT EXISTS reviewer_id character varying(36) NULL,
-                        ADD COLUMN IF NOT EXISTS reviewed_at timestamp with time zone NULL,
-                        ADD COLUMN IF NOT EXISTS root_cause text NULL,
-                        ADD COLUMN IF NOT EXISTS question_id character varying(36) NULL;";
-                await addMissingColsCmd.ExecuteNonQueryAsync();
-
-                await using var renameStatusColCmd = context.Database.GetDbConnection().CreateCommand();
-                renameStatusColCmd.CommandText = @"
-                    DO $$
-                    BEGIN
-                        IF EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_name = 'mistake_item' AND column_name = 'status'
-                        ) THEN
-                            ALTER TABLE mistake_item RENAME COLUMN status TO review_status;
-                        END IF;
-                    END $$;";
-                await renameStatusColCmd.ExecuteNonQueryAsync();
-
-                await using var dropOldColsCmd = context.Database.GetDbConnection().CreateCommand();
-                dropOldColsCmd.CommandText = @"
-                    ALTER TABLE mistake_item
-                        DROP COLUMN IF EXISTS date,
-                        DROP COLUMN IF EXISTS image_paths,
-                        DROP COLUMN IF EXISTS fingerprint,
-                        DROP COLUMN IF EXISTS type;";
-                await dropOldColsCmd.ExecuteNonQueryAsync();
-
-                await using var createNewIndexesCmd = context.Database.GetDbConnection().CreateCommand();
-                createNewIndexesCmd.CommandText = @"
-                    CREATE INDEX IF NOT EXISTS IX_mistake_item_student_id ON mistake_item (student_id);
-                    CREATE INDEX IF NOT EXISTS IX_mistake_item_student_id_subject_grade_review_status ON mistake_item (student_id, subject, grade, review_status);
-                    CREATE INDEX IF NOT EXISTS IX_mistake_item_source_upload_id ON mistake_item (source_upload_id);
-                    CREATE INDEX IF NOT EXISTS IX_mistake_item_review_status ON mistake_item (review_status);
-                    CREATE INDEX IF NOT EXISTS IX_mistake_item_created_at ON mistake_item (created_at);";
-                await createNewIndexesCmd.ExecuteNonQueryAsync();
-            }
-
-            await EnsureColumnRenamesAsync(context);
-
-            logger.LogInformation("旧表迁移完成");
         }
         finally
         {
