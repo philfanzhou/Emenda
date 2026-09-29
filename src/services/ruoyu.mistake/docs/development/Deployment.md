@@ -10,12 +10,20 @@
 
 Local 必须显式提供 `ConnectionStrings:MistakeLocal`（环境键 `ConnectionStrings__MistakeLocal`），仓库默认留空。不得使用 `PostgreSql:*`、Consul 缓存或示例 `ConnectionStrings:Default` 作为 Local 连接；缺失、无效或与平台示例相同会在连接前失败。环境变量优先于文件；引导仅记录 `Mode` 和数据库连接的 `Environment`/`File` 来源，不输出连接串。选择 Local 本身不授权 DDL；两个显式升级命令仍受原数据库指纹、停写、备份和库名门禁约束。凭据应由部署者通过受保护的环境或挂载文件提供。
 
+Local 正常运行还必须显式提供独立的 `Mistake:Local:Oss:*` 六项配置（环境键前缀 `Mistake__Local__Oss__`），包括内部 S3 endpoint、`InternalSecure`、桶、凭据和公共预签名基础 URL。它不会从通用 `Oss:*` 或仓库 mock 配置回退。文件/环境占位示例、公开代理 Host 与路径要求、故障排查和回退见 [Local OSS 配置](../Integration/Oss/LocalConfiguration.md)。两个显式数据库升级命令不要求这些 OSS 键。
+
 在仅供丢弃的隔离 PostgreSQL 15 测试库中，可按下列方式验证引导；`<...>` 必须替换为测试环境值，不要把凭据写入仓库：
 
 ```bash
 export Mistake__ConfigMode=Local
 export ConnectionStrings__MistakeLocal='Host=<test-host>;Port=5432;Database=<test-database>;Username=<test-user>;Password=<test-password>'
 dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db
+export Mistake__Local__Oss__InternalEndpoint='<s3-host>:<s3-port>'
+export Mistake__Local__Oss__InternalSecure=false
+export Mistake__Local__Oss__AccessKey='<access-key>'
+export Mistake__Local__Oss__SecretKey='<secret-key>'
+export Mistake__Local__Oss__BucketName='<existing-bucket>'
+export Mistake__Local__Oss__PublicBaseUrl='https://<public-host>/oss'
 dotnet Ruoyu.Study.Mistake.Host.dll
 ```
 

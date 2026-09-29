@@ -208,6 +208,69 @@ public sealed class LocalBootstrapPostgresTests
     }
 
     [Theory]
+    [InlineData("InternalEndpoint", null, "is required")]
+    [InlineData("InternalSecure", null, "is required")]
+    [InlineData("AccessKey", null, "is required")]
+    [InlineData("SecretKey", null, "is required")]
+    [InlineData("BucketName", null, "is required")]
+    [InlineData("PublicBaseUrl", null, "is required")]
+    [InlineData("AccessKey", " ", "is required")]
+    [InlineData("InternalSecure", "maybe", "must be true or false")]
+    [InlineData("InternalEndpoint", "https://storage.example", "must be a host or host:port")]
+    [InlineData("InternalEndpoint", "storage.example/path", "must be a host or host:port")]
+    [InlineData("PublicBaseUrl", "storage.example/oss", "must be an absolute HTTP(S) URL")]
+    [InlineData("PublicBaseUrl", "ftp://storage.example/oss", "must be an absolute HTTP(S) URL")]
+    [InlineData("AccessKey", "mock_access_key", "must not use mock credentials")]
+    [InlineData("SecretKey", "mock_secret_key", "must not use mock credentials")]
+    public async Task InvalidLocalOssFailsBeforeDatabaseAndNetworkAsync(string key, string? value, string diagnostic)
+    {
+        await using var student = new RequestProbe();
+        await using var consul = new RequestProbe();
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = "Local",
+            ["ConnectionStrings__MistakeLocal"] = "Host=127.0.0.1;Port=1;Database=unavailable;Username=none;Password=connection-secret-marker",
+            ["StudentService__Url"] = $"http://127.0.0.1:{student.Port}",
+            ["CONSUL_HTTP_ADDR"] = $"127.0.0.1:{consul.Port}",
+            ["Mistake__Local__Oss__InternalEndpoint"] = "127.0.0.1:19001",
+            ["Mistake__Local__Oss__InternalSecure"] = "false",
+            ["Mistake__Local__Oss__AccessKey"] = "access-secret-marker",
+            ["Mistake__Local__Oss__SecretKey"] = "oss-secret-marker",
+            ["Mistake__Local__Oss__BucketName"] = "test-bucket",
+            ["Mistake__Local__Oss__PublicBaseUrl"] = "http://127.0.0.1:19002/oss"
+        };
+        settings["Mistake__Local__Oss__" + key] = value;
+        var result = await RunHostAsync([], settings, includeLocalOss: false);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("Mistake:Local:Oss:", result.Output);
+        Assert.Contains(diagnostic, result.Output);
+        Assert.DoesNotContain("Database: PostgreSQL", result.Output);
+        Assert.DoesNotContain("connection-secret-marker", result.Output);
+        Assert.DoesNotContain("access-secret-marker", result.Output);
+        Assert.DoesNotContain("oss-secret-marker", result.Output);
+        Assert.Equal(0, student.RequestCount);
+        Assert.Equal(0, consul.RequestCount);
+    }
+
+    [Fact]
+    public async Task LocalRuntimeRejectsPlatformOssFallbackButDatabaseUpgradeDoesNotNeedLocalOssAsync()
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = "Local",
+            ["ConnectionStrings__MistakeLocal"] = "Host=127.0.0.1;Port=1;Database=unavailable;Username=none"
+        };
+        var runtime = await RunHostAsync([], settings, includeLocalOss: false);
+        Assert.NotEqual(0, runtime.ExitCode);
+        Assert.Contains("Mistake:Local:Oss:InternalEndpoint is required", runtime.Output);
+        Assert.DoesNotContain("Database: PostgreSQL", runtime.Output);
+
+        var upgrade = await RunHostAsync(["--upgrade-empty-db"], settings, includeLocalOss: false);
+        Assert.NotEqual(0, upgrade.ExitCode);
+        Assert.DoesNotContain("Mistake:Local:Oss", upgrade.Output);
+    }
+
+    [Theory]
     [InlineData("Local", null, false, false, false)]
     [InlineData("Local", "UploadPollingWorker", true, false, false)]
     [InlineData("Local", "ReanalyzeJobHostedService", false, true, false)]
@@ -414,6 +477,90 @@ public sealed class LocalBootstrapPostgresTests
         }
     }
 
+    [Fact]
+    public async Task LocalOssEnvironmentOverridesFileAndRestartUsesFileValuesAsync()
+    {
+        var admin = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(admin))
+            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
+        await using var database = await TestDatabase.CreateAsync(admin);
+        var directory = Path.Combine(Path.GetTempPath(), "mistake-oss-config-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(directory, "appsettings.json"),
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Mistake = new
+                    {
+                        ConfigMode = "Local",
+                        Local = new { Oss = new
+                        {
+                            InternalEndpoint = "127.0.0.1:19003", InternalSecure = false,
+                            AccessKey = "file-access", SecretKey = "file-secret",
+                            BucketName = "file-bucket", PublicBaseUrl = "http://file.example/oss"
+                        } }
+                    },
+                    ConnectionStrings = new { MistakeLocal = new NpgsqlConnectionStringBuilder(admin)
+                        { Database = database.Name }.ConnectionString }
+                }));
+            var settings = new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_CONTENTROOT"] = directory,
+                ["Mistake__Local__Oss__InternalEndpoint"] = "127.0.0.1:19004",
+                ["Mistake__Local__Oss__BucketName"] = "environment-bucket",
+                ["Mistake__Local__Oss__PublicBaseUrl"] = "http://environment.example/oss"
+            };
+            Assert.Equal(0, (await RunHostAsync(["--upgrade-empty-db"], settings, includeLocalOss: false)).ExitCode);
+            var environment = await RunHostAsync([], settings, waitForStartup: true, includeLocalOss: false);
+            Assert.Contains("OSS: Endpoint=127.0.0.1:19004, Bucket=environment-bucket", environment.Output);
+
+            settings.Remove("Mistake__Local__Oss__InternalEndpoint");
+            settings.Remove("Mistake__Local__Oss__BucketName");
+            settings.Remove("Mistake__Local__Oss__PublicBaseUrl");
+            var file = await RunHostAsync([], settings, waitForStartup: true, includeLocalOss: false);
+            Assert.Contains("OSS: Endpoint=127.0.0.1:19003, Bucket=file-bucket", file.Output);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("uploads/local-config-check.txt")]
+    [InlineData("other/local-config-check.txt")]
+    public async Task PresignedEndpointRejectsNonMistakePathsBeforeOssAccessAsync(string objectPath)
+    {
+        var admin = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(admin))
+            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
+        await using var database = await TestDatabase.CreateAsync(admin);
+        await using var s3 = new RequestProbe();
+        var port = GetAvailablePort();
+        var settings = new Dictionary<string, string?>
+        {
+            ["Mistake__ConfigMode"] = "Local",
+            ["Mistake__Http__Port"] = port.ToString(),
+            ["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
+                { Database = database.Name }.ConnectionString,
+            ["Mistake__Local__Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}"
+        };
+        Assert.Equal(0, (await RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        await RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
+        {
+            await WaitForRootAsync(client, port, token);
+            using var content = new StringContent(
+                System.Text.Json.JsonSerializer.Serialize(new { objectPath, expirySeconds = 300, size = "full" }),
+                Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync($"http://127.0.0.1:{port}/api/mistakes/presigned-url", content, token);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("object_path must start with mistakes/", await response.Content.ReadAsStringAsync(token));
+        });
+        Assert.Equal(0, s3.RequestCount);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData(" ")]
@@ -486,7 +633,8 @@ public sealed class LocalBootstrapPostgresTests
 
     private static async Task<RunResult> RunHostAsync(string[] arguments,
         IReadOnlyDictionary<string, string?> settings, bool waitForStartup = false,
-        TimeSpan? startupDelay = null, Func<CancellationToken, Task>? duringStartup = null)
+        TimeSpan? startupDelay = null, Func<CancellationToken, Task>? duringStartup = null,
+        bool includeLocalOss = true)
     {
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
         var sourceRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -502,6 +650,15 @@ public sealed class LocalBootstrapPostgresTests
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
         start.Environment["DOTNET_ENVIRONMENT"] = "Production";
+        if (includeLocalOss)
+        {
+            start.Environment["Mistake__Local__Oss__InternalEndpoint"] = "127.0.0.1:19001";
+            start.Environment["Mistake__Local__Oss__InternalSecure"] = "false";
+            start.Environment["Mistake__Local__Oss__AccessKey"] = "test-access";
+            start.Environment["Mistake__Local__Oss__SecretKey"] = "test-secret";
+            start.Environment["Mistake__Local__Oss__BucketName"] = "mistake-local-tests";
+            start.Environment["Mistake__Local__Oss__PublicBaseUrl"] = "http://127.0.0.1:19002/oss";
+        }
         foreach (var (key, value) in settings)
         {
             if (value is null) start.Environment.Remove(key);
