@@ -1,6 +1,8 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Npgsql;
+using Serilog;
 using Ruoyu.Study.Common.Ai;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
@@ -16,14 +18,29 @@ using Ruoyu.Study.Mistake.Service.StudentIntegration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
+var modeValue = builder.Configuration["Mistake:ConfigMode"];
+var localMode = string.Equals(modeValue, "Local", StringComparison.OrdinalIgnoreCase);
+if (modeValue is not null && !localMode &&
+    !string.Equals(modeValue, "Platform", StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException("Mistake:ConfigMode must be Local or Platform.");
 
-// ========== Serilog (Console + Grafana Loki) ==========
-builder.Configuration.AddRuoyuLokiSink();
-builder.Host.UseRuoyuSerilog("Ruoyu.Study.Mistake");
+if (localMode)
+{
+    // Avoid reading the platform Serilog:WriteTo array: it contains a Loki sink.
+    builder.Host.UseSerilog((_, _, logger) => logger
+        .MinimumLevel.Information()
+        .Enrich.FromLogContext()
+        .WriteTo.Console());
+}
+else
+{
+    builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
+    builder.Configuration.AddRuoyuLokiSink();
+    builder.Host.UseRuoyuSerilog("Ruoyu.Study.Mistake");
+}
 
-var consulOptions = RuoyuConsulOptions.Bind(builder.Configuration);
-var consulRuntimeState = RuoyuConsulRuntimeState.Instance;
+var consulOptions = localMode ? null : RuoyuConsulOptions.Bind(builder.Configuration);
+var consulRuntimeState = localMode ? null : RuoyuConsulRuntimeState.Instance;
 
 // HTTP listen port is hardcoded to 5007 (not configurable via Endpoints:Http).
 // host port mapping is controlled by start.sh: -p ${Port}:5007.
@@ -37,9 +54,37 @@ builder.WebHost.ConfigureKestrel(options =>
     });
 });
 
-var connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
-    builder.Configuration,
-    builder.Configuration.GetConnectionString("Default"));
+string? connectionString;
+if (localMode)
+{
+    connectionString = builder.Configuration.GetConnectionString("MistakeLocal");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        throw new InvalidOperationException("Local mode requires ConnectionStrings:MistakeLocal.");
+    try
+    {
+        var local = new NpgsqlConnectionStringBuilder(connectionString);
+        if (string.IsNullOrWhiteSpace(local.Host) || string.IsNullOrWhiteSpace(local.Database) ||
+            string.IsNullOrWhiteSpace(local.Username))
+            throw new ArgumentException("Missing connection fields.");
+        if (string.Equals(local.Host, "localhost", StringComparison.OrdinalIgnoreCase) &&
+            local.Port == 5432 && local.Database == "ruoyu_study_mistake" &&
+            local.Username == "phil" && string.IsNullOrEmpty(local.Password))
+            throw new ArgumentException("Example connection selected.");
+    }
+    catch (ArgumentException)
+    {
+        throw new InvalidOperationException("Local mode requires a valid, explicit MistakeLocal PostgreSQL connection distinct from the platform example.");
+    }
+    var connectionSource = Environment.GetEnvironmentVariable("ConnectionStrings__MistakeLocal") is null
+        ? "File" : "Environment";
+    Console.WriteLine($"Mistake configuration: Mode=Local, DatabaseConnectionSource={connectionSource}.");
+}
+else
+{
+    connectionString = SharedPostgreSqlConnectionStringFactory.BuildOrFallback(
+        builder.Configuration, builder.Configuration.GetConnectionString("Default"));
+    Console.WriteLine("Mistake configuration: Mode=Platform, DatabaseConnectionSource=PlatformOrFallback.");
+}
 if (args.Length == 1 && args[0] == "--upgrade-empty-db")
 {
     var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connectionString).Options;
@@ -120,14 +165,15 @@ var app = builder.Build();
 
 app.Logger.LogInformation("Mistake Service starting");
 app.Logger.LogInformation("Endpoint: HTTP={HttpPort}", httpPort);
-app.Logger.LogInformation(
-    "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
-    $"{consulOptions.Host}:{consulOptions.Port}",
-    StartupDiagnosticsFormatter.MaskSecret(consulOptions.Token),
-    consulRuntimeState.Source,
-    consulRuntimeState.KeyCount,
-    StartupDiagnosticsFormatter.SummarizePrefixes(consulRuntimeState.LoadedPrefixes),
-    StartupDiagnosticsFormatter.SummarizeError(consulRuntimeState.LastError));
+if (consulOptions is not null && consulRuntimeState is not null)
+    app.Logger.LogInformation(
+        "Consul startup diagnostics: Address={Address}, Token={Token}, Source={Source}, KeyCount={KeyCount}, Prefixes={Prefixes}, LastError={LastError}",
+        $"{consulOptions.Host}:{consulOptions.Port}",
+        StartupDiagnosticsFormatter.MaskSecret(consulOptions.Token),
+        consulRuntimeState.Source,
+        consulRuntimeState.KeyCount,
+        StartupDiagnosticsFormatter.SummarizePrefixes(consulRuntimeState.LoadedPrefixes),
+        StartupDiagnosticsFormatter.SummarizeError(consulRuntimeState.LastError));
 if (!string.IsNullOrEmpty(connectionString))
 {
     var csb = new DbConnectionStringBuilder { ConnectionString = connectionString };

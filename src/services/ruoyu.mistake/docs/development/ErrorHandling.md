@@ -38,9 +38,9 @@ gRPC 服务实现中必须使用标准的状态码，不得自定义状态码：
 
 ### Serilog + Loki 日志系统
 
-Mistake 使用 Serilog 替代原生 Microsoft.Extensions.Logging，双写到 Console + Grafana Loki。接入方式与 Identity / Doctheca（原 DocLibrary，已迁出为外部仓库，ADR-0012）服务完全一致。
+Mistake 默认 Platform 模式使用 Serilog 替代原生 Microsoft.Extensions.Logging，双写到 Console + Grafana Loki。显式 `Mistake:ConfigMode=Local` 仅写 Console，不创建 Loki sink；配置入口与限制见[部署说明](./Deployment.md#配置引导模式)。接入方式与 Identity / Doctheca（原 DocLibrary，已迁出为外部仓库，ADR-0012）服务完全一致。
 
-配置入口：`Program.cs` 中 `UseAgentSerilog("Ruoyu.Study.Mistake")`，读取 `appsettings.json` 中 `Serilog` 配置节。
+配置入口：`Program.cs` 中 `UseRuoyuSerilog("Ruoyu.Study.Mistake")`，读取 `appsettings.json` 中 `Serilog` 配置节。
 
 Loki 地址统一通过配置键 `Loki:Uri` 注入，`Program.cs` 启动时读取并覆盖 `Serilog:WriteTo:1:Args:uri` 配置键：
 
