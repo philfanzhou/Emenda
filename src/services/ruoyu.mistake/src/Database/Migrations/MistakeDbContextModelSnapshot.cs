@@ -209,6 +209,25 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ReanalyzeJobEntity", b =>
                 {
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("ExecutionInputDigest")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("execution_input_digest");
+
+                    b.Property<string>("ExecutionRootCause")
+                        .HasColumnType("text")
+                        .HasColumnName("execution_root_cause");
+
+                    b.Property<long>("FencingVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fencing_version")
+                        .HasDefaultValue(0L);
+
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
@@ -229,9 +248,17 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("item_id");
 
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
                     b.Property<string>("NewRootCause")
                         .HasColumnType("text")
                         .HasColumnName("new_root_cause");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
 
                     b.Property<string>("PreviousRootCause")
                         .HasColumnType("text")

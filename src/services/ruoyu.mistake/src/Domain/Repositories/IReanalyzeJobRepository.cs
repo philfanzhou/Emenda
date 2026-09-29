@@ -12,8 +12,9 @@ public interface IReanalyzeJobRepository
     Task<ReanalyzeJobModel?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<List<ReanalyzeJobModel>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
     Task<List<ReanalyzeJobModel>> GetActiveByReviewerAsync(string reviewerId, CancellationToken ct = default);
-    Task<List<ReanalyzeJobModel>> ClaimPendingAsync(int maxCount, CancellationToken ct = default);
-    Task<List<ReanalyzeJobModel>> GetStaleRunningAsync(CancellationToken ct = default);
-    Task<int> UpdateStatusAsync(ReanalyzeJobModel model, CancellationToken ct = default);
+    Task<List<ReanalyzeJobModel>> ClaimAsync(int maxCount, CancellationToken ct = default);
+    Task<bool> RenewAsync(Guid jobId, Guid ownerId, long version, CancellationToken ct = default);
+    Task<bool> CompleteAsync(Guid jobId, Guid ownerId, long version, string rootCause, long durationMs, CancellationToken ct = default);
+    Task<bool> FailAsync(Guid jobId, Guid ownerId, long version, string reasonCode, CancellationToken ct = default);
     Task<int> DeleteExpiredAsync(DateTimeOffset cutoff, CancellationToken ct = default);
 }

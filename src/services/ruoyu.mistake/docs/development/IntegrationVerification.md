@@ -188,7 +188,7 @@
 
 ### TC-17 数据库只读启动与显式空库升级 (PostgreSQL)
 
-在专用 PostgreSQL 库分别验证：空库普通启动拒绝而 `--upgrade-empty-db` 成功且可重复；已知三条历史加运行时 `root_cause` 和四条历史目标均只读启动；`public.mistake`、新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；并发空库升级只产生一个完整目标；DDL 失败回滚。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
+在专用 PostgreSQL 库分别验证：空库普通启动拒绝而 `--upgrade-empty-db` 成功且可重复；已知三历史运行时 `root_cause` 与四历史目标均须显式升级，五历史目标可只读启动；`public.mistake`、新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；并发空库升级只产生一个完整目标；DDL 失败回滚。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
 
 ### TC-20 地址错误 (MistakeGrpcService:Address)
 

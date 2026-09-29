@@ -1,8 +1,4 @@
-using System;
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,212 +8,143 @@ using Ruoyu.Study.Mistake.Service.Services;
 
 namespace Ruoyu.Study.Mistake.Host.Services;
 
-/// <summary>
-/// Background service that processes ReanalyzeJob records.
-/// Global concurrency is hardcoded to <see cref="MaxConcurrency"/> per product
-/// decision — do not promote to configuration without re-discussion.
-/// State machine: Pending -> Running -> Completed | Failed.
-/// On host start, any Running jobs from a previous process incarnation are
-/// marked Failed (crash recovery).
-/// </summary>
+/// <summary>Two local consumers share the database's two global lease slots.</summary>
 public class ReanalyzeJobHostedService : BackgroundService
 {
-    /// <summary>Hardcoded per product decision (2026-06-26). Do not externalize.</summary>
     private const int MaxConcurrency = 2;
-
-    private const int ClaimBatchSize = 50;
-    // Must exceed VL timeout (TimeoutSeconds=60 × MaxRetries=2 = 120s) so that
-    // a single job is not enqueued twice while its first execution is still in
-    // flight. MarkRunningAsync commits the status change immediately, so the
-    // second claim will simply skip the row — but we still want to avoid the
-    // duplicate Channel enqueue + worker contention.
-    private static readonly TimeSpan ClaimInterval = TimeSpan.FromSeconds(30);
-
-    private readonly IServiceProvider _serviceProvider;
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(20);
+    private readonly IServiceProvider _services;
     private readonly ILogger<ReanalyzeJobHostedService> _logger;
 
-    public ReanalyzeJobHostedService(
-        IServiceProvider serviceProvider,
-        ILogger<ReanalyzeJobHostedService> logger)
+    public ReanalyzeJobHostedService(IServiceProvider services, ILogger<ReanalyzeJobHostedService> logger)
     {
-        _serviceProvider = serviceProvider;
+        _services = services;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation(
-            "ReanalyzeJobHostedService starting: maxConcurrency={MaxConcurrency}",
-            MaxConcurrency);
+        _logger.LogInformation("ReanalyzeJobHostedService starting: maxConcurrency={MaxConcurrency}", MaxConcurrency);
+        var workers = Enumerable.Range(0, MaxConcurrency).Select(_ => RunWorkerAsync(stoppingToken)).ToArray();
+        await Task.WhenAll(workers);
+    }
 
-        // Crash recovery must happen before the main loop starts accepting work.
+    private async Task RunWorkerAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = _services.CreateScope();
+                var service = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
+                var jobs = await service.ClaimJobsAsync(1, stoppingToken);
+                if (jobs.Count == 1) await ProcessAsync(jobs[0], stoppingToken);
+                else await Task.Delay(PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Reanalyze worker cycle failed: {ErrorType}", ex.GetType().Name);
+                try { await Task.Delay(PollInterval, stoppingToken); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            }
+        }
+    }
+
+    private async Task ProcessAsync(ReanalyzeJobModel job, CancellationToken stoppingToken)
+    {
+        if (job.OwnerId is not { } owner) return;
+        using var leaseCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var heartbeat = HeartbeatAsync(job.Id, owner, job.FencingVersion, leaseCts);
+        var terminalStarted = false;
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var jobService = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
-            await jobService.RecoverStaleRunningJobsAsync(stoppingToken);
+            using var scope = _services.CreateScope();
+            var analyzer = scope.ServiceProvider.GetRequiredService<IVlAnalyzer>();
+            var service = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
+            var watch = Stopwatch.StartNew();
+            var result = await analyzer.ReAnalyzeAsync(job.ExecutionStudentId ?? job.StudentId, job.ExecutionImagePaths.ToList(),
+                job.ExecutionRootCause ?? string.Empty, job.TeacherDescription, leaseCts.Token);
+            watch.Stop();
+            if (!leaseCts.IsCancellationRequested)
+            {
+                terminalStarted = true;
+                if (result.Skipped || string.IsNullOrWhiteSpace(result.RootCause))
+                    await service.MarkFailedAsync(job.Id, owner, job.FencingVersion, "vl_empty", stoppingToken);
+                else
+                    await service.MarkCompletedAsync(job.Id, owner, job.FencingVersion,
+                        result.RootCause, watch.ElapsedMilliseconds, stoppingToken);
+            }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (leaseCts.IsCancellationRequested)
         {
-            return;
+            _logger.LogInformation("Reanalyze execution interrupted; lease will expire: JobId={JobId}", job.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ReanalyzeJobHostedService: crash recovery failed (continuing)");
-        }
-
-        var queue = Channel.CreateUnbounded<ReanalyzeJobModel>(new UnboundedChannelOptions
-        {
-            SingleReader = false,
-            SingleWriter = true
-        });
-
-        // Spawn MaxConcurrency worker tasks.
-        var workers = new Task[MaxConcurrency];
-        for (int i = 0; i < MaxConcurrency; i++)
-        {
-            int workerIndex = i;
-            workers[i] = Task.Run(() => RunWorkerAsync(workerIndex, queue.Reader, stoppingToken), stoppingToken);
-        }
-
-        // Producer: poll DB for pending jobs and enqueue them.
-        try
-        {
-            while (!stoppingToken.IsCancellationRequested)
+            _logger.LogWarning("Reanalyze execution failed: JobId={JobId}, ErrorType={ErrorType}", job.Id, ex.GetType().Name);
+            if (terminalStarted)
             {
                 try
                 {
-                    using var scope = _serviceProvider.CreateScope();
-                    var jobService = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
-                    var pending = await jobService.ClaimPendingJobsAsync(ClaimBatchSize, stoppingToken);
-                    if (pending.Count > 0)
-                    {
-                        _logger.LogDebug("ReanalyzeJobHostedService: claimed {Count} pending jobs", pending.Count);
-                        foreach (var job in pending)
-                        {
-                            await queue.Writer.WriteAsync(job, stoppingToken);
-                        }
-                    }
+                    using var readScope = _services.CreateScope();
+                    var readService = readScope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
+                    var saved = await readService.GetJobsAsync(job.ReviewerId, [job.Id], stoppingToken);
+                    _logger.LogWarning("Reanalyze terminal result re-read: JobId={JobId}, Status={Status}",
+                        job.Id, saved.Count == 1 ? saved[0].Status : ReanalyzeJobState.Unspecified);
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                catch (Exception readError)
                 {
-                    break;
+                    _logger.LogWarning("Reanalyze terminal result unknown: JobId={JobId}, ErrorType={ErrorType}",
+                        job.Id, readError.GetType().Name);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "ReanalyzeJobHostedService: claim cycle failed (continuing)");
-                }
-
+                return;
+            }
+            if (!stoppingToken.IsCancellationRequested && !leaseCts.IsCancellationRequested)
+            {
                 try
                 {
-                    await Task.Delay(ClaimInterval, stoppingToken);
+                    using var scope = _services.CreateScope();
+                    var service = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
+                    await service.MarkFailedAsync(job.Id, owner, job.FencingVersion, "vl_failed", stoppingToken);
                 }
-                catch (OperationCanceledException)
+                catch (Exception failure)
                 {
-                    break;
+                    _logger.LogWarning("Reanalyze failure recording deferred to lease recovery: JobId={JobId}, ErrorType={ErrorType}",
+                        job.Id, failure.GetType().Name);
                 }
             }
         }
         finally
         {
-            queue.Writer.TryComplete();
-            try
-            {
-                await Task.WhenAll(workers);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "ReanalyzeJobHostedService: workers exited with error");
-            }
+            leaseCts.Cancel();
+            try { await heartbeat; }
+            catch (OperationCanceledException) { }
         }
-
-        _logger.LogInformation("ReanalyzeJobHostedService stopped");
     }
 
-    private async Task RunWorkerAsync(int workerIndex, ChannelReader<ReanalyzeJobModel> reader, CancellationToken stoppingToken)
+    private async Task HeartbeatAsync(Guid jobId, Guid owner, long version, CancellationTokenSource leaseCts)
     {
-        _logger.LogInformation("ReanalyzeJob worker {WorkerIndex} started", workerIndex);
-
-        await foreach (var job in reader.ReadAllAsync(stoppingToken))
-        {
-            await ProcessJobAsync(job, stoppingToken);
-        }
-
-        _logger.LogInformation("ReanalyzeJob worker {WorkerIndex} stopped", workerIndex);
-    }
-
-    private async Task ProcessJobAsync(ReanalyzeJobModel job, CancellationToken stoppingToken)
-    {
-        // Each job gets its own scope so DbContext is not shared.
-        using var scope = _serviceProvider.CreateScope();
-        var jobService = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
-        var vlAnalyzer = scope.ServiceProvider.GetRequiredService<IVlAnalyzer>();
-        var mistakeItemRepo = scope.ServiceProvider.GetRequiredService<Ruoyu.Study.Mistake.Domain.Repositories.IMistakeItemRepository>();
-        var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-        var workerLogger = loggerFactory.CreateLogger("ReanalyzeJobWorker");
-
-        if (!await jobService.MarkRunningAsync(job.Id, stoppingToken))
-        {
-            workerLogger.LogWarning(
-                "ReanalyzeJob: cannot mark running (already moved). JobId={JobId}",
-                job.Id);
-            return;
-        }
-
-        var item = await mistakeItemRepo.GetByIdAsync(job.ItemId, stoppingToken);
-        if (item == null)
-        {
-            await jobService.MarkFailedAsync(job.Id, "错题已删除", stoppingToken);
-            return;
-        }
-
-        var imagePaths = item.SourceRegions
-            .Where(r => !string.IsNullOrWhiteSpace(r.SourceImagePath))
-            .Select(r => r.SourceImagePath)
-            .ToList();
-        var previousRootCause = job.PreviousRootCause ?? string.Empty;
-        var teacherDescription = job.TeacherDescription;
-
-        var sw = Stopwatch.StartNew();
         try
         {
-            var vlResult = await vlAnalyzer.ReAnalyzeAsync(
-                item.StudentId, imagePaths, previousRootCause, teacherDescription, stoppingToken);
-            sw.Stop();
-
-            if (vlResult.Skipped || string.IsNullOrEmpty(vlResult.RootCause))
+            while (!leaseCts.IsCancellationRequested)
             {
-                await jobService.MarkFailedAsync(job.Id, "VL 未返回根因", stoppingToken);
-                return;
+                await Task.Delay(HeartbeatInterval, leaseCts.Token);
+                using var scope = _services.CreateScope();
+                var service = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
+                if (!await service.RenewLeaseAsync(jobId, owner, version, leaseCts.Token))
+                {
+                    leaseCts.Cancel();
+                    return;
+                }
             }
-
-            await jobService.MarkCompletedAsync(job.Id, vlResult.RootCause, sw.ElapsedMilliseconds, stoppingToken);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Service is shutting down. Leave the job in Running state; the next
-            // startup's crash recovery will mark it Failed.
-            workerLogger.LogWarning(
-                "ReanalyzeJob cancelled mid-VL: JobId={JobId}, ItemId={ItemId}",
-                job.Id, job.ItemId);
-        }
+        catch (OperationCanceledException) when (leaseCts.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            sw.Stop();
-            workerLogger.LogError(ex,
-                "ReanalyzeJob: VL call failed. JobId={JobId}, ItemId={ItemId}, DurationMs={DurationMs}",
-                job.Id, job.ItemId, sw.ElapsedMilliseconds);
-
-            try
-            {
-                await jobService.MarkFailedAsync(job.Id, $"VL 调用失败: {ex.Message}", stoppingToken);
-            }
-            catch (Exception failEx)
-            {
-                workerLogger.LogError(failEx,
-                    "ReanalyzeJob: failed to write failure state. JobId={JobId}",
-                    job.Id);
-            }
+            _logger.LogWarning("Reanalyze heartbeat lost: JobId={JobId}, ErrorType={ErrorType}", jobId, ex.GetType().Name);
+            leaseCts.Cancel();
         }
     }
 }

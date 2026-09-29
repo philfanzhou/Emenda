@@ -28,7 +28,7 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 | 文件配置键 | 环境变量 | 控制的启动行为 |
 |---|---|---|
 | `Mistake:Workers:UploadPollingWorker:Enabled` | `Mistake__Workers__UploadPollingWorker__Enabled` | Student 轮询采集 |
-| `Mistake:Workers:ReanalyzeJobHostedService:Enabled` | `Mistake__Workers__ReanalyzeJobHostedService__Enabled` | 重分析任务领取及启动时的 Running 恢复 |
+| `Mistake:Workers:ReanalyzeJobHostedService:Enabled` | `Mistake__Workers__ReanalyzeJobHostedService__Enabled` | 重分析任务领取、续租及过期重领 |
 | `Mistake:Workers:ReanalyzeJobCleanupService:Enabled` | `Mistake__Workers__ReanalyzeJobCleanupService__Enabled` | 终态任务 30 天清理 |
 
 例如在 `appsettings.Production.json` 中只关闭采集：
@@ -43,7 +43,7 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 }
 ```
 
-也可设置 `Mistake__Workers__UploadPollingWorker__Enabled=false` 覆盖文件值。启动日志只打印各 worker 的最终 `Enabled` 状态；值在进程启动时固定，修改文件、环境或 Consul 配置后必须重启。关闭某 worker 后，本进程不会启动其轮询、恢复或清理；数据库中已有 Pending/Running、终态与对象引用不会因关闭而被改写。重新启用时只恢复原 worker 行为，不重置任务状态；重分析 worker 目前会在启动时把所有 Running 标为 Failed，此行为**不具备多实例安全恢复保证**。
+也可设置 `Mistake__Workers__UploadPollingWorker__Enabled=false` 覆盖文件值。启动日志只打印各 worker 的最终 `Enabled` 状态；值在进程启动时固定，修改文件、环境或 Consul 配置后必须重启。关闭某 worker 后，本进程不会启动其轮询、恢复或清理；数据库中已有 Pending/Running、终态与对象引用不会因关闭而被改写。重新启用时只恢复原 worker 行为，不重置任务状态；重分析 worker 只重领租约已过期的 Job，不改写其他实例的有效 Running；达到三次领取上限后明确失败。
 
 开关只作用于本进程。运维须核对所有实例的最终开关以及停机时的在途请求和任务；其他实例可能继续处理，在途外部请求也不会回滚。回退到旧二进制前应重新核对三项状态：旧版即使在 Local 模式也会无条件启动三个 worker，降级本身不能用作安全停机。禁用采集不禁用手动上传或退回 HTTP 入口；Local 模式仍不能因此匿名对公网开放，完整能力与身份边界由后续任务处理。
 
@@ -163,19 +163,16 @@ Platform 连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 
 
 ---
 
-## 流程二：数据库准备
+## 流程二：数据库准备与重分析切换
 
-1. 停止全部 Mistake 应用写入，取得目标 PostgreSQL 数据库的可恢复备份，在隔离测试库按[备份恢复演练](./BackupRestoreDrill.md)恢复并核对结构、行数、稳定 ID、关键引用与内容。只有完成恢复校验后才可确认 `--backup-verified`。确认连接配置的数据库名、主机和环境，准备有目标表 DDL 与迁移历史写入权限的维护账号；普通启动账号仅需只读权限。备份文件和连接凭据不得写入仓库。
-2. 对**全新空库**，使用与 Host 相同配置运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`（或在容器内以该参数运行 Host）。命令完成且打印 `Mistake empty database upgrade verified.` 后，检查四条 `__EFMigrationsHistory` 记录和 `mistake_item`、`mistake_practice`、`process_log`、`reanalyze_job` 四张表，再正常启动服务。
-3. 对受支持的带数据旧库，在停写与可恢复备份核验完成后，使用与 Host 相同配置运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。`--database` 必须与连接配置中的数据库名完全相同；两个确认开关由操作者在完成对应操作后提供，开关本身不构成备份证明。命令在同库事务与 advisory lock 内核验精确结构，只迁移缺失版本，并核验四历史目标后提交。其中仅一种完整匹配的三历史误盖章结构可修复：已重命名的 `root_cause`、已有 `process_log.student_id` 及索引与 `reanalyze_job`、仍为 `text` 的 `mistake_practice.image_paths`。该分支逐行核验 JSON 字符串数组，锁定练习表并转换为 `jsonb`，再次核验 ID 与路径序列后才补第四历史。任何非字符串数组或未知结构原状拒绝。输出 `Mistake known database upgrade verified.` 后，再以只读账号正常启动并核查业务条目、练习路径、日志和历史记录。相同目标可重复运行；并发命令串行复核。
-4. 对已知运行时结构，即前三条 EF 迁移历史且 `mistake_item.root_cause` 已存在、`review_comment` 不存在，升级前也可正常启动。启动仅作只读 catalog/历史核验，不执行 DDL、stamp 或 `MigrateAsync`；显式带数据升级只在精确核验后补第四条历史。
-5. 对已完成第四条迁移的目标结构，正常启动，同样只读核验。两个显式升级命令在该结构上可重复执行，无数据或结构变更。
+1. **A 停写备份**：逐一关闭所有实例的 `Mistake__Workers__ReanalyzeJobHostedService__Enabled`，等待或终止在途 VL；再停止 Mistake 写入。确认准确主机与数据库名，取得可恢复备份，并在隔离 PostgreSQL 15 库恢复核对结构、行数、稳定 ID、Job 状态与 ProcessLog。只有核验后才使用 `--backup-verified`。不可让旧 worker 与新 worker 混跑。
+2. **B 显式升级**：全新空库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`；受支持带数据历史库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。维护账号需 DDL 与迁移历史写权限。命令在单一事务和 advisory lock 内升级至**五条** EF 历史并核验精确 catalog；第四条历史目标升级到第五条。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。未知或矛盾结构原状拒绝，旧 `public.mistake` 由 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。
+3. **C 验库启用**：用新二进制执行正常启动，只读核验精确五历史目标，然后逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。正常启动不迁移数据库。旧二进制遇新 schema 应失败关闭。
+4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新二进制后可重新启用，过期 Job 自动重领；若确需旧二进制，停止写入，在隔离库恢复已核验的升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧二进制或 EF Down 均不是无损回退。
 
-`--upgrade-empty-db` 在事务中取得 PostgreSQL advisory lock，仅为空库创建目标结构；DDL 或核验失败时回滚。它不迁移已有数据。`--upgrade-known-db` 只接受精确的 1/2/3 条 EF 历史结构、已重命名的三历史结构（包括上文唯一的 text 路径形态）及四历史目标。非法 JSON、额外/缺少对象、`public.mistake` 旧表、只有历史表、其他未知或矛盾历史都会拒绝，事务在提交前失败时回滚。异常或取消后先保持停写，重新以只读方式核对 catalog、历史与业务行，再重试显式命令；若提交时连接中断，结果可能未知，必须重新连接核验，不据错误消息猜测是否已提交。若升级后的业务数据或行为不正确，停止写入，按已验证备份流程恢复至新测试库并核对后再决定实际恢复；不把 EF Down 当作生产恢复保证。隔离演练见[备份恢复演练](./BackupRestoreDrill.md)；旧 `public.mistake` 映射与其他误盖章修复仍属 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK)。勿手工 stamp 或删表绕过检查。本说明不表示已对生产库执行升级。
+提交前故障会使升级事务回滚。COMMIT 响应丢失时结果未知，保持停写并重新只读核对 catalog、五条历史和业务行，再决定是否重复运行显式命令；不得凭异常文本猜测结果。重复升级到精确目标只核验，不增加失败日志。具体结构和支持的旧形态见[迁移历史](../database/migrations.md)，隔离备份演练见[备份恢复演练](./BackupRestoreDrill.md)。本手册不表示已执行生产升级。
 
-普通启动账号至少需要读取 public schema 的 catalog、四张业务表和 `__EFMigrationsHistory`；只读数据库连接可完成启动核验。执行显式升级的账号另需目标对象的 DDL 与迁移历史写入权限。连接失败或权限不足会中止对应操作。
-
-详见[迁移历史](../database/migrations.md)及[故障排查](./Troubleshooting.md)。
+普通启动账号需要读取 public catalog、四张业务表和迁移历史；worker 账号需要 Job/Item/ProcessLog 写权限。数据库或租约异常时，先关闭所有重分析 worker，检查 `owner_id`、`fencing_version`、`lease_until`、`attempt` 及关联日志，不手工改 owner/version 或清空队列。参见[故障排查](./Troubleshooting.md)。
 
 ---
 

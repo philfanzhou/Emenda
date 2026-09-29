@@ -45,41 +45,33 @@ public interface IReanalyzeJobService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Worker entry: pull up to <paramref name="maxCount"/> oldest Pending jobs from DB.
+    /// Atomically claim up to <paramref name="maxCount"/> jobs under the database-wide limit.
     /// </summary>
-    Task<List<ReanalyzeJobModel>> ClaimPendingJobsAsync(
+    Task<List<ReanalyzeJobModel>> ClaimJobsAsync(
         int maxCount,
         CancellationToken ct = default);
+    Task<bool> RenewLeaseAsync(Guid jobId, Guid ownerId, long version, CancellationToken ct = default);
 
     /// <summary>
-    /// Pending -> Running. Sets started_at. Returns true if the job existed and was Pending.
-    /// </summary>
-    Task<bool> MarkRunningAsync(Guid jobId, CancellationToken ct = default);
-
-    /// <summary>
-    /// Running -> Completed. Updates mistake_item.root_cause + writes ProcessLog
-    /// (Action=Reanalyzed, details contains job_id).
+    /// Complete only the matching live lease; Job, Item and ProcessLog commit together.
     /// </summary>
     Task<bool> MarkCompletedAsync(
         Guid jobId,
+        Guid ownerId,
+        long version,
         string newRootCause,
         long vlDurationMs,
         CancellationToken ct = default);
 
     /// <summary>
-    /// Running -> Failed. Writes ProcessLog (Action=Reanalyzed, details contains
-    /// job_id + "FAILED: {reason}"). Does NOT change mistake_item.root_cause.
+    /// Fail only the matching live lease with a bounded reason code.
     /// </summary>
     Task<bool> MarkFailedAsync(
         Guid jobId,
-        string errorMessage,
+        Guid ownerId,
+        long version,
+        string reasonCode,
         CancellationToken ct = default);
-
-    /// <summary>
-    /// Crash recovery: any Running job is marked Failed with
-    /// "服务重启导致任务中断". Returns count of recovered jobs.
-    /// </summary>
-    Task<int> RecoverStaleRunningJobsAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Delete Completed/Failed jobs whose completed_at is older than <paramref name="cutoff"/>.

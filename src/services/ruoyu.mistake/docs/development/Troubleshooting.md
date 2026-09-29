@@ -262,7 +262,7 @@
 
 **症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史。`public.mistake` 旧关系、空库、只有部分表以及列类型或历史不一致均不允许普通启动。
 
-**处理**：保持服务停止写入，备份数据库，核对提示所指对象及 `__EFMigrationsHistory`。启动核验是只读事务，不执行 DDL、stamp 或 EF 迁移。已知三条历史且 `root_cause` 已存在的运行时结构，以及四条历史的目标结构，可直接启动。精确受支持的 1/2/3 历史库按[部署说明](./Deployment.md)使用显式 `--upgrade-known-db`；未知、混合或旧 `public.mistake` 结构仍按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。不要删除旧表或手工补写历史。
+**处理**：保持服务停止写入，备份数据库，核对提示所指对象及 `__EFMigrationsHistory`。启动核验是只读事务，不执行 DDL、stamp 或 EF 迁移。只有五条历史的精确目标结构可直接启动。精确受支持的 1/2/3/4 历史库及已知三历史运行时结构按[部署说明](./Deployment.md)使用显式 `--upgrade-known-db`；未知、混合或旧 `public.mistake` 结构仍按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。不要删除旧表或手工补写历史。
 
 ### 5.4 空库需要显式升级
 
@@ -473,3 +473,9 @@
 | `"Migrated image from {OldPath} to {NewPath}"` | MistakeServiceImpl.cs L322 | OSS 图片迁移成功 |
 | `"Error migrating image {Path}"` | MistakeServiceImpl.cs L328 | OSS 图片迁移失败 |
 | `"Mistake database schema verified for read-only startup"` | DatabaseInitializer.cs | 启动已完成只读结构核验 |
+
+### 重分析任务停滞或迁移结果不明
+
+先检查全部 Mistake 实例的重分析 worker 开关。有效 Running 由 `lease_until > clock_timestamp()` 判定；健康 worker 每 20 秒续租，租约 90 秒。单个失联 Job 到期可由其他实例重领，最多三次；旧 owner 的迟到结果会被栅栏拒绝。若数据库不可用或重领持续失败，关闭所有重分析 worker，保留 Job 行及日志，核查数据库连接和权限后再启用。不要手工把 Running 改 Pending、删 Job 或改 `owner_id`/`fencing_version`。
+
+升级发生连接断开时保持停写，以只读连接核验 `__EFMigrationsHistory` 是否已有第五条 `20260930000001_LeaseReanalyzeJobs`、六个租约/执行字段、旧 Running 的 `upgrade_interrupted` 状态和关联日志；五历史精确目标可重复执行显式升级。结构不匹配时保留备份并停止切换，按[部署流程](./Deployment.md)处理。旧二进制不能直接对第五历史库回退运行。
