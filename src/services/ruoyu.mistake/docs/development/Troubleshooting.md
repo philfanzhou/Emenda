@@ -258,28 +258,11 @@
 
 **根治建议**：确保 PostgreSQL 服务稳定运行，配置正确的连接字符串。
 
-### 5.3 旧表迁移失败
+### 5.3 旧 schema 启动拒绝
 
-**典型症状**：服务启动时 `DatabaseInitializer.InitializeAsync` 抛出 SQL 执行异常。
+**典型症状**：初始化抛出 `Legacy schema detected: public.mistake exists`，服务未开始监听。
 
-**常见日志特征**：
-- `MigrateOldSchemaAsync` 中的 SQL 执行异常
-- 正常日志：`"检测到旧表 mistake，正在迁移到新表结构..."`（`DatabaseInitializer.cs` L98）
-- 正常日志：`"旧表迁移完成"`（L184）
-
-**可能根因**：
-- 旧表 `mistake` 中存在与新表结构冲突的约束
-- `ALTER TABLE` 操作被其他连接锁定
-- `__EFMigrationsHistory` 操作异常
-
-**排查步骤**：
-1. 查看启动日志中是否有 `"检测到旧表 mistake"` 的日志
-2. 检查 PostgreSQL 中是否存在 `mistake` 旧表：`SELECT * FROM information_schema.tables WHERE table_name = 'mistake'`
-3. 检查 `__EFMigrationsHistory` 表状态
-
-**临时绕过**：手动执行迁移 SQL（参考 `DatabaseInitializer.cs` 中的语句），然后插入迁移 stamp
-
-**根治建议**：确保启动时无其他连接占用旧表；生产环境在部署前备份数据库。
+**原因与处理**：`public.mistake` 名称已被关系占用。启动保护在 DDL、历史 stamp 和 Common initializer 之前执行，只读检查失败也中止启动。检查 `SELECT to_regclass('public.mistake') IS NOT NULL`，保留数据及备份，按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的显式升级流程验收后再恢复服务。不要运行旧版本或手工 stamp 绕过保护。
 
 ### 5.4 迁移 stamp 失败
 
@@ -295,9 +278,9 @@
 
 **排查步骤**：
 1. 查询 `SELECT * FROM "__EFMigrationsHistory"` 确认是否有 `20260514051544_InitialCreate` 记录
-2. 若无，手动插入：`INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES ('20260514051544_InitialCreate', '8.0.0')`
+2. 若缺少记录，先对照实际表结构与迁移内容核验，不得仅凭表名补写历史。
 
-**临时绕过**：手动插入迁移 stamp
+**临时绕过**：无；保留备份并按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 排查。
 
 **根治建议**：确保数据库用户有创建表和插入数据的权限。
 
@@ -319,11 +302,7 @@
 2. 查询 `SELECT column_name FROM information_schema.columns WHERE table_name = 'process_log' AND column_name = 'student_id'` 确认列是否已存在
 3. 如果列已存在但迁移未标记，说明 stamp 逻辑未覆盖此迁移
 
-**临时绕过**：手动插入迁移 stamp：
-```sql
-INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
-```
+**临时绕过**：无；`student_id` 存在不代表 `image_paths` 已为 jsonb。保留备份并核验完整迁移效果，不要手动 stamp。
 
 **根治建议**：确保 `StampMigrationsIfTablesExistAsync` 中包含对 `AddStudentIdToProcessLog` 迁移的检测逻辑，当 `student_id` 列已存在时自动标记该迁移为已应用。
 
@@ -444,29 +423,9 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 
 **根治建议**：在 `SubmitMistakeUpload` 和 `AddMistakeItem` 入口校验 `sourceImagePath` 格式，确保以 `uploads/` 开头。
 
-### 8.2 旧表 mistake 的数据迁移
+### 8.2 旧表 `mistake` 数据待升级
 
-**典型症状**：从旧表 `mistake` 迁移后，部分字段值不符合预期。
-
-**常见日志特征**：
-- `"检测到旧表 mistake，正在迁移到新表结构..."`（`DatabaseInitializer.cs` L98）
-- `"mistake_item 已存在，删除旧表 mistake"`（L131）
-- `"旧表迁移完成"`（L184）
-
-**可能根因**：
-- 旧表 `mistake.status` → 新表 `mistake_item.review_status`：列名重命名（L152-162）
-- 旧表 `process_log.mistake_id` → `process_log.mistake_item_id`：列名重命名（L214-225）
-- 旧表 `mistake_practice.mistake_id` → `mistake_practice.mistake_item_id`：列名重命名（L244-255）
-- 新增列的默认值：`source_upload_id = ''`、`source_regions = '[]'`、`type = 0`
-
-**排查步骤**：
-1. 检查迁移后的表结构：`\d mistake_item`、`\d process_log`、`\d mistake_practice`
-2. 确认列名是否正确：`review_status`（非 `status`）、`mistake_item_id`（非 `mistake_id`）
-3. 检查 `source_upload_id` 是否为空字符串（旧数据无此字段，默认为 `''`）
-
-**临时绕过**：手动执行 SQL 修正列名或补充默认值
-
-**根治建议**：迁移完成后验证数据完整性，特别是 `source_upload_id` 为空的记录需手动补充。
+当前启动初始化不会把 `mistake` 自动重命名为 `mistake_item`，也不会删除旧表、外键或旧列。若库中仍有旧表，先停止应用写入并备份，核对历史 schema、行和关联关系，再通过显式升级流程处理。旧表与新表同时存在也不得直接删除任一方。
 
 ---
 
@@ -545,6 +504,4 @@ VALUES ('20260612030015_AddStudentIdToProcessLog', '8.0.0');
 | `"Mistake gRPC host is running."` | Program.cs L86 | 服务正常启动 |
 | `"Migrated image from {OldPath} to {NewPath}"` | MistakeServiceImpl.cs L322 | OSS 图片迁移成功 |
 | `"Error migrating image {Path}"` | MistakeServiceImpl.cs L328 | OSS 图片迁移失败 |
-| `"检测到旧表 mistake，正在迁移到新表结构..."` | DatabaseInitializer.cs L98 | 旧表迁移开始 |
-| `"旧表迁移完成"` | DatabaseInitializer.cs L184 | 旧表迁移完成 |
 | `"已将 InitialCreate 迁移标记为已应用"` | DatabaseInitializer.cs L70 | 迁移 stamp 写入成功 |
