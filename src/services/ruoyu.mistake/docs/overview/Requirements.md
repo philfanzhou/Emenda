@@ -39,5 +39,5 @@
 |--------|----------|
 | OSS (MinIO/S3) | [docs/Integration/Oss/](../Integration/Oss/) |
 | Student 服务 | [Student HTTP 集成](../Integration/Student.md) |
-| Storage 服务 | [docs/Integration/Storage/](../Integration/Storage/) |
+| Storage 服务 | [PostgreSQL 存储集成](../Integration/Storage.md) |
 | Portals (前端门户) | [docs/Integration/Portals/](../Integration/Portals/) |

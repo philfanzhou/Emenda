@@ -129,7 +129,7 @@
 | **节点名称** | 数据库准备 |
 | **前置条件** | 配置准备完成；PostgreSQL 数据库服务器已运行 |
 | **输入条件** | 有效的 `ConnectionStrings:Default` 或 Consul `PostgreSql:*` 配置 |
-| **操作步骤** | 1. 创建数据库 `ruoyu_study_mistake`（或连接串中指定的数据库名）<br>2. 启动服务，`DatabaseInitializer` 将自动完成建表和迁移 |
+| **操作步骤** | 1. 创建数据库 `ruoyu_study_mistake`（或连接串中指定的数据库名）<br>2. 确认 `public.mistake` 旧关系名不存在<br>3. 启动服务，`DatabaseInitializer` 执行当前初始化路径 |
 | **成功判定** | 服务启动日志中出现初始化完成信息，无异常；数据库中存在 `mistake_item`、`mistake_practice`、`process_log` 三张表 |
 | **失败后排查方向** | 1. 连接失败 → 检查连接串、数据库是否已创建、网络是否可达<br>2. 权限不足 → 检查数据库用户是否有 CREATE TABLE 权限<br>3. 迁移失败 → 查看启动日志中的异常堆栈，见下方"数据库迁移失败判断" |
 
@@ -137,9 +137,7 @@
 
 服务启动时 `DatabaseInitializer.InitializeAsync` 按以下顺序执行：
 
-1. **旧表迁移**：检测 `mistake` 表是否存在
-   - 存在 → 重命名为 `mistake_item`，添加缺失列（`source_upload_id`、`source_regions`、`reviewer_id`、`reviewed_at`、`root_cause`、`type`、`question_id`），将 `status` 列重命名为 `review_status`，删除旧列（`date`、`image_paths`、`fingerprint`），创建索引
-   - 不存在 → 跳过
+1. **旧表保护**：只读检查 `to_regclass('public.mistake')`；该名称存在或检查失败时，直接中止启动，且不执行后续 DDL/stamp。先保留备份，等待显式升级流程验收；不得通过回退旧版本或手工 stamp 绕过保护。
 2. **列名修正**：检测 `process_log` 和 `mistake_practice` 表中是否存在 `mistake_id` 列，存在则重命名为 `mistake_item_id`
 3. **外键补全**：为 `process_log` 和 `mistake_practice` 添加指向 `mistake_item` 的外键约束（如不存在）
 4. **迁移标记**：如果 `mistake_item` 表已存在但 `__EFMigrationsHistory` 中没有 `20260514051544_InitialCreate` 记录，自动插入标记行
@@ -150,10 +148,10 @@
 | 现象 | 原因 | 判断方法 |
 |------|------|---------|
 | 服务启动抛出 `NpgsqlException` | PostgreSQL 未运行或连接串错误 | 查看启动日志中的异常信息，确认 Host/Port/Username/Database |
-| 日志出现"检测到旧表 mistake，正在迁移到新表结构..."后异常 | 旧表结构与迁移脚本不兼容 | 检查旧表列定义，确认迁移 SQL 中的 `IF EXISTS` / `IF NOT EXISTS` 逻辑是否覆盖 |
+| 启动错误包含 `Legacy schema detected: public.mistake` | 旧关系名存在 | 保持数据库不变，备份后按显式升级流程处理；服务不会监听请求 |
 | 日志出现"已将 InitialCreate 迁移标记为已应用" | 正常，表示已有表被标记 | 无需处理 |
 | 表存在但 `__EFMigrationsHistory` 为空且未 stamp | stamp 逻辑未执行 | 手动检查 `mistake_item` 表是否存在，确认 stamp SQL 是否被跳过 |
-| EF Core 后续 `Migrate()` 报错"已有列" | stamp 未正确标记，EF 尝试重复迁移 | 手动在 `__EFMigrationsHistory` 中插入 `20260514051544_InitialCreate` 记录 |
+| EF Core 后续 `Migrate()` 报错"已有列" | stamp 与实际 schema 不一致 | 停止升级并保留备份，按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 核验 schema 与历史；不要手工 stamp |
 
 ---
 
@@ -310,8 +308,8 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 | 2 | 数据库连接 | 查询错题列表接口 | 正常返回数据 | 检查连接串、数据库状态 |
 | 3 | HTTP 端口可达 | portal 调用 mistake 接口 | 正常响应 | 检查 HTTP 端口 5007、防火墙规则 |
 | 4 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |
-| 5 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` | 存在 `20260514051544_InitialCreate` 记录 | 手动 stamp 或排查迁移日志 |
-| 6 | 旧表已迁移 | 检查 `mistake` 表是否存在 | 不存在（已重命名为 `mistake_item`） | 如仍存在，检查迁移日志是否跳过 |
+| 5 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` 和实际 schema | 历史与表结构一致 | 保留备份，核验迁移日志与 schema，不手动 stamp |
+| 6 | 旧表保护 | 检查 `public.mistake` 是否存在 | 不存在；存在时服务拒绝启动 | 保留数据库及备份，走显式升级流程，不使用旧版本绕过 |
 | 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 手动执行列重命名 SQL |
 | 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 手动添加外键约束 |
 | 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 手动创建缺失索引 |

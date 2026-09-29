@@ -188,15 +188,7 @@
 
 ### TC-17 数据库初始化 (PostgreSQL)
 
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 数据库初始化 — PostgreSQL |
-| **目的** | 验证 PostgreSQL 环境下数据库初始化流程：旧表迁移、迁移标记、新表创建 |
-| **前置条件** | 1. PostgreSQL 可达<br>2. ConnectionStrings:Default 包含有效 PostgreSQL 连接串 |
-| **输入** | 启动 mistake 服务 |
-| **操作步骤** | **场景 A — 全新数据库：**<br>1. 清空数据库，启动服务<br>2. 验证 mistake_item、mistake_practice、process_log 表被创建<br>3. 验证索引被创建<br><br>**场景 B — 存在旧表 mistake：**<br>1. 数据库中存在旧 mistake 表<br>2. 启动服务<br>3. 验证旧表被重命名为 mistake_item<br>4. 验证新列被添加（source_upload_id, source_regions 等）<br>5. 验证旧列被删除（date, image_paths, fingerprint）<br>6. 验证 status 列被重命名为 review_status<br><br>**场景 C — 已有 mistake_item 表：**<br>1. 数据库中已存在 mistake_item 表<br>2. 启动服务<br>3. 验证 __EFMigrationsHistory 中已标记 InitialCreate<br>4. 验证不重复创建表 |
-| **预期结果** | 各场景下服务正常启动，表结构符合预期，日志中无异常 |
-| **失败判断** | 服务启动失败；Npgsql 异常；SQL 执行异常；表结构不正确 |
+在专用 PostgreSQL 数据库中分别验证以下输入：仅有 `public.mistake`、新旧表并存、空旧表、被外键引用的旧表、已有与不存在的迁移历史。调用 `DatabaseInitializer.InitializeAsync` 均应在任何写库步骤前抛出固定的旧 schema 错误；行、索引、外键和历史前后相同，多进程同时启动也全部拒绝。连接检查失败必须中止初始化。其他 schema 中同名表不触发此保护。无 `public.mistake` 时继续既有初始化路径；独立迁移问题可能导致后续失败，不能将其误报为本保护回归。自动化证据位于 `LegacySchemaGuardPostgresTests`，需设置专用的 `MISTAKE_LEGACY_GUARD_TEST_CONNECTION`。
 
 ### TC-20 地址错误 (MistakeGrpcService:Address)
 

@@ -11,15 +11,9 @@
 2. **mistake_practice** — 包含外键 CASCADE 约束及 4 个索引
 3. **process_log** — 包含外键 CASCADE 约束及 3 个索引
 
-### 旧表迁移（DatabaseInitializer）
+### 旧表保护（DatabaseInitializer）
 
-`DatabaseInitializer.MigrateOldSchemaAsync` 处理从旧表 `mistake` 到 `mistake_item` 的迁移：
-
-1. 检测旧表 `mistake` 是否存在
-2. 删除旧表的外键约束
-3. 如果 `mistake_item` 已存在：直接删除旧表
-4. 如果 `mistake_item` 不存在：重命名表 + 添加新列 + 移除旧列 + 创建新索引
-5. 修复 `process_log` 和 `mistake_practice` 的列名 `mistake_id` → `mistake_item_id` 及外键约束
+启动时先只读检查 `to_regclass('public.mistake')`。若旧关系名存在，则抛出初始化错误；旧表、关联数据、外键和迁移历史均不改动。不再自动重命名或删除旧表。必须备份并通过父项 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的显式升级流程验收后才可恢复服务。查询错误也中止初始化。无旧表时，既有的列名修复、stamp 和 Common initializer 路径仍运行；它们不属于本保护修复的范围。
 
 ### 列重命名
 
@@ -40,13 +34,7 @@
 | `type` | `INT` | mistake_item |
 | `question_id` | `VARCHAR(36)` | mistake_item |
 
-### 已移除的列（旧表）
-
-| 列名 | 说明 |
-|------|------|
-| `date` | 旧版本日期字段，已被 `created_at` 替代 |
-| `image_paths` | 旧版本图片路径，已被 `source_regions` (JSONB) 替代 |
-| `fingerprint` | 图片指纹字段，已移除 |
+旧表中的 `date`、`image_paths`、`fingerprint` 等字段由本保护原样保留；不可把启动拒绝当成已完成的数据迁移。
 
 ## 20260612030015_AddStudentIdToProcessLog
 
@@ -57,6 +45,8 @@
 
 1. **process_log** — 新增 `student_id` 列 (`VARCHAR(36)`, NULL) 及索引 `IX_process_log_student_id`
 2. **mistake_practice** — `image_paths` 列类型从 `text` 改为 `jsonb`
+
+对于尚未应用本迁移的正规 EF 历史链，类型变更显式使用 `USING image_paths::jsonb`；回退到 InitialCreate 使用 `USING image_paths::text`。仅承诺 JSON 数组的路径字符串语义保留，不承诺 JSON 文本空白字节一致。已经真实应用本迁移的数据库不会重执行。非法 JSON 会使本迁移在 EF 事务中失败并回滚新增列、索引和历史记录；保留原始文本，先备份并修正非法数据，再运行 `MigrateAsync` 重试。不要使用 `EnsureCreated`、手工添加 `student_id` 或手工 stamp 绕过失败。本修复不处理历史库错误 stamp，也不代表启动初始化器的旧 schema 升级已安全。
 
 ### 幂等性问题与 stamp 机制
 
