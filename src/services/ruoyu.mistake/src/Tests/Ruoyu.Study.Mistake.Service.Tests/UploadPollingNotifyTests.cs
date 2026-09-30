@@ -6,7 +6,6 @@ using Moq;
 using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service.StudentIntegration;
-using Ruoyu.Study.MistakeBff.HttpClients;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 

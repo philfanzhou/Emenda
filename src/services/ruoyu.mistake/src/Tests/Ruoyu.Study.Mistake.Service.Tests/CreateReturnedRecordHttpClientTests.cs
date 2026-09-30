@@ -1,11 +1,11 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.StudentClient;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
 /// <summary>
-/// IKJEY4 acceptance tests for the shared StudentHttpClient returned-record
+/// IKJEY4 acceptance tests for the Mistake-owned StudentHttpClient returned-record
 /// callback classification: success (fresh or replayed) must surface,
 /// HTTP 409 must classify as a payload conflict, and transport failures /
 /// timeouts / unreadable or business-failed responses must surface as an

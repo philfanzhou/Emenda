@@ -4,7 +4,7 @@ Mistake 通过 HTTP 主动访问 Student，获取已分类的 Processing 上传�
 
 ## 边界与调用路径
 
-Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host 的 `StudentUploadSourceGateway` 将它映射到共享 `IStudentHttpClient`。`UploadPollingWorker` 和审核端点使用同一个 scoped adapter 注册。地址由 Student 能力开关（`Mistake:Student:Enabled`，Local 缺省 `false`、Platform 缺省 `true`）决定：Local 启用能力时只接受显式 `Mistake:Local:Student:Url`，不从 `StudentService:Url`、`StudentService:BaseUrl`、`StudentService:GrpcUrl` 或 `http://localhost:5005` 回退；Platform 启用能力时仍按该顺序选择既有地址；能力禁用时客户端注册到保留的不可解析占位地址，本进程不会向 Student 发出任何请求。URL、JSON 和 HTTP 行为仍由现有共享客户端控制。配置细节见[部署说明](../development/Deployment.md)的“Student 能力开关与退回失败关闭”。
+Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host 的 `StudentUploadSourceGateway` 将它映射到 Mistake 自有的 Student 出站客户端 `IStudentHttpClient`（Mistake 树内 `src/StudentClient` 库，IKJFF5 收拢，只暴露 Mistake 消费的四个端点面：scan / returned / remove-processed / accounts-students，语义与 JsonOptions、日志、异常分类自原共享实现逐字移植，wire 协议不变）。`UploadPollingWorker` 和审核端点使用同一个 scoped adapter 注册。地址由 Student 能力开关（`Mistake:Student:Enabled`，Local 缺省 `false`、Platform 缺省 `true`）决定：Local 启用能力时只接受显式 `Mistake:Local:Student:Url`，不从 `StudentService:Url`、`StudentService:BaseUrl`、`StudentService:GrpcUrl` 或 `http://localhost:5005` 回退；Platform 启用能力时仍按该顺序选择既有地址；能力禁用时客户端注册到保留的不可解析占位地址，本进程不会向 Student 发出任何请求。URL、JSON 和 HTTP 行为由该自有客户端控制；Mistake 构建不再依赖共享 `MistakeBff.HttpClients`（该共享库继续服务三个 Portal BFF 层，与本服务解耦，后续漂移由两侧协议测试矩阵约束）。配置细节见[部署说明](../development/Deployment.md)的“Student 能力开关与退回失败关闭”。
 
 | Mistake 调用方 | 自有端口操作 | Student HTTP 客户端操作 |
 |---|---|---|
@@ -22,7 +22,7 @@ Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host
 - 未知记录（`unknown_record`）：记录不存在且无墓碑证明此前已完成。这是已迁移对象与 Student 记录之间的数据不一致，重试无法解决——Worker 记 Warning（含需人工核查来源记录语义），不重试；自动对账与修复入口属 IKJ0IO，本项不引入。
 - 其他失败：保持既有 Warning 行为；传输异常保持既有 Error 行为。
 
-共享 `StudentHttpClient.RemoveProcessedImagesAsync` 透传 Student 响应的 `errorKind` 字段；`IUploadSourceGateway` 将其映射为 `RemoveProcessedUploadImagesResult.UnknownRecord`。存量已删除记录（墓碑引入前）重放按 `unknown_record` 返回，历史缺口由 IKJ0IO 对账处理。
+自有客户端的 `RemoveProcessedImagesAsync` 透传 Student 响应的 `errorKind` 字段；`IUploadSourceGateway` 将其映射为 `RemoveProcessedUploadImagesResult.UnknownRecord`。存量已删除记录（墓碑引入前）重放按 `unknown_record` 返回，历史缺口由 IKJ0IO 对账处理。
 
 ## 退回回调幂等协议（IKJEY4）
 
@@ -32,13 +32,13 @@ Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host
 - 载荷冲突（HTTP 409，同 `operationId` 异载荷）：审核响应 `Success=false` 并说明冲突，需人工核查 Student 侧退回记录。
 - 结果未知（传输失败、超时或不可读响应）：审核响应 `Success=false`，错误文本含 `operationId` 与回查指引（Student `GET /api/uploads/returned/{operationId}`），先回查再以同一 `operationId` 重试。
 
-共享 `StudentHttpClient.CreateReturnedRecordAsync` 不再吞 `HttpRequestException`：传输失败显式归类为「结果未知」并携带原始异常消息。审核端点自身的 reject 副作用（图片迁移回 `uploads/`、删除错题条目）发生在回调之前，不因回调失败回滚；已知失败不再被报告为审核成功。
+自有客户端的 `CreateReturnedRecordAsync` 不吞 `HttpRequestException`：传输失败显式归类为「结果未知」并携带原始异常消息。审核端点自身的 reject 副作用（图片迁移回 `uploads/`、删除错题条目）发生在回调之前，不因回调失败回滚；已知失败不再被报告为审核成功。
 
 ## 当前失败语义
 
 能力开关（`Mistake:Student:Enabled=false`）是第一层失败关闭：`UploadPollingWorker:Enabled=true` 与之矛盾并在启动前报错；`POST /api/mistakes/{id}/review` 请求 `ReviewStatus=Rejected` 时在调用领域服务、OSS 或 Student 之前返回 HTTP 503 与稳定响应（`Student 集成未启用，退回审核不可用`），不产生任何部分副作用，`ReviewStatus=Confirmed` 路径不受影响。
 
-旧共享 `GetProcessingUploadRecordsAsync` 仍可能将查询故障降为空页，供尚未迁移的调用方兼容使用；Mistake worker 使用新的严格扫描方法。创建退回记录的回调已按「退回回调幂等协议」分类显式化（IKJEY4），传输失败不再被吞掉；移除回调已按「移除回调三态语义」分类（IKJEY6），墓碑重放幂等确认成功，无墓碑的未知记录失败且不静默重试。因此本切片不保证写回调与跨数据库、OSS 的原子性，Mistake 侧崩溃后的自动重试与补偿仍由 [迁出总览](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZXV) 的后续任务负责。先发布 Student 新端点和迁移，再发布本版 Mistake；反序部署时 Mistake 读取会显式失败，不回退到旧 offset 分页。
+把查询故障降为空页的宽松 `GetProcessingUploadRecordsAsync` 只保留在 Portal 共享库 `MistakeBff.HttpClients` 中供 Portal 调用方使用；Mistake 自有客户端不携带该方法，worker 使用严格扫描方法。创建退回记录的回调已按「退回回调幂等协议」分类显式化（IKJEY4），传输失败不再被吞掉；移除回调已按「移除回调三态语义」分类（IKJEY6），墓碑重放幂等确认成功，无墓碑的未知记录失败且不静默重试。因此本切片不保证写回调与跨数据库、OSS 的原子性，Mistake 侧崩溃后的自动重试与补偿仍由 [迁出总览](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZXV) 的后续任务负责。先发布 Student 新端点和迁移，再发布本版 Mistake；反序部署时 Mistake 读取会显式失败，不回退到旧 offset 分页。
 
 ## 验证
 

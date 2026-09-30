@@ -16,7 +16,7 @@ using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Host;
 using Ruoyu.Study.Mistake.Service;
 using Ruoyu.Study.Consul.Shared;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.StudentClient;
 using Ruoyu.Study.Mistake.Service.StudentIntegration;
 
 var builder = WebApplication.CreateBuilder(args);

@@ -1,6 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.StudentClient;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 

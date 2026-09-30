@@ -1,7 +1,7 @@
 using Moq;
 using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Service.StudentIntegration;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.StudentClient;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 

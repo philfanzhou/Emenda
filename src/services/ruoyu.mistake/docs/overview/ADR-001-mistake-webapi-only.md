@@ -39,6 +39,8 @@ ruoyu.mistake 服务当前是**纯 gRPC 服务**：
 | C11 | **UploadPollingWorker 改用 IStudentHttpClient**：原先通过 gRPC client 调用的 GetProcessingUploadRecords / RemoveProcessedImages 改为 HTTP。|
 | C12 | **CompleteUploadReview 保持 `[Obsolete]`**：仅保留供 LegacyClean 运维兜底，HTTP 端点也保留。|
 
+> 2026-09-30 修订（IKJFF5）：C10 的 Mistake 侧份额已收拢——Mistake 的 Student 出站调用改由 Mistake 树内自有客户端承载（`src/services/ruoyu.mistake/src/StudentClient`，四个端点面），Mistake Host 不再引用 `MistakeBff.HttpClients`。共享库继续服务三个 Portal BFF 层（含 Mistake 调用 IMistakeHttpClient 与 Portal 侧 IStudentHttpClient），见 [Integration/Student.md](../Integration/Student.md)。
+
 ## 路由设计
 
 18 个端点按 6 个业务域分组：

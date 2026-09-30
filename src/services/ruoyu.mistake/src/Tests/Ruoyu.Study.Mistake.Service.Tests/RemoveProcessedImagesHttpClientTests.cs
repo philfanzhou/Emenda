@@ -1,11 +1,11 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
-using Ruoyu.Study.MistakeBff.HttpClients;
+using Ruoyu.Study.Mistake.StudentClient;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
 /// <summary>
-/// IKJEY6 acceptance tests for the shared StudentHttpClient removal callback:
+/// IKJEY6 acceptance tests for the Mistake-owned StudentHttpClient removal callback:
 /// the errorKind classification from the Student response payload must be
 /// passed through unchanged, and absent classifications stay empty.
 /// </summary>
