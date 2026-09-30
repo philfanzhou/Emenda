@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 using Serilog;
 using Ruoyu.Study.Common.Ai;
+using Ruoyu.Study.Common.Authentication;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
@@ -75,6 +76,59 @@ const string uploadPollingEnabledKey = "Mistake:Workers:UploadPollingWorker:Enab
 if (!studentEnabled && uploadPollingEnabled)
     throw new InvalidOperationException(
         $"{studentEnabledKey}=false cannot be combined with {uploadPollingEnabledKey}=true; the upload polling worker requires the Student capability.");
+
+// Inbound /api authentication (IKJEIC): shared JWT trust with an anonymous
+// compatibility window. strict=false (default) keeps every /api endpoint
+// reachable without a token; valid tokens still populate HttpContext.User.
+// strict=true requires an authenticated caller (shared audience or Admin
+// AppId audience scheme) on /api only, and the trust snapshot must be
+// complete. The value is fixed for this process lifetime.
+const string strictApiAuthKey = "IdentityService:MistakeApiStrictAuth";
+var strictApiAuthValue = builder.Configuration[strictApiAuthKey];
+bool strictApiAuth;
+if (strictApiAuthValue is null)
+    strictApiAuth = false;
+else if (bool.TryParse(strictApiAuthValue, out var parsedStrictApiAuth))
+    strictApiAuth = parsedStrictApiAuth;
+else
+    throw new InvalidOperationException($"{strictApiAuthKey} must be true or false.");
+
+var identityTrustOptions = builder.Configuration
+    .GetSection(IdentityAuthenticationOptions.SectionName)
+    .Get<IdentityAuthenticationOptions>() ?? new IdentityAuthenticationOptions();
+var identityTrustValidation = new IdentityAuthenticationOptionsValidator()
+    .Validate(Options.DefaultName, identityTrustOptions);
+if (strictApiAuth && identityTrustValidation.Failed)
+{
+    // Strict mode with a missing or incomplete trust snapshot fails startup
+    // with configuration-key-only messages instead of serving a silent
+    // all-401 surface. The compatibility window (strict=false) does not
+    // validate: an unconfigured or invalid section simply stays anonymous.
+    throw new OptionsValidationException(
+        IdentityAuthenticationOptions.SectionName,
+        typeof(IdentityAuthenticationOptions),
+        identityTrustValidation.Failures);
+}
+var identityTrustConfigured = identityTrustValidation.Succeeded;
+if (identityTrustConfigured)
+{
+    builder.Services.AddRuoyuJwtBearer(
+        builder.Configuration,
+        builder.Environment,
+        configureAuthorization: options =>
+        {
+            // Compatibility window: anonymous callers keep reaching /api, so
+            // the shared RequireAuthenticatedUser fallback policy is turned
+            // off. Strict mode enforces the requirement on the /api group
+            // itself; the root endpoint and future health endpoints stay
+            // anonymous in both modes.
+            options.FallbackPolicy = null;
+            MistakeApiAuthorization.AddMistakeApiPolicy(options);
+        });
+    // Optional Admin AppId audience scheme (shared library, IKJ8PJ failure
+    // semantics): unconfigured fails closed for that audience only.
+    builder.Services.AddRuoyuAdminAudienceJwtBearer(builder.Configuration);
+}
 
 // Kestrel has one HTTP/1 listener. Resolve the final value after Platform
 // configuration is loaded; URLS and Endpoints:Http are not listener authorities.
@@ -287,6 +341,13 @@ app.Logger.LogInformation(
     studentEnabled, localMode ? "Local" : "Platform", studentAddressSource,
     studentEnabled ? studentBaseUrl : "(capability disabled)");
 
+app.Logger.LogInformation(
+    "Inbound API auth: Strict={Strict}, TrustConfigured={TrustConfigured}, Authority={Authority}, Audience={Audience}, AdminAudienceConfigured={AdminAudienceConfigured}",
+    strictApiAuth, identityTrustConfigured,
+    identityTrustConfigured ? identityTrustOptions.Authority : "(not configured)",
+    identityTrustConfigured ? identityTrustOptions.Audience : "(not configured)",
+    identityTrustOptions.GetAdminAudience() is not null);
+
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
     ossConfig.InternalEndpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
 app.Logger.LogInformation("UploadPollingWorker: Enabled={Enabled}, PollInterval=60s", uploadPollingEnabled);
@@ -296,11 +357,23 @@ app.Logger.LogInformation("ReanalyzeJobCleanupService: Enabled={Enabled}, Retent
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
-    var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-    await DatabaseInitializer.InitializeAsync(dbContext, loggerFactory);
+    if (dbContext.Database.IsRelational())
+    {
+        var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+        await DatabaseInitializer.InitializeAsync(dbContext, loggerFactory);
+    }
+    else
+    {
+        // Non-relational providers are only used by the WebApplicationFactory
+        // test pipeline; the read-only PostgreSQL verification does not apply.
+        await dbContext.Database.EnsureCreatedAsync();
+    }
 }
 
-app.MapMistakeHttpEndpoints();
+app.MapMistakeHttpEndpoints(requireAuthenticatedApi: strictApiAuth);
 app.MapGet("/", () => "Mistake WebAPI host is running.");
 
 app.Run();
+
+// Make Program class public for integration tests (WebApplicationFactory<Program>)
+public partial class Program;

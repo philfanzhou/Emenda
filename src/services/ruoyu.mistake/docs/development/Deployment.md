@@ -74,6 +74,25 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 
 兼容窗口与既有行为：启用 Student 后的失败吞没、响应丢失、重复 ReturnedRecord、跨 DB/OSS 原子性与授权仍由 [IKIZY1](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY1)、[IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3)、[IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 处理；本开关只阻止"未接入 Student"模式下的明显数据丢失路径。
 
+### 入站 API 认证（兼容窗口，默认关闭）
+
+Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 验证（ADR-0008 的 2026-09-30 Mistake 修订），全部 18 个 `/api/*` 业务端点默认处于**匿名兼容窗口**：行为与历史版本一致，`/` 健康端点始终匿名。
+
+| 配置键 | 环境变量 | 作用 |
+|---|---|---|
+| `IdentityService:MistakeApiStrictAuth` | `IdentityService__MistakeApiStrictAuth` | 收紧开关（默认 `false`，启动快照）：`true` 时 `/api/*` 要求已认证主体（共享受众或 Admin AppId 受众令牌），匿名与无效令牌一律 401 |
+| `IdentityService:Authority` / `Issuer` / `Audience` | `IdentityService__Authority` 等 | 信任快照；strict=true 时三项必填，缺失在数据库访问前以键名显式启动失败 |
+| `IdentityService:AdminAudience` | `IdentityService__AdminAudience` | 可选 Admin AppId 受众；未配置时该受众失败关闭，共享受众路径不受影响 |
+
+规则与边界：
+
+- Platform 模式信任快照来自共享 Consul `IdentityService` 配置节（与 Portal 相同来源），可由容器环境变量覆盖；Local 模式不强制配置——完全未配置 `IdentityService` 时正常启动、不校验、不访问 JWKS（无 SignaCore 依赖也能运行）。
+- strict=false（默认）时有效令牌仍会解析进 `HttpContext.User`（供后续逐资源授权切片使用），令牌验证失败视为匿名，不拒绝请求；不启用全局 fallback policy，根端点与后续健康端点保持匿名。
+- 开关与信任配置都是启动快照：变更后必须重启进程。回滚 = 置 `false`（或移除键）重启，即恢复匿名窗口；无数据库、schema 或数据迁移。strict=true 的实际启用时点由父项 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 在消费者升级与联测后决定，当前部署不应启用。
+- 非法开关值（非 `true`/`false`）在数据库访问前报 `IdentityService:MistakeApiStrictAuth must be true or false.` 并拒绝启动。
+- 调用方令牌透传：三个 Portal 经共享 `MistakeBff.HttpClients` 调用 Mistake 时自动透传当前请求的 Bearer（无令牌则不附加头），Portal 无需配置；Ruoyu.Admin 直连 Mistake 时需自行携带有效令牌。令牌只经内存请求管线，日志与诊断输出不包含令牌、签名 URL 或密钥。
+- 本窗口只建立「调用方可信身份」，不做逐资源归属/角色授权（父项切片②）；18 个端点的参数赋权问题仍按父项登记处理。
+
 共享 Consul 配置承载：
 
 - `config/ruoyu/shared.json`
