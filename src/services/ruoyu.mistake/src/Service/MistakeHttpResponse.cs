@@ -38,4 +38,12 @@ public static class MistakeHttpResponse
     /// </summary>
     public static IResult Internal(string message)
         => Results.Json(new { success = false, message }, statusCode: (int)HttpStatusCode.InternalServerError);
+
+    /// <summary>
+    /// 503 Service Unavailable: { "success": false, "message": "..." }.
+    /// Stable shape for capability-unavailable failures; no partial side
+    /// effects have been applied when this status is returned.
+    /// </summary>
+    public static IResult ServiceUnavailable(string message)
+        => Results.Json(new { success = false, message }, statusCode: (int)HttpStatusCode.ServiceUnavailable);
 }

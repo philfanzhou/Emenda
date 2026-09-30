@@ -237,11 +237,23 @@ public static partial class MistakeHttpEndpoints
         IMistakeDomainService mistakeService,
         IUploadSourceGateway studentClient,
         IOssService ossService,
+        StudentCapabilityOptions studentCapability,
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (request.ReviewStatus != ReviewStatus.Confirmed && request.ReviewStatus != ReviewStatus.Rejected)
             return MistakeHttpResponse.BadRequest("审核结果只能是确认或退回");
+
+        // Fail closed before any domain, OSS or Student change: the reject flow
+        // migrates images, deletes the item and creates a Student returned
+        // record, none of which is safe when the Student capability is off.
+        if (!studentCapability.Enabled && request.ReviewStatus == ReviewStatus.Rejected)
+        {
+            logger.LogWarning(
+                "ReviewMistakeItem: rejected review for item {ItemId} rejected before any side effect because the Student capability is disabled",
+                id);
+            return MistakeHttpResponse.ServiceUnavailable("Student 集成未启用，退回审核不可用（Mistake:Student:Enabled=false）");
+        }
 
         try
         {

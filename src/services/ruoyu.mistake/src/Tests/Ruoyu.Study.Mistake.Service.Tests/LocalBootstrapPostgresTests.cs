@@ -302,6 +302,14 @@ public sealed class LocalBootstrapPostgresTests
         };
         if (overrideWorker is not null)
             settings[$"Mistake__Workers__{overrideWorker}__Enabled"] = mode == "Local" ? "true" : "false";
+        // Since the Student capability slice, enabling the polling worker in
+        // Local mode additionally requires the Student capability and its
+        // dedicated explicit URL (legacy StudentService keys are ignored).
+        if (mode == "Local" && polling)
+        {
+            settings["Mistake__Student__Enabled"] = "true";
+            settings["Mistake__Local__Student__Url"] = $"http://127.0.0.1:{student.Port}";
+        }
 
         var upgraded = await RunHostAsync(["--upgrade-empty-db"], settings);
         Assert.Equal(0, upgraded.ExitCode);
@@ -390,7 +398,15 @@ public sealed class LocalBootstrapPostgresTests
             await File.WriteAllTextAsync(Path.Combine(directory, "appsettings.json"),
                 System.Text.Json.JsonSerializer.Serialize(new
                 {
-                    Mistake = new { ConfigMode = "Local", Workers = new { UploadPollingWorker = new { Enabled = true } } },
+                    Mistake = new
+                    {
+                        ConfigMode = "Local",
+                        Workers = new { UploadPollingWorker = new { Enabled = true } },
+                        // Local polling requires the Student capability with its
+                        // dedicated explicit URL since the capability slice.
+                        Student = new { Enabled = true },
+                        Local = new { Student = new { Url = $"http://127.0.0.1:{student.Port}" } }
+                    },
                     ConnectionStrings = new { MistakeLocal = connection },
                     StudentService = new { Url = $"http://127.0.0.1:{student.Port}" }
                 }));
@@ -612,7 +628,7 @@ public sealed class LocalBootstrapPostgresTests
         Assert.Contains("address already in use", result.Output, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static int GetAvailablePort()
+    internal static int GetAvailablePort()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -621,7 +637,7 @@ public sealed class LocalBootstrapPostgresTests
         return port;
     }
 
-    private static async Task<string> WaitForRootAsync(HttpClient client, int port, CancellationToken token)
+    internal static async Task<string> WaitForRootAsync(HttpClient client, int port, CancellationToken token)
     {
         while (true)
         {
@@ -631,7 +647,7 @@ public sealed class LocalBootstrapPostgresTests
         }
     }
 
-    private static async Task<RunResult> RunHostAsync(string[] arguments,
+    internal static async Task<RunResult> RunHostAsync(string[] arguments,
         IReadOnlyDictionary<string, string?> settings, bool waitForStartup = false,
         TimeSpan? startupDelay = null, Func<CancellationToken, Task>? duringStartup = null,
         bool includeLocalOss = true)
@@ -704,9 +720,9 @@ public sealed class LocalBootstrapPostgresTests
         return new RunResult(process.ExitCode, await output + await errors);
     }
 
-    private sealed record RunResult(int ExitCode, string Output);
+    internal sealed record RunResult(int ExitCode, string Output);
 
-    private sealed class RequestProbe : IAsyncDisposable
+    internal sealed class RequestProbe : IAsyncDisposable
     {
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly bool _serverError;
@@ -753,7 +769,7 @@ public sealed class LocalBootstrapPostgresTests
         }
     }
 
-    private sealed class TestDatabase : IAsyncDisposable
+    internal sealed class TestDatabase : IAsyncDisposable
     {
         private readonly string _admin;
 

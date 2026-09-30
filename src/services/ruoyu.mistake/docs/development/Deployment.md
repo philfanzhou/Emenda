@@ -53,7 +53,26 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 
 也可设置 `Mistake__Workers__UploadPollingWorker__Enabled=false` 覆盖文件值。启动日志只打印各 worker 的最终 `Enabled` 状态；值在进程启动时固定，修改文件、环境或 Consul 配置后必须重启。关闭某 worker 后，本进程不会启动其轮询、恢复或清理；数据库中已有 Pending/Running、终态与对象引用不会因关闭而被改写。重新启用时只恢复原 worker 行为，不重置任务状态；重分析 worker 只重领租约已过期的 Job，不改写其他实例的有效 Running；达到三次领取上限后明确失败。
 
-开关只作用于本进程。运维须核对所有实例的最终开关以及停机时的在途请求和任务；其他实例可能继续处理，在途外部请求也不会回滚。回退到旧二进制前应重新核对三项状态：旧版即使在 Local 模式也会无条件启动三个 worker，降级本身不能用作安全停机。禁用采集不禁用手动上传或退回 HTTP 入口；Local 模式仍不能因此匿名对公网开放，完整能力与身份边界由后续任务处理。
+开关只作用于本进程。运维须核对所有实例的最终开关以及停机时的在途请求和任务；其他实例可能继续处理，在途外部请求也不会回滚。回退到旧二进制前应重新核对三项状态：旧版即使在 Local 模式也会无条件启动三个 worker，降级本身不能用作安全停机。禁用采集 worker 本身不禁用手动上传 HTTP 入口；Student 能力禁用会使退回审核失败关闭（见下节）。Local 模式仍不能因此匿名对公网开放，完整能力与身份边界由后续任务处理。
+
+### Student 能力开关与退回失败关闭
+
+`Mistake:Student:Enabled`（环境键 `Mistake__Student__Enabled`）控制本进程的 Student 集成能力（采集轮询与退回审核的 Student 调用）。缺省值按模式区分：Local 为 `false`（未接入 Student 时失败关闭），Platform 为 `true`（保持既有启用行为）。显式值只接受 `true`/`false`；其他值在数据库初始化、worker 启动和任何外部连接前以键名报错并拒绝启动。
+
+| 配置键 | 环境变量 | 作用 |
+|---|---|---|
+| `Mistake:Student:Enabled` | `Mistake__Student__Enabled` | Student 集成能力总开关（Local 缺省 `false`，Platform 缺省 `true`） |
+| `Mistake:Local:Student:Url` | `Mistake__Local__Student__Url` | Local 启用能力时的 Student 显式 HTTP(S) 基础地址，必填 |
+
+规则与失败关闭语义：
+
+- `Mistake:Student:Enabled=false` 与 `Mistake:Workers:UploadPollingWorker:Enabled=true` 是矛盾配置：轮询 worker 依赖 Student，启动前以两个键名报错。Platform 显式禁用同样适用。
+- Local `Enabled=true` 必须显式提供 `Mistake:Local:Student:Url`（绝对 HTTP(S) 地址，不含凭据、路径、查询或片段）。缺失、空白或无效时在任何数据库连接前报键名失败；`StudentService:Url`/`BaseUrl`/`GrpcUrl` 与仓库示例 `http://localhost:5005` 不会作为回退补齐。Platform 保持既有 `StudentService:Url` → `BaseUrl` → `GrpcUrl` → `http://localhost:5005` 地址兼容，不因本切片改动。
+- 能力禁用时：即使配置文件仍留有 Student 地址，本进程也不会向 Student 发出任何请求；`UploadPollingWorker` 不得启用；`POST /api/mistakes/{id}/review` 携带 `ReviewStatus=Rejected` 时在调用领域服务、OSS 或 Student 之前返回 HTTP 503 与稳定响应 `{"success":false,"message":"Student 集成未启用，退回审核不可用（Mistake:Student:Enabled=false）"}`，不更新审核状态、不复制/删除 OSS 对象、不删除错题条目、不创建 ReturnedRecord，重复请求结果一致。`ReviewStatus=Confirmed` 路径与既有本域读 API 不受能力关闭影响。
+- 禁用态仍保持 Host 正常依赖注入启动；共享 Student 客户端注册到保留的不可解析占位地址，任何意外调用都会立即网络失败而不是触达真实服务。启动诊断只记录 `Mode`、`Enabled`、地址来源（`Explicit`/`Platform`/`Disabled`），不输出凭据。
+- 开关在进程启动时固定；重新启用或改地址必须重启并重新通过上述校验。与 Local OSS 键一致，两个显式数据库升级命令不要求 `Mistake:Local:Student:Url`。
+
+兼容窗口与既有行为：启用 Student 后的失败吞没、响应丢失、重复 ReturnedRecord、跨 DB/OSS 原子性与授权仍由 [IKIZY1](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY1)、[IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3)、[IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 处理；本开关只阻止"未接入 Student"模式下的明显数据丢失路径。
 
 共享 Consul 配置承载：
 
