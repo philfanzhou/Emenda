@@ -27,9 +27,22 @@ namespace Ruoyu.Study.Mistake.Service;
 /// </summary>
 public static partial class MistakeHttpEndpoints
 {
-    public static IEndpointRouteBuilder MapMistakeHttpEndpoints(this IEndpointRouteBuilder app)
+    /// <summary>
+    /// Maps all 18 business endpoints (the /api group).
+    /// When <paramref name="requireAuthenticatedApi"/> is true (the
+    /// IdentityService:MistakeApiStrictAuth startup snapshot), the /api group
+    /// requires an authenticated principal (shared-audience or Admin AppId
+    /// audience scheme, no role check); the default false keeps the anonymous
+    /// compatibility window identical to the baseline. The root endpoint and
+    /// future health endpoints stay anonymous in both modes.
+    /// </summary>
+    public static IEndpointRouteBuilder MapMistakeHttpEndpoints(
+        this IEndpointRouteBuilder app, bool requireAuthenticatedApi = false)
     {
         var group = app.MapGroup("/api");
+
+        if (requireAuthenticatedApi)
+            group.RequireAuthorization(MistakeApiAuthorization.PolicyName);
 
         // ===== MistakeItem endpoints =====
         // 1. SubmitMistakeUpload — POST /api/mistakes/upload
