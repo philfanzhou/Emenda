@@ -98,29 +98,63 @@ public class StudentUploadSourceGatewayTests
     }
 
     [Fact]
-    public async Task CreateReturnedRecordAsync_PreservesArgumentsTaskAndCancellation()
+    public async Task CreateReturnedRecordAsync_PreservesArgumentsAndClassifiedOutcome()
     {
         var entries = new List<UploadImageEntry> { new() { Path = "uploads/return.png", Type = "mistake" } };
         List<ImageEntryDto>? delegatedEntries = null;
         using var cancellation = new CancellationTokenSource();
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
-        client.Setup(c => c.CreateReturnedRecordAsync("student", It.IsAny<List<ImageEntryDto>>(), "Rejected", "reason", cancellation.Token))
-            .Callback<string, List<ImageEntryDto>, string?, string?, CancellationToken>((_, sent, _, _, _) => delegatedEntries = sent)
-            .Returns(completion.Task);
+        client.Setup(c => c.CreateReturnedRecordAsync("student", It.IsAny<List<ImageEntryDto>>(), "Rejected", "reason", "mistake-return:1", cancellation.Token))
+            .Callback<string, List<ImageEntryDto>, string?, string?, string?, CancellationToken>((_, sent, _, _, _, _) => delegatedEntries = sent)
+            .ReturnsAsync(new CreateReturnedRecordOutcome
+            {
+                Status = CreateReturnedRecordStatus.Succeeded, Replayed = true, Message = "ok"
+            });
 
-        var task = new StudentUploadSourceGateway(client.Object, EnabledCapability()).CreateReturnedRecordAsync(
-            "student", entries, "Rejected", "reason", cancellation.Token);
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability()).CreateReturnedRecordAsync(
+            "student", entries, "Rejected", "reason", "mistake-return:1", cancellation.Token);
 
-        Assert.Same(completion.Task, task);
-        Assert.False(task.IsCompleted);
+        Assert.Equal(CreateReturnedUploadRecordStatus.Succeeded, actual.Status);
+        Assert.True(actual.Replayed);
+        Assert.Equal("ok", actual.Message);
         var delegatedEntry = Assert.Single(delegatedEntries!);
         Assert.Equal(("uploads/return.png", "mistake"),
             (delegatedEntry.Path, delegatedEntry.Type));
         entries[0].Path = "changed";
         Assert.Equal("uploads/return.png", delegatedEntry.Path);
-        completion.SetResult();
-        await task;
+        client.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData(CreateReturnedRecordStatus.Succeeded, CreateReturnedUploadRecordStatus.Succeeded)]
+    [InlineData(CreateReturnedRecordStatus.PayloadConflict, CreateReturnedUploadRecordStatus.PayloadConflict)]
+    [InlineData(CreateReturnedRecordStatus.Unknown, CreateReturnedUploadRecordStatus.Unknown)]
+    public async Task CreateReturnedRecordAsync_MapsEveryFailureClassification(
+        CreateReturnedRecordStatus source, CreateReturnedUploadRecordStatus expected)
+    {
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        client.Setup(c => c.CreateReturnedRecordAsync("student", It.IsAny<List<ImageEntryDto>>(), null, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateReturnedRecordOutcome { Status = source, Message = "m" });
+
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability()).CreateReturnedRecordAsync(
+            "student", new List<UploadImageEntry>(), null, null, null);
+
+        Assert.Equal(expected, actual.Status);
+        Assert.Equal("m", actual.Message);
+        client.VerifyAll();
+    }
+
+    [Fact]
+    public async Task CreateReturnedRecordAsync_PreservesNullOperationIdForLegacyCalls()
+    {
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        client.Setup(c => c.CreateReturnedRecordAsync("student", It.IsAny<List<ImageEntryDto>>(), null, null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreateReturnedRecordOutcome { Status = CreateReturnedRecordStatus.Succeeded });
+
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability()).CreateReturnedRecordAsync(
+            "student", new List<UploadImageEntry>(), null, null, null);
+
+        Assert.Equal(CreateReturnedUploadRecordStatus.Succeeded, actual.Status);
         client.VerifyAll();
     }
 

@@ -752,7 +752,7 @@ public sealed class MistakeApiResourceAuthTests
             throw new NotImplementedException();
         public Task<RemoveProcessedUploadImagesResult> RemoveProcessedImagesAsync(string recordId, List<string> imagePaths, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
-        public Task CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, CancellationToken cancellationToken = default) =>
+        public Task<CreateReturnedUploadRecordResult> CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, string? operationId, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
     }
 

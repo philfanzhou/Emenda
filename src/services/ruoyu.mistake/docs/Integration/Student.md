@@ -12,7 +12,7 @@ Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host
 | `UploadPollingWorker` | `RemoveProcessedImagesAsync` | `RemoveProcessedImagesAsync` |
 | `MistakeHttpEndpoints` 审核退回 | `CreateReturnedRecordAsync` | `CreateReturnedRecordAsync` |
 
-扫描映射保留记录 ID、Student ID、图片路径与类型、`hasMore` 和下一游标。worker 仅在成功读取一页并处理后使用下一游标；页间来源状态改变或删除不会使剩余项因 offset 左移而漏取。真正空页正常结束；HTTP 4xx/5xx、业务失败、网络故障、超时和坏 JSON 均作为故障停止本轮，下轮从新界限重试。调用方取消直接退出，不计为成功。移除结果保留成功标志、删除标志、剩余数量、错误消息与 `UnknownRecord` 分类（见下节）；退回操作保留 Student ID、图片路径和类型、备注与退回原因。adapter 复制可变列表，原样传递取消令牌及异常；不增加重试或缓存。
+扫描映射保留记录 ID、Student ID、图片路径与类型、`hasMore` 和下一游标。worker 仅在成功读取一页并处理后使用下一游标；页间来源状态改变或删除不会使剩余项因 offset 左移而漏取。真正空页正常结束；HTTP 4xx/5xx、业务失败、网络故障、超时和坏 JSON 均作为故障停止本轮，下轮从新界限重试。调用方取消直接退出，不计为成功。移除结果保留成功标志、删除标志、剩余数量、错误消息与 `UnknownRecord` 分类（见「移除回调三态语义」）；退回操作返回分类结果（成功/载荷冲突/结果未知，见「退回回调幂等协议」）并携带 `operationId`、Student ID、图片路径和类型、备注与退回原因。adapter 复制可变列表，原样传递取消令牌及异常；不增加重试或缓存。
 
 ## 移除回调三态语义（IKJEY6）
 
@@ -24,12 +24,22 @@ Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host
 
 共享 `StudentHttpClient.RemoveProcessedImagesAsync` 透传 Student 响应的 `errorKind` 字段；`IUploadSourceGateway` 将其映射为 `RemoveProcessedUploadImagesResult.UnknownRecord`。存量已删除记录（墓碑引入前）重放按 `unknown_record` 返回，历史缺口由 IKJ0IO 对账处理。
 
+## 退回回调幂等协议（IKJEY4）
+
+审核退回（`POST /api/mistakes/{id}/review`，`ReviewStatus=Rejected`）创建 Student 退回记录时派生确定性幂等键 `operationId = "mistake-return:{itemId}"`，不引入 Mistake 侧持久化状态。回调结果分三类：
+
+- 成功（含重放）：审核响应 `Success=true`；重放时日志记录 `replayed=true`，不视为失败。
+- 载荷冲突（HTTP 409，同 `operationId` 异载荷）：审核响应 `Success=false` 并说明冲突，需人工核查 Student 侧退回记录。
+- 结果未知（传输失败、超时或不可读响应）：审核响应 `Success=false`，错误文本含 `operationId` 与回查指引（Student `GET /api/uploads/returned/{operationId}`），先回查再以同一 `operationId` 重试。
+
+共享 `StudentHttpClient.CreateReturnedRecordAsync` 不再吞 `HttpRequestException`：传输失败显式归类为「结果未知」并携带原始异常消息。审核端点自身的 reject 副作用（图片迁移回 `uploads/`、删除错题条目）发生在回调之前，不因回调失败回滚；已知失败不再被报告为审核成功。
+
 ## 当前失败语义
 
 能力开关（`Mistake:Student:Enabled=false`）是第一层失败关闭：`UploadPollingWorker:Enabled=true` 与之矛盾并在启动前报错；`POST /api/mistakes/{id}/review` 请求 `ReviewStatus=Rejected` 时在调用领域服务、OSS 或 Student 之前返回 HTTP 503 与稳定响应（`Student 集成未启用，退回审核不可用`），不产生任何部分副作用，`ReviewStatus=Confirmed` 路径不受影响。
 
-旧共享 `GetProcessingUploadRecordsAsync` 仍可能将查询故障降为空页，供尚未迁移的调用方兼容使用；Mistake worker 使用新的严格扫描方法。创建退回记录的失败仍可能被吞掉；移除回调已按上节三态语义分类。因此本切片不保证写回调幂等或跨数据库与 OSS 的原子性，其余保证由 [迁出总览](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZXV) 的后续任务负责。先发布 Student 新端点和迁移，再发布本版 Mistake；反序部署时 Mistake 读取会显式失败，不回退到旧 offset 分页。
+旧共享 `GetProcessingUploadRecordsAsync` 仍可能将查询故障降为空页，供尚未迁移的调用方兼容使用；Mistake worker 使用新的严格扫描方法。创建退回记录的回调已按「退回回调幂等协议」分类显式化（IKJEY4），传输失败不再被吞掉；移除回调已按「移除回调三态语义」分类（IKJEY6），墓碑重放幂等确认成功，无墓碑的未知记录失败且不静默重试。因此本切片不保证写回调与跨数据库、OSS 的原子性，Mistake 侧崩溃后的自动重试与补偿仍由 [迁出总览](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZXV) 的后续任务负责。先发布 Student 新端点和迁移，再发布本版 Mistake；反序部署时 Mistake 读取会显式失败，不回退到旧 offset 分页。
 
 ## 验证
 
-adapter、HTTP 失败矩阵、移除回调 `errorKind` 透传（`RemoveProcessedImagesHttpClientTests`）、Worker 移除回调分类日志（`UploadPollingNotifyTests`）、worker 游标与 Student 能力开关（含 503 失败关闭、矛盾配置与显式地址校验）测试位于 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/`。在 `src/services/ruoyu.mistake/src` 运行 `dotnet build Ruoyu.Study.Mistake.sln --configuration Release` 和 `dotnet test Ruoyu.Study.Mistake.sln --configuration Release`。Student 的隔离 PostgreSQL 扫描测试需显式提供 `STUDENT_SCAN_TEST_CONNECTION`，只在临时数据库执行。
+adapter、HTTP 失败矩阵、移除回调 `errorKind` 透传（`RemoveProcessedImagesHttpClientTests`）、Worker 移除回调分类日志（`UploadPollingNotifyTests`）、退回回调分类（`CreateReturnedRecordHttpClientTests`）、reject 回调流程（`ReviewRejectCallbackTests`）、worker 游标与 Student 能力开关（含 503 失败关闭、矛盾配置与显式地址校验）测试位于 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/`。在 `src/services/ruoyu.mistake/src` 运行 `dotnet build Ruoyu.Study.Mistake.sln --configuration Release` 和 `dotnet test Ruoyu.Study.Mistake.sln --configuration Release`。Student 的隔离 PostgreSQL 扫描测试需显式提供 `STUDENT_SCAN_TEST_CONNECTION`，只在临时数据库执行。
