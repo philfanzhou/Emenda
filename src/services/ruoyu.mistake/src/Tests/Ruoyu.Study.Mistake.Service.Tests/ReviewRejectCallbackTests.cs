@@ -1,0 +1,371 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
+using FluentAssertions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
+using Ruoyu.Study.Common.Oss;
+using Ruoyu.Study.Mistake.Database;
+using Ruoyu.Study.Mistake.Database.Entities;
+using Ruoyu.Study.Mistake.Service.StudentIntegration;
+using Xunit;
+
+namespace Ruoyu.Study.Mistake.Service.Tests;
+
+/// <summary>
+/// IKJEY4 acceptance tests for the review reject flow's Student callback:
+/// the request must carry the deterministic operationId derived from the
+/// item, and callback failures must not be reported as a successful review
+/// (transport-unknown points at the read-back query, payload-conflict is
+/// explicit). Runs the real host with strict+resource auth enabled, EF Core
+/// InMemory, a recording gateway fake and an OSS fake that supports the
+/// reject-flow copy/delete pair.
+/// </summary>
+public sealed class ReviewRejectCallbackTests
+{
+    private const string Issuer = "http://localhost:5002";
+    private const string SharedAudience = "QuantumZhou.microservices";
+    private static readonly SymmetricSecurityKey SigningKey = new(
+        Encoding.UTF8.GetBytes("ikjey4-review-reject-signing-key"));
+    private const string StaffSub = "staff-reject-1";
+    private const string StudentId = "student-reject-1";
+
+    private static Guid ItemId { get; } = Guid.Parse("40000000-0000-0000-0000-000000000001");
+
+    [Fact]
+    public async Task RejectCallbackSucceeded_ReportsSuccessAndSendsDerivedOperationId()
+    {
+        using var factory = NewFactory(out var gateway);
+        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
+        {
+            Status = CreateReturnedUploadRecordStatus.Succeeded,
+            Replayed = false
+        };
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(
+            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}","returnReason":"图片模糊"}""", Token(StaffSub, "teacher")));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("\"success\":true");
+
+        var call = Assert.Single(gateway.ReturnedRecordCalls);
+        Assert.Equal(StudentId, call.StudentId);
+        Assert.Equal($"mistake-return:{ItemId}", call.OperationId);
+        Assert.Equal("Rejected", call.Comments);
+        Assert.Equal("图片模糊", call.ReturnReason);
+        var entry = Assert.Single(call.Entries);
+        Assert.Equal("uploads/reject-1/a.png", entry.Path);
+        Assert.Equal("mistake", entry.Type);
+
+        // The reject flow still performed its own side effects.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
+            db.MistakeItems.Should().BeEmpty();
+        }
+    }
+
+    [Fact]
+    public async Task RejectCallbackUnknown_ReportsFailureWithReadBackHint()
+    {
+        using var factory = NewFactory(out var gateway);
+        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
+        {
+            Status = CreateReturnedUploadRecordStatus.Unknown,
+            Message = "connection refused"
+        };
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(
+            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("\"success\":false");
+        body.Should().Contain($"mistake-return:{ItemId}");
+        body.Should().Contain("结果未知");
+        body.Should().Contain($"/api/uploads/returned/mistake-return:{ItemId}");
+        Assert.Single(gateway.ReturnedRecordCalls);
+    }
+
+    [Fact]
+    public async Task RejectCallbackConflict_ReportsFailureWithConflictMessage()
+    {
+        using var factory = NewFactory(out var gateway);
+        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
+        {
+            Status = CreateReturnedUploadRecordStatus.PayloadConflict,
+            Message = "different payload"
+        };
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(
+            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("\"success\":false");
+        body.Should().Contain("载荷冲突");
+        body.Should().Contain($"mistake-return:{ItemId}");
+        Assert.Single(gateway.ReturnedRecordCalls);
+    }
+
+    [Fact]
+    public async Task RejectCallbackSucceededReplay_LogsReplayWithoutFailingTheReview()
+    {
+        using var factory = NewFactory(out var gateway);
+        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
+        {
+            Status = CreateReturnedUploadRecordStatus.Succeeded,
+            Replayed = true
+        };
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(
+            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("\"success\":true");
+    }
+
+    [Fact]
+    public async Task RejectRoleGateAndReviewerBindingStillHold()
+    {
+        using var factory = NewFactory(out var gateway);
+        using var client = factory.CreateClient();
+        string Body(string reviewer) =>
+            $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{reviewer}}"}""";
+
+        (await client.SendAsync(Post($"/api/mistakes/{ItemId}/review", Body(StaffSub), Token("learner-1", "student"))))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.SendAsync(Post($"/api/mistakes/{ItemId}/review", Body("someone-else"), Token(StaffSub, "teacher"))))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        gateway.ReturnedRecordCalls.Should().BeEmpty();
+    }
+
+    // ===== Helpers =====
+
+    private static RejectCallbackWebApplicationFactory NewFactory(out RecordingGateway gateway)
+    {
+        gateway = new RecordingGateway();
+        var factory = new RejectCallbackWebApplicationFactory(gateway);
+        factory.SeedData();
+        return factory;
+    }
+
+    private static string Token(string sub, string role)
+    {
+        var now = DateTime.UtcNow;
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, sub),
+            new("unique_name", sub),
+            new("role", role)
+        };
+        var token = new JwtSecurityToken(
+            Issuer, SharedAudience, claims,
+            notBefore: now.AddMinutes(-5),
+            expires: now.AddMinutes(5),
+            signingCredentials: new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256));
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static HttpRequestMessage Post(string path, string json, string token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return request;
+    }
+
+    internal sealed class RecordingGateway : IUploadSourceGateway
+    {
+        public List<(string StudentId, List<UploadImageEntry> Entries, string? Comments, string? ReturnReason, string? OperationId)> ReturnedRecordCalls { get; } = new();
+
+        public CreateReturnedUploadRecordResult NextReturnedRecordResult { get; set; } = new()
+        {
+            Status = CreateReturnedUploadRecordStatus.Succeeded
+        };
+
+        public Task<CreateReturnedUploadRecordResult> CreateReturnedRecordAsync(
+            string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, string? operationId, CancellationToken cancellationToken = default)
+        {
+            ReturnedRecordCalls.Add((studentId, imageEntries.ToList(), comments, returnReason, operationId));
+            return Task.FromResult(NextReturnedRecordResult);
+        }
+
+        public Task<ProcessingUploadsPage> GetProcessingUploadsAsync(string? cursor, int pageSize, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<RemoveProcessedUploadImagesResult> RemoveProcessedImagesAsync(string recordId, List<string> imagePaths, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<AllowedStudentsResolution> GetAllowedStudentIdsAsync(string identityAccountId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(AllowedStudentsResolution.Unavailable);
+    }
+
+    internal sealed class RejectFlowOssService : IOssService
+    {
+        public List<(string Source, string Dest)> Copies { get; } = new();
+        public List<string> Deletes { get; } = new();
+
+        public Task<bool> ObjectExistsAsync(string objectPath) => Task.FromResult(true);
+        public Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600) =>
+            Task.FromResult($"https://oss.example/{objectPath}?test-signature");
+        public Task<string> UploadAsync(Stream stream, string fileName, string contentType, OssBucket bucket = OssBucket.Uploads, string? folder = null) =>
+            throw new NotImplementedException();
+        public Task<string> UploadAsync(byte[] data, string fileName, string contentType, OssBucket bucket = OssBucket.Uploads, string? folder = null) =>
+            throw new NotImplementedException();
+        public Task<List<string>> UploadManyAsync(IEnumerable<(Stream stream, string fileName, string contentType)> files, OssBucket bucket = OssBucket.Uploads, string? folder = null) =>
+            throw new NotImplementedException();
+        public Task<Stream> DownloadAsync(string objectPath) => throw new NotImplementedException();
+        public Task<List<Stream>> DownloadManyAsync(IEnumerable<string> objectPaths) => throw new NotImplementedException();
+
+        public Task CopyObjectAsync(string sourcePath, string destPath)
+        {
+            Copies.Add((sourcePath, destPath));
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> DeleteAsync(string objectPath)
+        {
+            Deletes.Add(objectPath);
+            return Task.FromResult(true);
+        }
+
+        public Task<int> DeleteManyAsync(IEnumerable<string> objectPaths) => throw new NotImplementedException();
+        public Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600) =>
+            throw new NotImplementedException();
+        public Task<bool> CheckConnectivityAsync() => throw new NotImplementedException();
+        public Task<List<OssObjectInfo>> ListObjectsAsync(string? prefix = null) => throw new NotImplementedException();
+        public Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null) =>
+            throw new NotImplementedException();
+    }
+
+    internal sealed class RejectCallbackWebApplicationFactory : WebApplicationFactory<Program>
+    {
+        private static readonly string[] OwnedEnvironmentKeys =
+        [
+            "Mistake__ConfigMode",
+            "ConnectionStrings__MistakeLocal",
+            "Mistake__Local__Oss__InternalEndpoint",
+            "Mistake__Local__Oss__InternalSecure",
+            "Mistake__Local__Oss__AccessKey",
+            "Mistake__Local__Oss__SecretKey",
+            "Mistake__Local__Oss__BucketName",
+            "Mistake__Local__Oss__PublicBaseUrl",
+            "IdentityService__Authority",
+            "IdentityService__Issuer",
+            "IdentityService__Audience",
+            "IdentityService__RequireHttpsMetadata",
+            "IdentityService__AdminAudience",
+            "IdentityService__MistakeApiStrictAuth",
+            "IdentityService__MistakeApiResourceAuth",
+            "Mistake__Student__Enabled",
+            "Mistake__Local__Student__Url",
+            "IDENTITY_APP_ID_ADMIN",
+        ];
+
+        private readonly RecordingGateway _gateway;
+        private readonly RejectFlowOssService _oss = new();
+
+        public RejectCallbackWebApplicationFactory(RecordingGateway gateway)
+        {
+            _gateway = gateway;
+            Environment.SetEnvironmentVariable("IDENTITY_APP_ID_ADMIN", null);
+            Environment.SetEnvironmentVariable("Mistake__ConfigMode", "Local");
+            Environment.SetEnvironmentVariable(
+                "ConnectionStrings__MistakeLocal",
+                "Host=127.0.0.1;Port=5432;Database=mistake_reject_callback_tests;Username=mistake_tester;Password=reject-callback-tests-only");
+            Environment.SetEnvironmentVariable("Mistake__Local__Oss__InternalEndpoint", "127.0.0.1:19041");
+            Environment.SetEnvironmentVariable("Mistake__Local__Oss__InternalSecure", "false");
+            Environment.SetEnvironmentVariable("Mistake__Local__Oss__AccessKey", "reject-callback-access");
+            Environment.SetEnvironmentVariable("Mistake__Local__Oss__SecretKey", "reject-callback-secret");
+            Environment.SetEnvironmentVariable("Mistake__Local__Oss__BucketName", "mistake-reject-callback-tests");
+            Environment.SetEnvironmentVariable("Mistake__Local__Oss__PublicBaseUrl", "http://127.0.0.1/oss");
+            Environment.SetEnvironmentVariable("IdentityService__Authority", Issuer);
+            Environment.SetEnvironmentVariable("IdentityService__Issuer", Issuer);
+            Environment.SetEnvironmentVariable("IdentityService__Audience", SharedAudience);
+            Environment.SetEnvironmentVariable("IdentityService__RequireHttpsMetadata", "false");
+            Environment.SetEnvironmentVariable("IdentityService__AdminAudience", null);
+            Environment.SetEnvironmentVariable("IdentityService__MistakeApiStrictAuth", "true");
+            Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", "true");
+            // The reject flow fail-closes with 503 when the Student capability
+            // is disabled (IKJ8P0); enable it so the callback path is reached.
+            // The URL is never contacted — IUploadSourceGateway is faked.
+            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "true");
+            Environment.SetEnvironmentVariable("Mistake__Local__Student__Url", "http://127.0.0.1:19042");
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            foreach (var key in OwnedEnvironmentKeys)
+            {
+                Environment.SetEnvironmentVariable(key, null);
+            }
+            base.Dispose(disposing);
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            var databaseName = $"mistake_reject_callback_{Guid.NewGuid():N}";
+
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<DbContextOptions<MistakeDbContext>>();
+                services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
+
+                services.RemoveAll<IUploadSourceGateway>();
+                services.AddScoped<IUploadSourceGateway>(_ => _gateway);
+                services.RemoveAll<IOssService>();
+                services.AddSingleton<IOssService>(_oss);
+
+                services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, UseStaticSigningKeys);
+                services.PostConfigure<JwtBearerOptions>(Ruoyu.Study.Common.Authentication.RuoyuAdminApiAuthorization.SchemeName, UseStaticSigningKeys);
+            });
+        }
+
+        public void SeedData()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
+            db.MistakeItems.Add(new MistakeItemEntity
+            {
+                Id = ItemId,
+                StudentId = StudentId,
+                Subject = 2,
+                Grade = 3,
+                SourceUploadId = "upload-reject-1",
+                SourceRegions = [new SourceRegionEntry { SourceImagePath = "mistakes/reject-1/a.png" }],
+                ReviewStatus = 1,
+                CreatedAt = DateTimeOffset.UtcNow.AddDays(-1)
+            });
+            db.SaveChanges();
+        }
+
+        private static void UseStaticSigningKeys(JwtBearerOptions options)
+        {
+            var configuration = new OpenIdConnectConfiguration { Issuer = Issuer };
+            configuration.SigningKeys.Add(SigningKey);
+            options.ConfigurationManager = new StaticConfigurationManager<OpenIdConnectConfiguration>(configuration);
+            options.Authority = Issuer;
+            options.RequireHttpsMetadata = false;
+        }
+    }
+}

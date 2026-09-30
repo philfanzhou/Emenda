@@ -46,14 +46,21 @@ public sealed class StudentUploadSourceGateway : IUploadSourceGateway
         };
     }
 
-    public Task CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, CancellationToken cancellationToken = default)
+    public async Task<CreateReturnedUploadRecordResult> CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, string? operationId, CancellationToken cancellationToken = default)
     {
         var sourceEntries = imageEntries.Select(entry => new ImageEntryDto
         {
             Path = entry.Path,
             Type = entry.Type
         }).ToList();
-        return _client.CreateReturnedRecordAsync(studentId, sourceEntries, comments, returnReason, cancellationToken);
+        var source = await _client.CreateReturnedRecordAsync(studentId, sourceEntries, comments, returnReason, operationId, cancellationToken)
+            .ConfigureAwait(false);
+        return new CreateReturnedUploadRecordResult
+        {
+            Status = (CreateReturnedUploadRecordStatus)source.Status,
+            Replayed = source.Replayed,
+            Message = source.Message
+        };
     }
 
     public async Task<AllowedStudentsResolution> GetAllowedStudentIdsAsync(string identityAccountId, CancellationToken cancellationToken = default)
