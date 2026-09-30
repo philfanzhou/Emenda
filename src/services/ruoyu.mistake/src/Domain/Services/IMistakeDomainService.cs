@@ -11,6 +11,22 @@ public interface IMistakeDomainService
     Task<MistakeItemModel?> GetMistakeItemAsync(Guid id);
     Task<List<MistakeItemModel>> GetMistakeItemsByUploadAsync(string sourceUploadId);
     Task<(List<MistakeItemModel> Items, int TotalCount)> GetMistakeItemListAsync(string studentId, int subject, int grade, int reviewStatus, int page, int size);
+
+    /// <summary>
+    /// List variant scoped to a set of student ids (IKJEPZ learner default
+    /// scope injection). <paramref name="studentIds"/> must be non-empty.
+    /// </summary>
+    Task<(List<MistakeItemModel> Items, int TotalCount)> GetMistakeItemListByStudentsAsync(
+        IReadOnlyCollection<string> studentIds, int subject, int grade, int reviewStatus, int page, int size);
+
+    /// <summary>
+    /// Whether the object path is referenced by an item source region or a
+    /// practice image path owned by one of the given students (IKJEPZ
+    /// presigned-url ownership check). <paramref name="studentIds"/> must be
+    /// non-empty.
+    /// </summary>
+    Task<bool> IsObjectPathOwnedByStudentsAsync(string objectPath, IReadOnlyCollection<string> studentIds, CancellationToken ct = default);
+
     Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null);
     Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null);
     Task<MistakeReanalysisResult> ReanalyzeMistakeItemAsync(Guid id, string? reviewerId, string? teacherDescription, CancellationToken ct = default);

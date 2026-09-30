@@ -104,6 +104,49 @@ public class MistakeItemRepository : IMistakeItemRepository
         return (items.Select(MapToModel).ToList(), totalCount);
     }
 
+    public async Task<(List<MistakeItemModel> Items, int TotalCount)> GetListByStudentIdsAsync(
+        IReadOnlyCollection<string> studentIds, int subject, int grade, int reviewStatus, int page, int size)
+    {
+        var query = _dbContext.MistakeItems.Where(m => studentIds.Contains(m.StudentId));
+
+        if (subject > 0) query = query.Where(m => m.Subject == subject);
+        if (grade > 0) query = query.Where(m => m.Grade == grade);
+        if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
+
+        var totalCount = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(m => m.CreatedAt)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .ToListAsync();
+
+        return (items.Select(MapToModel).ToList(), totalCount);
+    }
+
+    public async Task<bool> IsObjectPathReferencedByStudentsAsync(
+        string objectPath, IReadOnlyCollection<string> studentIds, CancellationToken ct = default)
+    {
+        // SourceRegions and practice ImagePaths are jsonb columns materialized
+        // through value converters, so the Ordinal-exact reference check runs
+        // in memory over the owning students' rows only.
+        var itemRegions = await _dbContext.MistakeItems
+            .Where(m => studentIds.Contains(m.StudentId))
+            .Select(m => m.SourceRegions)
+            .ToListAsync(ct);
+        if (itemRegions.Any(regions => regions.Any(r =>
+                string.Equals(r.SourceImagePath, objectPath, StringComparison.Ordinal))))
+        {
+            return true;
+        }
+
+        var practicePaths = await _dbContext.MistakePractices
+            .Where(p => studentIds.Contains(p.StudentId))
+            .Select(p => p.ImagePaths)
+            .ToListAsync(ct);
+        return practicePaths.Any(paths => paths.Any(path =>
+            string.Equals(path, objectPath, StringComparison.Ordinal)));
+    }
+
     public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null)
     {
         var query = _dbContext.MistakeItems

@@ -91,7 +91,43 @@ Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 
 - 开关与信任配置都是启动快照：变更后必须重启进程。回滚 = 置 `false`（或移除键）重启，即恢复匿名窗口；无数据库、schema 或数据迁移。strict=true 的实际启用时点由父项 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 在消费者升级与联测后决定，当前部署不应启用。
 - 非法开关值（非 `true`/`false`）在数据库访问前报 `IdentityService:MistakeApiStrictAuth must be true or false.` 并拒绝启动。
 - 调用方令牌透传：三个 Portal 经共享 `MistakeBff.HttpClients` 调用 Mistake 时自动透传当前请求的 Bearer（无令牌则不附加头），Portal 无需配置；Ruoyu.Admin 直连 Mistake 时需自行携带有效令牌。令牌只经内存请求管线，日志与诊断输出不包含令牌、签名 URL 或密钥。
-- 本窗口只建立「调用方可信身份」，不做逐资源归属/角色授权（父项切片②）；18 个端点的参数赋权问题仍按父项登记处理。
+- 本窗口只建立「调用方可信身份」，不做逐资源归属/角色授权（见下节）。
+
+### 逐资源授权矩阵（IKJEPZ，默认关闭）
+
+在 strict 认证之上，`IdentityService:MistakeApiResourceAuth`（环境键 `IdentityService__MistakeApiResourceAuth`，默认 `false`，启动快照）为全部 18 个 `/api/*` 端点实施学生归属 + 教职代管的逐资源授权（ADR-0013，PD-002 方案 A）。`resource=true` 要求 `MistakeApiStrictAuth=true`，否则启动失败（错误仅引用两个配置键）；非法值报 `IdentityService:MistakeApiResourceAuth must be true or false.`。
+
+主体分类（role 声明，大小写不敏感，共享受众与 Admin AppId 受众同规则）：**Admin**（`admin`）、**Staff**（`teacher`/`assistant`）、**Learner-side**（其余已认证主体，含无 role 声明令牌）。Learner 允许学生集经 `IUploadSourceGateway` → Student `GetStudentsByIdentityAccountId(sub)` 按请求解析、不缓存。
+
+| # | 端点 | Learner-side | Teacher/Assistant | Admin |
+|---|---|---|---|---|
+| 1 | POST /api/mistakes/upload | 403 | 403 | 允许（现状校验） |
+| 2 | GET /api/mistakes/{id} | item.StudentId ∈ allowed 否则 403 | 允许 | 允许 |
+| 3 | GET /api/mistakes/by-upload/{sourceUploadId} | 返回项 StudentId ⊆ allowed 否则 403 | 允许 | 允许 |
+| 4 | GET /api/mistakes | studentId ∈ allowed；缺失注入 allowed 过滤（空集 403） | 允许（任意过滤） | 允许 |
+| 5 | GET /api/mistakes/pending-reviews | 403 | 允许 | 允许 |
+| 6 | POST /api/mistakes/{id}/review | 403 | reviewerId==sub 否则 403 | 同左 |
+| 7 | POST /api/mistakes/{id}/reanalyze | 403 | reviewerId==sub 且请求 studentId==item.StudentId；任务持久化以 item.StudentId 为准 | 同左 |
+| 8 | POST /api/mistakes/reanalyze/jobs | 403 | reviewerId==sub | 同左 |
+| 9 | GET /api/mistakes/reanalyze/active | 403 | reviewerId==sub | 同左 |
+| 10 | POST /api/mistakes | 403 | 允许（现状校验） | 允许 |
+| 11 | PUT /api/mistakes/{id} | 403 | 403 | 允许；studentId 变更（owner 迁移）仅 Admin |
+| 12 | DELETE /api/mistakes/{id} | item.StudentId ∈ allowed 否则 403 | 允许 | 允许 |
+| 13 | POST /api/mistakes/complete-review（Obsolete） | 403 | reviewerId==sub | 同左 |
+| 14 | POST /api/mistakes/{id}/practices | 归属且 practice.StudentId==item.StudentId | 403 | 403 |
+| 15 | GET /api/mistakes/{id}/practices | item.StudentId ∈ allowed 否则 403 | 允许 | 允许 |
+| 16 | POST /api/mistakes/{id}/process-logs | 归属且请求 StudentId==item.StudentId | 403 | 403 |
+| 17 | GET /api/mistakes/{id}/process-logs | item.StudentId ∈ allowed 否则 403 | 允许 | 允许 |
+| 18 | POST /api/mistakes/presigned-url | 对象路径被 allowed 学生条目 SourceRegions.SourceImagePath 或练习 ImagePaths 以 Ordinal 精确引用，否则 403 | `mistakes/` 前缀允许（审核可见性） | 同左 |
+
+授权失败一律 HTTP 403（未认证 401 由 strict 层处理），不用 HTTP 200 + `success=false` 表达拒绝。失败关闭与能力表：
+
+- `Mistake:Student:Enabled=false` 或归属解析调用失败/超时 → Learner-side 学生范围请求返回明确不可用（503，`学生归属解析不可用（Student 能力禁用或解析失败），学生范围访问已拒绝`），不空放行、不匿名放行；Staff/Admin 路径不解析归属、不受影响。
+- 账号无关联学生（映射为空）→ 学生范围访问 403。
+- 归属解析经共享 typed client 的严格变体（失败抛出，不吞成空列表）区分「调用失败」与「空映射」。
+- 授权判定日志只记录主体 sub、端点、资源 ID 与结果；不含令牌与预签名 URL。
+
+resource=false（默认）时全部端点与基线 `91fb253e` 行为逐字节一致，无任何授权判定。启用前置（Ruoyu.Admin 直连调用方 Bearer 升级、跨服务 E2E、回滚演练）属父项 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；回滚 = 置 `false` 重启，无数据迁移。学科管辖裁决仍留 Portal BFF（`ISubjectResolver`）。真实管线矩阵验收测试位于 `src/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/MistakeApiResourceAuthTests.cs`，启动快照测试位于同目录 `MistakeApiResourceAuthStartupTests.cs`。
 
 共享 Consul 配置承载：
 

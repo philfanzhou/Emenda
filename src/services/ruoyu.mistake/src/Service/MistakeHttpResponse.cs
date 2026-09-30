@@ -34,6 +34,14 @@ public static class MistakeHttpResponse
         => Results.NotFound(new { success = false, message });
 
     /// <summary>
+    /// 403 Forbidden: { "success": false, "message": "..." }.
+    /// Per-resource authorization denials (IKJEPZ) always use this status;
+    /// they are never expressed as HTTP 200 + success=false.
+    /// </summary>
+    public static IResult Forbidden(string message)
+        => Results.Json(new { success = false, message }, statusCode: (int)HttpStatusCode.Forbidden);
+
+    /// <summary>
     /// 500 Internal Server Error: { "success": false, "message": "..." }
     /// </summary>
     public static IResult Internal(string message)

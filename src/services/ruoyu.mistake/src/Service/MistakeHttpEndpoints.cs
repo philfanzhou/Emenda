@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -92,10 +93,20 @@ public static partial class MistakeHttpEndpoints
     // 1. POST /api/mistakes/upload
     private static async Task<IResult> SubmitMistakeUpload(
         [FromBody] SubmitMistakeUploadRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService,
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
+        if (resourceAuthz.Enabled)
+        {
+            var decision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes/upload", user, MistakeResourceAccessGate.AdminOnly);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         logger.LogDebug("SubmitMistakeUpload called: studentId={StudentId}, subject={Subject}, grade={Grade}, sourceUploadId={SourceUploadId}, imagePaths={ImagePaths}",
             request.StudentId, request.Subject, request.Grade, request.SourceUploadId, string.Join(" | ", request.ImagePaths.Select((p, i) => $"[{i}]={p}")));
 
@@ -139,11 +150,22 @@ public static partial class MistakeHttpEndpoints
     // 2. GET /api/mistakes/{id:guid}
     private static async Task<IResult> GetMistakeItem(
         Guid id,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
         var item = await mistakeService.GetMistakeItemAsync(id);
         if (item == null)
             return MistakeHttpResponse.NotFound("错题条目不存在");
+
+        if (resourceAuthz.Enabled)
+        {
+            var decision = await resourceAuthz.DecideItemOwnershipAsync(
+                "GET /api/mistakes/{id}", user, id.ToString(), item.StudentId, ct);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
 
         return MistakeHttpResponse.Ok(MapMistakeItemDto(item));
     }
@@ -151,9 +173,22 @@ public static partial class MistakeHttpEndpoints
     // 3. GET /api/mistakes/by-upload/{sourceUploadId}
     private static async Task<IResult> GetMistakeItemsByUpload(
         string sourceUploadId,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
         var items = await mistakeService.GetMistakeItemsByUploadAsync(sourceUploadId);
+
+        if (resourceAuthz.Enabled)
+        {
+            var decision = await resourceAuthz.DecideItemsOwnershipAsync(
+                "GET /api/mistakes/by-upload/{sourceUploadId}", user, sourceUploadId,
+                items.Select(i => i.StudentId), ct);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         return MistakeHttpResponse.Ok(new
         {
             items = items.Select(MapMistakeItemDto).ToList()
@@ -168,12 +203,34 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] int reviewStatus,
         [FromQuery] int page,
         [FromQuery] int size,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
         var normalizedPage = page > 0 ? page : 1;
         var normalizedSize = size > 0 ? Math.Min(size, 100) : 10;
 
-        var (items, totalCount) = await mistakeService.GetMistakeItemListAsync(
+        // Learner default scope: with resource authorization on and no
+        // studentId parameter, the query is filtered by the caller's allowed
+        // students so no cross-student row can leak (TotalCount included).
+        List<MistakeItemModel> items;
+        int totalCount;
+        if (resourceAuthz.Enabled)
+        {
+            var scopeDecision = await resourceAuthz.DecideListScopeAsync(
+                "GET /api/mistakes", user, studentId, ct);
+            if (!scopeDecision.Allowed)
+                return scopeDecision.ToHttpResponse();
+            if (scopeDecision.ScopeStudentIds is { } allowedStudents)
+            {
+                (items, totalCount) = await mistakeService.GetMistakeItemListByStudentsAsync(
+                    allowedStudents, subject, grade, reviewStatus, normalizedPage, normalizedSize);
+                return MistakeHttpResponse.Ok(BuildPageResult(items, totalCount, normalizedPage, normalizedSize));
+            }
+        }
+
+        (items, totalCount) = await mistakeService.GetMistakeItemListAsync(
             studentId ?? string.Empty,
             subject,
             grade,
@@ -181,18 +238,24 @@ public static partial class MistakeHttpEndpoints
             normalizedPage,
             normalizedSize);
 
+        return MistakeHttpResponse.Ok(BuildPageResult(items, totalCount, normalizedPage, normalizedSize));
+    }
+
+    private static MistakeItemPageResult BuildPageResult(
+        List<MistakeItemModel> items, int totalCount, int page, int size)
+    {
         var result = new MistakeItemPageResult
         {
             PageMeta = new PageMetaDto
             {
-                Page = normalizedPage,
-                Size = normalizedSize,
+                Page = page,
+                Size = size,
                 TotalCount = totalCount,
-                TotalPages = (totalCount + normalizedSize - 1) / normalizedSize
+                TotalPages = (totalCount + size - 1) / size
             }
         };
         result.Items.AddRange(items.Select(MapMistakeItemDto));
-        return MistakeHttpResponse.Ok(result);
+        return result;
     }
 
     // 5. GET /api/mistakes/pending-reviews
@@ -200,8 +263,18 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] int page,
         [FromQuery] int size,
         [FromQuery] string? subjects,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService)
     {
+        if (resourceAuthz.Enabled)
+        {
+            var decision = resourceAuthz.DecideRoleGate(
+                "GET /api/mistakes/pending-reviews", user, MistakeResourceAccessGate.StaffOrAdmin);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         var normalizedPage = page > 0 ? page : 1;
         var normalizedSize = size > 0 ? Math.Min(size, 100) : 10;
 
@@ -247,6 +320,8 @@ public static partial class MistakeHttpEndpoints
     private static async Task<IResult> ReviewMistakeItem(
         Guid id,
         [FromBody] ReviewMistakeItemRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService,
         IUploadSourceGateway studentClient,
         IOssService ossService,
@@ -254,6 +329,18 @@ public static partial class MistakeHttpEndpoints
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
+        if (resourceAuthz.Enabled)
+        {
+            var roleDecision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes/{id}/review", user, MistakeResourceAccessGate.StaffOrAdmin);
+            if (!roleDecision.Allowed)
+                return roleDecision.ToHttpResponse();
+            var bindingDecision = resourceAuthz.DecideReviewerBinding(
+                "POST /api/mistakes/{id}/review", user, request.ReviewerId);
+            if (!bindingDecision.Allowed)
+                return bindingDecision.ToHttpResponse();
+        }
+
         if (request.ReviewStatus != ReviewStatus.Confirmed && request.ReviewStatus != ReviewStatus.Rejected)
             return MistakeHttpResponse.BadRequest("审核结果只能是确认或退回");
 
@@ -372,11 +459,40 @@ public static partial class MistakeHttpEndpoints
     private static async Task<IResult> ReanalyzeMistakeItem(
         Guid id,
         [FromBody] ReanalyzeMistakeItemRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IReanalyzeJobService reanalyzeJobService,
+        IMistakeDomainService mistakeService,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
+        if (resourceAuthz.Enabled)
+        {
+            var roleDecision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes/{id}/reanalyze", user, MistakeResourceAccessGate.StaffOrAdmin);
+            if (!roleDecision.Allowed)
+                return roleDecision.ToHttpResponse();
+            var bindingDecision = resourceAuthz.DecideReviewerBinding(
+                "POST /api/mistakes/{id}/reanalyze", user, request.ReviewerId);
+            if (!bindingDecision.Allowed)
+                return bindingDecision.ToHttpResponse();
+
+            // Student binding: the request studentId must match the stored
+            // owner, and the persisted job uses the stored owner so the
+            // request parameter can never re-assign the analysis target.
+            var item = await mistakeService.GetMistakeItemAsync(id);
+            if (item != null)
+            {
+                var studentDecision = resourceAuthz.DecideOwnedWriteBinding(
+                    "POST /api/mistakes/{id}/reanalyze", user, id.ToString(),
+                    request.StudentId, item.StudentId);
+                if (!studentDecision.Allowed)
+                    return studentDecision.ToHttpResponse();
+                request.StudentId = item.StudentId;
+            }
+        }
+
         logger.LogInformation(
             "ReanalyzeMistakeItem (async job) called: id={ItemId}, reviewerId={ReviewerId}, studentId={StudentId}, hasTeacherNote={HasNote}",
             id, request.ReviewerId, request.StudentId, !string.IsNullOrWhiteSpace(request.TeacherDescription));
@@ -433,8 +549,22 @@ public static partial class MistakeHttpEndpoints
     // 8. POST /api/mistakes/reanalyze/jobs
     private static async Task<IResult> GetReanalyzeJobs(
         [FromBody] GetReanalyzeJobsRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IReanalyzeJobService reanalyzeJobService)
     {
+        if (resourceAuthz.Enabled)
+        {
+            var roleDecision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes/reanalyze/jobs", user, MistakeResourceAccessGate.StaffOrAdmin);
+            if (!roleDecision.Allowed)
+                return roleDecision.ToHttpResponse();
+            var bindingDecision = resourceAuthz.DecideReviewerBinding(
+                "POST /api/mistakes/reanalyze/jobs", user, request.ReviewerId);
+            if (!bindingDecision.Allowed)
+                return bindingDecision.ToHttpResponse();
+        }
+
         var reviewerId = request.ReviewerId;
         if (string.IsNullOrWhiteSpace(reviewerId))
         {
@@ -479,8 +609,22 @@ public static partial class MistakeHttpEndpoints
     // 9. GET /api/mistakes/reanalyze/active
     private static async Task<IResult> GetActiveReanalyzeJobs(
         [FromQuery] string? reviewerId,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IReanalyzeJobService reanalyzeJobService)
     {
+        if (resourceAuthz.Enabled)
+        {
+            var roleDecision = resourceAuthz.DecideRoleGate(
+                "GET /api/mistakes/reanalyze/active", user, MistakeResourceAccessGate.StaffOrAdmin);
+            if (!roleDecision.Allowed)
+                return roleDecision.ToHttpResponse();
+            var bindingDecision = resourceAuthz.DecideReviewerBinding(
+                "GET /api/mistakes/reanalyze/active", user, reviewerId);
+            if (!bindingDecision.Allowed)
+                return bindingDecision.ToHttpResponse();
+        }
+
         if (string.IsNullOrWhiteSpace(reviewerId))
         {
             return MistakeHttpResponse.Ok(new GetReanalyzeJobsResponse
@@ -500,8 +644,18 @@ public static partial class MistakeHttpEndpoints
     // 10. POST /api/mistakes
     private static async Task<IResult> AddMistakeItem(
         [FromBody] AddMistakeItemRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService)
     {
+        if (resourceAuthz.Enabled)
+        {
+            var decision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes", user, MistakeResourceAccessGate.StaffOrAdmin);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         var item = new MistakeItemModel
         {
             StudentId = request.StudentId,
@@ -538,8 +692,20 @@ public static partial class MistakeHttpEndpoints
     private static async Task<IResult> UpdateMistakeItem(
         Guid id,
         [FromBody] UpdateMistakeItemRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService)
     {
+        if (resourceAuthz.Enabled)
+        {
+            // Owner migration (studentId change) is admin-only; the gate makes
+            // the whole endpoint admin-only under resource authorization.
+            var decision = resourceAuthz.DecideRoleGate(
+                "PUT /api/mistakes/{id}", user, MistakeResourceAccessGate.AdminOnly);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         var sourceRegions = request.SourceRegions.Count > 0
             ? request.SourceRegions.Select(r => new SourceRegionModel
             {
@@ -579,8 +745,23 @@ public static partial class MistakeHttpEndpoints
     // 12. DELETE /api/mistakes/{id:guid}
     private static async Task<IResult> DeleteMistakeItem(
         Guid id,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
+        if (resourceAuthz.Enabled)
+        {
+            var item = await mistakeService.GetMistakeItemAsync(id);
+            if (item == null)
+                return MistakeHttpResponse.Ok(new { success = false });
+
+            var decision = await resourceAuthz.DecideItemOwnershipAsync(
+                "DELETE /api/mistakes/{id}", user, id.ToString(), item.StudentId, ct);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         try
         {
             var success = await mistakeService.DeleteMistakeItemAsync(id);
@@ -596,11 +777,25 @@ public static partial class MistakeHttpEndpoints
     [Obsolete("目标流程中不存在独立的 CompleteUploadReview 步骤，每条审核通过时立即迁移。仅保留供 LegacyClean 运维兜底使用。")]
     private static async Task<IResult> CompleteUploadReview(
         [FromBody] CompleteUploadReviewRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService,
         IOssService ossService,
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
+        if (resourceAuthz.Enabled)
+        {
+            var roleDecision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes/complete-review", user, MistakeResourceAccessGate.StaffOrAdmin);
+            if (!roleDecision.Allowed)
+                return roleDecision.ToHttpResponse();
+            var bindingDecision = resourceAuthz.DecideReviewerBinding(
+                "POST /api/mistakes/complete-review", user, request.ReviewerId);
+            if (!bindingDecision.Allowed)
+                return bindingDecision.ToHttpResponse();
+        }
+
         try
         {
             var result = await mistakeService.CompleteUploadReviewAsync(
@@ -708,8 +903,34 @@ public static partial class MistakeHttpEndpoints
     private static async Task<IResult> AddMistakePractice(
         Guid id,
         [FromBody] AddMistakePracticeRequest request,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
+        if (resourceAuthz.Enabled)
+        {
+            // Learner-owned write: staff and admin cannot post practices on a
+            // student's behalf through this endpoint.
+            var roleDecision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes/{id}/practices", user, MistakeResourceAccessGate.LearnerOnly);
+            if (!roleDecision.Allowed)
+                return roleDecision.ToHttpResponse();
+
+            var item = await mistakeService.GetMistakeItemAsync(id);
+            if (item == null)
+                return MistakeHttpResponse.Forbidden("无权访问该学生的错题资源");
+
+            var ownershipDecision = await resourceAuthz.DecideItemOwnershipAsync(
+                "POST /api/mistakes/{id}/practices", user, id.ToString(), item.StudentId, ct);
+            if (!ownershipDecision.Allowed)
+                return ownershipDecision.ToHttpResponse();
+            var bindingDecision = resourceAuthz.DecideOwnedWriteBinding(
+                "POST /api/mistakes/{id}/practices", user, id.ToString(), request.StudentId, item.StudentId);
+            if (!bindingDecision.Allowed)
+                return bindingDecision.ToHttpResponse();
+        }
+
         var practice = new MistakePracticeModel
         {
             MistakeItemId = id,
@@ -737,8 +958,23 @@ public static partial class MistakeHttpEndpoints
     // 15. GET /api/mistakes/{id:guid}/practices
     private static async Task<IResult> GetMistakePractices(
         Guid id,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
+        if (resourceAuthz.Enabled)
+        {
+            var item = await mistakeService.GetMistakeItemAsync(id);
+            if (item == null)
+                return MistakeHttpResponse.Ok(new MistakePracticeListResponse());
+
+            var decision = await resourceAuthz.DecideItemOwnershipAsync(
+                "GET /api/mistakes/{id}/practices", user, id.ToString(), item.StudentId, ct);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         var practices = await mistakeService.GetPracticesAsync(id);
         var response = new MistakePracticeListResponse();
         response.Practices.AddRange(practices.Select(MapPracticeDto));
@@ -749,8 +985,33 @@ public static partial class MistakeHttpEndpoints
     private static async Task<IResult> LogMistakeProcess(
         Guid id,
         [FromBody] LogMistakeProcessRequest request,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
+        if (resourceAuthz.Enabled)
+        {
+            // Learner-owned write: the log's studentId must be the item owner.
+            var roleDecision = resourceAuthz.DecideRoleGate(
+                "POST /api/mistakes/{id}/process-logs", user, MistakeResourceAccessGate.LearnerOnly);
+            if (!roleDecision.Allowed)
+                return roleDecision.ToHttpResponse();
+
+            var item = await mistakeService.GetMistakeItemAsync(id);
+            if (item == null)
+                return MistakeHttpResponse.Forbidden("无权访问该学生的错题资源");
+
+            var ownershipDecision = await resourceAuthz.DecideItemOwnershipAsync(
+                "POST /api/mistakes/{id}/process-logs", user, id.ToString(), item.StudentId, ct);
+            if (!ownershipDecision.Allowed)
+                return ownershipDecision.ToHttpResponse();
+            var bindingDecision = resourceAuthz.DecideOwnedWriteBinding(
+                "POST /api/mistakes/{id}/process-logs", user, id.ToString(), request.StudentId, item.StudentId);
+            if (!bindingDecision.Allowed)
+                return bindingDecision.ToHttpResponse();
+        }
+
         var success = await mistakeService.LogMistakeProcessAsync(
             id,
             request.StudentId,
@@ -763,8 +1024,23 @@ public static partial class MistakeHttpEndpoints
     // 17. GET /api/mistakes/{id:guid}/process-logs
     private static async Task<IResult> GetMistakeProcessHistory(
         Guid id,
-        IMistakeDomainService mistakeService)
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
+        IMistakeDomainService mistakeService,
+        CancellationToken ct)
     {
+        if (resourceAuthz.Enabled)
+        {
+            var item = await mistakeService.GetMistakeItemAsync(id);
+            if (item == null)
+                return MistakeHttpResponse.Ok(new ProcessLogListResponse());
+
+            var decision = await resourceAuthz.DecideItemOwnershipAsync(
+                "GET /api/mistakes/{id}/process-logs", user, id.ToString(), item.StudentId, ct);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
+
         var logs = await mistakeService.GetMistakeProcessHistoryAsync(id);
         var response = new ProcessLogListResponse();
         response.Logs.AddRange(logs.Select(MapProcessLogDto));
@@ -774,14 +1050,28 @@ public static partial class MistakeHttpEndpoints
     // 18. POST /api/mistakes/presigned-url
     private static async Task<IResult> GetPresignedUrl(
         [FromBody] GetPresignedUrlRequest request,
+        ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService resourceAuthz,
         IOssService ossService,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
             return MistakeHttpResponse.BadRequest("object_path is required");
         if (!request.ObjectPath.StartsWith("mistakes/", StringComparison.Ordinal))
             return MistakeHttpResponse.BadRequest("object_path must start with mistakes/");
+
+        if (resourceAuthz.Enabled)
+        {
+            // Learner side: only object paths referenced by an owned item
+            // source region or practice image path pass (Ordinal exact);
+            // staff/admin keep the review-visibility prefix rule above.
+            var decision = await resourceAuthz.DecidePresignedAccessAsync(
+                "POST /api/mistakes/presigned-url", user, request.ObjectPath, ct);
+            if (!decision.Allowed)
+                return decision.ToHttpResponse();
+        }
 
         var expirySeconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
         var size = string.IsNullOrWhiteSpace(request.Size) ? "full" : request.Size.ToLowerInvariant();
