@@ -72,8 +72,28 @@ public class StudentUploadSourceGatewayTests
 
         Assert.Equal((success, deleted, remaining, error),
             (actual.Success, actual.RecordDeleted, actual.RemainingImageCount, actual.ErrorMessage));
+        Assert.False(actual.UnknownRecord);
         Assert.Equal(paths, delegatedPaths);
         Assert.NotSame(paths, delegatedPaths);
+        client.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData("unknown_record", true)]
+    [InlineData("none", false)]
+    [InlineData("", false)]
+    public async Task RemoveProcessedImagesAsync_MapsErrorKindToUnknownRecord(string errorKind, bool expected)
+    {
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        client.Setup(c => c.RemoveProcessedImagesAsync("record", It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RemoveProcessedImagesResult
+            {
+                Success = false, ErrorKind = errorKind, ErrorMessage = "failed"
+            });
+
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability()).RemoveProcessedImagesAsync("record", new List<string>());
+
+        Assert.Equal(expected, actual.UnknownRecord);
         client.VerifyAll();
     }
 

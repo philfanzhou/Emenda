@@ -65,6 +65,13 @@ public sealed class RemoveProcessedUploadImagesResult
     public bool RecordDeleted { get; set; }
     public int RemainingImageCount { get; set; }
     public string ErrorMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Student reported the record as unknown (IKJEY6): it does not exist and
+    /// no removal tombstone proves a prior completion. The caller must
+    /// investigate the source record instead of retrying the removal.
+    /// </summary>
+    public bool UnknownRecord { get; set; }
 }
 
 /// <summary>
