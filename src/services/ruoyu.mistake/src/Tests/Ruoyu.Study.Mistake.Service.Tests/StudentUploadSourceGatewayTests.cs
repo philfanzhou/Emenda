@@ -24,7 +24,7 @@ public class StudentUploadSourceGatewayTests
         using var cancellation = new CancellationTokenSource();
         client.Setup(c => c.ScanProcessingUploadRecordsAsync("cursor", 1, cancellation.Token)).ReturnsAsync(source);
 
-        var actual = await new StudentUploadSourceGateway(client.Object).GetProcessingUploadsAsync("cursor", 1, cancellation.Token);
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability()).GetProcessingUploadsAsync("cursor", 1, cancellation.Token);
 
         Assert.True(actual.HasMore);
         Assert.Equal("next", actual.NextCursor);
@@ -46,7 +46,7 @@ public class StudentUploadSourceGatewayTests
         client.Setup(c => c.ScanProcessingUploadRecordsAsync(null, 50, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProcessingUploadScanPage { Items = new(), HasMore = false });
 
-        var actual = await new StudentUploadSourceGateway(client.Object).GetProcessingUploadsAsync(null, 50);
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability()).GetProcessingUploadsAsync(null, 50);
 
         Assert.Empty(actual.Items);
         Assert.False(actual.HasMore);
@@ -68,7 +68,7 @@ public class StudentUploadSourceGatewayTests
                 Success = success, RecordDeleted = deleted, RemainingImageCount = remaining, ErrorMessage = error
             });
 
-        var actual = await new StudentUploadSourceGateway(client.Object).RemoveProcessedImagesAsync("record", paths);
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability()).RemoveProcessedImagesAsync("record", paths);
 
         Assert.Equal((success, deleted, remaining, error),
             (actual.Success, actual.RecordDeleted, actual.RemainingImageCount, actual.ErrorMessage));
@@ -89,7 +89,7 @@ public class StudentUploadSourceGatewayTests
             .Callback<string, List<ImageEntryDto>, string?, string?, CancellationToken>((_, sent, _, _, _) => delegatedEntries = sent)
             .Returns(completion.Task);
 
-        var task = new StudentUploadSourceGateway(client.Object).CreateReturnedRecordAsync(
+        var task = new StudentUploadSourceGateway(client.Object, EnabledCapability()).CreateReturnedRecordAsync(
             "student", entries, "Rejected", "reason", cancellation.Token);
 
         Assert.Same(completion.Task, task);
@@ -115,11 +115,96 @@ public class StudentUploadSourceGatewayTests
         client.Setup(c => c.RemoveProcessedImagesAsync("record", It.IsAny<List<string>>(), cancellation.Token))
             .ThrowsAsync(new OperationCanceledException(cancellation.Token));
 
-        var gateway = new StudentUploadSourceGateway(client.Object);
+        var gateway = new StudentUploadSourceGateway(client.Object, EnabledCapability());
         Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(
             () => gateway.GetProcessingUploadsAsync(null, 50, cancellation.Token)));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => gateway.RemoveProcessedImagesAsync("record", new List<string>(), cancellation.Token));
+        client.VerifyAll();
+    }
+
+    private static StudentCapabilityOptions EnabledCapability() => new() { Enabled = true };
+
+    [Fact]
+    public async Task GetAllowedStudentIdsAsync_ReturnsUnavailableWithoutCallingStudentWhenCapabilityDisabled()
+    {
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        var gateway = new StudentUploadSourceGateway(client.Object, new StudentCapabilityOptions { Enabled = false });
+
+        var actual = await gateway.GetAllowedStudentIdsAsync("account-1");
+
+        Assert.False(actual.Available);
+        client.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task GetAllowedStudentIdsAsync_MapsDistinctNonEmptyStudentIds()
+    {
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        client.Setup(c => c.GetStudentsByIdentityAccountIdStrictAsync("account-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StudentsByAccountResult
+            {
+                Students = new List<StudentInfoDto>
+                {
+                    new() { Id = "student-1" },
+                    new() { Id = "student-2" },
+                    new() { Id = "student-1" },
+                    new() { Id = "" }
+                }
+            });
+
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability())
+            .GetAllowedStudentIdsAsync("account-1");
+
+        Assert.True(actual.Available);
+        Assert.Equal(new[] { "student-1", "student-2" }, actual.StudentIds);
+        client.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetAllowedStudentIdsAsync_EmptyMappingStaysAvailable()
+    {
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        client.Setup(c => c.GetStudentsByIdentityAccountIdStrictAsync("account-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StudentsByAccountResult());
+
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability())
+            .GetAllowedStudentIdsAsync("account-1");
+
+        Assert.True(actual.Available);
+        Assert.Empty(actual.StudentIds);
+        client.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetAllowedStudentIdsAsync_FailsClosedOnResolutionFailure()
+    {
+        // The strict client throws HttpRequestException both for transport
+        // failures and for non-success envelopes; the gateway must surface
+        // both as "unavailable", never as an empty mapping.
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        client.Setup(c => c.GetStudentsByIdentityAccountIdStrictAsync("account-1", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("unreachable"));
+
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability())
+            .GetAllowedStudentIdsAsync("account-1");
+
+        Assert.False(actual.Available);
+        client.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetAllowedStudentIdsAsync_FailsClosedOnTimeout()
+    {
+        var client = new Mock<IStudentHttpClient>(MockBehavior.Strict);
+        using var cancellation = new CancellationTokenSource();
+        client.Setup(c => c.GetStudentsByIdentityAccountIdStrictAsync("account-1", cancellation.Token))
+            .ThrowsAsync(new TaskCanceledException("timeout"));
+
+        var actual = await new StudentUploadSourceGateway(client.Object, EnabledCapability())
+            .GetAllowedStudentIdsAsync("account-1", cancellation.Token);
+
+        Assert.False(actual.Available);
         client.VerifyAll();
     }
 }

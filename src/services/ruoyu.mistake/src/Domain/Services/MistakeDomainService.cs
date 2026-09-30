@@ -97,6 +97,22 @@ public class MistakeDomainService : IMistakeDomainService
         return await _mistakeItemRepository.GetListAsync(studentId, subject, grade, reviewStatus, page, size);
     }
 
+    public async Task<(List<MistakeItemModel> Items, int TotalCount)> GetMistakeItemListByStudentsAsync(
+        IReadOnlyCollection<string> studentIds, int subject, int grade, int reviewStatus, int page, int size)
+    {
+        if (page <= 0) page = 1;
+        if (size <= 0) size = 10;
+        if (size > 100) size = 100;
+
+        return await _mistakeItemRepository.GetListByStudentIdsAsync(studentIds, subject, grade, reviewStatus, page, size);
+    }
+
+    public Task<bool> IsObjectPathOwnedByStudentsAsync(
+        string objectPath, IReadOnlyCollection<string> studentIds, CancellationToken ct = default)
+    {
+        return _mistakeItemRepository.IsObjectPathReferencedByStudentsAsync(objectPath, studentIds, ct);
+    }
+
     public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null)
     {
         if (page <= 0) page = 1;

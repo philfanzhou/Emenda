@@ -93,6 +93,22 @@ else if (bool.TryParse(strictApiAuthValue, out var parsedStrictApiAuth))
 else
     throw new InvalidOperationException($"{strictApiAuthKey} must be true or false.");
 
+// Per-resource authorization switch (IKJEPZ): an additional layer on top of
+// strict authentication, default off. It presupposes an authenticated caller,
+// so combining it with the anonymous compatibility window fails startup.
+const string resourceApiAuthKey = "IdentityService:MistakeApiResourceAuth";
+var resourceApiAuthValue = builder.Configuration[resourceApiAuthKey];
+bool resourceApiAuth;
+if (resourceApiAuthValue is null)
+    resourceApiAuth = false;
+else if (bool.TryParse(resourceApiAuthValue, out var parsedResourceApiAuth))
+    resourceApiAuth = parsedResourceApiAuth;
+else
+    throw new InvalidOperationException($"{resourceApiAuthKey} must be true or false.");
+if (resourceApiAuth && !strictApiAuth)
+    throw new InvalidOperationException(
+        $"{resourceApiAuthKey}=true requires {strictApiAuthKey}=true; per-resource authorization presupposes an authenticated caller.");
+
 var identityTrustOptions = builder.Configuration
     .GetSection(IdentityAuthenticationOptions.SectionName)
     .Get<IdentityAuthenticationOptions>() ?? new IdentityAuthenticationOptions();
@@ -300,6 +316,12 @@ else
 builder.Services.AddStudentHttpClient(studentBaseUrl);
 builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 
+// Per-resource authorization (IKJEPZ): startup snapshot like every identity
+// trust setting; Enabled=false keeps every /api endpoint byte-identical to
+// the compatibility-window baseline because the endpoints skip the checks.
+builder.Services.AddSingleton(new MistakeApiResourceAuthOptions { Enabled = resourceApiAuth });
+builder.Services.AddScoped<IMistakeApiResourceAuthorizationService, MistakeApiResourceAuthorizationService>();
+
 var app = builder.Build();
 
 app.Logger.LogInformation("Mistake Service starting");
@@ -342,8 +364,8 @@ app.Logger.LogInformation(
     studentEnabled ? studentBaseUrl : "(capability disabled)");
 
 app.Logger.LogInformation(
-    "Inbound API auth: Strict={Strict}, TrustConfigured={TrustConfigured}, Authority={Authority}, Audience={Audience}, AdminAudienceConfigured={AdminAudienceConfigured}",
-    strictApiAuth, identityTrustConfigured,
+    "Inbound API auth: Strict={Strict}, ResourceAuth={ResourceAuth}, TrustConfigured={TrustConfigured}, Authority={Authority}, Audience={Audience}, AdminAudienceConfigured={AdminAudienceConfigured}",
+    strictApiAuth, resourceApiAuth, identityTrustConfigured,
     identityTrustConfigured ? identityTrustOptions.Authority : "(not configured)",
     identityTrustConfigured ? identityTrustOptions.Audience : "(not configured)",
     identityTrustOptions.GetAdminAudience() is not null);

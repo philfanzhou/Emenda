@@ -78,5 +78,8 @@ public sealed class UploadPollingScanTests
 
         public Task CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
+
+        public Task<AllowedStudentsResolution> GetAllowedStudentIdsAsync(string identityAccountId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
     }
 }
