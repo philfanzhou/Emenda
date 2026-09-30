@@ -4,7 +4,7 @@ Mistake 通过 HTTP 主动访问 Student，获取已分类的 Processing 上传�
 
 ## 边界与调用路径
 
-Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host 的 `StudentUploadSourceGateway` 将它映射到共享 `IStudentHttpClient`。`UploadPollingWorker` 和审核端点使用同一个 scoped adapter 注册。Student 地址仍由 Host 按 `StudentService:Url`、`StudentService:BaseUrl`、`StudentService:GrpcUrl`、`http://localhost:5005` 的顺序选择；URL、JSON 和 HTTP 行为仍由现有共享客户端控制。
+Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host 的 `StudentUploadSourceGateway` 将它映射到共享 `IStudentHttpClient`。`UploadPollingWorker` 和审核端点使用同一个 scoped adapter 注册。地址由 Student 能力开关（`Mistake:Student:Enabled`，Local 缺省 `false`、Platform 缺省 `true`）决定：Local 启用能力时只接受显式 `Mistake:Local:Student:Url`，不从 `StudentService:Url`、`StudentService:BaseUrl`、`StudentService:GrpcUrl` 或 `http://localhost:5005` 回退；Platform 启用能力时仍按该顺序选择既有地址；能力禁用时客户端注册到保留的不可解析占位地址，本进程不会向 Student 发出任何请求。URL、JSON 和 HTTP 行为仍由现有共享客户端控制。配置细节见[部署说明](../development/Deployment.md)的“Student 能力开关与退回失败关闭”。
 
 | Mistake 调用方 | 自有端口操作 | Student HTTP 客户端操作 |
 |---|---|---|
@@ -16,8 +16,10 @@ Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host
 
 ## 当前失败语义
 
+能力开关（`Mistake:Student:Enabled=false`）是第一层失败关闭：`UploadPollingWorker:Enabled=true` 与之矛盾并在启动前报错；`POST /api/mistakes/{id}/review` 请求 `ReviewStatus=Rejected` 时在调用领域服务、OSS 或 Student 之前返回 HTTP 503 与稳定响应（`Student 集成未启用，退回审核不可用`），不产生任何部分副作用，`ReviewStatus=Confirmed` 路径不受影响。
+
 旧共享 `GetProcessingUploadRecordsAsync` 仍可能将查询故障降为空页，供尚未迁移的调用方兼容使用；Mistake worker 使用新的严格扫描方法。创建退回记录的失败仍可能被吞掉；移除回调失败返回 `Success=false`。Student 的移除操作可能删除 OSS 对象，重复移除不存在的记录会失败。因此本切片不保证写回调幂等或跨数据库与 OSS 的原子性。这些保证由 [迁出总览](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZXV) 的后续任务负责。先发布 Student 新端点和迁移，再发布本版 Mistake；反序部署时 Mistake 读取会显式失败，不回退到旧 offset 分页。
 
 ## 验证
 
-adapter、HTTP 失败矩阵与 worker 游标测试位于 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/`。在 `src/services/ruoyu.mistake/src` 运行 `dotnet build Ruoyu.Study.Mistake.sln --configuration Release` 和 `dotnet test Ruoyu.Study.Mistake.sln --configuration Release`。Student 的隔离 PostgreSQL 扫描测试需显式提供 `STUDENT_SCAN_TEST_CONNECTION`，只在临时数据库执行。
+adapter、HTTP 失败矩阵、worker 游标与 Student 能力开关（含 503 失败关闭、矛盾配置与显式地址校验）测试位于 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/`。在 `src/services/ruoyu.mistake/src` 运行 `dotnet build Ruoyu.Study.Mistake.sln --configuration Release` 和 `dotnet test Ruoyu.Study.Mistake.sln --configuration Release`。Student 的隔离 PostgreSQL 扫描测试需显式提供 `STUDENT_SCAN_TEST_CONNECTION`，只在临时数据库执行。

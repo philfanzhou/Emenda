@@ -58,6 +58,24 @@ var uploadPollingEnabled = ReadWorkerEnabled("Mistake:Workers:UploadPollingWorke
 var reanalyzeJobEnabled = ReadWorkerEnabled("Mistake:Workers:ReanalyzeJobHostedService:Enabled");
 var reanalyzeCleanupEnabled = ReadWorkerEnabled("Mistake:Workers:ReanalyzeJobCleanupService:Enabled");
 
+// Student capability switch. Local defaults to disabled so an unwired host fails
+// closed instead of writing to an implicit Student endpoint; Platform keeps the
+// current enabled default. Explicit values only accept booleans.
+const string studentEnabledKey = "Mistake:Student:Enabled";
+var studentEnabledValue = builder.Configuration[studentEnabledKey];
+bool studentEnabled;
+if (studentEnabledValue is null)
+    studentEnabled = !localMode;
+else if (bool.TryParse(studentEnabledValue, out var parsedStudentEnabled))
+    studentEnabled = parsedStudentEnabled;
+else
+    throw new InvalidOperationException($"{studentEnabledKey} must be true or false.");
+
+const string uploadPollingEnabledKey = "Mistake:Workers:UploadPollingWorker:Enabled";
+if (!studentEnabled && uploadPollingEnabled)
+    throw new InvalidOperationException(
+        $"{studentEnabledKey}=false cannot be combined with {uploadPollingEnabledKey}=true; the upload polling worker requires the Student capability.");
+
 // Kestrel has one HTTP/1 listener. Resolve the final value after Platform
 // configuration is loaded; URLS and Endpoints:Http are not listener authorities.
 const string httpPortKey = "Mistake:Http:Port";
@@ -181,11 +199,50 @@ if (reanalyzeJobEnabled) builder.Services.AddHostedService<ReanalyzeJobHostedSer
 if (reanalyzeCleanupEnabled) builder.Services.AddHostedService<ReanalyzeJobCleanupService>();
 
 // Student HTTP client (used by polling worker and review flow).
-// Prefer the new HTTP key, but keep legacy fallbacks so old local/test configs do not break.
-var studentBaseUrl = builder.Configuration["StudentService:Url"]
+// The capability state is fixed for this process lifetime; re-enabling
+// requires a restart with valid configuration.
+builder.Services.AddSingleton(new StudentCapabilityOptions { Enabled = studentEnabled });
+string studentBaseUrl;
+string studentAddressSource;
+if (!studentEnabled)
+{
+    // Keep the typed client registered so existing domain operations keep
+    // working, but point it at a reserved, never-resolving placeholder so the
+    // disabled host cannot send any request to Student.
+    studentBaseUrl = "http://student-capability-disabled.invalid";
+    studentAddressSource = "Disabled";
+}
+else if (localMode)
+{
+    // Local enabled mode requires the dedicated explicit base URL. It never
+    // falls back to StudentService:Url/BaseUrl/GrpcUrl or the localhost
+    // example, not even when those keys are present in appsettings.json.
+    const string localStudentUrlKey = "Mistake:Local:Student:Url";
+    var localStudentUrl = builder.Configuration[localStudentUrlKey];
+    if (string.IsNullOrWhiteSpace(localStudentUrl))
+        throw new InvalidOperationException(
+            $"{localStudentUrlKey} is required when {studentEnabledKey}=true in Local mode; " +
+            "StudentService:Url/BaseUrl/GrpcUrl and the localhost example are not accepted here.");
+    if (!Uri.TryCreate(localStudentUrl, UriKind.Absolute, out var localStudentUri) ||
+        (localStudentUri.Scheme != Uri.UriSchemeHttp && localStudentUri.Scheme != Uri.UriSchemeHttps) ||
+        localStudentUri.Host.Length == 0 || localStudentUri.UserInfo.Length != 0 ||
+        localStudentUri.AbsolutePath != "/" ||
+        localStudentUri.Query.Length != 0 || localStudentUri.Fragment.Length != 0 ||
+        localStudentUrl.Any(char.IsWhiteSpace))
+        throw new InvalidOperationException(
+            $"{localStudentUrlKey} must be an absolute HTTP(S) base URL without credentials, path, query or fragment.");
+    studentBaseUrl = localStudentUrl;
+    studentAddressSource = "Explicit";
+}
+else
+{
+    // Platform keeps the legacy fallback chain unchanged.
+    studentBaseUrl = builder.Configuration["StudentService:Url"]
                      ?? builder.Configuration["StudentService:BaseUrl"]
                      ?? builder.Configuration["StudentService:GrpcUrl"]
                      ?? "http://localhost:5005";
+    studentAddressSource = "Platform";
+}
 builder.Services.AddStudentHttpClient(studentBaseUrl);
 builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 
@@ -225,7 +282,10 @@ app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}
     vlOptions.IsConfigured, vlOptions.Model, vlOptions.BaseUrl,
     string.IsNullOrEmpty(vlOptions.ApiKey) ? "(empty - service disabled)" : SensitiveDataMasker.MaskApiKey(vlOptions.ApiKey));
 
-app.Logger.LogInformation("Student Service: BaseUrl={Url}", studentBaseUrl);
+app.Logger.LogInformation(
+    "Student capability: Enabled={Enabled}, Mode={Mode}, AddressSource={AddressSource}, BaseUrl={BaseUrl}",
+    studentEnabled, localMode ? "Local" : "Platform", studentAddressSource,
+    studentEnabled ? studentBaseUrl : "(capability disabled)");
 
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
     ossConfig.InternalEndpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
