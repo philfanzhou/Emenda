@@ -1,6 +1,6 @@
 # Mistake 最小源码包 manifest 与仓库外预演
 
-Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定，配套脚本在仓库外空目录复现完整构建链路，作为未来迁出的自动预演入口。
+Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定，配套脚本在仓库外空目录复现完整构建链路，作为未来迁出的自动预演入口。本入口只覆盖构建/测试/镜像面；运行面（隔离环境启动矩阵与平台模式回归）由 [IsolatedDeployVerification.md](./IsolatedDeployVerification.md) 的 07 脚本承接。
 
 ## 组成
 
