@@ -76,7 +76,7 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 
 ### 入站 API 认证（兼容窗口，默认关闭）
 
-Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 验证（ADR-0008 的 2026-09-30 Mistake 修订），全部 18 个 `/api/*` 业务端点默认处于**匿名兼容窗口**：行为与历史版本一致，`/` 健康端点始终匿名。
+Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 验证（ADR-0008 的 2026-09-30 Mistake 修订），全部 18 个 `/api/*` 业务端点默认处于**匿名兼容窗口**：行为与历史版本一致，`/` 与 `/health/*` 健康端点始终匿名。
 
 | 配置键 | 环境变量 | 作用 |
 |---|---|---|
@@ -169,10 +169,10 @@ HTTP/1 监听端口由 `Mistake:Http:Port`（环境键 `Mistake__Http__Port`）�
 
 | 端口 | 协议 | 用途 | 配置方式 |
 |------|------|------|---------|
-| HTTP 端口（容器内默认 5007） | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /`） | `Mistake:Http:Port`，环境键 `Mistake__Http__Port` |
+| HTTP 端口（容器内默认 5007） | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /health/live`、`GET /health/ready`、兼容 `GET /`） | `Mistake:Http:Port`，环境键 `Mistake__Http__Port` |
 | host 映射端口 | — | host 访问容器服务的映射端口 | `start.sh` 的 `Port` 变量（`-p ${Port}:5007`） |
 
-**HTTP 端口**承载全部业务接口（18 个端点，路由前缀 `/api/mistakes`），包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等。同时 `GET /` 返回服务状态字符串用于健康检查。
+**HTTP 端口**承载全部业务接口（18 个端点，路由前缀 `/api/mistakes`），包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等。同时提供匿名健康端点：`GET /health/live`（纯存活）、`GET /health/ready`（按能力快照的就绪探测，见[流程六](#流程六健康检查)）与兼容保留的 `GET /` 状态字符串。
 
 > gRPC 端口 5006 已于 2026-07-12 下线（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
 
@@ -340,17 +340,41 @@ Platform 连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 
 | **节点名称** | 健康检查 |
 | **前置条件** | 服务已启动 |
 | **输入条件** | HTTP 端口可访问 |
-| **操作步骤** | 1. 向 HTTP 端口发送 `GET /` 请求<br>2. 检查响应状态码和内容 |
-| **成功判定** | HTTP 200，响应体为 `"Mistake WebAPI host is running."` |
-| **失败后排查方向** | 1. 无响应 → 服务未启动或 HTTP 端口配置错误<br>2. 连接拒绝 → 端口未监听，检查 Kestrel 配置<br>3. 返回非预期内容 → 确认请求的是 HTTP 端口 5007 |
+| **操作步骤** | 1. 存活检查：向 HTTP 端口发送 `GET /health/live`<br>2. 就绪检查：发送 `GET /health/ready` 并核对逐项组件状态<br>3. （兼容保留）`GET /` 仍返回运行字符串 |
+| **成功判定** | live 恒 200（纯进程存活，不做任何外部 IO）；ready 全部适用组件通过时 200，任一失败时 503 且响应体逐项列出组件名与失败原因 |
+| **失败后排查方向** | 1. live 无响应 → 进程未启动或端口未监听<br>2. ready 503 → 按响应体 `checks` 定位失败组件（见下方处置建议）<br>3. 响应非预期 → 确认请求的是 HTTP 端口 5007 |
 
 ### 健康检查方式
 
 ```bash
-curl http://<host>:5007/
+curl http://<host>:5007/health/live    # 存活：200 {"status":"ok"}
+curl http://<host>:5007/health/ready   # 就绪：200 或 503 + checks 明细
+curl http://<host>:5007/               # 兼容保留："Mistake WebAPI host is running."
 ```
 
-预期返回：`Mistake WebAPI host is running.`
+### 就绪依赖矩阵（IKJFIX）
+
+`/health/ready` 按进程启动时固定的能力快照逐项探测必要依赖，每项独立 3 秒短超时；未启用的能力不出现：
+
+| 组件名 | 何时探测 | 探测方式 |
+|---|---|---|
+| `db` | 总是 | EF Core 轻量连通探测（等价 SELECT 1 / 打开连接） |
+| `oss` | 总是 | S3 桶存在性 HEAD（轻量授权探测） |
+| `student` | 仅 `Mistake:Student:Enabled=true` | 对已解析 BaseUrl 的短超时 HTTP 探测，任意 HTTP 响应视为可达 |
+| `vl` | 仅 `VlAnalyzer` 已配置（ApiKey 非空） | 对已配置 BaseUrl 的短超时 HTTP 探测，任意 HTTP 响应视为可达 |
+
+规则与边界：
+
+- 两个端点位于 `/api` 组之外，在匿名兼容窗口与 strict 认证模式下都保持匿名（不返回 401）；不接收请求参数。
+- 响应只含组件名、ok 与固定短原因（`timeout` / `connect failed` / `probe failed`），不含密钥、连接串、签名 URL；探测日志同样只记录组件名与固定原因。
+- 数据库是启动必需依赖：db 地址错误时进程在启动期显式失败（既有 fail-fast 语义不变），`ready` 的 db 项覆盖的是启动后数据库失联的场景。
+- `ready` 200 只证明轻量连通性，不代表所有业务事务可成功；live 不得代替 ready 作为流量摘除依据。
+
+运维建议：
+
+- 探测频率不宜激进：ready 每次请求都会产生一次 db 连接与一次 S3 HEAD，编排系统建议 ≥ 10s 间隔并按连续失败次数判定，不要以单次 503 立即重启。
+- ready 503 处置：`db` 失败 → 检查 PostgreSQL 可达性与连接串；`oss` 失败 → 检查 S3 endpoint/凭据/桶存在；`student` 失败 → 检查 `Mistake:Student:Enabled` 对应的 BaseUrl 可达性；`vl` 失败 → 检查 VL Provider BaseUrl。任一项持续失败先摘流量再排查，进程无需重启（开关与地址为启动快照，变更需重启）。
+- 组件集合随启动快照固定：修改能力开关或地址后必须重启进程，探针矩阵才会随之变化。
 
 > **注意**：健康检查走 HTTP 端口（默认 5007），承载全部 18 个业务端点。mistake→student 的调用也通过 HTTP（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
 
@@ -407,7 +431,7 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 
 | # | 核验项 | 检查方法 | 预期结果 | 异常排查 |
 |---|--------|---------|---------|---------|
-| 1 | 服务存活 | `GET /` 健康检查 | 返回 200 | 检查进程状态、端口监听 |
+| 1 | 服务存活 | `GET /health/live` 健康检查；`GET /health/ready` 就绪探测 | live 恒 200；ready 全组件通过 200、任一失败 503 且 body 标明组件 | 检查进程状态、端口监听；ready 失败按 body 组件名排查对应依赖 |
 | 2 | 数据库连接 | 查询错题列表接口 | 正常返回数据 | 检查连接串、数据库状态 |
 | 3 | HTTP 端口可达 | portal 调用 mistake 接口 | 正常响应 | 检查 HTTP 端口 5007、防火墙规则 |
 | 4 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |

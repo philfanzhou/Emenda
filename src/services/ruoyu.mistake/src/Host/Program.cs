@@ -12,6 +12,7 @@ using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services;
+using Ruoyu.Study.Mistake.Host.Services.Health;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Host;
 using Ruoyu.Study.Mistake.Service;
@@ -245,6 +246,10 @@ builder.Services.AddSingleton<IOssService>(sp =>
 
 // VL Analyzer for image grouping
 builder.Services.Configure<VlAnalyzerOptions>(builder.Configuration.GetSection("VlAnalyzer"));
+// Readiness snapshot input (IKJFIX): which optional capabilities this process
+// wired. The snapshot is fixed at startup like every other switch; the
+// readiness probe never reports components that are not part of this process.
+var vlAnalyzerOptions = builder.Configuration.GetSection("VlAnalyzer").Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
 // Register OpenAiCompatibleClient in non-streaming mode (HttpClient.Timeout finite,
 // per-attempt timeout enforced by the client). OpenAiCompatibleClient's constructor
 // configures BaseAddress + Bearer auth on the HttpClient, so AddHttpClient only needs
@@ -316,6 +321,14 @@ else
 builder.Services.AddStudentHttpClient(studentBaseUrl);
 builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 
+// Readiness dependency matrix (IKJFIX): registered after every capability
+// switch and address is resolved so the snapshot reflects the wired process.
+builder.Services.AddSingleton(new MistakeReadinessSnapshot(
+    studentEnabled, studentBaseUrl, vlAnalyzerOptions.IsConfigured, vlAnalyzerOptions.BaseUrl));
+builder.Services.AddHttpClient(MistakeReadinessProbe.HttpClientName)
+    .ConfigureHttpClient(client => client.Timeout = MistakeReadinessProbe.ProbeTimeout);
+builder.Services.AddScoped<MistakeReadinessProbe>();
+
 // Per-resource authorization (IKJEPZ): startup snapshot like every identity
 // trust setting; Enabled=false keeps every /api endpoint byte-identical to
 // the compatibility-window baseline because the endpoints skip the checks.
@@ -352,8 +365,7 @@ app.Logger.LogInformation(
         ?? builder.Configuration["StudentService:BaseUrl"]
         ?? builder.Configuration["StudentService:GrpcUrl"]));
 
-var vlConfig = builder.Configuration.GetSection("VlAnalyzer");
-var vlOptions = vlConfig.Get<VlAnalyzerOptions>() ?? new VlAnalyzerOptions();
+var vlOptions = vlAnalyzerOptions;
 app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}, BaseUrl={BaseUrl}, ApiKey={ApiKeyStatus}",
     vlOptions.IsConfigured, vlOptions.Model, vlOptions.BaseUrl,
     string.IsNullOrEmpty(vlOptions.ApiKey) ? "(empty - service disabled)" : SensitiveDataMasker.MaskApiKey(vlOptions.ApiKey));
@@ -393,6 +405,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapMistakeHttpEndpoints(requireAuthenticatedApi: strictApiAuth);
+// Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.
+app.MapMistakeHealthEndpoints();
 app.MapGet("/", () => "Mistake WebAPI host is running.");
 
 app.Run();
