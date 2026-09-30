@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "name": "mistake-minimal-source-package",
   "description": "Mistake 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外预演与未来迁出按清单复制使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
-  "source_commit": "eaaa708f3d366363f10051893f45a8d0dd7e40ae",
-  "source_commit_note": "闭包与依赖清单的审计基线（!26/IKJFGU 合入后）。演进规则见 docs/development/MinimalSourceRehearsal.md：任何改变闭包成员或直接依赖版本的变更必须在同一提交中更新本 manifest 并重跑预演。",
+  "source_commit": "93e3f1d5a644f08c2822b17c6f748971a7aadd66",
+  "source_commit_note": "闭包与依赖清单的审计基线（!27/IKJFHO 窄化 Dockerfile 与 !28/IKJFHP 依赖升级合入后的 master）。演进规则见 docs/development/MinimalSourceRehearsal.md：任何改变闭包成员或直接依赖版本的变更必须在同一提交中更新本 manifest 并重跑预演。",
   "solution": "src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln",
   "members": {
     "mistake_projects": [
@@ -102,20 +102,20 @@
       { "id": "Microsoft.Extensions.Options", "version": "8.0.2", "license": "MIT" }
     ],
     "src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared/Ruoyu.Study.Consul.Shared.csproj": [
-      { "id": "Microsoft.Extensions.Configuration", "version": "10.0.8", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Configuration.Binder", "version": "10.0.8", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Configuration.CommandLine", "version": "10.0.8", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Configuration.EnvironmentVariables", "version": "10.0.8", "license": "MIT" },
-      { "id": "Microsoft.Extensions.DependencyInjection.Abstractions", "version": "10.0.8", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Hosting.Abstractions", "version": "10.0.8", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.8", "license": "MIT" },
+      { "id": "Microsoft.Extensions.Configuration", "version": "10.0.12", "license": "MIT" },
+      { "id": "Microsoft.Extensions.Configuration.Binder", "version": "10.0.12", "license": "MIT" },
+      { "id": "Microsoft.Extensions.Configuration.CommandLine", "version": "10.0.12", "license": "MIT" },
+      { "id": "Microsoft.Extensions.Configuration.EnvironmentVariables", "version": "10.0.12", "license": "MIT" },
+      { "id": "Microsoft.Extensions.DependencyInjection.Abstractions", "version": "10.0.12", "license": "MIT" },
+      { "id": "Microsoft.Extensions.Hosting.Abstractions", "version": "10.0.12", "license": "MIT" },
+      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.12", "license": "MIT" },
       { "id": "Serilog.AspNetCore", "version": "8.0.0", "license": "Apache-2.0" },
       { "id": "Serilog.Enrichers.Environment", "version": "3.0.0", "license": "Apache-2.0" },
       { "id": "Serilog.Enrichers.Thread", "version": "4.0.0", "license": "Apache-2.0" },
       { "id": "Serilog.Settings.Configuration", "version": "8.0.0", "license": "Apache-2.0" },
       { "id": "Serilog.Sinks.Console", "version": "6.0.0", "license": "Apache-2.0" },
       { "id": "Serilog.Sinks.Grafana.Loki", "version": "8.3.2", "license": null, "license_url": "https://aka.ms/deprecateLicenseUrl", "license_note": "nuspec 未提供 license expression" },
-      { "id": "Steeltoe.Discovery.Consul", "version": "4.2.0", "license": "Apache-2.0" }
+      { "id": "Steeltoe.Discovery.Consul", "version": "4.3.0", "license": "Apache-2.0" }
     ]
   },
   "dependencies_note": "直接依赖（csproj PackageReference）id/版本/许可证表达式，逐项目采集自 ~/.nuget/packages 中对应 nuspec 的 license 元数据；license 为 null 的条目仅含已弃用 licenseUrl，如实记录不推断。版本为 source_commit 处的 as-is 快照；依赖版本变化（如 NU1903 升级切片）合入后必须在同一提交中同步本清单。",

@@ -18,7 +18,9 @@ COPY src/services/ruoyu.mistake/src/StudentClient/Ruoyu.Study.Mistake.StudentCli
 RUN dotnet restore "src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj"
 
 COPY src/services/ruoyu.mistake/src src/services/ruoyu.mistake/src
-COPY src/ruoyu.common src/ruoyu.common
+COPY src/ruoyu.common/backend/Ruoyu.Study.Common src/ruoyu.common/backend/Ruoyu.Study.Common
+COPY src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared
+COPY src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared
 
 RUN dotnet publish "src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false --no-restore
 
