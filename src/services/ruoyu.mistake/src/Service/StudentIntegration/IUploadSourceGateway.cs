@@ -4,7 +4,7 @@ public interface IUploadSourceGateway
 {
     Task<ProcessingUploadsPage> GetProcessingUploadsAsync(string? cursor, int pageSize, CancellationToken cancellationToken = default);
     Task<RemoveProcessedUploadImagesResult> RemoveProcessedImagesAsync(string recordId, List<string> imagePaths, CancellationToken cancellationToken = default);
-    Task CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, CancellationToken cancellationToken = default);
+    Task<CreateReturnedUploadRecordResult> CreateReturnedRecordAsync(string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason, string? operationId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Read-only ownership resolution for per-resource authorization
@@ -65,4 +65,25 @@ public sealed class RemoveProcessedUploadImagesResult
     public bool RecordDeleted { get; set; }
     public int RemainingImageCount { get; set; }
     public string ErrorMessage { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Outcome classification of the returned-record creation callback
+/// (IKJEY4): Succeeded (created or replayed), PayloadConflict (the
+/// operationId was already used with a different payload) or Unknown
+/// (transport failure or unreadable response — read back via the
+/// operationId before retrying).
+/// </summary>
+public enum CreateReturnedUploadRecordStatus
+{
+    Succeeded = 0,
+    PayloadConflict = 1,
+    Unknown = 2
+}
+
+public sealed class CreateReturnedUploadRecordResult
+{
+    public CreateReturnedUploadRecordStatus Status { get; set; } = CreateReturnedUploadRecordStatus.Unknown;
+    public bool Replayed { get; set; }
+    public string Message { get; set; } = string.Empty;
 }

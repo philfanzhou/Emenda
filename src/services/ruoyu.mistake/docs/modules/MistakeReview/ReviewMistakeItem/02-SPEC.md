@@ -23,6 +23,7 @@
 - [x] FR-11: Rejected 时删除该 MistakeItem
 - [x] FR-12: 审核后检查该 sourceUploadId 下是否还有 PendingReview 状态的条目，若无则调用学生服务 MarkUploadRecordAsReturned
 - [x] FR-13: Rejected 时接收 `return_reason`（教师退回原因），调用 `CreateReturnedRecordAsync` 创建新的退回记录时将 `return_reason` 透传给 student 服务写入 `image_upload_record.return_reason` 字段；不再将 root_cause 拼接到 comments 中
+- [x] FR-14（IKJEY4）: Rejected 时派生确定性幂等键 `operationId = "mistake-return:{itemId}"` 随退回回调传递；回调结果分类为成功（含重放）/载荷冲突/结果未知三类，后两者使审核响应 `Success=false`（结果未知附带回查指引 `GET /api/uploads/returned/{operationId}`），不再把已知失败报告为成功。协议细节见 [Integration/Student.md](../../../Integration/Student.md) 的「退回回调幂等协议」
 
 ## 验收标准
 

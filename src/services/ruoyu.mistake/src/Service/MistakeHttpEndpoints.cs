@@ -416,26 +416,50 @@ public static partial class MistakeHttpEndpoints
                 // confusing the mistake root_cause with the teacher's return reason).
                 if (migratedBackPaths.Count > 0 && !string.IsNullOrWhiteSpace(item.StudentId))
                 {
-                    try
+                    // Deterministic idempotency key derived from the item: a lost
+                    // response or a retry of the same reject replays the same
+                    // returned record instead of creating a second one (IKJEY4).
+                    var operationId = $"mistake-return:{item.Id}";
+                    var imageEntries = migratedBackPaths.Select(p => new UploadImageEntry
                     {
-                        var imageEntries = migratedBackPaths.Select(p => new UploadImageEntry
-                        {
-                            Path = p,
-                            Type = "mistake"
-                        }).ToList();
-                        await studentClient.CreateReturnedRecordAsync(
-                            item.StudentId,
-                            imageEntries,
-                            "Rejected",
-                            request.ReturnReason ?? string.Empty,
-                            CancellationToken.None).ConfigureAwait(false);
-                        logger.LogInformation("ReviewMistakeItem: Created returned record for student {StudentId} with {Count} images",
-                            item.StudentId, migratedBackPaths.Count);
+                        Path = p,
+                        Type = "mistake"
+                    }).ToList();
+                    var returnedRecord = await studentClient.CreateReturnedRecordAsync(
+                        item.StudentId,
+                        imageEntries,
+                        "Rejected",
+                        request.ReturnReason ?? string.Empty,
+                        operationId,
+                        CancellationToken.None).ConfigureAwait(false);
+
+                    if (returnedRecord.Status == CreateReturnedUploadRecordStatus.Succeeded)
+                    {
+                        logger.LogInformation(
+                            "ReviewMistakeItem: Created returned record for student {StudentId} with {Count} images (operationId={OperationId}, replayed={Replayed})",
+                            item.StudentId, migratedBackPaths.Count, operationId, returnedRecord.Replayed);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        logger.LogError(ex, "ReviewMistakeItem: Failed to create returned record for student {StudentId}",
-                            item.StudentId);
+                        // The reject side effects (item deleted, images migrated)
+                        // already happened; the callback outcome must not be
+                        // reported as a successful review. Both remaining
+                        // classifications are recoverable through the
+                        // operationId: read it back on Student, then retry with
+                        // the same key.
+                        logger.LogError(
+                            "ReviewMistakeItem: Returned record callback for student {StudentId} failed with status {Status} (operationId={OperationId}): {Message}",
+                            item.StudentId, returnedRecord.Status, operationId, returnedRecord.Message);
+                        var errorMessage = returnedRecord.Status == CreateReturnedUploadRecordStatus.PayloadConflict
+                            ? $"退回记录载荷冲突：operationId={operationId} 已以不同载荷提交，需人工核查 Student 侧退回记录后处理"
+                            : $"退回记录结果未知（operationId={operationId}）：可通过 GET /api/uploads/returned/{operationId} 回查，并以同一 operationId 重试";
+                        return MistakeHttpResponse.Ok(new ReviewMistakeItemResponse
+                        {
+                            Success = false,
+                            ErrorMessage = errorMessage,
+                            SourceUploadId = item.SourceUploadId ?? string.Empty,
+                            StudentId = item.StudentId ?? string.Empty
+                        });
                     }
                 }
             }
