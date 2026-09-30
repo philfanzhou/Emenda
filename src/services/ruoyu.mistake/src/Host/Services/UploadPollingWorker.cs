@@ -371,10 +371,27 @@ public class UploadPollingWorker : BackgroundService
 
             if (removeResponse.Success)
             {
+                // RecordDeleted=true covers both a fresh full removal and an
+                // idempotent replay after a lost response (Student answers
+                // replays from the removal tombstone): both are terminal
+                // confirmations, not new removal actions.
                 _logger.LogInformation(
                     "UploadPollingWorker: Removed processed images from Student record {RecordId}. " +
                     "RecordDeleted={Deleted}, Remaining={Remaining}",
                     recordId, removeResponse.RecordDeleted, removeResponse.RemainingImageCount);
+            }
+            else if (removeResponse.UnknownRecord)
+            {
+                // Student reports the record as unknown: no record and no
+                // removal tombstone proves a prior completion. This is a data
+                // inconsistency between the migrated objects and the Student
+                // record that no retry can resolve — manual investigation of
+                // the source record is required (reconciliation belongs to
+                // IKJ0IO, not this worker).
+                _logger.LogWarning(
+                    "UploadPollingWorker: Student reported unknown record {RecordId} for processed-image removal " +
+                    "(no record and no removal tombstone); manual investigation of the source record is required",
+                    recordId);
             }
             else
             {

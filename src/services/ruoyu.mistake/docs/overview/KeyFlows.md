@@ -54,6 +54,7 @@ UploadPollingWorker 在处理每条记录前，先查询该 uploadId 下已有�
 2. **不会重复迁移 OSS**：已迁移的图片不会被再次 copy/delete
 3. **存量脏数据自动清理**：之前因 bug 遗留的"已处理但未通知删除"的记录，下次轮询时会被识别并通知 Student 删除
 4. **部分失败安全**：如果某次处理只完成了部分图片，下次轮询会只处理剩余图片
+5. **移除回调可重放（IKJEY6）**：Student 侧删除记录时写入删除墓碑；响应丢失或 Worker 重试时同一移除请求得到幂等成功（Info 日志确认），未知记录（无记录且无墓碑）记 Warning 并要求人工核查，不重试。协议细节见 [Integration/Student.md](../Integration/Student.md) 的「移除回调三态语义」
 
 ## 流程2: 错题审核流程
 

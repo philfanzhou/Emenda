@@ -42,7 +42,8 @@ public sealed class StudentUploadSourceGateway : IUploadSourceGateway
             Success = source.Success,
             RecordDeleted = source.RecordDeleted,
             RemainingImageCount = source.RemainingImageCount,
-            ErrorMessage = source.ErrorMessage
+            ErrorMessage = source.ErrorMessage,
+            UnknownRecord = string.Equals(source.ErrorKind, "unknown_record", StringComparison.OrdinalIgnoreCase)
         };
     }
 
