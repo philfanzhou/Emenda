@@ -215,10 +215,9 @@
 - OSS 服务不可用（S3 连接超时或拒绝）
 - 源文件不存在（`uploads/xxx` 已被删除或从未上传成功）
 - 目标路径冲突（`mistakes/xxx` 已存在）
-- `USE_LOCAL_OSS=1` 但本地路径不可写
 
 **排查步骤**：
-1. 确认 OSS 服务可用：检查 S3 endpoint 或本地文件系统权限
+1. 确认 OSS 服务可用：检查 S3 endpoint 可达性与凭据
 2. 查看日志中 `{Path}` 的具体值，确认源路径是否以 `uploads/` 开头
 3. 手动验证：用 OSS 工具检查源文件是否存在
 4. 检查 `Oss` 配置节（`InternalEndpoint`/`InternalSecure`/`AccessKey`/`SecretKey`/`BucketName`）是否正确
@@ -297,29 +296,9 @@
 2. 用 S3 客户端工具（如 `aws cli`、MinIO Console）验证连接
 3. 确认 Bucket 存在：`aws s3 ls s3://ruoyu-study --endpoint-url http://localhost:8333`
 
-**临时绕过**：设置环境变量 `USE_LOCAL_OSS=1` 切换到本地文件存储
+**临时绕过**：无本地文件回退。Mistake Host 无条件使用 `S3OssService`；`USE_LOCAL_OSS` / `OSS_LOCAL_PATH` 是 Student Host 的开发用途开关，对 Mistake 无效。
 
 **根治建议**：确保 S3 兼容服务正常运行，配置正确的凭证。
-
-### 6.2 USE_LOCAL_OSS=1 但路径不可写
-
-**典型症状**：设置 `USE_LOCAL_OSS=1` 后，OSS 操作报权限错误。
-
-**常见日志特征**：
-- `UnauthorizedAccessException: Access to the path '...' is denied`
-- `DirectoryNotFoundException`
-
-**可能根因**：
-- `OSS_LOCAL_PATH` 环境变量指向的目录不存在或无写权限
-- 默认路径 `data/oss` 不存在
-
-**排查步骤**：
-1. 检查 `OSS_LOCAL_PATH` 环境变量值
-2. 确认目录存在且有写权限
-
-**临时绕过**：手动创建目录并赋权
-
-**根治建议**：在 `LocalFileOssService` 初始化时自动创建目录。
 
 ---
 
@@ -462,8 +441,6 @@
 | `Oss:AccessKey` | appsettings.json | mock_access_key | OSS AccessKey |
 | `Oss:SecretKey` | appsettings.json | mock_secret_key | OSS SecretKey |
 | `Oss:BucketName` | appsettings.json | ruoyu-study | OSS Bucket 名称 |
-| `USE_LOCAL_OSS` | 环境变量 | 未设置 | 设为 `1` 使用本地文件存储 |
-| `OSS_LOCAL_PATH` | 环境变量 | data/oss | 本地 OSS 存储路径 |
 
 ## 快速参考：关键日志消息
 
