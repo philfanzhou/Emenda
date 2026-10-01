@@ -238,10 +238,12 @@ Platform 连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 
 
 ### OSS 模式判定逻辑
 
-| 环境变量 | OSS 实现 | 存储路径 |
+Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存在本地文件系统 OSS 分支；`USE_LOCAL_OSS` / `OSS_LOCAL_PATH` 是 Student Host 的开发用途开关，对 Mistake 无效。Mistake 的 OSS 配置来源只由配置引导模式决定：
+
+| 配置模式 | OSS 配置来源 | 说明 |
 |----------|---------|---------|
-| `USE_LOCAL_OSS=1` | `LocalFileOssService` | `OSS_LOCAL_PATH` 环境变量指定，默认 `data/oss` |
-| 未设置或非 `1` | `S3OssService` | 由 `Oss:InternalEndpoint`、`Oss:InternalSecure` 和 `Oss:BucketName` 决定 |
+| `Mistake:ConfigMode=Local` | `Mistake:Local:Oss:*` 六项（环境键前缀 `Mistake__Local__Oss__`） | 六项全部必填，缺失或无效在任何数据库连接前失败；见 [Local OSS 配置](../Integration/Oss/LocalConfiguration.md) |
+| 默认 / 显式 `Platform` | Consul 共享 `Oss:*` | `Oss:InternalEndpoint`、`Oss:InternalSecure`、`Oss:BucketName`、凭据与可选 `Oss:PublicBaseUrl` |
 
 ---
 
@@ -264,10 +266,10 @@ Platform 连接串由 `SharedPostgreSqlConnectionStringFactory.BuildOrFallback` 
 |------|------|
 | **节点名称** | OSS 准备 |
 | **前置条件** | 配置准备完成 |
-| **输入条件** | S3 兼容存储服务已部署（生产）或本地文件系统可写（开发） |
-| **操作步骤** | 1. 生产模式：确认 MinIO/SeaweedFS 已运行，`Oss:BucketName` 指定的桶已创建<br>2. 开发模式：设置 `USE_LOCAL_OSS=1`，确认 `data/oss` 目录可写<br>3. 验证凭证有效性（生产模式） |
+| **输入条件** | S3 兼容存储服务已部署（如 MinIO/SeaweedFS），`Oss:BucketName` 指定的桶已创建或可自动创建 |
+| **操作步骤** | 1. 确认 MinIO/SeaweedFS 已运行<br>2. Local 模式：提供 `Mistake:Local:Oss:*` 六项配置并确认目标桶存在（见 [Local OSS 配置](../Integration/Oss/LocalConfiguration.md)）；Platform 模式：确认 Consul `Oss:*` 与目标桶<br>3. 验证凭证有效性 |
 | **成功判定** | 服务启动后，涉及 OSS 的操作（如 `CompleteUploadReview`）可正常执行 |
-| **失败后排查方向** | 1. S3 连接失败 → 检查 `Oss:InternalEndpoint` 是否可达、`InternalSecure` 与协议是否匹配、AccessKey/SecretKey 是否正确<br>2. Bucket 不存在 → 手动创建或确认自动创建策略<br>3. 本地 OSS 路径不可写 → 检查目录权限 |
+| **失败后排查方向** | 1. S3 连接失败 → 检查 `Oss:InternalEndpoint` 是否可达、`InternalSecure` 与协议是否匹配、AccessKey/SecretKey 是否正确<br>2. Bucket 不存在 → 手动创建或确认自动创建策略<br>3. Local 模式启动失败 → 检查六项 `Mistake:Local:Oss:*` 键是否全部显式提供 |
 
 ### OSS 不可用时哪些功能受影响
 
