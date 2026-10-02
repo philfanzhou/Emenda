@@ -73,3 +73,24 @@ bash script/build-script/07-mistake.isolated-deploy-verification.sh --target /tm
 ## 已知缺陷（截至 2026-10-01）
 
 - 第 11 格（降级面：停止 MinIO 后 `ready` 应转 503 并指明 `oss`）在当前主线会失败：Minio 6.0.2 的 `BucketExistsAsync`/`StatObjectAsync` 吞掉传输层异常并返回成功（上游 [minio-dotnet #1118](https://github.com/minio/minio-dotnet/issues/1118)），`S3OssService.CheckConnectivityAsync` 因此在端点拒连时返回 true，`oss` 组件恒报 ok。缺陷登记与修复方向见 [IKJFJI](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJFJI)；修复合入前本入口在该格如实报告 FAIL（其余格不受影响），修复后同一入口重跑即为全绿判据。
+
+## 显式真实 OIDC 严格 Local 验证
+
+原19格仍覆盖匿名兼容/Platform基线。显式增加 `--strict-fixture /absolute/path/fixture.json` 时，脚本导出同commit的测试helper、复用Release发布与任务自有PG/S3，在清理前执行第20阶段，两次独立随机库均保持 Student/三worker关闭、VL未配置、strict/resource均true。缺输入、非0600文件、symlink、缺issuer/callback/CA/ADMIN/PROBE_OTHER/合成账户时直接失败，不能跳过再输出SUCCESS。
+
+```bash
+bash script/build-script/07-mistake.isolated-deploy-verification.sh \
+  --target /tmp/mistake-strict-verify --commit <actual-sha> \
+  --strict-fixture /absolute/path/fixture.json
+python3 tests/deployment/test_strict_local_probe.py
+```
+
+fixture由已授权的真实provider部署者写到repo外：键为 `issuer`（HTTPS authority）、`callback`（注册的精确 `/api/auth/oidc/callback` HTTPS URL）、`ca`（公开部署CA路径）、`apps`（ADMIN、PROBE_OTHER两项confidential secret字符串）、`admin` 与 `ordinary`（各自username/password）。文件0600，不在仓库放真实值。task-owned SignaCore Production前置入口为 `https://192.168.55.10:25443`、callback `https://192.168.55.10:25444/api/auth/oidc/callback`；授权caller仅读取其受限fixture secret，不改provider keys/config/data seeds。
+
+caller复用真实登录cookie/CSRF、Code/S256与真实RS256/JWKS验证；接收精确注册redirect在内存完成state/iss/nonce/subject校验与confidential兑换，并正常TLS检查保留callback的公开health入口，不替换远端callback。这个测试caller不是外部Admin UI/BFF。令牌仅内存，普通无admin与其他audience均由同一个真实provider签发。若caller环境需要TCP路由，只能通过fixture的caller transport routes保持原URL/Host/SNI及正常CA/SAN验证；不改全局DNS/trust，不使用-k或不安全handler。Mistake进程用系统roots+部署CA的 `SSL_CERT_FILE`，HTTPS metadata及签名/issuer/audience/lifetime校验保持启用。
+
+矩阵逐项断言匿名/其他真实audience/篡改签名401；真实ADMIN admin读取item/list/by-upload/practice/log200；普通主体staff/admin-only403、Student归属访问503；伪reviewer403；合法reviewer重复退回503；admin写practice/log403；合法confirm持久本域review/log变化。拒绝前后真实PG全部行/关联与S3 inventory摘要相等，签名图片经过任务自有公开代理按原签名Host和剥离前缀实际读取bytes；confirm/重启图片摘要不变。Student/Consul/Loki共用sentinel计数必须0。
+
+每个库经历strict停启与安全回退后仍拒绝匿名，缺CA/错issuer/错ADMINaud新consumer返回401且不匿名降级，缺Authority以键名启动失败。运行中取消先停任务child listener，Popen只管理自身PID；失败保留自己PG/S3和证据，成功按精确owner前缀清理。维护/回退保持strict/resource=true或暂停listener，不能把匿名窗口作为strict安全回退。公开strict-summary只保存status、hash、计数和能力，不保存JWT/code/cookie/密码/连接串/签名URL。
+
+这只证明 Student-disabled Local 的实际身份和能力边界。全平台18端点完整角色矩阵由现有自动测试覆盖，Student-enabled采集/退回/Saga、Portal/Admin真实会话、共享issuer切换及父级最终联验仍按原任务实施；本入口不替代它们。

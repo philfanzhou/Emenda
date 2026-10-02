@@ -460,3 +460,7 @@ Mistake__Student__ServiceAuthentication__PrivateKeyPath=/run/ruoyu/mistake-signi
 Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使用受信任的 HTTPS 地址。私 CA 可用 `MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE` 指定系统 roots 加部署 CA 的绝对 bundle 文件，脚本只读挂到 `/run/ruoyu/student-ca-bundle.pem` 并设置进程 `SSL_CERT_FILE`，保持默认 .NET 证书链/SAN/有效期校验；不得使用无验证 handler 或 `curl -k`。新 Host 文件已经由最小源码 manifest 的递归 Host 成员和 Dockerfile 包含，secret 不 COPY 入镜像；[预演](./MinimalSourceRehearsal.md) 应指定当前提交并显式允许基线漂移。
 
 启用、轮换、65 秒等待与回退顺序由 [Student 部署](../../../ruoyu.student/docs/development/Deployment.md) 承载。隔离双进程 TLS/PG 演练见 [部署验证](../../../../../tests/deployment/README.md)。这里只交付机制与挂载，真实 55.10 的版本、开关和入站资源保护仍由父项协调。
+
+## 隔离严格 Local 运行门禁
+
+[隔离部署验证](./IsolatedDeployVerification.md) 的 `--strict-fixture` 阶段使用真实Production OIDC与任务自有PG/S3验证 Student-disabled Local。strict与resource同时打开、默认 .NET CA/SAN/JWKS校验；普通主体的学生范围访问明确503，admin的合法本域confirm可用，而跨域退回重复503且零副作用。该阶段不启用共享服务或外部Admin，不等于全平台启用批准。维护回退先停自身listener，再以仍为strict/resource=true的已验证配置/二进制重启，或持续关闭listener；不得以恢复匿名200为严格运行的安全回退。fixture必须0600、repo外，公开证据不含secret或签名URL。
