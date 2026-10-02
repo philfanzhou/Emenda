@@ -49,3 +49,7 @@ adapter、HTTP 失败矩阵、移除回调 `errorKind` 透传（`RemoveProcessed
 Host 的 `StudentServiceTokenHandler` 由同一个 typed client 管线用于 Worker、审核回调和 learner 账户归属解析；开启 `Mistake:Student:ServiceAuthentication:Enabled` 后每次请求签发新 RS256/60 秒服务 JWT 并覆盖请求 Authorization，不需要或转发用户 JWT。Worker scan / remove、审核 returned 和 returned 回查分别使用 `uploads.scan` / `uploads.remove` / `uploads.return`；账户查询改到始终认证的 `/api/integrations/mistake/accounts/{accountId}/students` 并使用 `accounts.read`。禁用时保留旧调用路径。
 
 签发快照在启动时校验，默认要求 Student HTTPS 基地址；受控 HTTP 链路须显式 `AllowInsecureHttp=true`。签发失败、取消与超时不匿名重发；原业务游标、Returned 幂等/冲突/回查、墓碑/unknown_record 和错误分类保持原样。服务身份不会替代 Mistake 入站 resourceAuth 或 reviewer/student 授权。Student 的 [服务身份能力](../../../ruoyu.student/docs/Integration/Mistake/ServiceIdentity.md) 是 wire 合同权威入口；secret 文件挂载、启用与轮换见 [部署说明](../development/Deployment.md)。
+
+## 提供方来源快照的消费边界
+
+Student 新增[条件来源快照](../../../ruoyu.student/docs/Integration/Mistake/SourceSnapshot.md)，默认关闭取得、始终 uploads.snapshot 服务授权。当前本服务 worker、legacy CompleteReview 与四面客户端尚未调用它，既有直接源图 mover 不能与新取得并行启用。快照不是本服务 claim/目标复制/完成确认；后继 durable handoff/全量引用/条件确认另行实现，在此之前不得启用源图 GC 或把旧 remove-processed 用作 snapshot release。
