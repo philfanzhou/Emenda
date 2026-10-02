@@ -18,8 +18,10 @@ public sealed class BackupRestorePostgresTests
     private const string Reanalyze = "20260626000000_AddReanalyzeJob";
     private static readonly string[] BusinessTables = ["mistake_item", "mistake_practice", "process_log", "reanalyze_job"];
 
-    [Fact]
-    public async Task MisstampedTextPathsRestoreIsVerifiedBeforeUpgradeAndSourceStaysUnchangedAsync()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MisstampedTextPathsRestoreIsVerifiedBeforeUpgradeAndSourceStaysUnchangedAsync(bool lowercaseIndex)
     {
         await using var drill = await Drill.CreateAsync();
         await using var source = drill.Context(drill.Source);
@@ -29,6 +31,8 @@ public sealed class BackupRestorePostgresTests
         await drill.ExecuteAsync(drill.Source, "CREATE INDEX \"IX_process_log_student_id\" ON process_log (student_id)");
         await drill.ExecuteAsync(drill.Source, $"INSERT INTO \"__EFMigrationsHistory\" VALUES ('{ProcessLog}','8.0.11')");
         await source.GetService<IMigrator>().MigrateAsync(Reanalyze);
+        if (lowercaseIndex)
+            await drill.ExecuteAsync(drill.Source, "ALTER INDEX \"IX_process_log_student_id\" RENAME TO ix_process_log_student_id");
         await SeedAsync(drill, true);
         var before = await drill.ManifestAsync(drill.Source, true);
         Assert.Equal(3, before.HistoryCount);

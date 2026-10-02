@@ -16,12 +16,17 @@ public sealed class ReadOnlyStartupPostgresTests
     private const string Reanalyze = "20260626000000_AddReanalyzeJob";
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
 
-    [Fact]
-    public async Task LeaseUpgradeFailsOnlyOwnerlessRunningAndPreservesOtherJobs()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LeaseUpgradeFailsOnlyOwnerlessRunningAndPreservesOtherJobs(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await context.GetService<IMigrator>().MigrateAsync(RootCause);
+        if (lowercaseIndex)
+            await CreateMisstampedTextPathsAsync(database, context, true);
+        else
+            await context.GetService<IMigrator>().MigrateAsync(RootCause);
         var item = Guid.NewGuid();
         var running = Guid.NewGuid();
         var pending = Guid.NewGuid();
@@ -41,12 +46,14 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(1, await context.ProcessLogs.CountAsync(l => l.MistakeItemId == item));
     }
 
-    [Fact]
-    public async Task ExactMisstampedTextPathsUpgradePreservesBusinessRowsAndIsRepeatable()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExactMisstampedTextPathsUpgradePreservesBusinessRowsAndIsRepeatable(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await CreateMisstampedTextPathsAsync(database, context);
+        await CreateMisstampedTextPathsAsync(database, context, lowercaseIndex);
         var item = Guid.NewGuid();
         var practice = Guid.NewGuid();
         var job = Guid.NewGuid();
@@ -78,23 +85,29 @@ public sealed class ReadOnlyStartupPostgresTests
     }
 
     [Theory]
-    [InlineData("invalid JSON secret")]
-    [InlineData("{\"path\":\"uploads/a\"}")]
-    [InlineData("[\"uploads/a\",null]")]
-    [InlineData("[\"uploads/a\",42]")]
-    public async Task MisstampedTextPathsRejectsNonStringArraysWithoutMutation(string value)
+    [InlineData("invalid JSON secret", false)]
+    [InlineData("invalid JSON secret", true)]
+    [InlineData("{\"path\":\"uploads/a\"}", false)]
+    [InlineData("{\"path\":\"uploads/a\"}", true)]
+    [InlineData("[\"uploads/a\",null]", false)]
+    [InlineData("[\"uploads/a\",null]", true)]
+    [InlineData("[\"uploads/a\",42]", false)]
+    [InlineData("[\"uploads/a\",42]", true)]
+    public async Task MisstampedTextPathsRejectsNonStringArraysWithoutMutation(string value, bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await CreateMisstampedTextPathsAsync(database, context);
+        await CreateMisstampedTextPathsAsync(database, context, lowercaseIndex);
         var item = Guid.NewGuid();
         await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ('{item}','student-1',1,7,'upload-1','[]'::jsonb,1,now())");
         await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-1',now(),'{value}',false)");
         var before = await database.SnapshotAsync();
+        var rows = await database.BusinessRowsAsync();
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
         Assert.DoesNotContain(value, error.ToString());
         Assert.Equal(before, await database.SnapshotAsync());
+        Assert.Equal(rows, await database.BusinessRowsAsync());
     }
 
     [Theory]
@@ -115,12 +128,14 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
-    [Fact]
-    public async Task MisstampedTextPathsConcurrentUpgradeAndCancellationAreSafe()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MisstampedTextPathsConcurrentUpgradeAndCancellationAreSafe(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var setup = database.CreateContext();
-        await CreateMisstampedTextPathsAsync(database, setup);
+        await CreateMisstampedTextPathsAsync(database, setup, lowercaseIndex);
         var before = await database.SnapshotAsync();
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
@@ -142,12 +157,14 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(5, (await check.Database.GetAppliedMigrationsAsync()).Count());
     }
 
-    [Fact]
-    public async Task MisstampedTextPathsConversionFailureRollsBackColumnAndHistory()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MisstampedTextPathsConversionFailureRollsBackColumnAndHistory(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await CreateMisstampedTextPathsAsync(database, context);
+        await CreateMisstampedTextPathsAsync(database, context, lowercaseIndex);
         await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
         await database.ExecuteAsync("""
             CREATE FUNCTION upgrade_guard.reject_conversion() RETURNS event_trigger LANGUAGE plpgsql AS $$
@@ -162,12 +179,14 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
-    [Fact]
-    public async Task MisstampedTextPathsCancellationAfterConversionRollsBackRowsAndHistory()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MisstampedTextPathsCancellationAfterConversionRollsBackRowsAndHistory(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var setup = database.CreateContext();
-        await CreateMisstampedTextPathsAsync(database, setup);
+        await CreateMisstampedTextPathsAsync(database, setup, lowercaseIndex);
         var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
         await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
         await database.ExecuteAsync("""
@@ -204,12 +223,14 @@ public sealed class ReadOnlyStartupPostgresTests
         await AssertMisstampedTargetAsync(retry, item, practice, log, job);
     }
 
-    [Fact]
-    public async Task MisstampedTextPathsLostCommitAcknowledgementIsReadOnlyRecheckedBeforeRetry()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MisstampedTextPathsLostCommitAcknowledgementIsReadOnlyRecheckedBeforeRetry(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var setup = database.CreateContext();
-        await CreateMisstampedTextPathsAsync(database, setup);
+        await CreateMisstampedTextPathsAsync(database, setup, lowercaseIndex);
         var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
         var before = await database.SnapshotAsync();
         var rowsBefore = await database.BusinessRowsAsync();
@@ -234,6 +255,94 @@ public sealed class ReadOnlyStartupPostgresTests
         await DatabaseInitializer.UpgradeKnownAsync(retry, database.Name, true, true);
         Assert.Equal(committed, await database.SnapshotAsync());
         Assert.Equal(committedRows, await database.BusinessRowsAsync());
+    }
+
+    [Fact]
+    public async Task LowercaseEmptyShapeRequiresExplicitVerifiedUpgradeAsync()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, context, true);
+        var before = await database.SnapshotAsync();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
+        Assert.Contains("--upgrade-known-db", error.Message);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, "wrong", true, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, false, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, false));
+        Assert.Equal(before, await database.SnapshotAsync());
+        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        Assert.Empty(await context.MistakeItems.ToListAsync());
+        Assert.Empty(await context.MistakePractices.ToListAsync());
+        Assert.Empty(await context.ProcessLogs.ToListAsync());
+        Assert.Empty(await context.ReanalyzeJobs.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("DROP INDEX ix_process_log_student_id")]
+    [InlineData("CREATE INDEX \"IX_process_log_student_id\" ON process_log (student_id)")]
+    [InlineData("DROP INDEX ix_process_log_student_id; CREATE UNIQUE INDEX ix_process_log_student_id ON process_log (student_id)")]
+    [InlineData("DROP INDEX ix_process_log_student_id; CREATE INDEX ix_process_log_student_id ON process_log (action)")]
+    [InlineData("DROP INDEX ix_process_log_student_id; CREATE INDEX ix_process_log_student_id ON process_log (student_id) WHERE student_id IS NOT NULL")]
+    [InlineData("DROP INDEX ix_process_log_student_id; CREATE INDEX ix_process_log_student_id ON process_log (lower(student_id))")]
+    [InlineData("DROP INDEX ix_process_log_student_id; CREATE INDEX ix_process_log_student_id ON process_log USING hash (student_id)")]
+    [InlineData("DROP INDEX ix_process_log_student_id; CREATE INDEX ix_process_log_student_id ON process_log (student_id) INCLUDE (action)")]
+    [InlineData("ALTER TABLE mistake_item ADD COLUMN unknown text")]
+    [InlineData("CREATE TABLE public.mistake(id integer)")]
+    [InlineData("UPDATE \"__EFMigrationsHistory\" SET \"ProductVersion\"='8.0.10'")]
+    public async Task LowercaseVariantRejectsAnyCatalogDeviationWithoutWritesAsync(string mutation)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, context, true);
+        await SeedMisstampedRowsAsync(database);
+        await database.ExecuteAsync(mutation);
+        var before = await database.SnapshotAsync();
+        var rows = await database.BusinessRowsAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        Assert.Equal(before, await database.SnapshotAsync());
+        Assert.Equal(rows, await database.BusinessRowsAsync());
+    }
+
+    [Theory]
+    [InlineData("ALTER INDEX")]
+    [InlineData("ALTER TABLE")]
+    public async Task LowercaseRenameOrConversionFailureRollsBackEveryBusinessRowAsync(string stage)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, context, true);
+        await SeedMisstampedRowsAsync(database);
+        await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
+        await database.ExecuteAsync($"CREATE FUNCTION upgrade_guard.fail_stage() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN IF TG_TAG = '{stage}' THEN RAISE EXCEPTION 'injected failure'; END IF; END $$");
+        await database.ExecuteAsync("CREATE EVENT TRIGGER fail_stage ON ddl_command_end EXECUTE FUNCTION upgrade_guard.fail_stage()");
+        var before = await database.SnapshotAsync();
+        var rows = await database.BusinessRowsAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        Assert.Equal(before, await database.SnapshotAsync());
+        Assert.Equal(rows, await database.BusinessRowsAsync());
+    }
+
+    [Fact]
+    public async Task LowercaseLockWaitCancellationDoesNotRenameOrChangeRowsAsync()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var setup = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, setup, true);
+        await SeedMisstampedRowsAsync(database);
+        var before = await database.SnapshotAsync();
+        var rows = await database.BusinessRowsAsync();
+        await using var locking = database.CreateContext();
+        await using var transaction = await locking.Database.BeginTransactionAsync();
+        await locking.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(5932735329232308563)");
+        await using var upgrading = database.CreateContext();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        await Assert.ThrowsAnyAsync<Exception>(() => DatabaseInitializer.UpgradeKnownAsync(upgrading, database.Name, true, true, cancellation.Token));
+        Assert.Equal(before, await database.SnapshotAsync());
+        Assert.Equal(rows, await database.BusinessRowsAsync());
     }
 
     private static async Task<(Guid Item, Guid Practice, Guid Log, Guid Job)> SeedMisstampedRowsAsync(IsolatedDatabase database)
@@ -268,7 +377,7 @@ public sealed class ReadOnlyStartupPostgresTests
             throw new IOException("Simulated lost COMMIT acknowledgement.");
     }
 
-    private static async Task CreateMisstampedTextPathsAsync(IsolatedDatabase database, MistakeDbContext context)
+    private static async Task CreateMisstampedTextPathsAsync(IsolatedDatabase database, MistakeDbContext context, bool lowercaseIndex = false)
     {
         await context.GetService<IMigrator>().MigrateAsync(Initial);
         await database.ExecuteAsync("ALTER TABLE mistake_item RENAME COLUMN review_comment TO root_cause");
@@ -276,6 +385,8 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync("CREATE INDEX \"IX_process_log_student_id\" ON process_log (student_id)");
         await database.ExecuteAsync($"INSERT INTO \"__EFMigrationsHistory\" VALUES ('{ProcessLog}','8.0.11')");
         await context.GetService<IMigrator>().MigrateAsync(Reanalyze);
+        if (lowercaseIndex)
+            await database.ExecuteAsync("ALTER INDEX \"IX_process_log_student_id\" RENAME TO ix_process_log_student_id");
     }
 
     [Theory]
@@ -418,12 +529,20 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
-    [Fact]
-    public async Task FinalVerificationFailureRollsBackRenameAndHistory()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FinalVerificationFailureRollsBackRenameAndHistory(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await context.GetService<IMigrator>().MigrateAsync(Reanalyze);
+        if (lowercaseIndex)
+        {
+            await CreateMisstampedTextPathsAsync(database, context, true);
+            await SeedMisstampedRowsAsync(database);
+        }
+        else
+            await context.GetService<IMigrator>().MigrateAsync(Reanalyze);
         await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
         await database.ExecuteAsync("""
             CREATE FUNCTION upgrade_guard.add_unexpected_relation() RETURNS event_trigger LANGUAGE plpgsql AS $$
@@ -435,9 +554,11 @@ public sealed class ReadOnlyStartupPostgresTests
             """);
         await database.ExecuteAsync("CREATE EVENT TRIGGER inject_known_upgrade_relation ON ddl_command_end EXECUTE FUNCTION upgrade_guard.add_unexpected_relation()");
         var before = await database.SnapshotAsync();
+        var rows = await database.BusinessRowsAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
         Assert.Equal(before, await database.SnapshotAsync());
+        Assert.Equal(rows, await database.BusinessRowsAsync());
     }
 
     [Theory]
