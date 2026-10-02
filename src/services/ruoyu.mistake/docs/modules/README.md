@@ -12,3 +12,5 @@
 | VlImageAnalysis | VlUploadAnalyzer — OpenAI 兼容 VL 视觉语言图片分析，按学科/年级分组 |
 
 - [不可变来源幂等入库](./SourceIntake.md)
+
+- [SourceTargets](./SourceTargets.md) — 保留来源、持久候选与核验目标恢复性物化。

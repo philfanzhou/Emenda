@@ -94,4 +94,6 @@ dotnet build Ruoyu.Study.Mistake.sln --configuration Release
 dotnet test Ruoyu.Study.Mistake.sln --configuration Release
 ```
 
-迁移结构见[来源入库表](../database/tables/source_intake.md)，启停/备份/恢复见[部署说明](../development/Deployment.md#来源入库启用与回退)，Student 与 OSS 交互分别见[Student](../Integration/Student.md)和[对象存储](../Integration/Oss/02-SPEC.md)。
+迁移结构见[来源入库表](../database/tables/source_intake.md)，启停/备份/恢复见[部署说明](../development/Deployment.md#来源入库启用与回退)，Student 与 OSS 交互分别见[Student](../Integration/Student.md)和[对象存储](../Integration/Oss/Oss.md)。
+
+已提交组图片的独立目标复制、状态、恢复与安全读取见 [SourceTargets](./SourceTargets.md)。来源创建与结果重放仍保持原身份和 SourceRetained，不等于完整 handoff。

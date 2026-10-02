@@ -29,7 +29,7 @@ internal static class SourceIntakeCatalog
         "FK_source_intake_group_created_log|f|created_log_id|process_log|id|r|V",
         "PK_source_intake_request|p|actor,action,request_key|-|-|-|V",
         "FK_source_intake_request_source_intake|f|source_upload_id,content_revision|source_intake|source_upload_id,content_revision|r|V"];
-    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct)
+    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false)
     {
         await using var command=connection.CreateCommand();
         command.CommandText="""
@@ -37,18 +37,20 @@ internal static class SourceIntakeCatalog
             FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang WHERE p.pronamespace='public'::regnamespace
             """;
         await using var reader=await command.ExecuteReaderAsync(ct);
+        var bodies=new Dictionary<string,string>(SourceIntakeSchema.Bodies);
+        if(targets) foreach(var pair in SourceTargetSchema.Bodies) bodies.Add(pair.Key,pair.Value);
         var found=new HashSet<string>(StringComparer.Ordinal);
         while(await reader.ReadAsync(ct))
         {
             var name=reader.GetString(0);
-            if (!found.Add(name) || !SourceIntakeSchema.Bodies.TryGetValue(name,out var body)
-                || reader.GetString(1).Trim()!=body.Trim() || reader.GetString(2)!="plpgsql" || reader.GetString(3)!=(name=="intake_source_key" ? "text" : "trigger")
-                || reader.GetInt16(4)!=(name=="intake_source_key" ? 1 : 0) || reader.GetBoolean(5) || reader.GetChar(6)!=(name=="intake_source_key" ? 'i' : 'v') || !reader.GetBoolean(7) || reader.GetString(8)!=(name=="intake_source_key" ? "input_source text" : ""))
+            if (!found.Add(name) || !bodies.TryGetValue(name,out var body)
+                || reader.GetString(1).Trim()!=body.Trim() || reader.GetString(2)!="plpgsql" || reader.GetString(3)!=(name=="intake_source_key" ? "text" : name=="reserved_target_path" ? "boolean" : "trigger")
+                || reader.GetInt16(4)!=(name is "intake_source_key" or "reserved_target_path" ? 1 : 0) || reader.GetBoolean(5) || reader.GetChar(6)!=(name is "intake_source_key" or "reserved_target_path" ? 'i' : 'v') || !reader.GetBoolean(7) || reader.GetString(8)!=(name=="intake_source_key" ? "input_source text" : name=="reserved_target_path" ? "input_path text" : ""))
                 return "unexpected source intake routine definition.";
         }
-        return found.SetEquals(SourceIntakeSchema.Bodies.Keys) ? null : "missing source intake routine.";
+        return found.SetEquals(bodies.Keys) ? null : "missing source intake routine.";
     }
-    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct)
+    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false)
     {
         var expected=new HashSet<string>(StringComparer.Ordinal)
         {
@@ -66,6 +68,7 @@ internal static class SourceIntakeCatalog
             "mistake_item|trg_item_truncate|34|guard_intake_truncate|False|False",
             "process_log|trg_log_truncate|34|guard_intake_truncate|False|False"
         };
+        if(targets) expected.UnionWith(SourceTargetSchema.Triggers);
         await using var command=connection.CreateCommand();
         command.CommandText="""
             SELECT c.relname,t.tgname,t.tgtype,p.proname,t.tgdeferrable,t.tginitdeferred,t.tgnargs,t.tgenabled,t.tgqual IS NULL
@@ -84,7 +87,7 @@ internal static class SourceIntakeCatalog
         await reader.DisposeAsync();
         command.CommandText="""
             SELECT conname,condeferrable,condeferred,confupdtype::text FROM pg_constraint
-            WHERE connamespace='public'::regnamespace AND conname LIKE 'FK_source_intake%'
+            WHERE connamespace='public'::regnamespace AND (conname LIKE 'FK_source_intake%' OR conname LIKE 'FK_source_target%')
             """;
         await using var constraints=await command.ExecuteReaderAsync(ct);
         while(await constraints.ReadAsync(ct))

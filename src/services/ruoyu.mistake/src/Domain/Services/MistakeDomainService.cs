@@ -1,3 +1,4 @@
+using Ruoyu.Study.Common.Oss;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -50,6 +51,7 @@ public class MistakeDomainService : IMistakeDomainService
         string studentId, int subject, int grade, List<string> imagePaths, string? rootCause, string sourceUploadId)
     {
         ValidateSubmitData(studentId, subject, grade, imagePaths, rootCause, sourceUploadId);
+        EnsureLegacyPaths(imagePaths);
         if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(sourceUploadId);
 
         var item = new MistakeItemModel
@@ -266,6 +268,7 @@ public class MistakeDomainService : IMistakeDomainService
     public async Task<MistakeItemModel> AddMistakeItemAsync(MistakeItemModel item)
     {
         ValidateMistakeItemData(item);
+        EnsureLegacyPaths(item.SourceRegions.Select(r=>r.SourceImagePath));
         if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(item.SourceUploadId);
 
         item.Id = Guid.NewGuid();
@@ -322,6 +325,7 @@ public class MistakeDomainService : IMistakeDomainService
         if (sourceRegions != null && sourceRegions.Count > 0)
             item.SourceRegions = sourceRegions;
 
+        EnsureLegacyPaths(item.SourceRegions.Select(r=>r.SourceImagePath));
         if (_sourceGuard != null) await _sourceGuard.EnsureIdentityAsync(item);
         item.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -334,6 +338,7 @@ public class MistakeDomainService : IMistakeDomainService
 
     public async Task<bool> UpdateMistakeItemAsync(MistakeItemModel model)
     {
+        EnsureLegacyPaths(model.SourceRegions.Select(r=>r.SourceImagePath));
         if (_sourceGuard != null) await _sourceGuard.EnsureIdentityAsync(model);
         var result = await _mistakeItemRepository.UpdateAsync(model);
         if (result)
@@ -388,6 +393,7 @@ public class MistakeDomainService : IMistakeDomainService
             throw new MistakeValidationException("只能对已确认的错题进行练习");
         }
 
+        EnsureLegacyPaths(imagePaths ?? practice.ImagePaths);
         practice.Id = Guid.NewGuid();
         practice.PracticeDate = DateTimeOffset.UtcNow;
 
@@ -482,5 +488,9 @@ public class MistakeDomainService : IMistakeDomainService
 
         if (errors.Count > 0)
             throw new MistakeValidationException(string.Join("; ", errors));
+    }
+    private static void EnsureLegacyPaths(IEnumerable<string> paths)
+    {
+        if(paths.Any(ReservedSourceTargetPath.IsReserved)) throw new SourceIntakeException("reserved_target",409);
     }
 }

@@ -166,6 +166,8 @@ public class UploadPollingWorker : BackgroundService
         }
 
         var mistakeImagePaths = mistakeEntries.Select(e => e.Path).ToList();
+        if(mistakeImagePaths.Any(p=>ReservedSourceTargetPath.IsReserved(p) || ReservedSourceTargetPath.IsReserved(ConvertUploadPathToMistakePath(p))))
+            throw new SourceIntakeException("reserved_target",409);
         _logger.LogDebug("UploadPollingWorker: Record {RecordId} has {Count} mistake images: {Paths}",
             recordId, mistakeImagePaths.Count, string.Join(", ", mistakeImagePaths));
 
@@ -318,6 +320,7 @@ public class UploadPollingWorker : BackgroundService
                     try
                     {
                         var newPath = ConvertUploadPathToMistakePath(oldPath);
+                        ReservedSourceTargetPath.EnsureLegacy(oldPath);ReservedSourceTargetPath.EnsureLegacy(newPath);
                         await ossService.CopyObjectAsync(oldPath, newPath).ConfigureAwait(false);
                         await ossService.DeleteAsync(oldPath).ConfigureAwait(false);
                         migratedPaths.Add((oldPath, newPath));

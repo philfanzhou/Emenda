@@ -58,6 +58,8 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
     internal Func<string,Task>? BeforeRead { get; set; }
     internal bool ConfiguredVl { get; set; }
     internal bool Enabled { get; set; }=true;
+    internal bool TargetsEnabled { get; set; }
+    internal Func<string,string,Task>? Copy { get; set; }
     internal WebApplication? App { get; private set; }
     internal HttpClient? Client { get; private set; }
     internal HttpClient SnapshotHttp { get; }
@@ -81,7 +83,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         Oss.Setup(o=>o.ObjectExistsAsync(It.IsAny<string>())).Returns((string path)=>source.Files.ObjectExistsAsync(path));
         Oss.Setup(o=>o.GetPresignedUrlAsync(It.IsAny<string>(),It.IsAny<int>())).Returns((string path,int expiry)=>source.Files.GetPresignedUrlAsync(path,expiry));
         Oss.Setup(o=>o.CopyObjectAsync(It.IsAny<string>(),It.IsAny<string>())).Returns((string a,string b)=>
-        {SideEffects.Add("copy");return Task.CompletedTask;});
+        {SideEffects.Add("copy");return Copy==null ? Task.CompletedTask : Copy(a,b);});
         Oss.Setup(o=>o.DeleteAsync(It.IsAny<string>())).Returns((string path)=>{SideEffects.Add("delete");return Task.FromResult(true);});
     }
     internal static async Task<SourceIntakeFixture> CreateAsync(bool initialize=true)
@@ -93,12 +95,13 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         await using(var connection=new NpgsqlConnection(admin))
         {await connection.OpenAsync();await using var command=new NpgsqlCommand($"CREATE DATABASE \"{name}\"",connection);await command.ExecuteNonQueryAsync();}
         var fixture=new SourceIntakeFixture(admin,name,source);
-        if(initialize){await using var db=fixture.Context();await DatabaseInitializer.UpgradeEmptyAsync(db);}
+        try {if(initialize){await using var db=fixture.Context();await DatabaseInitializer.UpgradeEmptyAsync(db);}}
+        catch {await fixture.DisposeAsync();throw;}
         return fixture;
     }
     internal DbContextOptions<MistakeDbContext> DatabaseOptions=>new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(Connection).AddInterceptors(Fault).Options;
     internal MistakeDbContext Context()=>new(DatabaseOptions);
-    internal SourceIntakeService Service()=>new(DatabaseOptions,new SourceIntakeOptions(Enabled),Snapshots,Oss.Object,Analyzer.Object,Options.Create(new VlAnalyzerOptions {ApiKey=ConfiguredVl ? "fixture" : ""}));
+    internal SourceIntakeService Service()=>new(DatabaseOptions,new SourceIntakeOptions(Enabled),Snapshots,Oss.Object,Analyzer.Object,Options.Create(new VlAnalyzerOptions {ApiKey=ConfiguredVl ? "fixture" : ""}),new SourceTargetOptions(TargetsEnabled));
     internal async Task<StudentRecord> SeedAsync(string[]? paths=null,string[]? types=null,int[]? rotations=null)
     {
         var record=await Source.SeedAsync(paths,types:types,rotations:rotations);
@@ -116,11 +119,11 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
     {await using var connection=new NpgsqlConnection(Connection);await connection.OpenAsync();await using var command=new NpgsqlCommand(sql,connection);command.Parameters.AddRange(parameters);await command.ExecuteNonQueryAsync();}
     internal async Task<T> ScalarAsync<T>(string sql)
     {await using var connection=new NpgsqlConnection(Connection);await connection.OpenAsync();await using var command=new NpgsqlCommand(sql,connection);return (T)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException());}
-    internal string Token(string role="admin",string? issuer=null,string? audience=null,string? sub=null)
+    internal string Token(string role="admin",string? issuer=null,string? audience=null,string? sub=null,bool expired=false)
     {
         var now=DateTime.UtcNow;
         var token=new JwtSecurityToken(issuer ?? "https://intake-issuer.invalid",audience ?? "intake-users",
-            [new Claim("sub",sub ?? Actor.ToString()),new Claim("role",role)],now.AddSeconds(-1),now.AddMinutes(1),
+            [new Claim("sub",sub ?? Actor.ToString()),new Claim("role",role)],expired ? now.AddMinutes(-3) : now.AddSeconds(-1),expired ? now.AddMinutes(-1) : now.AddMinutes(1),
             new SigningCredentials(new RsaSecurityKey(UserKey),SecurityAlgorithms.RsaSha256));
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
@@ -142,9 +145,10 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         builder.Services.AddScoped<IMistakeItemRepository,MistakeItemRepository>();builder.Services.AddScoped<IMistakePracticeRepository,MistakePracticeRepository>();
         builder.Services.AddScoped<IProcessLogRepository,ProcessLogRepository>();builder.Services.AddScoped<IUnitOfWork,UnitOfWork>();
         builder.Services.AddScoped<IMistakeDomainService,MistakeDomainService>();
-        builder.Services.AddSingleton(new SourceIntakeOptions(Enabled));builder.Services.AddSingleton(Snapshots);builder.Services.AddSingleton(Oss.Object);
+        builder.Services.AddSingleton(new SourceIntakeOptions(Enabled));builder.Services.AddSingleton(new SourceTargetOptions(TargetsEnabled));builder.Services.AddSingleton(Snapshots);builder.Services.AddSingleton(Oss.Object);
         builder.Services.AddSingleton(Analyzer.Object);builder.Services.AddSingleton(Options.Create(new VlAnalyzerOptions{ApiKey=ConfiguredVl ? "fixture" : ""}));
         builder.Services.AddScoped<SourceIntakeService>();builder.Services.AddScoped<ISourceIntakeService>(s=>s.GetRequiredService<SourceIntakeService>());
+        builder.Services.AddScoped<ISourceTargetService>(s=>s.GetRequiredService<SourceIntakeService>());
         builder.Services.AddScoped<IMistakeSourceGuard>(s=>s.GetRequiredService<SourceIntakeService>());
         var studentClient=new StudentHttpClient(SnapshotHttp,NullLogger<StudentHttpClient>.Instance);
         builder.Services.AddSingleton<IUploadSourceGateway>(new StudentUploadSourceGateway(studentClient,new StudentCapabilityOptions{Enabled=true}));

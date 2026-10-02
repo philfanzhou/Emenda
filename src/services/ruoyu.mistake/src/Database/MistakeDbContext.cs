@@ -21,6 +21,9 @@ public class MistakeDbContext : DbContext
     public DbSet<SourceIntakeGroupEntity> SourceIntakeGroups => Set<SourceIntakeGroupEntity>();
     public DbSet<SourceIntakeRequestEntity> SourceIntakeRequests => Set<SourceIntakeRequestEntity>();
 
+    public DbSet<SourceTargetObjectEntity> SourceTargetObjects => Set<SourceTargetObjectEntity>();
+    public DbSet<SourceTargetAttemptEntity> SourceTargetAttempts => Set<SourceTargetAttemptEntity>();
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -30,6 +33,7 @@ public class MistakeDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         SourceIntakeModel.Configure(modelBuilder);
+        SourceTargetModel.Configure(modelBuilder);
 
         var sourceRegionComparer = new ValueComparer<List<SourceRegionEntry>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),

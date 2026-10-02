@@ -118,6 +118,12 @@ var intakeEnabled = intakeValue is null ? false : bool.TryParse(intakeValue, out
 if (intakeEnabled && (!studentEnabled || !strictApiAuth || !resourceApiAuth))
     throw new InvalidOperationException("Source intake requires Student, strict API authentication and resource authorization.");
 builder.Services.AddSingleton(new SourceIntakeOptions(intakeEnabled));
+var targetValue=builder.Configuration["Mistake:SourceTargets:Enabled"];
+var targetsEnabled=targetValue is null ? false : bool.TryParse(targetValue,out var parsedTargets)
+    ? parsedTargets : throw new InvalidOperationException("Mistake:SourceTargets:Enabled must be true or false.");
+if(targetsEnabled && (!strictApiAuth || !resourceApiAuth))
+    throw new InvalidOperationException("Source targets require strict API authentication and resource authorization.");
+builder.Services.AddSingleton(new SourceTargetOptions(targetsEnabled));
 
 var identityTrustOptions = builder.Configuration
     .GetSection(IdentityAuthenticationOptions.SectionName)
@@ -299,6 +305,8 @@ builder.Services.AddHttpClient<SourceSnapshotClient>(client =>
 builder.Services.AddScoped<SourceIntakeService>();
 builder.Services.AddScoped<ISourceIntakeService>(sp => sp.GetRequiredService<SourceIntakeService>());
 builder.Services.AddScoped<IMistakeSourceGuard>(sp => sp.GetRequiredService<SourceIntakeService>());
+builder.Services.AddScoped<ISourceTargetService>(sp => sp.GetRequiredService<SourceIntakeService>());
+if(targetsEnabled) builder.Services.AddHostedService<SourceTargetWorker>();
 builder.Services.AddSingleton(studentServiceAuthentication);
 builder.Services.AddTransient<StudentServiceTokenHandler>();
 builder.Services.AddStudentHttpClient(studentBaseUrl);
