@@ -250,7 +250,7 @@ Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存
 ## 流程二：数据库准备与重分析切换
 
 1. **A 停写备份**：逐一关闭所有实例的 `Mistake__Workers__ReanalyzeJobHostedService__Enabled`，等待或终止在途 VL；再停止 Mistake 写入。确认准确主机与数据库名，取得可恢复备份，并在隔离 PostgreSQL 15 库恢复核对结构、行数、稳定 ID、Job 状态与 ProcessLog。只有核验后才使用 `--backup-verified`。不可让旧 worker 与新 worker 混跑。
-2. **B 显式升级**：全新空库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`；受支持带数据历史库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。维护账号需 DDL 与迁移历史写权限。命令在单一事务和 advisory lock 内升级至**五条** EF 历史并核验精确 catalog；第四条历史目标升级到第五条。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。未知或矛盾结构原状拒绝，旧 `public.mistake` 由 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。
+2. **B 显式升级**：全新空库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`；受支持带数据历史库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。维护账号需 DDL 与迁移历史写权限。命令在单一事务和 advisory lock 内升级至**五条** EF 历史并核验精确 catalog；第四条历史目标升级到第五条。三历史 text 路径的精确小写 `ix_process_log_student_id` 变体会先在同一事务中标准化索引名，再转换路径类型；其他形态不通过忽略大小写放宽。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。未知或矛盾结构原状拒绝，旧 `public.mistake` 由 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。
 3. **C 验库启用**：用新二进制执行正常启动，只读核验精确五历史目标，然后逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。正常启动不迁移数据库。旧二进制遇新 schema 应失败关闭。
 4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新二进制后可重新启用，过期 Job 自动重领；若确需旧二进制，停止写入，在隔离库恢复已核验的升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧二进制或 EF Down 均不是无损回退。
 

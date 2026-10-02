@@ -19,7 +19,9 @@
 
 受支持的带数据 EF 历史库另用 `--upgrade-known-db`。它要求显式确认目标库名、已停写和可恢复备份，在同一事务的 advisory lock 下核对 public 的关系、列/类型/空值性、默认值、索引、约束、触发器及历史记录。精确 InitialCreate（1 条历史）执行后四条正规迁移；前两条历史执行后三条；前三条历史的 `review_comment` 执行列重命名与第五条迁移；前三条历史但已由旧运行时重命名的 `root_cause`，在目标 catalog 精确核验后补第四条历史并应用第五条迁移；四条历史的库继续应用第五条迁移；五条历史的目标库仅复核。另一种**精确三历史误盖章形态**也受显式入口支持：`root_cause` 已重命名，`process_log.student_id` 及索引和 `reanalyze_job` 已存在，但 `mistake_practice.image_paths` 仍为 `text`，其余完整指纹与该历史运行时一致。入口先锁定练习表并核验每行均为 JSON 字符串数组，保存 ID 与路径序列清单，在同一事务中用显式 `USING image_paths::jsonb` 转换、复核每行语义与完整目标结构，再补第四历史并应用第五条迁移。空数组、中文、大小写、顺序与重复字符串保留；无效 JSON 或非字符串数组拒绝并回滚，不打印原始路径。迁移及最终核验成功后才提交，重复执行目标状态不写入。两个显式命令复用同一锁。普通启动仍只读，升级前历史形态也必须先完成显式升级。
 
-此入口仅支持仓库迁移生成的上述精确形态及这一种完整识别的误盖章形态。`public.mistake`、历史表独存、部分对象、额外对象、其他误盖章或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。PostgreSQL 15 隔离备份恢复校验见[演练说明](../development/BackupRestoreDrill.md)；旧表数据映射、未知/混合结构仍由父项 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。操作和故障恢复见[部署说明](../development/Deployment.md)。
+同一三历史 text 路径形态还有一个受支持的精确变体：`process_log.student_id` 索引名为小写 `ix_process_log_student_id`，完整定义必须是 `CREATE INDEX ix_process_log_student_id ON public.process_log USING btree (student_id)`，其他 catalog 和历史完全一致。该变体仅在显式升级事务中先将索引改名为 `IX_process_log_student_id`，再执行上述路径转换与历史/租约升级；失败或取消连同改名一起回滚。大小写双索引、缺失索引、表达式、部分索引、唯一索引、INCLUDE、其他访问方法均拒绝；不全局忽略索引名大小写。普通启动仍只读拒绝，空库入口也不接受此变体。
+
+此入口仅支持仓库迁移生成的上述精确形态及上述两种完整识别的误盖章索引变体。`public.mistake`、历史表独存、部分对象、额外对象、其他误盖章或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。PostgreSQL 15 隔离备份恢复校验见[演练说明](../development/BackupRestoreDrill.md)；旧表数据映射、未知/混合结构仍由父项 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。操作和故障恢复见[部署说明](../development/Deployment.md)。
 
 ### 列重命名
 

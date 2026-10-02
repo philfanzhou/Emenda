@@ -160,8 +160,12 @@ public static class DatabaseInitializer
 
         try
         {
-            if (before.Kind == SchemaKind.MisstampedTextPaths)
+            if (before.Kind is SchemaKind.MisstampedTextPaths or SchemaKind.MisstampedLowercaseIndex)
             {
+                if (before.Kind == SchemaKind.MisstampedLowercaseIndex)
+                    await context.Database.ExecuteSqlRawAsync(
+                        "ALTER INDEX public.ix_process_log_student_id RENAME TO \"IX_process_log_student_id\"",
+                        cancellationToken).ConfigureAwait(false);
                 // Keep the source rows stable while checking their semantics and changing the column type.
                 await context.Database.ExecuteSqlRawAsync(
                     "LOCK TABLE public.mistake_practice IN ACCESS EXCLUSIVE MODE", cancellationToken).ConfigureAwait(false);
@@ -345,7 +349,20 @@ public static class DatabaseInitializer
             expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
         if (version < 2)
             expectedIndexes.Remove("IX_process_log_student_id|process_log|student_id|N");
-        mismatch = Compare("index", expectedIndexes, indexes);
+        var lowercaseIndexes = new HashSet<string>(expectedIndexes, StringComparer.Ordinal);
+        lowercaseIndexes.Remove("IX_process_log_student_id|process_log|student_id|N");
+        lowercaseIndexes.Add("ix_process_log_student_id|process_log|student_id|N");
+        var misstampedLowercaseIndex = misstampedTextPaths && indexes.SetEquals(lowercaseIndexes);
+        if (misstampedLowercaseIndex)
+        {
+            var definitions = await ReadSetAsync(connection,
+                "SELECT pg_get_indexdef(to_regclass('public.ix_process_log_student_id'))",
+                cancellationToken).ConfigureAwait(false);
+            if (!definitions.SetEquals(Set(
+                "CREATE INDEX ix_process_log_student_id ON public.process_log USING btree (student_id)")))
+                return Invalid("unexpected definition for index ix_process_log_student_id.");
+        }
+        mismatch = Compare("index", misstampedLowercaseIndex ? lowercaseIndexes : expectedIndexes, indexes);
         if (mismatch is not null) return Invalid(mismatch);
 
         var constraints = await ReadSetAsync(connection, """
@@ -371,6 +388,9 @@ public static class DatabaseInitializer
         if (legacyRuntime)
             return new SchemaState(SchemaKind.LegacyRuntime, false, version,
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
+        if (misstampedLowercaseIndex)
+            return new SchemaState(SchemaKind.MisstampedLowercaseIndex, false, version,
+                "Mistake exact three-history text paths and lowercase index shape requires --upgrade-known-db.");
         if (misstampedTextPaths)
             return new SchemaState(SchemaKind.MisstampedTextPaths, false, version,
                 "Mistake exact three-history text paths shape requires --upgrade-known-db.");
@@ -410,6 +430,6 @@ public static class DatabaseInitializer
         return result;
     }
 
-    private enum SchemaKind { Empty, Known, LegacyRuntime, MisstampedTextPaths, Ready, Invalid }
+    private enum SchemaKind { Empty, Known, LegacyRuntime, MisstampedTextPaths, MisstampedLowercaseIndex, Ready, Invalid }
     private sealed record SchemaState(SchemaKind Kind, bool Target, int Version, string Diagnostic);
 }
