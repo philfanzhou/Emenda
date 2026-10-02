@@ -15,7 +15,7 @@ namespace Ruoyu.Study.Mistake.Host.Services.Intake;
 
 public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContext> databaseOptions,
     SourceIntakeOptions options, SourceSnapshotClient snapshots, IOssService oss,
-    IVlAnalyzer analyzer, IOptions<VlAnalyzerOptions> vlOptions, SourceTargetOptions? targetOptions = null) : ISourceIntakeService, IMistakeSourceGuard, ISourceTargetService
+    IVlAnalyzer analyzer, IOptions<VlAnalyzerOptions> vlOptions, SourceTargetOptions? targetOptions = null, SourceReturnOptions? returnOptions = null, SourceReturnClient? returns = null) : ISourceIntakeService, IMistakeSourceGuard, ISourceTargetService, ISourceReturnService
 {
     public bool Enabled => options.Enabled;
     private MistakeDbContext Open() => new(databaseOptions);
@@ -205,14 +205,14 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
         }
     }
 
-    private async Task HeartbeatAsync(Lease lease,CancellationTokenSource processing,CancellationToken stop, bool targets = false)
+    private async Task HeartbeatAsync(Lease lease,CancellationTokenSource processing,CancellationToken stop, bool targets = false, bool reverse = false)
     {
         try
         {
             using var timer=new PeriodicTimer(TimeSpan.FromSeconds(20));
             while (await timer.WaitForNextTickAsync(stop))
             {
-                if (!(targets ? TargetsEnabled : Enabled)) { processing.Cancel(); return; }
+                if (!(reverse ? ReturnsEnabled : targets ? TargetsEnabled : Enabled)) { processing.Cancel(); return; }
                 await using var db=Open();
                 var changed=await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE source_intake SET lease_until=clock_timestamp()+interval '60 seconds' WHERE source_upload_id={lease.Source} AND content_revision={lease.Revision} AND owner_id={lease.Owner} AND fence={lease.Fence} AND lease_until>clock_timestamp()",stop);
                 if (changed!=1) { processing.Cancel(); return; }
@@ -365,7 +365,7 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
         if (source==null) return null;
         var ids=await db.SourceIntakeGroups.Where(g=>g.SourceUploadId==sourceId && g.ContentRevision==revision).Select(g=>g.ItemId).ToListAsync(ct);
         var targets=await TargetViewsAsync(db,sourceId,revision,ct);
-        return new(JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!,source.Mode,source.Fence,source.LeaseUntil,source.Materialized,"SourceRetained",ids,targets,targets.Count>0 && targets.All(t=>t.State=="Verified"),false);
+        return new(JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!,source.Mode,source.Fence,source.LeaseUntil,source.Materialized,"SourceRetained",ids,targets,targets.Count>0 && targets.All(t=>t.State=="Verified"),false,(await db.SourceReturns.AsNoTracking().Where(o=>ids.Contains(o.ItemId)).ToListAsync(ct)).Select(ReturnView).ToList());
     }
     public async Task<string?> GetManagedObjectStudentAsync(string path,CancellationToken ct=default)
     {

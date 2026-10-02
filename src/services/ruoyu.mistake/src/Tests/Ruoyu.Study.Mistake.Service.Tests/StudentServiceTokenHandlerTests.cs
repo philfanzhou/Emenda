@@ -14,6 +14,23 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 
 public sealed class StudentServiceTokenHandlerTests
 {
+
+    [Theory]
+    [InlineData("GET","/api/integrations/mistake/returns/mistake-return:abc/receipt",true)]
+    [InlineData("POST","/api/integrations/mistake/returns/mistake-return:abc/receipt",false)]
+    [InlineData("GET","/api/integrations/mistake/returns/mistake-return:abc/receipt?extra=1",false)]
+    [InlineData("GET","/api/integrations/mistake/returns/mistake-return:abc/receipt/",false)]
+    [InlineData("GET","/api/integrations/mistake/returns/a%2Fb/receipt",false)]
+    [InlineData("GET","/api/integrations/mistake/returns/猫/receipt",false)]
+    [InlineData("GET","/api/integrations/mistake/returns//receipt",false)]
+    public async Task HistoricalReceiptSignsOnlyExactGetOperationAndNoQueryAsync(string method,string path,bool allowed)
+    {
+        using var keys=new KeyFile();var calls=0;
+        using var handler=new StudentServiceTokenHandler(keys.Options()){InnerHandler=new Sender((request,_)=>{calls++;var token=keys.Validate(request.Headers.Authorization?.Parameter);Assert.Equal("uploads.return",token.Claims.Single(c=>c.Type=="scope").Value);return Task.FromResult(Json(HttpStatusCode.OK,"{}"));})};
+        using var http=new HttpClient(handler){BaseAddress=new Uri("https://student.test")};using var request=new HttpRequestMessage(new HttpMethod(method),path);request.Headers.Authorization=new AuthenticationHeaderValue("Bearer","user-canary");
+        if(allowed){using var response=await http.SendAsync(request);Assert.Equal(1,calls);}else{await Assert.ThrowsAsync<InvalidOperationException>(()=>http.SendAsync(request));Assert.Equal(0,calls);Assert.Equal("user-canary",request.Headers.Authorization!.Parameter);}
+    }
+
     [Fact]
     public async Task ActualTypedClientUsesServiceIdentityForWorkerCallbacksAndAccountResolutionAsync()
     {

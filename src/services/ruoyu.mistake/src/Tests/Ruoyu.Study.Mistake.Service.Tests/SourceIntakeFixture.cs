@@ -59,6 +59,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
     internal bool ConfiguredVl { get; set; }
     internal bool Enabled { get; set; }=true;
     internal bool TargetsEnabled { get; set; }
+    internal bool ReturnsEnabled { get; set; }
     internal Func<string,string,Task>? Copy { get; set; }
     internal WebApplication? App { get; private set; }
     internal HttpClient? Client { get; private set; }
@@ -86,11 +87,11 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         {SideEffects.Add("copy");return Copy==null ? Task.CompletedTask : Copy(a,b);});
         Oss.Setup(o=>o.DeleteAsync(It.IsAny<string>())).Returns((string path)=>{SideEffects.Add("delete");return Task.FromResult(true);});
     }
-    internal static async Task<SourceIntakeFixture> CreateAsync(bool initialize=true)
+    internal static async Task<SourceIntakeFixture> CreateAsync(bool initialize=true,bool sourceStrict=false)
     {
         var admin=Environment.GetEnvironmentVariable("MISTAKE_INTAKE_TEST_CONNECTION");
         if(string.IsNullOrWhiteSpace(admin)) throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_INTAKE_TEST_CONNECTION to owned PostgreSQL 15.");
-        var source=await StudentSourceFixture.CreateAsync();await source.StartAsync();
+        var source=await StudentSourceFixture.CreateAsync();await source.StartAsync(strict:sourceStrict);
         var name="mistake_intake_"+Guid.NewGuid().ToString("N");
         await using(var connection=new NpgsqlConnection(admin))
         {await connection.OpenAsync();await using var command=new NpgsqlCommand($"CREATE DATABASE \"{name}\"",connection);await command.ExecuteNonQueryAsync();}
@@ -101,7 +102,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
     }
     internal DbContextOptions<MistakeDbContext> DatabaseOptions=>new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(Connection).AddInterceptors(Fault).Options;
     internal MistakeDbContext Context()=>new(DatabaseOptions);
-    internal SourceIntakeService Service()=>new(DatabaseOptions,new SourceIntakeOptions(Enabled),Snapshots,Oss.Object,Analyzer.Object,Options.Create(new VlAnalyzerOptions {ApiKey=ConfiguredVl ? "fixture" : ""}),new SourceTargetOptions(TargetsEnabled));
+    internal SourceIntakeService Service(SourceReturnClient? returnClient=null)=>new(DatabaseOptions,new SourceIntakeOptions(Enabled),Snapshots,Oss.Object,Analyzer.Object,Options.Create(new VlAnalyzerOptions {ApiKey=ConfiguredVl ? "fixture" : ""}),new SourceTargetOptions(TargetsEnabled),new SourceReturnOptions(ReturnsEnabled),returnClient ?? new SourceReturnClient(SnapshotHttp,Identity));
     internal async Task<StudentRecord> SeedAsync(string[]? paths=null,string[]? types=null,int[]? rotations=null)
     {
         var record=await Source.SeedAsync(paths,types:types,rotations:rotations);
@@ -145,10 +146,12 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         builder.Services.AddScoped<IMistakeItemRepository,MistakeItemRepository>();builder.Services.AddScoped<IMistakePracticeRepository,MistakePracticeRepository>();
         builder.Services.AddScoped<IProcessLogRepository,ProcessLogRepository>();builder.Services.AddScoped<IUnitOfWork,UnitOfWork>();
         builder.Services.AddScoped<IMistakeDomainService,MistakeDomainService>();
+        builder.Services.AddSingleton(new SourceReturnOptions(ReturnsEnabled));builder.Services.AddSingleton(new SourceReturnClient(SnapshotHttp,Identity));
         builder.Services.AddSingleton(new SourceIntakeOptions(Enabled));builder.Services.AddSingleton(new SourceTargetOptions(TargetsEnabled));builder.Services.AddSingleton(Snapshots);builder.Services.AddSingleton(Oss.Object);
         builder.Services.AddSingleton(Analyzer.Object);builder.Services.AddSingleton(Options.Create(new VlAnalyzerOptions{ApiKey=ConfiguredVl ? "fixture" : ""}));
         builder.Services.AddScoped<SourceIntakeService>();builder.Services.AddScoped<ISourceIntakeService>(s=>s.GetRequiredService<SourceIntakeService>());
         builder.Services.AddScoped<ISourceTargetService>(s=>s.GetRequiredService<SourceIntakeService>());
+        builder.Services.AddScoped<ISourceReturnService>(s=>s.GetRequiredService<SourceIntakeService>());
         builder.Services.AddScoped<IMistakeSourceGuard>(s=>s.GetRequiredService<SourceIntakeService>());
         var studentClient=new StudentHttpClient(SnapshotHttp,NullLogger<StudentHttpClient>.Instance);
         builder.Services.AddSingleton<IUploadSourceGateway>(new StudentUploadSourceGateway(studentClient,new StudentCapabilityOptions{Enabled=true}));
@@ -203,9 +206,10 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         internal int LoseCommitNumber {get;set;}
         internal int CommitCount {get;set;}
         internal bool FailBeforeCommit {get;set;}
+        internal int FailCommitNumber {get;set;}
         internal Action? CancelBeforeCommit {get;set;}
         public override ValueTask<InterceptionResult> TransactionCommittingAsync(DbTransaction transaction,TransactionEventData data,InterceptionResult result,CancellationToken ct=default)
-        {var cancel=CancelBeforeCommit;CancelBeforeCommit=null;cancel?.Invoke();ct.ThrowIfCancellationRequested();if(FailBeforeCommit){FailBeforeCommit=false;throw new IOException("Injected commit failure.");}return ValueTask.FromResult(result);}
+        {var cancel=CancelBeforeCommit;CancelBeforeCommit=null;cancel?.Invoke();ct.ThrowIfCancellationRequested();if(FailBeforeCommit || FailCommitNumber==CommitCount+1){FailCommitNumber=0;FailBeforeCommit=false;throw new IOException("Injected commit failure.");}return ValueTask.FromResult(result);}
         public override Task TransactionCommittedAsync(DbTransaction transaction,TransactionEndEventData data,CancellationToken ct=default)
         {CommitCount++;if(LoseCommitNumber==CommitCount)throw new IOException("Injected response loss after actual commit.");return Task.CompletedTask;}
     }

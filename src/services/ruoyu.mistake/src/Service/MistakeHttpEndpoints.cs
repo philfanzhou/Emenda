@@ -360,7 +360,8 @@ public static partial class MistakeHttpEndpoints
         IUploadSourceGateway studentClient,
         IOssService ossService,
         StudentCapabilityOptions studentCapability,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        HttpContext http)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (resourceAuthz.Enabled)
@@ -377,6 +378,19 @@ public static partial class MistakeHttpEndpoints
 
         if (request.ReviewStatus != ReviewStatus.Confirmed && request.ReviewStatus != ReviewStatus.Rejected)
             return MistakeHttpResponse.BadRequest("审核结果只能是确认或退回");
+
+        var intake=http.RequestServices.GetService<ISourceIntakeService>();
+        if(request.ReviewStatus==ReviewStatus.Rejected && intake!=null && await intake.GetManagedItemStudentAsync(id,http.RequestAborted)!=null)
+        {
+            var reverse=http.RequestServices.GetService<ISourceReturnService>();
+            if(reverse==null) return IntakeError("returns_disabled",503);
+            var result=await reverse.ReturnAsync(id,resourceAuthz.GetSubjectId(user)!,request.ReturnReason,request.RootCause,request.Grade,request.Subject,http.RequestAborted);
+            var retainedItem=await mistakeService.GetMistakeItemAsync(id) ?? throw new SourceIntakeException("return_binding",409);
+            var response=new ReviewMistakeItemResponse { SourceUploadId=retainedItem.SourceUploadId,StudentId=retainedItem.StudentId,Success=result.Success,OperationId=result.OperationId,ReturnState=result.State,
+                ConfirmedRecordId=result.ConfirmedRecordId,ErrorKind=result.Success ? "" : "return_pending",
+                ErrorMessage=result.Success ? "" : "退回处理中，请稍后重试" };
+            return Results.Json(new { success=true,data=response },statusCode:result.Success ? 200 : 202);
+        }
 
         // Fail closed before any domain, OSS or Student change: the reject flow
         // migrates images, deletes the item and creates a Student returned

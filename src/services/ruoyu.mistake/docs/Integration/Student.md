@@ -55,3 +55,9 @@ Host 的 `StudentServiceTokenHandler` 由同一个 typed client 管线用于 Wor
 [来源入库](../modules/SourceIntake.md)开启时，scan/gateway 保留 ContentRevision，Worker 与两个手动入口通过正常 HTTPS 和独立 uploads.snapshot 的 RS256 服务 JWT 获取同条件 PUT/GET。签发 handler 仅接受精确 GUID snapshot 路由及 GET/PUT，坏响应/未知结果不匿名降级。scan 的 StudentId/path/type 只是 hint，创建与 VL 字节依已核验完整 manifest。关闭后已有 guards、只读状态和认证请求重放仍有效。
 
 当前新条目保持 SourceRetained；创建调用链没有 copy/delete/remove/ack/release。[SourceTargets](../modules/SourceTargets.md) 可独立复制已提交组的实际原图并核验目标，但仍不 remove/ack/release，不改变提供方 snapshot 或原结果。旧未受管 Worker/CompleteReview 仍是旧流程，后继 durable handoff/条件确认/全引用另归父任务，禁止两者混用。提供方来源与 pin 规则只有 [Student SourceSnapshot](../../../ruoyu.student/docs/Integration/Mistake/SourceSnapshot.md) 一份权威，不在客户端另立 revision/path 规则。
+
+## 受管持久退回消费
+
+[SourceReturns](../modules/SourceReturns.md) 使用独立窄客户端，继承正常HTTPS与RS256。仅精确 GET `/api/integrations/mistake/returns/{合法operationId}/receipt`、无query签发uploads.return；不同方法/路径/非法operation不签发。既有returned POST的同一固定operation/payload在此协议中仅产生Student副作用，必须由[原历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)完全匹配后才本域finalize。没有旧GET/匿名fallback、用户Bearer转发、第二operation或Current Record重建。
+
+上文无Mistake持久状态的回调三态只描述未受管legacy路径。新managed reject另走SourceReturns，不DELETE实际item/原图、不调用remove/ack/release。提供方后续正常COW/消费/删除仍由Student主责，不改原receipt，不由Mistake补建。

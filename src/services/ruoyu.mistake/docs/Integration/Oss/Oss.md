@@ -19,3 +19,5 @@ legacy 未受管路径沿现有 `mistakes/`、size 与缩略图规则；是否�
 当前 Mistake **未实现** `GetAllReferencedImagePaths`。不得把旧文档中的该名称当作可用 API，也不得仅凭 item.source_regions/practice.image_paths 推断新增 namespace 的全部保护引用；source manifest、所有尝试与选定映射仍须保留。外部 Ruoyu.Admin 的完整引用/GC 合同属于后继任务，当前不能自动删除 source-targets 或来源 pins。部署者负责阻止独立外部 writer/GC 触碰它们；本服务凭据边界不能限制其他凭据持有者。
 
 专项验证见 [SourceTargets](../../modules/SourceTargets.md#配置数据库与验证)。legacy 路径规则测试与实际三 mover 无副作用拒绝测试在 Mistake Service/Domain 测试项目；它们不把旧 Copy→Delete 顺序称为数据安全或跨资源幂等保证。
+
+[SourceReturns](../../modules/SourceReturns.md) 另外将实际selected target的full原图复制到每item/attempt独立uploads键。可编辑返回图只有正常Copy完成并持久CopySettled、核验/选定后可发布；Unknown候选即使字节相符也不选。固定payload后本域不重写选定键，Student的合法COW/编辑/消费沿正常uploads生命周期。所有未公开候选永久pin保留，不能把source-target恢复规则或静态reserved namespace用于可编辑返回图。

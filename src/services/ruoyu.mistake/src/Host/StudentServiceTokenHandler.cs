@@ -22,6 +22,15 @@ public sealed class StudentServiceTokenHandler : DelegatingHandler
             && Guid.TryParseExact(segments[7], "D", out var revision) && revision != Guid.Empty;
     }
 
+    private static bool IsReceiptRoute(HttpMethod method, Uri uri)
+    {
+        var segments=uri.AbsolutePath.Split('/');
+        return method==HttpMethod.Get && uri.Query.Length==0 && segments.Length==7
+            && segments[1]=="api" && segments[2]=="integrations" && segments[3]=="mistake"
+            && segments[4]=="returns" && segments[6]=="receipt" && segments[5].Length is >0 and <=128
+            && segments[5].All(c=>char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or ':' or '-');
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -37,6 +46,7 @@ public sealed class StudentServiceTokenHandler : DelegatingHandler
         var scope = path switch
         {
             "/api/uploads/processing/scan" => "uploads.scan",
+            _ when IsReceiptRoute(request.Method, uri) => "uploads.return",
             _ when IsSnapshotRoute(request.Method, uri) => "uploads.snapshot",
             _ when path.StartsWith("/api/integrations/mistake/accounts/", StringComparison.Ordinal) => "accounts.read",
             _ when path.StartsWith("/api/students/", StringComparison.Ordinal) && path.EndsWith("/uploads/returned", StringComparison.Ordinal) => "uploads.return",

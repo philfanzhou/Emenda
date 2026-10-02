@@ -30,7 +30,7 @@ GET 增加 `targets`（SourcePath/State/TargetKey）、`targetReady` 与 `handof
 
 `Mistake:SourceTargets:Enabled` 默认 false，仅接受 bool；true 要求 strict API authentication 与 resource auth 有效，启动时验证已有身份信任配置。无新服务、依赖、Student token 或接口；既有 PostgreSQL 与 OSS 承载处理。关闭只停止新 copy，不撤销安全读取、状态及 guards。
 
-[来源表](../database/tables/source_intake.md)描述 object/attempt 的 restrict 关系、唯一键、永久 pin、选定与 fence guards；[部署](../development/Deployment.md#图片目标启用与恢复)定义七历史升级、停写/备份/恢复和回退。
+[来源表](../database/tables/source_intake.md)描述 object/attempt 的 restrict 关系、唯一键、永久 pin、选定与 fence guards；[部署](../development/Deployment.md#图片目标启用与恢复)定义当前八历史升级、停写/备份/恢复和回退。
 
 测试位于 `SourceTargetPostgresTests` 和 `SourceTargetS3Tests`：实际 PG、实际提交响应丢失、取消/晚到 owner、SQL 保护、六历史非空升级、pg_dump/restore、严格 HTTP/full 下载；S3 用当前 S3OssService 的实际 Copy/Download 和任务自有 S3 bucket。只提供专用 PostgreSQL admin 连接和专用 S3 实例，fixture 创建随机数据库/bucket；不得填共享业务环境。配置 `MISTAKE_INTAKE_TEST_CONNECTION`、`STUDENT_SCAN_TEST_CONNECTION`、`MISTAKE_INTAKE_TEST_PG_CONTAINER` 与 `MISTAKE_TARGET_TEST_S3_ENDPOINT` 后运行：
 

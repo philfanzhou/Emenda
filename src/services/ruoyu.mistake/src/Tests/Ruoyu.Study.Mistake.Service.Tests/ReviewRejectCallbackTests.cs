@@ -60,6 +60,7 @@ public sealed class ReviewRejectCallbackTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("\"success\":true");
+        body.Should().NotContain("operationId").And.NotContain("returnState").And.NotContain("confirmedRecordId").And.NotContain("errorKind");
 
         var call = Assert.Single(gateway.ReturnedRecordCalls);
         Assert.Equal(StudentId, call.StudentId);

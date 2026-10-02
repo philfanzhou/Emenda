@@ -251,7 +251,7 @@ Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存
 
 1. **A 停写备份**：逐一关闭所有实例的 `Mistake__Workers__ReanalyzeJobHostedService__Enabled`，等待或终止在途 VL；再停止 Mistake 写入。确认准确主机与数据库名，取得可恢复备份，并在隔离 PostgreSQL 15 库恢复核对结构、行数、稳定 ID、Job 状态与 ProcessLog。只有核验后才使用 `--backup-verified`。不可让旧 worker 与新 worker 混跑。
 2. **B 显式升级**：全新空库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`；受支持带数据历史库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。维护账号需 DDL 与迁移历史写权限。命令在单一事务和 advisory lock 内升级至**七条** EF 历史并核验精确 catalog；第四条历史先升级第五条，再应用第六、第七条；当前六历史直接应用第七条。三历史 text 路径的精确小写 `ix_process_log_student_id` 变体会先在同一事务中标准化索引名，再转换路径类型；其他形态不通过忽略大小写放宽。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。未知或矛盾结构原状拒绝，旧 `public.mistake` 由 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。
-3. **C 验库启用**：用新二进制执行正常启动，只读核验精确七历史目标，然后逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。正常启动不迁移数据库。旧二进制遇新 schema 应失败关闭。
+3. **C 验库启用**：用新二进制执行正常启动，只读核验精确八历史目标，然后逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。正常启动不迁移数据库。旧二进制遇新 schema 应失败关闭。
 4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新二进制后可重新启用，过期 Job 自动重领；若确需旧二进制，停止写入，在隔离库恢复已核验的升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧二进制或 EF Down 均不是无损回退。
 
 提交前故障会使升级事务回滚。COMMIT 响应丢失时结果未知，保持停写并重新只读核对 catalog、七条历史和业务行，再决定是否重复运行显式命令；不得凭异常文本猜测结果。重复升级到精确目标只核验，不增加失败日志。具体结构和支持的旧形态见[迁移历史](../database/migrations.md)，隔离备份演练见[备份恢复演练](./BackupRestoreDrill.md)。本手册不表示已执行生产升级。
@@ -471,7 +471,7 @@ Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使�
 
 启用限于自有隔离验证。共享 capture 前必须停止全部旧 Mistake direct movers、manual CompleteReview 和外部破坏性 StorageAudit，并核对固定消费者已支持新参数；本服务无法阻止另持 S3 凭据的 actor。必须等待 durable forward/reverse Saga、目标完整引用与条件确认的后继交付才能取代旧流程，不能把 SourceRetained 视为 handoff completed 或 GC 授权。
 
-先停写并核验可恢复备份，显式 empty/known 升级至七历史，正常启动只读验证后再启用。回退先停新领取/所有自身 worker，保持新 schema/new binary/guards 和 provider pins；非空禁止 EF Down/旧 binary 降级。如需灾难恢复，停写、真实 pg_dump→隔离 restore、核对完整来源/group/request/IDs/practice/log 与保护并重放同 key 后按正式恢复流程切换。未知 COMMIT 不删图补偿，只 fresh GET/同 key 确认。无超时释放 pin、无 schema 清空回退。
+先停写并核验可恢复备份，显式 empty/known 升级至八历史，正常启动只读验证后再启用。回退先停新领取/所有自身 worker，保持新 schema/new binary/guards 和 provider pins；非空禁止 EF Down/旧 binary 降级。如需灾难恢复，停写、真实 pg_dump→隔离 restore、核对完整来源/group/request/IDs/practice/log 与保护并重放同 key 后按正式恢复流程切换。未知 COMMIT 不删图补偿，只 fresh GET/同 key 确认。无超时释放 pin、无 schema 清空回退。
 
 新模式的创建和图片签名读取都依赖可验证原字节；本文上方旧模式“创建不依赖OSS”的表仅描述 legacy 未受管路径，不能用作新入库可用性保证。专项 PG/TLS/文件字节验证命令及专用输入见[能力验证](../modules/SourceIntake.md#验证入口)。
 
@@ -479,8 +479,20 @@ Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使�
 
 `Mistake:SourceTargets:Enabled`（`Mistake__SourceTargets__Enabled`）默认 false；true 要求 strict API + resource auth 与现有身份信任配置有效，不要求 source intake/Student capture 同时开启。一个 DB 驱动 worker 启动后及每 20 秒恢复已提交组的缺失目标，Admin POST 可触发相同幂等过程；请求与状态/读取协议见[SourceTargets](../modules/SourceTargets.md)。关闭开关只停止新 copy，保持已有安全读取、状态与 DB guards。
 
-按已有停写/真实可恢复备份流程显式升级七历史，正常服务不DDL。空库、六历史已有 item/practice/source/group/replay 库均先在隔离实例验证；不升级未知 schema。备份必须含 source_target_object/source_target_attempt、来源与组/实际 item/replay及函数/trigger/FK；restore后只读核验 catalog/IDs，再 resume，不能对响应丢失做delete补偿。非空 Down/旧 binary降级拒绝。
+按已有停写/真实可恢复备份流程显式升级八历史，正常服务不DDL。空库、六历史已有 item/practice/source/group/replay 库均先在隔离实例验证；不升级未知 schema。备份必须含 source_target_object/source_target_attempt、来源与组/实际 item/replay及函数/trigger/FK；restore后只读核验 catalog/IDs，再 resume，不能对响应丢失做delete补偿。非空 Down/旧 binary降级拒绝。
 
 每attempt只写独立随机键，非取消Copy可能继续到请求结束后；关闭/停机仍保留reservation和所有候选。安全回退是停止自身新处理、保留schema/guards/来源pins和已有授权读取，或持续关闭listener。部署者须阻止外部旧writer/GC触碰reserved namespace；完整refs、source release、forward/reverse saga未由此能力交付。
 
 55.10验收仅使用任务自有PG/S3和独立listener/容器，串行执行以控制资源；现行栈、真实配置/credentials和业务数据库保持原样。专项测试可复现输入见能力验证，实际结果写PR/Issue，不写成生产上线证明。
+
+## 受管持久退回启用与恢复
+
+`Mistake:SourceReturns:Enabled`（环境键 `Mistake__SourceReturns__Enabled`）默认 false，非法 bool 失败。true 在 DB/S3 初始化前要求 Student Enabled、strict API/resource auth、Student正常HTTPS 与有效RS256服务签发；无需同时开启 intake/targets 新领取。先发布 Student 的[受保护历史receipt](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)。唯一行为与信任模型见[SourceReturns](../modules/SourceReturns.md)，不以开关启用替代共享 rollout/完整fullrefs。
+
+停所有写方，真实 pg_dump 完整库并在任务自有隔离 PG 恢复检查八条历史、完整 catalog、原 IDs/practice/log/group/request/target 与所有 return phases/candidates，再使用既有 `--upgrade-empty-db` 或精确已知1–7的 `--upgrade-known-db --database <exact-name> --writes-stopped --backup-verified`。普通启动只读核验、不DDL、不自动迁移。旧misstamp支持路径仍按原数据库升级文档，未知 public.mistake 不猜测迁移。
+
+false 停本实例新增和恢复推进；其它实例/已发非取消 IO 可以晚到，状态与pins永久保留。重新true启动由DB worker启动及20秒扫描同操作恢复；不能清表、释放snapshot、更换payload、删除候选或匿名降级。Completed认证重放/历史查询与所有guards即使false仍有效。
+
+非空 return 禁止EF Down和旧binary回退；停用保留新schema/binary/guards。灾难恢复必须停写、完整dump→隔离restore→只读catalog核验→恢复同operation，不只恢复item。原提供方合法编辑/删除当前Returned Record后，匹配原历史receipt只完成Mistake，不重建。
+
+实际验证需要任务自有 PG15 与Seaweed4.48随机bucket、正常CA/SAN HTTPS Student及RS256，沿 `MISTAKE_INTAKE_TEST_CONNECTION`/`STUDENT_SCAN_TEST_CONNECTION`、两个PG_CONTAINER backup变量及 `MISTAKE_TARGET_TEST_S3_ENDPOINT`；Seaweed待8333ready再测试，使用volume.max32避免默认卷分配失败。详见SourceReturns验证入口。关闭破坏性外部StorageAudit/GC和旧direct movers，直至完整fullrefs与固定消费者交付。
