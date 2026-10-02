@@ -44,6 +44,29 @@ public sealed class MistakeApiStrictAuthTests
 
     private const string ListPath = "/api/mistakes?page=1&size=10&subject=0&grade=0&reviewStatus=0";
 
+    [Theory]
+    [InlineData(SharedAudience, false, false, HttpStatusCode.OK)]
+    [InlineData(AdminAppId, false, false, HttpStatusCode.OK)]
+    [InlineData(SharedAudience, true, false, HttpStatusCode.Unauthorized)]
+    [InlineData(AdminAppId, true, false, HttpStatusCode.Unauthorized)]
+    [InlineData(SharedAudience, true, true, HttpStatusCode.OK)]
+    [InlineData(AdminAppId, true, true, HttpStatusCode.OK)]
+    public async Task StrictMode_MetadataIssuerMustBeExplicitlyTrustedByBothSchemesAsync(
+        string audience, bool wrongConfiguredIssuer, bool allowMetadataIssuer, HttpStatusCode expected)
+    {
+        // Authority, discovery issuer, signing key and token stay identical.
+        // Only the configured trust list changes; metadata must not widen it.
+        using var factory = new MistakeStrictAuthWebApplicationFactory(
+            strict: true, adminAudience: AdminAppId,
+            configuredIssuer: wrongConfiguredIssuer ? Issuer + "/wrong" : Issuer,
+            additionalIssuer: allowMetadataIssuer ? Issuer : null);
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(CreateRequest(ListPath, CreateToken(audience)));
+
+        response.StatusCode.Should().Be(expected);
+    }
+
     // ===== strict=true: negative matrix =====
 
     [Fact]
@@ -275,6 +298,7 @@ public sealed class MistakeApiStrictAuthTests
             "Mistake__Local__Oss__PublicBaseUrl",
             "IdentityService__Authority",
             "IdentityService__Issuer",
+            "IdentityService__AdditionalValidIssuers__0",
             "IdentityService__Audience",
             "IdentityService__RequireHttpsMetadata",
             "IdentityService__AdminAudience",
@@ -282,7 +306,8 @@ public sealed class MistakeApiStrictAuthTests
             "IDENTITY_APP_ID_ADMIN",
         ];
 
-        public MistakeStrictAuthWebApplicationFactory(bool strict, string? adminAudience)
+        public MistakeStrictAuthWebApplicationFactory(
+            bool strict, string? adminAudience, string configuredIssuer = Issuer, string? additionalIssuer = null)
         {
             // Program.cs captures configuration during host build; environment
             // variables have the highest priority and tests run sequentially.
@@ -300,7 +325,8 @@ public sealed class MistakeApiStrictAuthTests
             Environment.SetEnvironmentVariable("Mistake__Local__Oss__BucketName", "mistake-strict-auth-tests");
             Environment.SetEnvironmentVariable("Mistake__Local__Oss__PublicBaseUrl", "http://127.0.0.1/oss");
             Environment.SetEnvironmentVariable("IdentityService__Authority", Issuer);
-            Environment.SetEnvironmentVariable("IdentityService__Issuer", Issuer);
+            Environment.SetEnvironmentVariable("IdentityService__Issuer", configuredIssuer);
+            Environment.SetEnvironmentVariable("IdentityService__AdditionalValidIssuers__0", additionalIssuer);
             Environment.SetEnvironmentVariable("IdentityService__Audience", SharedAudience);
             Environment.SetEnvironmentVariable("IdentityService__RequireHttpsMetadata", "false");
             Environment.SetEnvironmentVariable("IdentityService__AdminAudience", adminAudience);

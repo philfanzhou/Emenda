@@ -463,4 +463,4 @@ Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使�
 
 ## 隔离严格 Local 运行门禁
 
-[隔离部署验证](./IsolatedDeployVerification.md) 的 `--strict-fixture` 阶段使用真实Production OIDC与任务自有PG/S3验证 Student-disabled Local。strict与resource同时打开、默认 .NET CA/SAN/JWKS校验；普通主体的学生范围访问明确503，admin的合法本域confirm可用，而跨域退回重复503且零副作用。该阶段不启用共享服务或外部Admin，不等于全平台启用批准。维护回退先停自身listener，再以仍为strict/resource=true的已验证配置/二进制重启，或持续关闭listener；不得以恢复匿名200为严格运行的安全回退。fixture必须0600、repo外，公开证据不含secret或签名URL。
+[隔离部署验证](./IsolatedDeployVerification.md) 的 `--strict-fixture` 阶段使用真实Production OIDC与任务自有PG/S3验证 Student-disabled Local。strict与resource同时打开、默认 .NET CA/SAN/JWKS校验；单独错Issuer保留真实Authority与token仍401，issuer信任列表遵循[共享认证契约](../../../../ruoyu.common/docs/authentication.md)；普通主体的学生范围访问明确503，admin的合法本域confirm可用，而跨域退回重复503且零副作用。该阶段不启用共享服务或外部Admin，不等于全平台启用批准。维护回退先停自身listener，再以仍为strict/resource=true的已验证配置/二进制重启，或持续关闭listener；不得以恢复匿名200为严格运行的安全回退。fixture必须0600、repo外，公开证据不含secret或签名URL。

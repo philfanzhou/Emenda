@@ -87,6 +87,6 @@ caller复用真实登录cookie/CSRF、Code/S256与真实RS256/JWKS验证；接�
 
 矩阵逐项断言匿名/其他真实audience/篡改签名401；真实ADMIN admin读取item/list/by-upload/practice/log200；普通主体staff/admin-only403、Student归属访问503；伪reviewer403；合法reviewer重复退回503；admin写practice/log403；合法confirm持久本域review/log变化。拒绝前后真实PG全部行/关联与S3 inventory摘要相等，签名图片经过任务自有公开代理按原签名Host和剥离前缀实际读取bytes；confirm/重启图片摘要不变。Student/Consul/Loki共用sentinel计数必须0。
 
-两轮使用独立的新库和新桶，每个库经历strict停启与安全回退后仍拒绝匿名，缺CA/错Authority+Issuer/错ADMINaud新consumer返回401且不匿名降级，缺Authority以键名启动失败。错issuer负例同时改变Authority和Issuer，避免仍指向可信provider的metadata自动提供真实issuer；它验证错误metadata来源不能接受真实token，不声称覆盖全平台issuer迁移。运行中取消先停任务child listener，Popen只管理自身PID，credential-bearing子进程禁用自身core dump；失败保留自己PG/S3和证据，成功按精确owner前缀清理。维护/回退保持strict/resource=true或暂停listener，不能把匿名窗口作为strict安全回退。公开strict-summary只保存status、hash、计数和能力，不保存JWT/code/cookie/密码/连接串/签名URL。
+两轮使用独立的新库和新桶，每个库经历strict停启与安全回退后仍拒绝匿名，缺CA/单独错Issuer/错Authority+Issuer/错ADMINaud新consumer返回401且不匿名降级，缺Authority以键名启动失败。单独错Issuer负例保持真实Authority、CA、ADMIN受众与token不变，仅改Issuer；默认与Admin scheme均只接受显式Issuer及AdditionalValidIssuers，metadata不扩展该列表。另保留错误Authority+Issuer来源负例，不声称覆盖全平台issuer迁移。运行中取消先停任务child listener，Popen只管理自身PID，credential-bearing子进程禁用自身core dump；失败保留自己PG/S3和证据，成功按精确owner前缀清理。维护/回退保持strict/resource=true或暂停listener，不能把匿名窗口作为strict安全回退。公开strict-summary只保存status、hash、计数和能力，不保存JWT/code/cookie/密码/连接串/签名URL。
 
 这只证明 Student-disabled Local 的实际身份和能力边界。全平台18端点完整角色矩阵由现有自动测试覆盖，Student-enabled采集/退回/Saga、Portal/Admin真实会话、共享issuer切换及父级最终联验仍按原任务实施；本入口不替代它们。
