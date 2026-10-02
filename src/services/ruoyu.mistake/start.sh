@@ -14,6 +14,26 @@ VL_MODEL="${VL_MODEL:-step-3.7-flash}"
 
 DB_NAME="ruoyu_study_mistake"
 
+# Optional local service identity is supplied only by deployment-owned files.
+SERVICE_AUTH_ARGS=()
+if [ -n "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE:-}" ] || [ -n "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE:-}" ]; then
+    : "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE:?A protected service authentication env file is required}"
+    : "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE:?Service authentication key material is required}"
+    test -f "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE}"
+    test "$(stat -c '%a' "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE}")" = 600
+    test "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE:0:1}" = /
+    case "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE}" in *','*|*$'\n'*|*$'\r'*) exit 2 ;; esac
+    test -f "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE}"
+    test "$(stat -c '%a' "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE}")" = 600
+    SERVICE_AUTH_ARGS+=(--env-file "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE}" --mount "type=bind,source=${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE},target=/run/ruoyu/mistake-signing-key.pem,readonly")
+fi
+if [ -n "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE:-}" ]; then
+    test "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE:0:1}" = /
+    case "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE}" in *','*|*$'\n'*|*$'\r'*) exit 2 ;; esac
+    test -f "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE}"
+    SERVICE_AUTH_ARGS+=(--mount "type=bind,source=${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE},target=/run/ruoyu/student-ca-bundle.pem,readonly" -e SSL_CERT_FILE=/run/ruoyu/student-ca-bundle.pem)
+fi
+
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
     echo "Container is already running, stopping it..."
     docker stop "$CONTAINER_NAME"
@@ -24,6 +44,7 @@ if [ -n "$(docker ps -aq --filter "name=^/${CONTAINER_NAME}$")" ]; then
 fi
 
 docker run -d \
+  "${SERVICE_AUTH_ARGS[@]}" \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   -p "${Port}:5007" \

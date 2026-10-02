@@ -443,3 +443,20 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 | 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补外键 |
 | 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补索引 |
 | 10 | HTTP 请求大小 | 上传含大量图片的错题 | 不超过服务器请求体大小限制 | 如需更大限制，修改 Kestrel `MaxRequestBodySize` |
+
+## Student 本地服务签发 secret
+
+新 `Mistake:Student:ServiceAuthentication:` 配置默认 Disabled（`Enabled=false`），`Enabled=true` 时 Student 能力必须启用。`KeyId` 必须唯一登记于 Student ring，`PrivateKeyPath` 指向 RSA≥2048 PEM 私钥（Linux 拒绝任何 group/other 权限）。`Issuer`、`Audience`、`Subject` 默认值与 [Student 合同](../../../ruoyu.student/docs/Integration/Mistake/ServiceIdentity.md) 一致，显式空值非法。开启时基地址默认必须 HTTPS；只在明确受控测试链路设置 `AllowInsecureHttp=true`，不根据环境名自动降低保护。
+
+`start.sh` 可选读取 `MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE`（0600）与 `MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE`（绝对文件，0600），在停止原容器前检查，再将私钥只读挂到 `/run/ruoyu/mistake-signing-key.pem`。部署目录 0700；env 不保存 PEM 或 JWT。示例 env：
+
+```dotenv
+Mistake__Student__Enabled=true
+Mistake__Student__ServiceAuthentication__Enabled=true
+Mistake__Student__ServiceAuthentication__KeyId=mistake-v1
+Mistake__Student__ServiceAuthentication__PrivateKeyPath=/run/ruoyu/mistake-signing-key.pem
+```
+
+Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使用受信任的 HTTPS 地址。私 CA 可用 `MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE` 指定系统 roots 加部署 CA 的绝对 bundle 文件，脚本只读挂到 `/run/ruoyu/student-ca-bundle.pem` 并设置进程 `SSL_CERT_FILE`，保持默认 .NET 证书链/SAN/有效期校验；不得使用无验证 handler 或 `curl -k`。新 Host 文件已经由最小源码 manifest 的递归 Host 成员和 Dockerfile 包含，secret 不 COPY 入镜像；[预演](./MinimalSourceRehearsal.md) 应指定当前提交并显式允许基线漂移。
+
+启用、轮换、65 秒等待与回退顺序由 [Student 部署](../../../ruoyu.student/docs/development/Deployment.md) 承载。隔离双进程 TLS/PG 演练见 [部署验证](../../../../../tests/deployment/README.md)。这里只交付机制与挂载，真实 55.10 的版本、开关和入站资源保护仍由父项协调。

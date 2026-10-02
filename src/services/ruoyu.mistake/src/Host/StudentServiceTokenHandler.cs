@@ -1,0 +1,57 @@
+using System.Globalization;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using Microsoft.IdentityModel.Tokens;
+
+namespace Ruoyu.Study.Mistake.Host;
+
+public sealed class StudentServiceTokenHandler : DelegatingHandler
+{
+    private readonly StudentServiceAuthenticationOptions _options;
+    public StudentServiceTokenHandler(StudentServiceAuthenticationOptions options) => _options = options;
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_options.Enabled) return base.SendAsync(request, cancellationToken);
+        var uri = request.RequestUri ?? throw new InvalidOperationException("Student service request URI is missing.");
+        var path = uri.AbsolutePath;
+        // Ownership resolution uses a dedicated route, leaving Portal account queries unchanged.
+        if (path.StartsWith("/api/accounts/", StringComparison.Ordinal) && path.EndsWith("/students", StringComparison.Ordinal))
+        {
+            path = "/api/integrations/mistake/accounts/" + path["/api/accounts/".Length..];
+            request.RequestUri = new UriBuilder(uri) { Path = path }.Uri;
+        }
+        var scope = path switch
+        {
+            "/api/uploads/processing/scan" => "uploads.scan",
+            _ when path.StartsWith("/api/integrations/mistake/accounts/", StringComparison.Ordinal) => "accounts.read",
+            _ when path.StartsWith("/api/students/", StringComparison.Ordinal) && path.EndsWith("/uploads/returned", StringComparison.Ordinal) => "uploads.return",
+            _ when path.StartsWith("/api/uploads/returned/", StringComparison.Ordinal) => "uploads.return",
+            _ when path.StartsWith("/api/uploads/", StringComparison.Ordinal) && path.EndsWith("/remove-processed", StringComparison.Ordinal) => "uploads.remove",
+            _ => throw new InvalidOperationException("Student service request route is unsupported.")
+        };
+        try
+        {
+            // Each request owns its RSA instance; concurrent requests share no mutable signing state.
+            using var rsa = RSA.Create();
+            rsa.ImportParameters(_options.PrivateKey);
+            var issued = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var token = new JwtSecurityToken(_options.Issuer, _options.Audience,
+                [new Claim("sub", _options.Subject), new Claim("scope", scope),
+                    new Claim("iat", issued.ToString(CultureInfo.InvariantCulture), ClaimValueTypes.Integer64),
+                    new Claim("jti", Guid.NewGuid().ToString("N"))],
+                DateTimeOffset.FromUnixTimeSeconds(issued).UtcDateTime,
+                DateTimeOffset.FromUnixTimeSeconds(issued + 60).UtcDateTime,
+                new SigningCredentials(new RsaSecurityKey(rsa) { KeyId = _options.KeyId, CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false } }, SecurityAlgorithms.RsaSha256));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", new JwtSecurityTokenHandler().WriteToken(token));
+        }
+        catch (CryptographicException)
+        {
+            throw new InvalidOperationException("Student service authentication signing failed.");
+        }
+        return base.SendAsync(request, cancellationToken);
+    }
+}

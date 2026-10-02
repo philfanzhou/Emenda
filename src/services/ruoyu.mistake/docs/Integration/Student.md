@@ -43,3 +43,9 @@ Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host
 ## 验证
 
 adapter、HTTP 失败矩阵、移除回调 `errorKind` 透传（`RemoveProcessedImagesHttpClientTests`）、Worker 移除回调分类日志（`UploadPollingNotifyTests`）、退回回调分类（`CreateReturnedRecordHttpClientTests`）、reject 回调流程（`ReviewRejectCallbackTests`）、worker 游标与 Student 能力开关（含 503 失败关闭、矛盾配置与显式地址校验）测试位于 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/`。在 `src/services/ruoyu.mistake/src` 运行 `dotnet build Ruoyu.Study.Mistake.sln --configuration Release` 和 `dotnet test Ruoyu.Study.Mistake.sln --configuration Release`。Student 的隔离 PostgreSQL 扫描测试需显式提供 `STUDENT_SCAN_TEST_CONNECTION`，只在临时数据库执行。
+
+## 本地服务凭据
+
+Host 的 `StudentServiceTokenHandler` 由同一个 typed client 管线用于 Worker、审核回调和 learner 账户归属解析；开启 `Mistake:Student:ServiceAuthentication:Enabled` 后每次请求签发新 RS256/60 秒服务 JWT 并覆盖请求 Authorization，不需要或转发用户 JWT。Worker scan / remove、审核 returned 和 returned 回查分别使用 `uploads.scan` / `uploads.remove` / `uploads.return`；账户查询改到始终认证的 `/api/integrations/mistake/accounts/{accountId}/students` 并使用 `accounts.read`。禁用时保留旧调用路径。
+
+签发快照在启动时校验，默认要求 Student HTTPS 基地址；受控 HTTP 链路须显式 `AllowInsecureHttp=true`。签发失败、取消与超时不匿名重发；原业务游标、Returned 幂等/冲突/回查、墓碑/unknown_record 和错误分类保持原样。服务身份不会替代 Mistake 入站 resourceAuth 或 reviewer/student 授权。Student 的 [服务身份能力](../../../ruoyu.student/docs/Integration/Mistake/ServiceIdentity.md) 是 wire 合同权威入口；secret 文件挂载、启用与轮换见 [部署说明](../development/Deployment.md)。

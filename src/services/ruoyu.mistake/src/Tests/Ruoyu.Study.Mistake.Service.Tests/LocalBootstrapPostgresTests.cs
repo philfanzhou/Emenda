@@ -339,7 +339,7 @@ public sealed class LocalBootstrapPostgresTests
         Assert.Equal("root-marker", await database.ScalarAsync($"SELECT root_cause FROM mistake_item WHERE id='{item}'"));
         Assert.Equal("upload-marker", await database.ScalarAsync($"SELECT source_upload_id FROM mistake_item WHERE id='{item}'"));
         Assert.Equal("[]", await database.ScalarAsync($"SELECT source_regions::text FROM mistake_item WHERE id='{item}'"));
-        Assert.Equal(polling, student.RequestCount > 0);
+        Assert.True(polling == (student.RequestCount > 0), runningHost.Output);
     }
 
     [Theory]
