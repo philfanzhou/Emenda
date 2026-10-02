@@ -15,6 +15,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
     {
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
+            SourceIntakeModel.Configure(modelBuilder);
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "8.0.11")

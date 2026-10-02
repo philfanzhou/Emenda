@@ -17,6 +17,10 @@ public class MistakeDbContext : DbContext
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
     public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
 
+    public DbSet<SourceIntakeEntity> SourceIntakes => Set<SourceIntakeEntity>();
+    public DbSet<SourceIntakeGroupEntity> SourceIntakeGroups => Set<SourceIntakeGroupEntity>();
+    public DbSet<SourceIntakeRequestEntity> SourceIntakeRequests => Set<SourceIntakeRequestEntity>();
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -25,6 +29,7 @@ public class MistakeDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        SourceIntakeModel.Configure(modelBuilder);
 
         var sourceRegionComparer = new ValueComparer<List<SourceRegionEntry>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),

@@ -12,6 +12,16 @@ public sealed class StudentServiceTokenHandler : DelegatingHandler
     private readonly StudentServiceAuthenticationOptions _options;
     public StudentServiceTokenHandler(StudentServiceAuthenticationOptions options) => _options = options;
 
+    private static bool IsSnapshotRoute(HttpMethod method, Uri uri)
+    {
+        var segments = uri.AbsolutePath.Split('/');
+        return (method == HttpMethod.Put || method == HttpMethod.Get) && uri.Query.Length == 0
+            && segments.Length == 8 && segments[1] == "api" && segments[2] == "integrations"
+            && segments[3] == "mistake" && segments[4] == "uploads" && segments[6] == "snapshots"
+            && Guid.TryParseExact(segments[5], "D", out var source) && source != Guid.Empty
+            && Guid.TryParseExact(segments[7], "D", out var revision) && revision != Guid.Empty;
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -27,6 +37,7 @@ public sealed class StudentServiceTokenHandler : DelegatingHandler
         var scope = path switch
         {
             "/api/uploads/processing/scan" => "uploads.scan",
+            _ when IsSnapshotRoute(request.Method, uri) => "uploads.snapshot",
             _ when path.StartsWith("/api/integrations/mistake/accounts/", StringComparison.Ordinal) => "accounts.read",
             _ when path.StartsWith("/api/students/", StringComparison.Ordinal) && path.EndsWith("/uploads/returned", StringComparison.Ordinal) => "uploads.return",
             _ when path.StartsWith("/api/uploads/returned/", StringComparison.Ordinal) => "uploads.return",

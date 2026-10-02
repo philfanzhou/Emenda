@@ -127,7 +127,7 @@ Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 
 - 归属解析经共享 typed client 的严格变体（失败抛出，不吞成空列表）区分「调用失败」与「空映射」。
 - 授权判定日志只记录主体 sub、端点、资源 ID 与结果；不含令牌与预签名 URL。
 
-resource=false（默认）时全部端点与基线 `91fb253e` 行为逐字节一致，无任何授权判定。启用前置（Ruoyu.Admin 直连调用方 Bearer 升级、跨服务 E2E、回滚演练）属父项 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；回滚 = 置 `false` 重启，无数据迁移。学科管辖裁决仍留 Portal BFF（`ISubjectResolver`）。真实管线矩阵验收测试位于 `src/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/MistakeApiResourceAuthTests.cs`，启动快照测试位于同目录 `MistakeApiResourceAuthStartupTests.cs`。
+resource=false（默认）时 legacy 未受管端点与基线 `91fb253e` 行为逐字节一致，不额外启用本开关的授权判定；受管入库数据永久执行新能力的认证与归属保护。启用前置（Ruoyu.Admin 直连调用方 Bearer 升级、跨服务 E2E、回滚演练）属父项 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；回滚 = 置 `false` 重启，无数据迁移。学科管辖裁决仍留 Portal BFF（`ISubjectResolver`）。真实管线矩阵验收测试位于 `src/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/MistakeApiResourceAuthTests.cs`，启动快照测试位于同目录 `MistakeApiResourceAuthStartupTests.cs`。
 
 共享 Consul 配置承载：
 
@@ -169,10 +169,10 @@ HTTP/1 监听端口由 `Mistake:Http:Port`（环境键 `Mistake__Http__Port`）�
 
 | 端口 | 协议 | 用途 | 配置方式 |
 |------|------|------|---------|
-| HTTP 端口（容器内默认 5007） | HTTP/1 | 全部 18 个业务端点 + 健康检查（`GET /health/live`、`GET /health/ready`、兼容 `GET /`） | `Mistake:Http:Port`，环境键 `Mistake__Http__Port` |
+| HTTP 端口（容器内默认 5007） | HTTP/1 | 全部 19 个业务端点 + 健康检查（`GET /health/live`、`GET /health/ready`、兼容 `GET /`） | `Mistake:Http:Port`，环境键 `Mistake__Http__Port` |
 | host 映射端口 | — | host 访问容器服务的映射端口 | `start.sh` 的 `Port` 变量（`-p ${Port}:5007`） |
 
-**HTTP 端口**承载全部业务接口（18 个端点，路由前缀 `/api/mistakes`），包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等。同时提供匿名健康端点：`GET /health/live`（纯存活）、`GET /health/ready`（按能力快照的就绪探测，见[流程六](#流程六健康检查)）与兼容保留的 `GET /` 状态字符串。
+**HTTP 端口**承载全部业务接口（19 个端点，路由前缀 `/api/mistakes`），包括 `SubmitMistakeUpload`、`GetMistakeItem`、`ReviewMistakeItem`、`CompleteUploadReview` 等。同时提供匿名健康端点：`GET /health/live`（纯存活）、`GET /health/ready`（按能力快照的就绪探测，见[流程六](#流程六健康检查)）与兼容保留的 `GET /` 状态字符串。
 
 > gRPC 端口 5006 已于 2026-07-12 下线（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
 
@@ -250,11 +250,11 @@ Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存
 ## 流程二：数据库准备与重分析切换
 
 1. **A 停写备份**：逐一关闭所有实例的 `Mistake__Workers__ReanalyzeJobHostedService__Enabled`，等待或终止在途 VL；再停止 Mistake 写入。确认准确主机与数据库名，取得可恢复备份，并在隔离 PostgreSQL 15 库恢复核对结构、行数、稳定 ID、Job 状态与 ProcessLog。只有核验后才使用 `--backup-verified`。不可让旧 worker 与新 worker 混跑。
-2. **B 显式升级**：全新空库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`；受支持带数据历史库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。维护账号需 DDL 与迁移历史写权限。命令在单一事务和 advisory lock 内升级至**五条** EF 历史并核验精确 catalog；第四条历史目标升级到第五条。三历史 text 路径的精确小写 `ix_process_log_student_id` 变体会先在同一事务中标准化索引名，再转换路径类型；其他形态不通过忽略大小写放宽。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。未知或矛盾结构原状拒绝，旧 `public.mistake` 由 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。
-3. **C 验库启用**：用新二进制执行正常启动，只读核验精确五历史目标，然后逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。正常启动不迁移数据库。旧二进制遇新 schema 应失败关闭。
+2. **B 显式升级**：全新空库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`；受支持带数据历史库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。维护账号需 DDL 与迁移历史写权限。命令在单一事务和 advisory lock 内升级至**六条** EF 历史并核验精确 catalog；第四条历史先升级第五条，再应用第六条。三历史 text 路径的精确小写 `ix_process_log_student_id` 变体会先在同一事务中标准化索引名，再转换路径类型；其他形态不通过忽略大小写放宽。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。未知或矛盾结构原状拒绝，旧 `public.mistake` 由 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。
+3. **C 验库启用**：用新二进制执行正常启动，只读核验精确六历史目标，然后逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。正常启动不迁移数据库。旧二进制遇新 schema 应失败关闭。
 4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新二进制后可重新启用，过期 Job 自动重领；若确需旧二进制，停止写入，在隔离库恢复已核验的升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧二进制或 EF Down 均不是无损回退。
 
-提交前故障会使升级事务回滚。COMMIT 响应丢失时结果未知，保持停写并重新只读核对 catalog、五条历史和业务行，再决定是否重复运行显式命令；不得凭异常文本猜测结果。重复升级到精确目标只核验，不增加失败日志。具体结构和支持的旧形态见[迁移历史](../database/migrations.md)，隔离备份演练见[备份恢复演练](./BackupRestoreDrill.md)。本手册不表示已执行生产升级。
+提交前故障会使升级事务回滚。COMMIT 响应丢失时结果未知，保持停写并重新只读核对 catalog、六条历史和业务行，再决定是否重复运行显式命令；不得凭异常文本猜测结果。重复升级到精确目标只核验，不增加失败日志。具体结构和支持的旧形态见[迁移历史](../database/migrations.md)，隔离备份演练见[备份恢复演练](./BackupRestoreDrill.md)。本手册不表示已执行生产升级。
 
 普通启动账号需要读取 public catalog、四张业务表和迁移历史；worker 账号需要 Job/Item/ProcessLog 写权限。数据库或租约异常时，先关闭所有重分析 worker，检查 `owner_id`、`fencing_version`、`lease_until`、`attempt` 及关联日志，不手工改 owner/version 或清空队列。参见[故障排查](./Troubleshooting.md)。
 
@@ -378,7 +378,7 @@ curl http://<host>:5007/               # 兼容保留："Mistake WebAPI host is 
 - ready 503 处置：`db` 失败 → 检查 PostgreSQL 可达性与连接串；`oss` 失败 → 检查 S3 endpoint/凭据/桶存在；`student` 失败 → 检查 `Mistake:Student:Enabled` 对应的 BaseUrl 可达性；`vl` 失败 → 检查 VL Provider BaseUrl。任一项持续失败先摘流量再排查，进程无需重启（开关与地址为启动快照，变更需重启）。
 - 组件集合随启动快照固定：修改能力开关或地址后必须重启进程，探针矩阵才会随之变化。
 
-> **注意**：健康检查走 HTTP 端口（默认 5007），承载全部 18 个业务端点。mistake→student 的调用也通过 HTTP（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
+> **注意**：健康检查走 HTTP 端口（默认 5007），承载全部 19 个业务端点。mistake→student 的调用也通过 HTTP（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
 
 ---
 
@@ -464,3 +464,13 @@ Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使�
 ## 隔离严格 Local 运行门禁
 
 [隔离部署验证](./IsolatedDeployVerification.md) 的 `--strict-fixture` 阶段使用真实Production OIDC与任务自有PG/S3验证 Student-disabled Local。strict与resource同时打开、默认 .NET CA/SAN/JWKS校验；单独错Issuer保留真实Authority与token仍401，issuer信任列表遵循[共享认证契约](../../../../ruoyu.common/docs/authentication.md)；普通主体的学生范围访问明确503，admin的合法本域confirm可用，而跨域退回重复503且零副作用。该阶段不启用共享服务或外部Admin，不等于全平台启用批准。维护回退先停自身listener，再以仍为strict/resource=true的已验证配置/二进制重启，或持续关闭listener；不得以恢复匿名200为严格运行的安全回退。fixture必须0600、repo外，公开证据不含secret或签名URL。
+
+## 来源入库启用与回退
+
+`Mistake:SourceIntake:Enabled` 是默认 false 的启动快照。非法 bool 失败；true 要求 Student enabled、strict API + resource auth、受信 issuer/audience/sub/role、有效 RS256 Student private-key secret 和 HTTPS Student URL，任何不完整组合在 DB/S3 初始化前失败。新模式不接受缺少 revision/request UUID 的旧手动调用，也不使用旧 mover。已有受管身份、auth/query/重放和 DB guards 在 false/restart 后永久保留。
+
+启用限于自有隔离验证。共享 capture 前必须停止全部旧 Mistake direct movers、manual CompleteReview 和外部破坏性 StorageAudit，并核对固定消费者已支持新参数；本服务无法阻止另持 S3 凭据的 actor。必须等待 durable forward/reverse Saga、目标完整引用与条件确认的后继交付才能取代旧流程，不能把 SourceRetained 视为 handoff completed 或 GC 授权。
+
+先停写并核验可恢复备份，显式 empty/known 升级至六历史，正常启动只读验证后再启用。回退先停新领取/所有自身 worker，保持新 schema/new binary/guards 和 provider pins；非空禁止 EF Down/旧 binary 降级。如需灾难恢复，停写、真实 pg_dump→隔离 restore、核对完整来源/group/request/IDs/practice/log 与保护并重放同 key 后按正式恢复流程切换。未知 COMMIT 不删图补偿，只 fresh GET/同 key 确认。无超时释放 pin、无 schema 清空回退。
+
+新模式的创建和图片签名读取都依赖可验证原字节；本文上方旧模式“创建不依赖OSS”的表仅描述 legacy 未受管路径，不能用作新入库可用性保证。专项 PG/TLS/文件字节验证命令及专用输入见[能力验证](../modules/SourceIntake.md#验证入口)。

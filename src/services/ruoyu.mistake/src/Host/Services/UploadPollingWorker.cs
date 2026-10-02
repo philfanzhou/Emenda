@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Ruoyu.Study.Mistake.Service.Intake;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Services;
@@ -133,6 +134,21 @@ public class UploadPollingWorker : BackgroundService
         IServiceProvider scopedServices,
         CancellationToken ct)
     {
+        var intake = scopedServices.GetService<ISourceIntakeService>();
+        if (intake?.Enabled == true)
+        {
+            if (!Guid.TryParse(record.Id, out var source) || source == Guid.Empty || record.ContentRevision == Guid.Empty)
+            {
+                _logger.LogWarning("Source intake skipped invalid scan condition");
+                return;
+            }
+            try { await intake.CreateAutomaticAsync(source, record.ContentRevision, ct); }
+            catch (SourceIntakeException ex) { _logger.LogWarning("Source intake stopped: {Reason}", ex.ErrorKind); }
+            return;
+        }
+        // Managed sources never fall back to destructive legacy processing after disable/restart.
+        var guard = scopedServices.GetService<IMistakeSourceGuard>();
+        if (guard != null) await guard.EnsureLegacySourceAsync(record.Id, ct);
         var recordId = record.Id;
         _logger.LogInformation("UploadPollingWorker: Processing record {RecordId}, student={StudentId}, imageCount={ImageCount}",
             recordId, record.StudentId, record.ImageEntries.Count);

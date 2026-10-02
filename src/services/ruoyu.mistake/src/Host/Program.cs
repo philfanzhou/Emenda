@@ -12,6 +12,8 @@ using Ruoyu.Study.Mistake.Database.Repositories;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services;
+using Ruoyu.Study.Mistake.Host.Services.Intake;
+using Ruoyu.Study.Mistake.Service.Intake;
 using Ruoyu.Study.Mistake.Host.Services.Health;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Host;
@@ -110,6 +112,13 @@ if (resourceApiAuth && !strictApiAuth)
     throw new InvalidOperationException(
         $"{resourceApiAuthKey}=true requires {strictApiAuthKey}=true; per-resource authorization presupposes an authenticated caller.");
 
+var intakeValue = builder.Configuration["Mistake:SourceIntake:Enabled"];
+var intakeEnabled = intakeValue is null ? false : bool.TryParse(intakeValue, out var parsedIntake)
+    ? parsedIntake : throw new InvalidOperationException("Mistake:SourceIntake:Enabled must be true or false.");
+if (intakeEnabled && (!studentEnabled || !strictApiAuth || !resourceApiAuth))
+    throw new InvalidOperationException("Source intake requires Student, strict API authentication and resource authorization.");
+builder.Services.AddSingleton(new SourceIntakeOptions(intakeEnabled));
+
 var identityTrustOptions = builder.Configuration
     .GetSection(IdentityAuthenticationOptions.SectionName)
     .Get<IdentityAuthenticationOptions>() ?? new IdentityAuthenticationOptions();
@@ -164,6 +173,9 @@ builder.WebHost.ConfigureKestrel(options =>
         listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1;
     });
 });
+
+// An enabled source intake must validate its credential and HTTPS snapshot even for explicit upgrade commands.
+var intakeSettings = intakeEnabled ? ResolveStudentSettings() : ((string Url, string Source, StudentServiceAuthenticationOptions Authentication)?)null;
 
 string? connectionString;
 if (localMode)
@@ -277,50 +289,16 @@ if (reanalyzeCleanupEnabled) builder.Services.AddHostedService<ReanalyzeJobClean
 // The capability state is fixed for this process lifetime; re-enabling
 // requires a restart with valid configuration.
 builder.Services.AddSingleton(new StudentCapabilityOptions { Enabled = studentEnabled });
-string studentBaseUrl;
-string studentAddressSource;
-if (!studentEnabled)
+var (studentBaseUrl, studentAddressSource, studentServiceAuthentication) = intakeSettings ?? ResolveStudentSettings();
+builder.Services.AddHttpClient<SourceSnapshotClient>(client =>
 {
-    // Keep the typed client registered so existing domain operations keep
-    // working, but point it at a reserved, never-resolving placeholder so the
-    // disabled host cannot send any request to Student.
-    studentBaseUrl = "http://student-capability-disabled.invalid";
-    studentAddressSource = "Disabled";
-}
-else if (localMode)
-{
-    // Local enabled mode requires the dedicated explicit base URL. It never
-    // falls back to StudentService:Url/BaseUrl/GrpcUrl or the localhost
-    // example, not even when those keys are present in appsettings.json.
-    const string localStudentUrlKey = "Mistake:Local:Student:Url";
-    var localStudentUrl = builder.Configuration[localStudentUrlKey];
-    if (string.IsNullOrWhiteSpace(localStudentUrl))
-        throw new InvalidOperationException(
-            $"{localStudentUrlKey} is required when {studentEnabledKey}=true in Local mode; " +
-            "StudentService:Url/BaseUrl/GrpcUrl and the localhost example are not accepted here.");
-    if (!Uri.TryCreate(localStudentUrl, UriKind.Absolute, out var localStudentUri) ||
-        (localStudentUri.Scheme != Uri.UriSchemeHttp && localStudentUri.Scheme != Uri.UriSchemeHttps) ||
-        localStudentUri.Host.Length == 0 || localStudentUri.UserInfo.Length != 0 ||
-        localStudentUri.AbsolutePath != "/" ||
-        localStudentUri.Query.Length != 0 || localStudentUri.Fragment.Length != 0 ||
-        localStudentUrl.Any(char.IsWhiteSpace))
-        throw new InvalidOperationException(
-            $"{localStudentUrlKey} must be an absolute HTTP(S) base URL without credentials, path, query or fragment.");
-    studentBaseUrl = localStudentUrl;
-    studentAddressSource = "Explicit";
-}
-else
-{
-    // Platform keeps the legacy fallback chain unchanged.
-    studentBaseUrl = builder.Configuration["StudentService:Url"]
-                     ?? builder.Configuration["StudentService:BaseUrl"]
-                     ?? builder.Configuration["StudentService:GrpcUrl"]
-                     ?? "http://localhost:5005";
-    studentAddressSource = "Platform";
-}
-var studentServiceAuthentication = StudentServiceAuthenticationOptions.Read(builder.Configuration, studentBaseUrl);
-if (studentServiceAuthentication.Enabled && !studentEnabled)
-    throw new InvalidOperationException("Mistake:Student:ServiceAuthentication:Enabled requires Mistake:Student:Enabled.");
+    client.BaseAddress = new Uri(studentBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(35);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+  .AddHttpMessageHandler<StudentServiceTokenHandler>();
+builder.Services.AddScoped<SourceIntakeService>();
+builder.Services.AddScoped<ISourceIntakeService>(sp => sp.GetRequiredService<SourceIntakeService>());
+builder.Services.AddScoped<IMistakeSourceGuard>(sp => sp.GetRequiredService<SourceIntakeService>());
 builder.Services.AddSingleton(studentServiceAuthentication);
 builder.Services.AddTransient<StudentServiceTokenHandler>();
 builder.Services.AddStudentHttpClient(studentBaseUrl);
@@ -417,6 +395,58 @@ app.MapMistakeHealthEndpoints();
 app.MapGet("/", () => "Mistake WebAPI host is running.");
 
 app.Run();
+
+(string Url, string Source, StudentServiceAuthenticationOptions Authentication) ResolveStudentSettings()
+{
+    string studentBaseUrl;
+    string studentAddressSource;
+    if (!studentEnabled)
+    {
+        // Keep the typed client registered so existing domain operations keep
+        // working, but point it at a reserved, never-resolving placeholder so the
+        // disabled host cannot send any request to Student.
+        studentBaseUrl = "http://student-capability-disabled.invalid";
+        studentAddressSource = "Disabled";
+    }
+    else if (localMode)
+    {
+        // Local enabled mode requires the dedicated explicit base URL. It never
+        // falls back to StudentService:Url/BaseUrl/GrpcUrl or the localhost
+        // example, not even when those keys are present in appsettings.json.
+        const string localStudentUrlKey = "Mistake:Local:Student:Url";
+        var localStudentUrl = builder.Configuration[localStudentUrlKey];
+        if (string.IsNullOrWhiteSpace(localStudentUrl))
+            throw new InvalidOperationException(
+                $"{localStudentUrlKey} is required when {studentEnabledKey}=true in Local mode; " +
+                "StudentService:Url/BaseUrl/GrpcUrl and the localhost example are not accepted here.");
+        if (!Uri.TryCreate(localStudentUrl, UriKind.Absolute, out var localStudentUri) ||
+            (localStudentUri.Scheme != Uri.UriSchemeHttp && localStudentUri.Scheme != Uri.UriSchemeHttps) ||
+            localStudentUri.Host.Length == 0 || localStudentUri.UserInfo.Length != 0 ||
+            localStudentUri.AbsolutePath != "/" ||
+            localStudentUri.Query.Length != 0 || localStudentUri.Fragment.Length != 0 ||
+            localStudentUrl.Any(char.IsWhiteSpace))
+            throw new InvalidOperationException(
+                $"{localStudentUrlKey} must be an absolute HTTP(S) base URL without credentials, path, query or fragment.");
+        studentBaseUrl = localStudentUrl;
+        studentAddressSource = "Explicit";
+    }
+    else
+    {
+        // Platform keeps the legacy fallback chain unchanged.
+        studentBaseUrl = builder.Configuration["StudentService:Url"]
+                         ?? builder.Configuration["StudentService:BaseUrl"]
+                         ?? builder.Configuration["StudentService:GrpcUrl"]
+                         ?? "http://localhost:5005";
+        studentAddressSource = "Platform";
+    }
+    var studentServiceAuthentication = StudentServiceAuthenticationOptions.Read(builder.Configuration, studentBaseUrl);
+    if (studentServiceAuthentication.Enabled && !studentEnabled)
+        throw new InvalidOperationException("Mistake:Student:ServiceAuthentication:Enabled requires Mistake:Student:Enabled.");
+    if (intakeEnabled && (!studentServiceAuthentication.Enabled ||
+        !Uri.TryCreate(studentBaseUrl, UriKind.Absolute, out var intakeStudentUri) || intakeStudentUri.Scheme != "https"))
+        throw new InvalidOperationException("Source intake requires RS256 Student service credentials and HTTPS.");
+    return (studentBaseUrl, studentAddressSource, studentServiceAuthentication);
+}
 
 // Make Program class public for integration tests (WebApplicationFactory<Program>)
 public partial class Program;

@@ -23,3 +23,9 @@ _Avoid_: Question、Homework Submission
 **Root Cause**:
 对 Student 产生该 Mistake Item 原因的领域描述。
 _Avoid_: Error Type、Process Log
+
+**Source Intake**:
+对一份不可变 Source Upload 内容取得的持久处理归属与题目分组结果。来源仍保留，物化错题不等于完成跨上下文交接。
+
+**Source Group**:
+同一不可变来源中，归属于一题的合法原图或整数区域集合。集合顺序不改变业务身份，同一区域不能被重新分配到另一题。

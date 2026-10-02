@@ -17,14 +17,14 @@
 
 | 功能域 | 需求 | 详细文档 |
 |--------|------|----------|
-| MistakeDispatch | 提交错题分发 | [modules/MistakeDispatch/SubmitMistakeUpload/](../modules/MistakeDispatch/SubmitMistakeUpload/01-FEATURE.md) |
+| MistakeDispatch | 提交错题分发 | [modules/MistakeDispatch/SubmitMistakeUpload/](../modules/SourceIntake.md) |
 | MistakeReview | 审核错题条目 | [modules/MistakeReview/ReviewMistakeItem/](../modules/MistakeReview/ReviewMistakeItem/01-FEATURE.md) |
 | MistakeReview | 查询待审核上传记录 | [modules/MistakeReview/GetPendingReviewUploads/](../modules/MistakeReview/GetPendingReviewUploads/01-FEATURE.md) |
 | MistakeReview | 完成整批审核 | [modules/MistakeReview/CompleteUploadReview/](../modules/MistakeReview/CompleteUploadReview/01-FEATURE.md) |
 | MistakeManagement | 查询错题条目 | [modules/MistakeManagement/GetMistakeItem/](../modules/MistakeManagement/GetMistakeItem/01-FEATURE.md) |
 | MistakeManagement | 按上传记录查询错题 | [modules/MistakeManagement/GetMistakeItemsByUpload/](../modules/MistakeManagement/GetMistakeItemsByUpload/01-FEATURE.md) |
 | MistakeManagement | 分页查询错题列表 | [modules/MistakeManagement/GetMistakeItemList/](../modules/MistakeManagement/GetMistakeItemList/01-FEATURE.md) |
-| MistakeManagement | 手动添加错题条目 | [modules/MistakeManagement/AddMistakeItem/](../modules/MistakeManagement/AddMistakeItem/01-FEATURE.md) |
+| MistakeManagement | 手动添加错题条目 | [modules/MistakeManagement/AddMistakeItem/](../modules/SourceIntake.md) |
 | MistakeManagement | 更新错题条目 | [modules/MistakeManagement/UpdateMistakeItem/](../modules/MistakeManagement/UpdateMistakeItem/01-FEATURE.md) |
 | MistakeManagement | 删除错题条目 | [modules/MistakeManagement/DeleteMistakeItem/](../modules/MistakeManagement/DeleteMistakeItem/01-FEATURE.md) |
 | MistakePractice | 添加练习记录 | [modules/MistakePractice/AddMistakePractice/](../modules/MistakePractice/AddMistakePractice/01-FEATURE.md) |

@@ -23,6 +23,7 @@ public class ImageEntryDto
 
 public class UploadRecordDto
 {
+    public Guid ContentRevision { get; set; }
     public string Id { get; set; } = string.Empty;
     public string StudentId { get; set; } = string.Empty;
     public int Status { get; set; }
