@@ -28,25 +28,29 @@ public class MistakeDomainService : IMistakeDomainService
     private readonly IProcessLogRepository _processLogRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<MistakeDomainService> _logger;
+    private readonly IMistakeSourceGuard? _sourceGuard;
 
     public MistakeDomainService(
         IMistakeItemRepository mistakeItemRepository,
         IMistakePracticeRepository mistakePracticeRepository,
         IProcessLogRepository processLogRepository,
         IUnitOfWork unitOfWork,
-        ILogger<MistakeDomainService> logger)
+        ILogger<MistakeDomainService> logger,
+        IMistakeSourceGuard? sourceGuard = null)
     {
         _mistakeItemRepository = mistakeItemRepository;
         _mistakePracticeRepository = mistakePracticeRepository;
         _processLogRepository = processLogRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
+        _sourceGuard = sourceGuard;
     }
 
     public async Task<List<MistakeItemModel>> SubmitMistakeUploadAsync(
         string studentId, int subject, int grade, List<string> imagePaths, string? rootCause, string sourceUploadId)
     {
         ValidateSubmitData(studentId, subject, grade, imagePaths, rootCause, sourceUploadId);
+        if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(sourceUploadId);
 
         var item = new MistakeItemModel
         {
@@ -136,6 +140,9 @@ public class MistakeDomainService : IMistakeDomainService
         {
             throw new MistakeValidationException("审核结果只能是确认或退回");
         }
+
+        if (reviewStatus == (int)ReviewStatus.Rejected && _sourceGuard != null)
+            await _sourceGuard.EnsureDestructiveItemAsync(id);
 
         item.ReviewStatus = reviewStatus;
         item.ReviewerId = reviewerId;
@@ -259,6 +266,7 @@ public class MistakeDomainService : IMistakeDomainService
     public async Task<MistakeItemModel> AddMistakeItemAsync(MistakeItemModel item)
     {
         ValidateMistakeItemData(item);
+        if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(item.SourceUploadId);
 
         item.Id = Guid.NewGuid();
         item.ReviewStatus = (int)ReviewStatus.PendingReview;
@@ -291,6 +299,7 @@ public class MistakeDomainService : IMistakeDomainService
         var item = await _mistakeItemRepository.GetByIdAsync(id);
         if (item == null) return false;
 
+        if (_sourceGuard != null) await _sourceGuard.EnsureDestructiveItemAsync(id);
         await _mistakePracticeRepository.RemoveByMistakeItemIdAsync(id);
         await _processLogRepository.RemoveByMistakeItemIdAsync(id);
         await _mistakeItemRepository.DeleteAsync(id);
@@ -313,6 +322,7 @@ public class MistakeDomainService : IMistakeDomainService
         if (sourceRegions != null && sourceRegions.Count > 0)
             item.SourceRegions = sourceRegions;
 
+        if (_sourceGuard != null) await _sourceGuard.EnsureIdentityAsync(item);
         item.UpdatedAt = DateTimeOffset.UtcNow;
 
         var result = await _mistakeItemRepository.UpdateAsync(item);
@@ -324,6 +334,7 @@ public class MistakeDomainService : IMistakeDomainService
 
     public async Task<bool> UpdateMistakeItemAsync(MistakeItemModel model)
     {
+        if (_sourceGuard != null) await _sourceGuard.EnsureIdentityAsync(model);
         var result = await _mistakeItemRepository.UpdateAsync(model);
         if (result)
             await _unitOfWork.SaveChangesAsync();
@@ -334,6 +345,7 @@ public class MistakeDomainService : IMistakeDomainService
     public async Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(
         string sourceUploadId, string? reviewerId)
     {
+        if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(sourceUploadId);
         var pendingCount = await _mistakeItemRepository.CountPendingBySourceUploadIdAsync(sourceUploadId);
         if (pendingCount > 0)
         {

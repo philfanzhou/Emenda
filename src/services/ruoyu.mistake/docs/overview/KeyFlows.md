@@ -1,66 +1,16 @@
 # ruoyu.mistake 关键业务流程
 
-## 流程1: 错题自动分析流程（UploadPollingWorker）
+## 流程1：来源入库与旧轮询
 
-**触发条件**: UploadPollingWorker 每 60 秒轮询 Student 服务的 Processing 状态上传记录
-**参与服务**: ruoyu.mistake(Worker) → ruoyu.student, VL API, OSS
-**数据流转**: 上传记录图片 → VL 分组分析 → MistakeItem(PendingReview) + OSS 迁移(uploads/→mistakes/) → 通知 Student 删除已处理图片
+开启 `Mistake:SourceIntake:Enabled` 时，Worker scan 只提供 source/revision hint；共同 intake 服务取得 Student snapshot、持久首个模式/lease，核验原字节后构造完整自动计划。一个短提交物化全部 items、每项 Created 日志和结果映射；重复直接查询已保存结果，来源始终 SourceRetained。两个手动入口使用相同组与请求身份，manual owner 允许后继合法区域，automatic owner 的完整计划冻结。唯一模型见[来源入库](../modules/SourceIntake.md)。
 
-```
- mistake (UploadPollingWorker)        student           VL API          OSS
-       │                                │                 │              │
-       │ GetProcessingUploadRecords     │                 │              │
-       │───────────────────────────────▶│                 │              │
-       │◀───────────────────────────────│                 │              │
-       │                                │                 │              │
-       │ 【幂等检查】                    │                 │              │
-       │ GetMistakeItemsByUpload(uploadId)                │              │
-       │ (内部调用 DomainService)        │                 │              │
-       │ → 提取已处理图片路径             │                 │              │
-       │ → 计算未处理图片 = 全部 - 已处理  │                 │              │
-       │                                │                 │              │
-       │ 未处理为空？                     │                 │              │
-       │  ├─ 是 → 跳过 VL/OSS，          │                 │              │
-       │  │      直接通知删除全部图片      │                 │              │
-       │  └─ 否 → 继续                   │                 │              │
-       │                                │                 │              │
-       │ VL Analyze(未处理图片)          │                 │              │
-       │────────────────────────────────────────────────▶│              │
-       │◀────────────────────────────────────────────────│              │
-       │ (分组结果: subject, grade, rootCause)            │              │
-       │                                │                 │              │
-       │ SubmitMistakeUpload(未处理图片)  │                 │              │
-       │ (内部调用 DomainService)        │                 │              │
-       │                                │                 │              │
-       │ OSS Copy uploads/→mistakes/    │                 │              │
-       │ (仅未处理图片)                  │                 │─────────────▶│
-       │ OSS Delete uploads/            │                 │─────────────▶│
-       │                                │                 │              │
-       │ 更新 MistakeItem 路径           │                 │              │
-       │                                │                 │              │
-       │ RemoveProcessedImages          │                 │              │
-       │ (已处理+新处理的所有图片)        │                 │              │
-       │───────────────────────────────▶│                 │              │
-       │◀───────────────────────────────│                 │              │
-       │                                │                 │              │
-       │                                │ 图片删完→自动删除记录            │
-```
-
-### 幂等保证
-
-UploadPollingWorker 在处理每条记录前，先查询该 uploadId 下已有的 MistakeItem，提取已处理图片路径，只对未处理图片执行 VL 分析、MistakeItem 创建和 OSS 迁移。这确保：
-
-1. **不会重复创建 MistakeItem**：已处理的图片不会被再次提交
-2. **不会重复迁移 OSS**：已迁移的图片不会被再次 copy/delete
-3. **存量脏数据自动清理**：之前因 bug 遗留的"已处理但未通知删除"的记录，下次轮询时会被识别并通知 Student 删除
-4. **部分失败安全**：如果某次处理只完成了部分图片，下次轮询会只处理剩余图片
-5. **移除回调可重放（IKJEY6）**：Student 侧删除记录时写入删除墓碑；响应丢失或 Worker 重试时同一移除请求得到幂等成功（Info 日志确认），未知记录（无记录且无墓碑）记 Warning 并要求人工核查，不重试。协议细节见 [Integration/Student.md](../Integration/Student.md) 的「移除回调三态语义」
+关闭时旧未受管来源仍采用查询已有路径→分析未处理图→逐组提交→copy/delete→remove 回调的历史流程。这只是进程级检查，没有跨实例唯一约束，也不能保证部分失败或 OSS/数据库/Student 原子性；legacy 重复与 durable forward handoff 另归原父任务。任何已受管来源都在进入这条流程前拒绝，不因开关关闭恢复源图 mover。
 
 ## 流程2: 错题审核流程
 
 **触发条件**: 教师在 teacher_portal 发起审核操作
 **参与服务**: teacher_portal → ruoyu.mistake, OSS
-**数据流转**: PendingReview 错题 → Confirmed/Rejected → OSS 图片迁移(uploads/→mistakes/)
+**数据流转**: Confirm 只更新审核状态；受管来源 Reject/CompleteReview 明确409，历史未受管退回/搬图仍属 best-effort。下图仅描述 legacy CompleteReview。
 
 ```
  teacher_portal              mistake                    OSS

@@ -56,3 +56,5 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 ## 数据库类型
 
 PostgreSQL（Npgsql 提供程序）。
+
+- [来源入库数据](./tables/source_intake.md)

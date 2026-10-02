@@ -22,6 +22,7 @@ public sealed class StudentUploadSourceGateway : IUploadSourceGateway
             Items = source.Items!.Select(record => new ProcessingUploadRecord
             {
                 Id = record.Id,
+                ContentRevision = record.ContentRevision,
                 StudentId = record.StudentId,
                 ImageEntries = record.ImageEntries.Select(entry => new UploadImageEntry
                 {

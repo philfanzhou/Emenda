@@ -7,6 +7,10 @@ public interface IVlAnalyzer
 {
     Task<VlAnalysisResult> AnalyzeAsync(string studentId, List<string> imagePaths, CancellationToken ct = default);
 
+    Task<VlAnalysisResult> AnalyzeVerifiedAsync(string studentId, List<string> imagePaths,
+        IReadOnlyList<byte[]> imageBytes, CancellationToken ct = default) =>
+        throw new InvalidOperationException("Verified image analysis is unsupported by this adapter.");
+
     // Re-analyze a previously-analyzed mistake using the original root cause and an optional teacher note.
     // Returns only the refined root cause (no subject/grade — these are not changed during re-analysis).
     Task<VlReanalysisResult> ReAnalyzeAsync(

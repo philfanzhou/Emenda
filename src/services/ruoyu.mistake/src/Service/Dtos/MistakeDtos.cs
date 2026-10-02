@@ -67,6 +67,8 @@ public class MistakeItemDto
 
 public class SubmitMistakeUploadRequest
 {
+    public Guid? ExpectedContentRevision { get; set; }
+    public Guid? RequestKey { get; set; }
     public string StudentId { get; set; } = string.Empty;
     public int Subject { get; set; }
     public int Grade { get; set; }
@@ -179,6 +181,8 @@ public class GetReanalyzeJobsResponse
 
 public class AddMistakeItemRequest
 {
+    public Guid? ExpectedContentRevision { get; set; }
+    public Guid? RequestKey { get; set; }
     public string StudentId { get; set; } = string.Empty;
     public int Subject { get; set; }
     public int Grade { get; set; }

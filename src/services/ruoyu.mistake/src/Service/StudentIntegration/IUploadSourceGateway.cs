@@ -47,6 +47,7 @@ public sealed class UploadImageEntry
 
 public sealed class ProcessingUploadRecord
 {
+    public Guid ContentRevision { get; set; }
     public string Id { get; set; } = string.Empty;
     public string StudentId { get; set; } = string.Empty;
     public List<UploadImageEntry> ImageEntries { get; set; } = new();

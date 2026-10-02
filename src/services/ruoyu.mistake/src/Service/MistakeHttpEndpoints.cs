@@ -5,6 +5,8 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Ruoyu.Study.Mistake.Service.Intake;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
@@ -41,6 +43,8 @@ public static partial class MistakeHttpEndpoints
         this IEndpointRouteBuilder app, bool requireAuthenticatedApi = false)
     {
         var group = app.MapGroup("/api");
+        group.AddEndpointFilter(IntakeEndpointFilterAsync);
+        group.MapGet("/mistakes/intakes/{sourceId:guid}/{revision:guid}", GetSourceIntakeAsync);
 
         if (requireAuthenticatedApi)
             group.RequireAuthorization(MistakeApiAuthorization.PolicyName);
@@ -96,7 +100,9 @@ public static partial class MistakeHttpEndpoints
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        ISourceIntakeService intake,
+        CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (resourceAuthz.Enabled)
@@ -107,6 +113,17 @@ public static partial class MistakeHttpEndpoints
                 return decision.ToHttpResponse();
         }
 
+        if (intake.Enabled || request.ExpectedContentRevision.HasValue || request.RequestKey.HasValue)
+        {
+            var auth = IntakeRole(user, resourceAuthz, MistakeResourceAccessGate.AdminOnly);
+            if (auth != null) return auth;
+            if (!Guid.TryParse(request.SourceUploadId, out var source) || !request.ExpectedContentRevision.HasValue || !request.RequestKey.HasValue)
+                return IntakeError("invalid_request", 400);
+            var items = await intake.CreateManualAsync(source, request.ExpectedContentRevision.Value, request.RequestKey.Value,
+                resourceAuthz.GetSubjectId(user)!, request.StudentId, request.Subject, request.Grade, request.RootCause,
+                (request.ImagePaths ?? []).Select(path => new SourceRegionModel { SourceImagePath = path }).ToList(), ct);
+            return MistakeHttpResponse.Ok(new SubmitMistakeUploadResponse { Success = true, CreatedItemIds = items.Select(i=>i.Id.ToString()).ToList() });
+        }
         logger.LogDebug("SubmitMistakeUpload called: studentId={StudentId}, subject={Subject}, grade={Grade}, sourceUploadId={SourceUploadId}, imagePaths={ImagePaths}",
             request.StudentId, request.Subject, request.Grade, request.SourceUploadId, string.Join(" | ", request.ImagePaths.Select((p, i) => $"[{i}]={p}")));
 
@@ -176,11 +193,16 @@ public static partial class MistakeHttpEndpoints
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService,
+        ISourceIntakeService intake,
         CancellationToken ct)
     {
+        var managedScope = await intake.HasManagedDataAsync(sourceId:sourceUploadId, ct:ct);
+        if(managedScope && (user.Identity?.IsAuthenticated!=true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user))))
+            return IntakeError("authentication_required",401);
+
         var items = await mistakeService.GetMistakeItemsByUploadAsync(sourceUploadId);
 
-        if (resourceAuthz.Enabled)
+        if (resourceAuthz.Enabled || managedScope)
         {
             var decision = await resourceAuthz.DecideItemsOwnershipAsync(
                 "GET /api/mistakes/by-upload/{sourceUploadId}", user, sourceUploadId,
@@ -206,8 +228,13 @@ public static partial class MistakeHttpEndpoints
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService,
+        ISourceIntakeService intake,
         CancellationToken ct)
     {
+        var managedScope = await intake.HasManagedDataAsync(studentId:studentId, ct:ct);
+        if(managedScope && (user.Identity?.IsAuthenticated!=true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user))))
+            return IntakeError("authentication_required",401);
+
         var normalizedPage = page > 0 ? page : 1;
         var normalizedSize = size > 0 ? Math.Min(size, 100) : 10;
 
@@ -216,7 +243,7 @@ public static partial class MistakeHttpEndpoints
         // students so no cross-student row can leak (TotalCount included).
         List<MistakeItemModel> items;
         int totalCount;
-        if (resourceAuthz.Enabled)
+        if (resourceAuthz.Enabled || managedScope)
         {
             var scopeDecision = await resourceAuthz.DecideListScopeAsync(
                 "GET /api/mistakes", user, studentId, ct);
@@ -265,9 +292,15 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] string? subjects,
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
-        IMistakeDomainService mistakeService)
+        IMistakeDomainService mistakeService,
+        ISourceIntakeService intake,
+        CancellationToken ct)
     {
-        if (resourceAuthz.Enabled)
+        var managedScope = await intake.HasManagedDataAsync(ct:ct);
+        if(managedScope && (user.Identity?.IsAuthenticated!=true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user))))
+            return IntakeError("authentication_required",401);
+
+        if (resourceAuthz.Enabled || managedScope)
         {
             var decision = resourceAuthz.DecideRoleGate(
                 "GET /api/mistakes/pending-reviews", user, MistakeResourceAccessGate.StaffOrAdmin);
@@ -575,7 +608,9 @@ public static partial class MistakeHttpEndpoints
         [FromBody] GetReanalyzeJobsRequest request,
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
-        IReanalyzeJobService reanalyzeJobService)
+        IReanalyzeJobService reanalyzeJobService,
+        ISourceIntakeService intake,
+        CancellationToken ct)
     {
         if (resourceAuthz.Enabled)
         {
@@ -588,6 +623,7 @@ public static partial class MistakeHttpEndpoints
             if (!bindingDecision.Allowed)
                 return bindingDecision.ToHttpResponse();
         }
+
 
         var reviewerId = request.ReviewerId;
         if (string.IsNullOrWhiteSpace(reviewerId))
@@ -622,7 +658,32 @@ public static partial class MistakeHttpEndpoints
             if (Guid.TryParse(raw, out var parsed)) ids.Add(parsed);
         }
 
-        var jobs = await reanalyzeJobService.GetJobsAsync(reviewerId, ids, CancellationToken.None);
+        // Validate requested managed job references before the legacy service
+        // filters rows by the supplied reviewer; a foreign managed job must not
+        // be disguised as a successful empty response.
+        var managedReviewers=await intake.GetManagedJobReviewersAsync(ids,ct);
+        foreach(var managedReviewer in managedReviewers)
+        {
+            var authentication=IntakeRole(user,resourceAuthz,MistakeResourceAccessGate.StaffOrAdmin);
+            if(authentication!=null) return authentication;
+            var binding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,reviewerId);
+            if(!binding.Allowed) return binding.ToHttpResponse();
+            var ownerBinding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,managedReviewer);
+            if(!ownerBinding.Allowed) return ownerBinding.ToHttpResponse();
+        }
+        var jobs = await reanalyzeJobService.GetJobsAsync(reviewerId, ids, ct);
+        foreach(var job in jobs)
+        {
+            var owner=await intake.GetManagedItemStudentAsync(job.ItemId,ct);
+            if(owner==null) continue;
+            var authentication=IntakeRole(user,resourceAuthz,MistakeResourceAccessGate.StaffOrAdmin);
+            if(authentication!=null) return authentication;
+            var binding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,reviewerId);
+            if(!binding.Allowed) return binding.ToHttpResponse();
+            var access=await resourceAuthz.DecideItemOwnershipAsync("managed reanalysis query",user,job.ItemId.ToString(),owner,ct);
+            if(!access.Allowed) return access.ToHttpResponse();
+        }
+
         return MistakeHttpResponse.Ok(new GetReanalyzeJobsResponse
         {
             Success = true,
@@ -635,7 +696,9 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] string? reviewerId,
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
-        IReanalyzeJobService reanalyzeJobService)
+        IReanalyzeJobService reanalyzeJobService,
+        ISourceIntakeService intake,
+        CancellationToken ct)
     {
         if (resourceAuthz.Enabled)
         {
@@ -649,6 +712,7 @@ public static partial class MistakeHttpEndpoints
                 return bindingDecision.ToHttpResponse();
         }
 
+
         if (string.IsNullOrWhiteSpace(reviewerId))
         {
             return MistakeHttpResponse.Ok(new GetReanalyzeJobsResponse
@@ -657,7 +721,19 @@ public static partial class MistakeHttpEndpoints
                 ErrorMessage = "未识别教师身份"
             });
         }
-        var jobs = await reanalyzeJobService.GetActiveJobsAsync(reviewerId, CancellationToken.None);
+        var jobs = await reanalyzeJobService.GetActiveJobsAsync(reviewerId, ct);
+        foreach(var job in jobs)
+        {
+            var owner=await intake.GetManagedItemStudentAsync(job.ItemId,ct);
+            if(owner==null) continue;
+            var authentication=IntakeRole(user,resourceAuthz,MistakeResourceAccessGate.StaffOrAdmin);
+            if(authentication!=null) return authentication;
+            var binding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,reviewerId);
+            if(!binding.Allowed) return binding.ToHttpResponse();
+            var access=await resourceAuthz.DecideItemOwnershipAsync("managed reanalysis query",user,job.ItemId.ToString(),owner,ct);
+            if(!access.Allowed) return access.ToHttpResponse();
+        }
+
         return MistakeHttpResponse.Ok(new GetReanalyzeJobsResponse
         {
             Success = true,
@@ -670,7 +746,9 @@ public static partial class MistakeHttpEndpoints
         [FromBody] AddMistakeItemRequest request,
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
-        IMistakeDomainService mistakeService)
+        IMistakeDomainService mistakeService,
+        ISourceIntakeService intake,
+        CancellationToken ct)
     {
         if (resourceAuthz.Enabled)
         {
@@ -680,6 +758,19 @@ public static partial class MistakeHttpEndpoints
                 return decision.ToHttpResponse();
         }
 
+        if (intake.Enabled || request.ExpectedContentRevision.HasValue || request.RequestKey.HasValue)
+        {
+            var auth = IntakeRole(user, resourceAuthz, MistakeResourceAccessGate.StaffOrAdmin);
+            if (auth != null) return auth;
+            if (!Guid.TryParse(request.SourceUploadId, out var source) || !request.ExpectedContentRevision.HasValue || !request.RequestKey.HasValue)
+                return IntakeError("invalid_request", 400);
+            var items = await intake.CreateManualAsync(source, request.ExpectedContentRevision.Value, request.RequestKey.Value,
+                resourceAuthz.GetSubjectId(user)!, request.StudentId, request.Subject, request.Grade, request.RootCause,
+                (request.SourceRegions ?? []).Select(region => region==null ? throw new SourceIntakeException("invalid_region",400) : new SourceRegionModel { SourceImagePath=region.SourceImagePath,
+                    BoundingBox=region.BoundingBox == null ? null : new BoundingBoxModel {
+                        X1=region.BoundingBox.X1,Y1=region.BoundingBox.Y1,X2=region.BoundingBox.X2,Y2=region.BoundingBox.Y2 } }).ToList(), ct);
+            return MistakeHttpResponse.Ok(MapMistakeItemDto(items.Single()));
+        }
         var item = new MistakeItemModel
         {
             StudentId = request.StudentId,
@@ -1077,12 +1168,30 @@ public static partial class MistakeHttpEndpoints
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
         IOssService ossService,
+        ISourceIntakeService intake,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
             return MistakeHttpResponse.BadRequest("object_path is required");
+        var managed = await intake.GetManagedObjectStudentAsync(request.ObjectPath, ct);
+        var managedPractice = await intake.IsManagedPracticeObjectAsync(request.ObjectPath, ct);
+        if (managed != null || managedPractice)
+        {
+            if (user.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user)))
+                return IntakeError("authentication_required", 401);
+            if (managed != null && !string.IsNullOrWhiteSpace(request.Size) && request.Size != "full") return IntakeError("managed_full_only", 400);
+            var permission = await resourceAuthz.DecidePresignedAccessAsync("source intake image read", user, request.ObjectPath, ct);
+            if (!permission.Allowed) return permission.ToHttpResponse();
+            if (managed != null)
+            {
+                await intake.VerifyManagedObjectAsync(request.ObjectPath, ct);
+                var seconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
+                var url = await ossService.GetPresignedUrlAsync(request.ObjectPath, seconds);
+                return MistakeHttpResponse.Ok(new PresignedUrlResponse {Url=url,ExpirySeconds=seconds});
+            }
+        }
         if (!request.ObjectPath.StartsWith("mistakes/", StringComparison.Ordinal))
             return MistakeHttpResponse.BadRequest("object_path must start with mistakes/");
 

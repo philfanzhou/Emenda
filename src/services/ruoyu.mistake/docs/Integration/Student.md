@@ -50,6 +50,8 @@ Host 的 `StudentServiceTokenHandler` 由同一个 typed client 管线用于 Wor
 
 签发快照在启动时校验，默认要求 Student HTTPS 基地址；受控 HTTP 链路须显式 `AllowInsecureHttp=true`。签发失败、取消与超时不匿名重发；原业务游标、Returned 幂等/冲突/回查、墓碑/unknown_record 和错误分类保持原样。服务身份不会替代 Mistake 入站 resourceAuth 或 reviewer/student 授权。Student 的 [服务身份能力](../../../ruoyu.student/docs/Integration/Mistake/ServiceIdentity.md) 是 wire 合同权威入口；secret 文件挂载、启用与轮换见 [部署说明](../development/Deployment.md)。
 
-## 提供方来源快照的消费边界
+## 来源快照消费
 
-Student 新增[条件来源快照](../../../ruoyu.student/docs/Integration/Mistake/SourceSnapshot.md)，默认关闭取得、始终 uploads.snapshot 服务授权。当前本服务 worker、legacy CompleteReview 与四面客户端尚未调用它，既有直接源图 mover 不能与新取得并行启用。快照不是本服务 claim/目标复制/完成确认；后继 durable handoff/全量引用/条件确认另行实现，在此之前不得启用源图 GC 或把旧 remove-processed 用作 snapshot release。
+[来源入库](../modules/SourceIntake.md)开启时，scan/gateway 保留 ContentRevision，Worker 与两个手动入口通过正常 HTTPS 和独立 uploads.snapshot 的 RS256 服务 JWT 获取同条件 PUT/GET。签发 handler 仅接受精确 GUID snapshot 路由及 GET/PUT，坏响应/未知结果不匿名降级。scan 的 StudentId/path/type 只是 hint，创建与 VL 字节依已核验完整 manifest。关闭后已有 guards、只读状态和认证请求重放仍有效。
+
+当前新条目保持 SourceRetained；这条调用链没有 copy/delete/remove/ack/release。旧未受管 Worker/CompleteReview 仍是旧流程，后继 durable handoff/条件确认/全引用另归父任务，禁止两者混用。提供方来源与 pin 规则只有 [Student SourceSnapshot](../../../ruoyu.student/docs/Integration/Mistake/SourceSnapshot.md) 一份权威，不在客户端另立 revision/path 规则。

@@ -49,6 +49,28 @@ public class VlUploadAnalyzer : IVlAnalyzer
         return ParseResponse(responseContent, imagePaths.Count);
     }
 
+    public async Task<VlAnalysisResult> AnalyzeVerifiedAsync(string studentId, List<string> imagePaths,
+        IReadOnlyList<byte[]> imageBytes, CancellationToken ct = default)
+    {
+        if (imagePaths.Count == 0 || imagePaths.Count != imageBytes.Count)
+            throw new InvalidOperationException("Invalid verified image set.");
+        var data = imageBytes.Select(bytes => "data:image/jpeg;base64," + Convert.ToBase64String(CompressImage(bytes))).ToList();
+        var response = await _client.CallAsync(BuildRequestBody(BuildPrompt(data.Count), data), ct);
+        try
+        {
+            var api = JsonSerializer.Deserialize<OpenAiApiResponse>(response,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower });
+            var content = api?.Choices?.FirstOrDefault()?.Message?.Content;
+            if (string.IsNullOrWhiteSpace(content)) throw new JsonException();
+            var start = content.IndexOf('['); var end = content.LastIndexOf(']');
+            if (start < 0 || end < start) throw new JsonException();
+            var raw = JsonSerializer.Deserialize<List<VlGroupDto>>(content[start..(end+1)]) ?? throw new JsonException();
+            return new VlAnalysisResult { Groups = raw.Select(g => new VlImageGroup
+            { ImageIndices = g.ImageIndices ?? [], Subject = g.Subject, Grade = g.Grade, RootCause = g.RootCause ?? "" }).ToList() };
+        }
+        catch (JsonException) { throw new InvalidOperationException("Invalid intake analysis plan."); }
+    }
+
     public async Task<VlReanalysisResult> ReAnalyzeAsync(
         string studentId,
         List<string> imagePaths,
