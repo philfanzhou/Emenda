@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -54,6 +56,94 @@ public sealed class SourceIntakeSecurityTests
         using var confirm=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/review",new{reviewStatus=2,reviewerId=f.Actor.ToString()},f.Token());Assert.Equal(HttpStatusCode.OK,confirm.StatusCode);
         using var practice=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/practices",new{studentId=source.StudentId,isCorrect=true},f.Token("user"));Assert.Equal(HttpStatusCode.OK,practice.StatusCode);
         await using var db=f.Context();Assert.Single(await db.MistakePractices.ToListAsync());Assert.Equal(3,await db.ProcessLogs.CountAsync());Assert.Empty(f.SideEffects);await f.AssertRetainedAsync(source);
+    }
+    [Theory]
+    [InlineData(false,false)][InlineData(true,false)][InlineData(false,true)][InlineData(true,true)]
+    public async Task ManagedJobPracticeAndDistinctAdminTrustSurviveAllAuthSwitchCombinationsAsync(bool strict,bool resource)
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();
+        var source=await f.SeedAsync();var createKey=Guid.NewGuid();var item=(await f.ManualAsync(source,createKey)).Single();await f.StartAsync();
+        using var started=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/reanalyze",new{reviewerId=f.Actor,studentId=source.StudentId},f.Token());
+        Assert.Equal(HttpStatusCode.OK,started.StatusCode);
+        using var jobJson=JsonDocument.Parse(await started.Content.ReadAsStringAsync());var jobId=jobJson.RootElement.GetProperty("data").GetProperty("jobId").GetString()!;
+        // Include an unrelated legacy job in the same response to exercise a mixed batch.
+        var legacyId=Guid.NewGuid();var legacyJob=Guid.NewGuid();
+        await f.SqlAsync("INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES(@id,@student,1,7,@source,'[]',1,now())",
+            new NpgsqlParameter("id",legacyId),new NpgsqlParameter("student",source.StudentId),new NpgsqlParameter("source",Guid.NewGuid().ToString()));
+        await f.SqlAsync("INSERT INTO reanalyze_job(id,item_id,reviewer_id,student_id,status,created_at) VALUES(@id,@item,@actor,@student,1,now())",
+            new NpgsqlParameter("id",legacyJob),new NpgsqlParameter("item",legacyId),new NpgsqlParameter("actor",f.Actor.ToString()),new NpgsqlParameter("student",source.StudentId));
+        var path="mistakes/practice-auth.jpg";var bytes=new byte[]{11,22,33};
+        var objectFile=Path.Combine(f.Source.Root,"objects",path);Directory.CreateDirectory(Path.GetDirectoryName(objectFile)!);await File.WriteAllBytesAsync(objectFile,bytes);
+        using var confirmed=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/review",new{reviewerId=f.Actor,reviewStatus=2},f.Token());Assert.Equal(HttpStatusCode.OK,confirmed.StatusCode);
+        using var practice=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/practices",new{studentId=source.StudentId,imagePaths=new[]{path},isCorrect=true},f.Token("user"));Assert.Equal(HttpStatusCode.OK,practice.StatusCode);
+        var jobsBefore=await f.ScalarAsync<string>("SELECT jsonb_agg(to_jsonb(j) ORDER BY id)::text FROM reanalyze_job j");
+        f.Enabled=false;await f.StartAsync(strict,resource);
+        var denied=new (string? Token,HttpStatusCode Status)[]{(null,HttpStatusCode.Unauthorized),
+            (f.Token(issuer:"https://wrong.invalid"),HttpStatusCode.Unauthorized),(f.Token(audience:"wrong"),HttpStatusCode.Unauthorized),
+            (f.Token(issuer:"https://wrong.invalid",audience:"intake-admin"),HttpStatusCode.Unauthorized),
+            (f.Token("user",sub:Guid.NewGuid().ToString()),HttpStatusCode.Forbidden)};
+        foreach(var actor in denied)
+        {
+            using var active=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/reanalyze/active?reviewerId={f.Actor}",token:actor.Token);
+            using var batch=await f.SendAsync(HttpMethod.Post,"/api/mistakes/reanalyze/jobs",new{reviewerId=f.Actor,jobIds=new[]{jobId,legacyJob.ToString()}},actor.Token);
+            using var image=await f.SendAsync(HttpMethod.Post,"/api/mistakes/presigned-url",new{objectPath=path,size="full"},actor.Token);
+            // With only resource auth on, preserve its existing 403 denial;
+            // strict policy and mandatory managed auth return 401 otherwise.
+            var queryStatus=!strict && resource && actor.Status==HttpStatusCode.Unauthorized ? HttpStatusCode.Forbidden : actor.Status;
+            Assert.Equal(queryStatus,active.StatusCode);Assert.Equal(queryStatus,batch.StatusCode);Assert.Equal(actor.Status,image.StatusCode);
+            Assert.DoesNotContain(jobId,await active.Content.ReadAsStringAsync());Assert.DoesNotContain(jobId,await batch.Content.ReadAsStringAsync());Assert.DoesNotContain("\"url\"",await image.Content.ReadAsStringAsync());
+        }
+        var otherReviewer=Guid.NewGuid().ToString();var otherTeacher=f.Token("teacher",sub:otherReviewer);
+        using var crossActive=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/reanalyze/active?reviewerId={f.Actor}",token:otherTeacher);
+        using var crossBatch=await f.SendAsync(HttpMethod.Post,"/api/mistakes/reanalyze/jobs",new{reviewerId=f.Actor,jobIds=new[]{jobId,legacyJob.ToString()}},otherTeacher);
+        Assert.Equal(HttpStatusCode.Forbidden,crossActive.StatusCode);Assert.Equal(HttpStatusCode.Forbidden,crossBatch.StatusCode);
+        using var filteredForeign=await f.SendAsync(HttpMethod.Post,"/api/mistakes/reanalyze/jobs",new{reviewerId=otherReviewer,jobIds=new[]{jobId}},otherTeacher);
+        Assert.Equal(HttpStatusCode.Forbidden,filteredForeign.StatusCode);Assert.DoesNotContain(jobId,await filteredForeign.Content.ReadAsStringAsync());
+        foreach(var token in new[]{f.Token(),f.Token(audience:"intake-admin"),f.Token("teacher")})
+        {
+            using var active=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/reanalyze/active?reviewerId={f.Actor}",token:token);
+            using var batch=await f.SendAsync(HttpMethod.Post,"/api/mistakes/reanalyze/jobs",new{reviewerId=f.Actor,jobIds=new[]{jobId,legacyJob.ToString()}},token);
+            Assert.Equal(HttpStatusCode.OK,active.StatusCode);Assert.Equal(HttpStatusCode.OK,batch.StatusCode);
+            Assert.Contains(jobId,await active.Content.ReadAsStringAsync());var batchBody=await batch.Content.ReadAsStringAsync();Assert.Contains(jobId,batchBody);Assert.Contains(legacyJob.ToString(),batchBody);
+            using var view=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/{item.Id}",token:token);Assert.Equal(HttpStatusCode.OK,view.StatusCode);
+        }
+        // Staff/Admin retain existing review visibility; image reads have no reviewerId gate.
+        foreach(var token in new[]{f.Token(),f.Token(audience:"intake-admin"),f.Token("user"),otherTeacher})
+        {
+            using var image=await f.SendAsync(HttpMethod.Post,"/api/mistakes/presigned-url",new{objectPath=path,size="full"},token);
+            Assert.Equal(HttpStatusCode.OK,image.StatusCode);using var json=JsonDocument.Parse(await image.Content.ReadAsStringAsync());
+            Assert.Equal(bytes,await File.ReadAllBytesAsync(json.RootElement.GetProperty("data").GetProperty("url").GetString()!));
+        }
+        using var adminIntake=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/intakes/{source.Id}/{source.ContentRevision}",token:f.Token(audience:"intake-admin"));Assert.Equal(HttpStatusCode.OK,adminIntake.StatusCode);
+        using var replay=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",new{sourceUploadId=source.Id,studentId=source.StudentId,expectedContentRevision=source.ContentRevision,requestKey=createKey,subject=1,grade=7,imagePaths=source.ImagePaths.Select(i=>i.Path).ToArray()},f.Token(audience:"intake-admin"));
+        Assert.Equal(HttpStatusCode.OK,replay.StatusCode);Assert.Contains(item.Id.ToString(),await replay.Content.ReadAsStringAsync());
+        using var wrongRole=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/intakes/{source.Id}/{source.ContentRevision}",token:f.Token("user",audience:"intake-admin"));Assert.Equal(HttpStatusCode.Forbidden,wrongRole.StatusCode);
+        using var sourceImage=await f.SendAsync(HttpMethod.Post,"/api/mistakes/presigned-url",new{objectPath=source.ImagePaths[0].Path,size="full"},f.Token(audience:"intake-admin"));Assert.Equal(HttpStatusCode.OK,sourceImage.StatusCode);
+        using var unrelated=await f.SendAsync(HttpMethod.Post,"/api/mistakes/presigned-url",new{objectPath="mistakes/not-referenced.jpg",size="full"},f.Token("user"));Assert.NotEqual(HttpStatusCode.OK,unrelated.StatusCode);
+        using var wrongCase=await f.SendAsync(HttpMethod.Post,"/api/mistakes/presigned-url",new{objectPath=path.ToUpperInvariant(),size="full"},f.Token());Assert.Equal(HttpStatusCode.Forbidden,wrongCase.StatusCode);
+        var beforeReads=f.Reads.Count;var beforeSourceCalls=f.Source.Requests.Count;var beforeOssCalls=f.Oss.Invocations.Count;
+        using var forged=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/reanalyze",new{reviewerId=f.Actor,studentId=Guid.NewGuid().ToString()},f.Token(audience:"intake-admin"));Assert.Equal(HttpStatusCode.Forbidden,forged.StatusCode);
+        using(var scope=f.App!.Services.CreateScope())
+        {
+            var service=scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
+            var error=await Assert.ThrowsAsync<SourceIntakeException>(()=>service.StartJobAsync(item.Id,f.Actor.ToString(),Guid.NewGuid().ToString(),null));Assert.Equal(403,error.StatusCode);
+        }
+        await using(var db=f.Context())
+        {
+            Assert.Equal(2,await db.ReanalyzeJobs.CountAsync());Assert.All(await db.ReanalyzeJobs.ToListAsync(),j=>Assert.Equal(source.StudentId,j.StudentId));
+            Assert.Single(await db.MistakePractices.ToListAsync());Assert.Equal(3,await db.ProcessLogs.CountAsync());
+            Assert.Equal(source.StudentId,(await db.MistakeItems.SingleAsync(i=>i.Id==item.Id)).StudentId);
+        }
+        Assert.Equal(jobsBefore,await f.ScalarAsync<string>("SELECT jsonb_agg(to_jsonb(j) ORDER BY id)::text FROM reanalyze_job j"));
+        Assert.Equal(beforeSourceCalls,f.Source.Requests.Count);Assert.Equal(beforeOssCalls,f.Oss.Invocations.Count);
+        Assert.Equal(beforeReads,f.Reads.Count);Assert.Empty(f.SideEffects);f.Analyzer.VerifyNoOtherCalls();await f.AssertRetainedAsync(source);
+        using var goodReanalysis=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/reanalyze",new{reviewerId=f.Actor,studentId=source.StudentId},f.Token(audience:"intake-admin"));Assert.Equal(HttpStatusCode.OK,goodReanalysis.StatusCode);
+        await using(var fresh=f.Context()) Assert.Equal(3,await fresh.ReanalyzeJobs.CountAsync());
+        if(!strict && !resource)
+        {
+            using var legacy=await f.SendAsync(HttpMethod.Post,"/api/mistakes/reanalyze/jobs",new{reviewerId=f.Actor,jobIds=new[]{legacyJob.ToString()}});
+            Assert.Equal(HttpStatusCode.OK,legacy.StatusCode);Assert.Contains(legacyJob.ToString(),await legacy.Content.ReadAsStringAsync());
+        }
     }
     [Theory]
     [InlineData("missing_images")][InlineData("null_images")][InlineData("owner")][InlineData("revision")][InlineData("snapshot")][InlineData("hash")][InlineData("length")][InlineData("type")][InlineData("rotation")][InlineData("bad_json")]

@@ -18,19 +18,22 @@ public class ReanalyzeJobService : IReanalyzeJobService
     private readonly IProcessLogRepository _processLogRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<ReanalyzeJobService> _logger;
+    private readonly IMistakeSourceGuard? _sourceGuard;
 
     public ReanalyzeJobService(
         IReanalyzeJobRepository jobRepository,
         IMistakeItemRepository mistakeItemRepository,
         IProcessLogRepository processLogRepository,
         IUnitOfWork unitOfWork,
-        ILogger<ReanalyzeJobService> logger)
+        ILogger<ReanalyzeJobService> logger,
+        IMistakeSourceGuard? sourceGuard = null)
     {
         _jobRepository = jobRepository;
         _mistakeItemRepository = mistakeItemRepository;
         _processLogRepository = processLogRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
+        _sourceGuard = sourceGuard;
     }
 
     public async Task<StartReanalyzeJobResult> StartJobAsync(
@@ -78,6 +81,8 @@ public class ReanalyzeJobService : IReanalyzeJobService
                 ErrorMessage = "错题不存在"
             };
         }
+
+        if (_sourceGuard != null) await _sourceGuard.EnsureOwnedWriteAsync(itemId, studentId, ct);
 
         if (item.ReviewStatus != (int)ReviewStatus.PendingReview &&
             item.ReviewStatus != (int)ReviewStatus.Confirmed)

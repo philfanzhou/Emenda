@@ -136,7 +136,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
                 ValidateLifetime=true,ValidateIssuerSigningKey=true,IssuerSigningKey=new RsaSecurityKey(UserKey),RoleClaimType="role",NameClaimType="sub",ClockSkew=TimeSpan.Zero};
         }
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(JwtBearerDefaults.AuthenticationScheme,Jwt)
-            .AddJwtBearer(RuoyuAdminApiAuthorization.SchemeName,Jwt);
+            .AddJwtBearer(RuoyuAdminApiAuthorization.SchemeName,jwt=>{Jwt(jwt);jwt.TokenValidationParameters.ValidAudience="intake-admin";});
         builder.Services.AddAuthorization(MistakeApiAuthorization.AddMistakeApiPolicy);
         builder.Services.AddDbContext<MistakeDbContext>(o=>o.UseNpgsql(Connection).AddInterceptors(Fault));
         builder.Services.AddScoped<IMistakeItemRepository,MistakeItemRepository>();builder.Services.AddScoped<IMistakePracticeRepository,MistakePracticeRepository>();

@@ -339,6 +339,13 @@ public sealed class SourceIntakeService(DbContextOptions<MistakeDbContext> datab
             on new {result.SourceUploadId,result.ContentRevision} equals new {source.SourceUploadId,source.ContentRevision}
             where result.ItemId==itemId select source.StudentId).SingleOrDefaultAsync(ct);
     }
+    public async Task<List<string>> GetManagedJobReviewersAsync(IReadOnlyList<Guid> jobIds,CancellationToken ct=default)
+    {
+        await using var db=Open();
+        return await (from job in db.ReanalyzeJobs.AsNoTracking()
+            join result in db.SourceIntakeGroups on job.ItemId equals result.ItemId
+            where jobIds.Contains(job.Id) select job.ReviewerId).Distinct().ToListAsync(ct);
+    }
     public async Task<bool> HasManagedDataAsync(string? studentId=null,string? sourceId=null,CancellationToken ct=default)
     {
         await using var db=Open();
@@ -374,6 +381,22 @@ public sealed class SourceIntakeService(DbContextOptions<MistakeDbContext> datab
         var source=await db.SourceIntakes.AsNoTracking().SingleAsync(s=>s.SourceUploadId==match.SourceUploadId && s.ContentRevision==match.ContentRevision,ct);
         var manifest=JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!;
         return manifest.Images.Any(i=>i.Path==path && i.Type=="mistake") ? source.StudentId : null;
+    }
+    public async Task<bool> IsManagedPracticeObjectAsync(string path,CancellationToken ct=default)
+    {
+        await using var db=Open();
+        var practices=await (from practice in db.MistakePractices.AsNoTracking()
+            join result in db.SourceIntakeGroups on practice.MistakeItemId equals result.ItemId
+            select practice.ImagePaths).ToListAsync(ct);
+        if(practices.Any(paths=>paths.Contains(path,StringComparer.Ordinal))) return true;
+        if(practices.Any(paths=>paths.Contains(path,StringComparer.OrdinalIgnoreCase)))
+            throw new SourceIntakeException("object_not_managed",403);
+        return false;
+    }
+    public async Task EnsureOwnedWriteAsync(Guid itemId,string studentId,CancellationToken ct=default)
+    {
+        var owner=await GetManagedItemStudentAsync(itemId,ct);
+        if(owner!=null && owner!=studentId) throw new SourceIntakeException("student_binding",403);
     }
     public async Task VerifyManagedObjectAsync(string path,CancellationToken ct=default)
     {

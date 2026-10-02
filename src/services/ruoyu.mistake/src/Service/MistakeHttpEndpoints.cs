@@ -608,7 +608,9 @@ public static partial class MistakeHttpEndpoints
         [FromBody] GetReanalyzeJobsRequest request,
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
-        IReanalyzeJobService reanalyzeJobService)
+        IReanalyzeJobService reanalyzeJobService,
+        ISourceIntakeService intake,
+        CancellationToken ct)
     {
         if (resourceAuthz.Enabled)
         {
@@ -621,6 +623,7 @@ public static partial class MistakeHttpEndpoints
             if (!bindingDecision.Allowed)
                 return bindingDecision.ToHttpResponse();
         }
+
 
         var reviewerId = request.ReviewerId;
         if (string.IsNullOrWhiteSpace(reviewerId))
@@ -655,7 +658,32 @@ public static partial class MistakeHttpEndpoints
             if (Guid.TryParse(raw, out var parsed)) ids.Add(parsed);
         }
 
-        var jobs = await reanalyzeJobService.GetJobsAsync(reviewerId, ids, CancellationToken.None);
+        // Validate requested managed job references before the legacy service
+        // filters rows by the supplied reviewer; a foreign managed job must not
+        // be disguised as a successful empty response.
+        var managedReviewers=await intake.GetManagedJobReviewersAsync(ids,ct);
+        foreach(var managedReviewer in managedReviewers)
+        {
+            var authentication=IntakeRole(user,resourceAuthz,MistakeResourceAccessGate.StaffOrAdmin);
+            if(authentication!=null) return authentication;
+            var binding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,reviewerId);
+            if(!binding.Allowed) return binding.ToHttpResponse();
+            var ownerBinding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,managedReviewer);
+            if(!ownerBinding.Allowed) return ownerBinding.ToHttpResponse();
+        }
+        var jobs = await reanalyzeJobService.GetJobsAsync(reviewerId, ids, ct);
+        foreach(var job in jobs)
+        {
+            var owner=await intake.GetManagedItemStudentAsync(job.ItemId,ct);
+            if(owner==null) continue;
+            var authentication=IntakeRole(user,resourceAuthz,MistakeResourceAccessGate.StaffOrAdmin);
+            if(authentication!=null) return authentication;
+            var binding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,reviewerId);
+            if(!binding.Allowed) return binding.ToHttpResponse();
+            var access=await resourceAuthz.DecideItemOwnershipAsync("managed reanalysis query",user,job.ItemId.ToString(),owner,ct);
+            if(!access.Allowed) return access.ToHttpResponse();
+        }
+
         return MistakeHttpResponse.Ok(new GetReanalyzeJobsResponse
         {
             Success = true,
@@ -668,7 +696,9 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] string? reviewerId,
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
-        IReanalyzeJobService reanalyzeJobService)
+        IReanalyzeJobService reanalyzeJobService,
+        ISourceIntakeService intake,
+        CancellationToken ct)
     {
         if (resourceAuthz.Enabled)
         {
@@ -682,6 +712,7 @@ public static partial class MistakeHttpEndpoints
                 return bindingDecision.ToHttpResponse();
         }
 
+
         if (string.IsNullOrWhiteSpace(reviewerId))
         {
             return MistakeHttpResponse.Ok(new GetReanalyzeJobsResponse
@@ -690,7 +721,19 @@ public static partial class MistakeHttpEndpoints
                 ErrorMessage = "未识别教师身份"
             });
         }
-        var jobs = await reanalyzeJobService.GetActiveJobsAsync(reviewerId, CancellationToken.None);
+        var jobs = await reanalyzeJobService.GetActiveJobsAsync(reviewerId, ct);
+        foreach(var job in jobs)
+        {
+            var owner=await intake.GetManagedItemStudentAsync(job.ItemId,ct);
+            if(owner==null) continue;
+            var authentication=IntakeRole(user,resourceAuthz,MistakeResourceAccessGate.StaffOrAdmin);
+            if(authentication!=null) return authentication;
+            var binding=resourceAuthz.DecideReviewerBinding("managed reanalysis query",user,reviewerId);
+            if(!binding.Allowed) return binding.ToHttpResponse();
+            var access=await resourceAuthz.DecideItemOwnershipAsync("managed reanalysis query",user,job.ItemId.ToString(),owner,ct);
+            if(!access.Allowed) return access.ToHttpResponse();
+        }
+
         return MistakeHttpResponse.Ok(new GetReanalyzeJobsResponse
         {
             Success = true,
@@ -1133,17 +1176,21 @@ public static partial class MistakeHttpEndpoints
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
             return MistakeHttpResponse.BadRequest("object_path is required");
         var managed = await intake.GetManagedObjectStudentAsync(request.ObjectPath, ct);
-        if (managed != null)
+        var managedPractice = await intake.IsManagedPracticeObjectAsync(request.ObjectPath, ct);
+        if (managed != null || managedPractice)
         {
             if (user.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user)))
                 return IntakeError("authentication_required", 401);
-            if (!string.IsNullOrWhiteSpace(request.Size) && request.Size != "full") return IntakeError("managed_full_only", 400);
+            if (managed != null && !string.IsNullOrWhiteSpace(request.Size) && request.Size != "full") return IntakeError("managed_full_only", 400);
             var permission = await resourceAuthz.DecidePresignedAccessAsync("source intake image read", user, request.ObjectPath, ct);
             if (!permission.Allowed) return permission.ToHttpResponse();
-            await intake.VerifyManagedObjectAsync(request.ObjectPath, ct);
-            var seconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
-            var url = await ossService.GetPresignedUrlAsync(request.ObjectPath, seconds);
-            return MistakeHttpResponse.Ok(new PresignedUrlResponse {Url=url,ExpirySeconds=seconds});
+            if (managed != null)
+            {
+                await intake.VerifyManagedObjectAsync(request.ObjectPath, ct);
+                var seconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
+                var url = await ossService.GetPresignedUrlAsync(request.ObjectPath, seconds);
+                return MistakeHttpResponse.Ok(new PresignedUrlResponse {Url=url,ExpirySeconds=seconds});
+            }
         }
         if (!request.ObjectPath.StartsWith("mistakes/", StringComparison.Ordinal))
             return MistakeHttpResponse.BadRequest("object_path must start with mistakes/");

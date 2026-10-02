@@ -76,6 +76,10 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 
 关闭新领取且来源未受管时，旧 upload 每次创建一项，所有输入 path 成为 Full region；旧 Add 以所给 regions 创建一项。既有验证为 student/source 非空、subject 1–9、grade 1–12、非空图片/区域，状态 PendingReview，item 与一条 Created 日志同 Save。它们没有持久来源分组幂等；旧 Worker 的路径检查也不是并发、部分失败或跨资源安全保证。
 
+受管读取和已完成 create 重放始终沿与严格 API policy 相同的 shared/default 与独立 Admin audience JWT schemes 验证 issuer、audience、签名和主体，不依赖 strict/resource/source-intake 开关。受管重分析 active/batch 查询以实际 job 的 item 关联识别来源；混合结果整体执行 staff/admin 与 reviewer=sub 检查，失败不伪装成功空集合。受管重分析写入的 studentId 必须匹配不可变来源 owner，在 HTTP 和领域入口写入前拒绝伪造值；历史非受管 jobs 不改写。
+
+受管练习图片通过 practice→item→source group 的真实引用识别，精确区分来源 manifest 图片。owner learner 和既有 staff/admin review visibility 保持；staff 图片读取不绑定某个 reviewerId，job 查询仍绑定。来源图片继续校验 manifest 长度/摘要且只读 full；练习图沿现有图片读取与 size 语义，无伪造来源摘要。错误大小写或跨学生 learner 不能经关闭开关走匿名签名分支。
+
 已受管来源永远不能回落到旧 create/mover。Confirm、metadata、既有练习和重分析仍可按原授权操作；reject/delete、修改 owner/source/regions、旧 CompleteReview 在副作用前拒绝。DB guards 与不可变结果关联是旧 SQL/EF 写方的最后栅栏，未使用连接级绕过标志。
 
 ## 验证入口
