@@ -19,3 +19,11 @@ owner/source/regions 修改、受管 Reject/Delete、来源/结果/请求去关�
 object 插入必须绑定不可变 manifest 的实际图/hash/长度，并有已提交 group→真实 item 的精确 regions/student/source 关系。选定仅来自当前 source lease/fence 合法且内容校验字段完整匹配的 Verified attempt，一次后不可更新；attempt 键不可变，已选候选不可更新。DELETE/TRUNCATE与关键更新拒绝，所有未选候选也作为持久 pin 保留。
 
 `guard_reserved_target_input` 对 item、practice、source 的 INSERT/UPDATE 拒绝 reserved 精确 namespace 及 legacy 换前缀输入；既有 source/group/request/item/log guards 保持。catalog 核对新增 tables/columns/indexes/RESTRICT FKs、完整函数体/触发器与历史。非空目标两表的 Down 拒绝，备份/restore必须包含两表及其 guards，不能只恢复 item 行。
+
+## 持久退回
+
+[SourceReturns](../../modules/SourceReturns.md) 增加 source_return（PK item_id/唯一 operation_id、实际 group/source RESTRICT 关系、immutable original/canonical、phase/固定 payload/digest、source owner/fence、历史 receipt 与 final tuple）、source_return_object（item/有序 position PK、实际 selected target/expected bytes、一次 selected attempt）、source_return_attempt（唯一 attempt/key、item/position RESTRICT、reservation owner/fence、CopySettled/verified 字节证据）。selected→attempt 和 final→log 为 RESTRICT，final log FK 延期检查。
+
+数据库核验 actual group→source→snapshot/student、ordered first-path full 去重、原元数据、target选定身份、lease/fence、settled-before-verify-before-select、payload键/顺序/类型与 returned-payload-v1；全部 final tuple/item/log 在提交时延期检查。retained history 与新意图共同阻止所有 item/practice/process-log/reanalysis 写方绕过或复活。非空 return/对象/候选不允许 DELETE/TRUNCATE/Down，候选不设置 TTL。
+
+当前精确历史为八条迁移；正常启动核验新增完整 catalog/函数体/触发器。known1–7 升级保留原行/字节/状态；未知 public.mistake 仍原状拒绝。包含全部 operation/object/attempt 和 guards 的备份恢复流程见[部署](../../development/Deployment.md#受管持久退回启用与恢复)。

@@ -18,4 +18,4 @@ public interface ISourceIntakeService
 }
 
 public sealed record IntakeView(SourceManifest Manifest, string Mode, long Fence,
-    DateTimeOffset? LeaseUntil, bool Materialized, string SourceState, List<Guid> ItemIds, List<SourceTargetView>? Targets = null, bool TargetReady = false, bool HandoffCompleted = false);
+    DateTimeOffset? LeaseUntil, bool Materialized, string SourceState, List<Guid> ItemIds, List<SourceTargetView>? Targets = null, bool TargetReady = false, bool HandoffCompleted = false, List<SourceReturnView>? Returns = null);

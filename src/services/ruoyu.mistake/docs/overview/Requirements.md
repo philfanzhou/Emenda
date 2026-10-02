@@ -18,7 +18,7 @@
 | 功能域 | 需求 | 详细文档 |
 |--------|------|----------|
 | MistakeDispatch | 提交错题分发 | [modules/MistakeDispatch/SubmitMistakeUpload/](../modules/SourceIntake.md) |
-| MistakeReview | 审核错题条目 | [modules/MistakeReview/ReviewMistakeItem/](../modules/MistakeReview/ReviewMistakeItem/01-FEATURE.md) |
+| MistakeReview | 审核错题条目 | [modules/MistakeReview/ReviewMistakeItem/](../modules/MistakeReview/ReviewMistakeItem.md) |
 | MistakeReview | 查询待审核上传记录 | [modules/MistakeReview/GetPendingReviewUploads/](../modules/MistakeReview/GetPendingReviewUploads/01-FEATURE.md) |
 | MistakeReview | 完成整批审核 | [modules/MistakeReview/CompleteUploadReview/](../modules/MistakeReview/CompleteUploadReview/01-FEATURE.md) |
 | MistakeManagement | 查询错题条目 | [modules/MistakeManagement/GetMistakeItem/](../modules/MistakeManagement/GetMistakeItem/01-FEATURE.md) |

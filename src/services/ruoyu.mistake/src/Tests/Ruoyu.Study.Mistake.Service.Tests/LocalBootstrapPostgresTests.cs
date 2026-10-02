@@ -50,7 +50,7 @@ public sealed class LocalBootstrapPostgresTests
         Assert.Contains("Endpoint: HTTP=5007", normal.Output);
         Assert.Equal(0, consul.RequestCount);
         Assert.Equal(0, loki.RequestCount);
-        Assert.Equal("7", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        Assert.Equal("8", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
     }
 
     [Fact]
@@ -84,13 +84,13 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("Source=Environment", result.Output);
             Assert.Equal("0", await fileDatabase.ScalarAsync("SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relname='mistake_item'"));
-            Assert.Equal("7", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("8", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings.Remove("ConnectionStrings__MistakeLocal");
             var fromFile = await RunHostAsync(["--upgrade-empty-db"], settings);
             Assert.Equal(0, fromFile.ExitCode);
             Assert.Contains("Source=File", fromFile.Output);
-            Assert.Equal("7", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("8", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
                 { Database = environmentDatabase.Name, Password = "wrong-password-marker" }.ConnectionString;
@@ -143,14 +143,14 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Contains("Mode=Platform", fallback.Output);
             Assert.Contains("Source=Cache", fallback.Output);
             Assert.True(consul.RequestCount > 0);
-            Assert.Equal("7", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("8", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment["Mistake__ConfigMode"] = "Platform";
             environment["Database__Name"] = environmentDatabase.Name;
             var overrideResult = await RunHostAsync(["--upgrade-empty-db"], environment);
             Assert.Equal(0, overrideResult.ExitCode);
             Assert.Contains("Mode=Platform", overrideResult.Output);
-            Assert.Equal("7", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("8", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment.Remove("Mistake__Http__Port");
             var invalidCachedPort = await RunHostAsync(["--upgrade-empty-db"], environment);
@@ -323,7 +323,14 @@ public sealed class LocalBootstrapPostgresTests
         await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,status,created_at,completed_at) VALUES ('{expired}','{item}','teacher-1','student-1',3,now()-interval '40 days',now()-interval '40 days')");
 
         var runningHost = await RunHostAsync([], settings, waitForStartup: true,
-            startupDelay: polling ? TimeSpan.FromSeconds(14) : TimeSpan.FromSeconds(12));
+            duringStartup: async token =>
+            {
+                using var http = new HttpClient();
+                await WaitForRootAsync(http, 5007, token);
+                if (polling)
+                    while (student.RequestCount == 0) await Task.Delay(100, token);
+                else await Task.Delay(1000, token);
+            });
         Assert.Contains("Mistake database schema verified for read-only startup", runningHost.Output);
         Assert.Contains("Endpoint: HTTP=5007", runningHost.Output);
         Assert.Contains($"UploadPollingWorker: Enabled={polling}", runningHost.Output);

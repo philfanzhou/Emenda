@@ -41,11 +41,11 @@ public sealed class SourceIntakeSecurityTests
             (HttpMethod.Delete,$"/api/mistakes/{item.Id}",null),
             (HttpMethod.Put,$"/api/mistakes/{item.Id}",new{studentId="other"}),
             (HttpMethod.Put,$"/api/mistakes/{item.Id}",new{sourceRegions=new[]{new{sourceImagePath="uploads/else.jpg"}}}),
-            (HttpMethod.Post,$"/api/mistakes/{item.Id}/review",new{reviewStatus=3,reviewerId=f.Actor.ToString()}),
             (HttpMethod.Post,"/api/mistakes/complete-review",new{sourceUploadId=source.Id,reviewerId=f.Actor.ToString()}),
             (HttpMethod.Post,"/api/mistakes/upload",new{sourceUploadId=source.Id,studentId=source.StudentId,subject=1,grade=7,imagePaths=source.ImagePaths.Select(i=>i.Path).ToArray()}),
             (HttpMethod.Post,"/api/mistakes",new{sourceUploadId=source.Id,studentId=source.StudentId,subject=1,grade=7,sourceRegions=new[]{new{sourceImagePath=source.ImagePaths[0].Path}}})};
         foreach(var attempt in attempts){using var response=await f.SendAsync(attempt.Method,attempt.Path,attempt.Body,f.Token());Assert.Equal(HttpStatusCode.Conflict,response.StatusCode);}
+        using var disabledReturn=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/review",new{reviewStatus=3,reviewerId=f.Actor.ToString()},f.Token());Assert.Equal(HttpStatusCode.ServiceUnavailable,disabledReturn.StatusCode);
         using var cross=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/{item.Id}",token:f.Token("user",sub:Guid.NewGuid().ToString()));Assert.Equal(HttpStatusCode.Forbidden,cross.StatusCode);
         using var anonView=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/intakes/{source.Id}/{source.ContentRevision}");Assert.Equal(HttpStatusCode.Unauthorized,anonView.StatusCode);
         using var userView=await f.SendAsync(HttpMethod.Get,$"/api/mistakes/intakes/{source.Id}/{source.ContentRevision}",token:f.Token("user"));Assert.Equal(HttpStatusCode.Forbidden,userView.StatusCode);
@@ -196,14 +196,14 @@ public sealed class SourceIntakeSecurityTests
     public async Task StartupExactNewSchemaRejectsUnknownCatalogWithoutRepairAsync(string mutation)
     {
         await using var f=await SourceIntakeFixture.CreateAsync();await f.SqlAsync(mutation);
-        await using var db=f.Context();await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));Assert.Equal(7,(await db.Database.GetAppliedMigrationsAsync()).Count());
+        await using var db=f.Context();await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));Assert.Equal(8,(await db.Database.GetAppliedMigrationsAsync()).Count());
     }
     [Fact]
     public async Task EmptyIntakeDownAndKnownFiveHistoryUpgradeAreControlledAndRepeatableAsync()
     {
         await using var f=await SourceIntakeFixture.CreateAsync();await using var db=f.Context();await db.GetService<IMigrator>().MigrateAsync("20260930000001_LeaseReanalyzeJobs");Assert.Equal(5,(await db.Database.GetAppliedMigrationsAsync()).Count());
         await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
-        await Task.WhenAll(UpgradeAsync(),UpgradeAsync());await DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance);Assert.Equal(7,(await db.Database.GetAppliedMigrationsAsync()).Count());
+        await Task.WhenAll(UpgradeAsync(),UpgradeAsync());await DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance);Assert.Equal(8,(await db.Database.GetAppliedMigrationsAsync()).Count());
         async Task UpgradeAsync(){await using var fresh=f.Context();await DatabaseInitializer.UpgradeKnownAsync(fresh,f.Name,true,true);}
     }
     private sealed class ResponseFault(string kind):DelegatingHandler

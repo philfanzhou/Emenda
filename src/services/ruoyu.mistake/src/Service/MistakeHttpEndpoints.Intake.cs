@@ -104,7 +104,7 @@ public static partial class MistakeHttpEndpoints
         catch (Exception ex) when (FindDatabaseError(ex)!=null)
         {
             var database=FindDatabaseError(ex)!;
-            var kind=new[] {"source_managed","handoff_pending","legacy_source_conflict","lease_lost","grouping_conflict","target_managed","target_unverified","target_binding","reserved_target"}
+            var kind=new[] {"source_managed","handoff_pending","legacy_source_conflict","lease_lost","grouping_conflict","target_managed","target_unverified","target_binding","reserved_target","return_managed","return_binding","return_unverified","return_payload_binding","return_receipt_binding","return_in_progress","return_final_binding","reanalysis_active"}
                 .FirstOrDefault(k=>database.Message.Contains(k,StringComparison.Ordinal));
             return IntakeError(kind ?? "database_unavailable",kind==null ? 503 : 409);
         }

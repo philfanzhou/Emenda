@@ -130,6 +130,14 @@ public class ReviewMistakeItemRequest
 
 public class ReviewMistakeItemResponse
 {
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? OperationId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReturnState { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Guid? ConfirmedRecordId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ErrorKind { get; set; }
     public bool Success { get; set; }
     public string ErrorMessage { get; set; } = string.Empty;
     public string SourceUploadId { get; set; } = string.Empty;

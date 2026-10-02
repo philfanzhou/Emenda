@@ -29,7 +29,7 @@ Worker 与两个 HTTP 创建入口共用 `ISourceIntakeService`。它把 Student
 | 事务前/中失败或取消 | rollback fresh context；已保存claim/manifest/request不能丢；lease可条件释放或自然过期 | 未完成；保留所有source，调用方取消传播 |
 | COMMIT响应未知 | 不补偿删item/图，不判定rollback；fresh query同source/key | 实际Absent/claimed可重试，或同materialized重放；未知返回503 |
 | 禁用新领取/重启 | 持久关联、业务键、guards与重放一直有效；停止新增/续领 | 不回落legacy，不清claim/manifest/items/pins |
-| legacy insert/edit/delete/reject/complete与managed source竞争 | 同来源序列化的DB guard及应用显式拒绝；不得删除/重指向managed identity/result | 409 `source_managed` / `handoff_pending`，在任何OSS/Student动作之前拒绝 |
+| legacy insert/edit/delete/complete与managed source竞争 | 同来源序列化的DB guard及应用显式拒绝；不得删除/重指向managed identity/result | 409 `source_managed` / `handoff_pending`，在任何OSS/Student动作之前拒绝 |
 
 lease release仅影响本域处理权，不释放Student snapshot或删除任何对象。自动组物化后仍保持 SourceRetained；不存在本能力的 CompletedHandoff/Released状态。
 
@@ -43,7 +43,7 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 2. Worker：scan DTO/gateway透传已存在Student contentRevision；缺失/非法不领取，不用旧DTO Version替代。调用自有Student client的PUT/GET Snapshot，handler按精确guid路由+HTTP方法签发既有RS256的独立 `uploads.snapshot`，不透传最终用户token、不扩展任意path签发。校验201/200、完整字段/UUID归属/hash/length/类型/rotation；401/403、409/422、503、坏JSON、超时和取消分类，未知PUT只GET确认，不匿名降级。ordinary scan数据仅hint，不能覆盖manifest。
 3. 核验原图读取：真实长度/hash与manifest匹配后才把这些原图交给已有VL；若字节missing/不符/中途故障，零新items、保留关联/claim，不将外部S3篡改当新版source。敏感原图仍按已有AI流程到配置的VL provider，本能力不新建其它外传；不日志原图、full hash、完整canonical payload、signedURL、JWT、密钥、student个人字段。日志只operation/source派生短ID、fence和固定阶段原因。
 4. 新item可从现有item GET/list/review confirm/练习路径查询及使用；图片读取扩展现有presigned-url仅允许**与managed manifest和实际item关联完全匹配的原uploads或mistakes键**，始终认证+现有归属矩阵，来源不可用时失败关闭。new-source仅 `size=full`，不生成可变缩略图/不写OSS；任意uploads、错误大小写、跨student、未知source拒绝且零OSS。现有legacy mistakes路径行为保持。
-5. managed item 的 reject/delete/owner-source-regions修改、legacy complete-review、legacy Submit/Add 绕过新参数，一律在副作用前409；Domain/repository/DB为共同栅栏，不能只endpoint提前检查。Confirm/metadata/练习原路径按既有授权正常，不能误报handoff完成。
+5. managed item 的 delete/owner-source-regions修改、legacy complete-review、legacy Submit/Add 绕过新参数，一律在副作用前409；受管 reject 改走[SourceReturns](./SourceReturns.md)，关闭返回503 returns_disabled，开启后先持久意图并等待可信receipt，Pending用202/Success=false；Domain/repository/DB为共同栅栏，不能只endpoint提前检查。Confirm/metadata/练习原路径按既有授权正常，不能误报handoff完成。
 
 ### 实施任务 × 启用阶段
 
@@ -65,7 +65,7 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 | 同 key 不同语义 / 同业务组不同创建值 | 409 / request_payload_conflict、payload_conflict |
 | 活跃 lease / owner 失效 / 模式不兼容 / atom 重新分组 | 409 / intake_busy、lease_lost、source_mode_conflict、grouping_conflict |
 | 来源已有 legacy item | 409 / legacy_source_conflict，包含原 item IDs；不合并或回填 |
-| 受管来源旧写 / 删除或退回 | 409 / source_managed、handoff_pending |
+| 受管来源旧写 / 删除 | 409 / source_managed、handoff_pending |
 | 新领取关闭 | 503 / intake_disabled；已有同 actor/key 完成结果仍认证重放 |
 | 来源或数据库不可用、坏 manifest/字节/VL、提交未知 | 503；固定阶段原因，无原始敏感数据 |
 | 状态查询不存在 | 404 / intake_not_found |
@@ -80,7 +80,7 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 
 受管练习图片通过 practice→item→source group 的真实引用识别，精确区分来源 manifest 图片。owner learner 和既有 staff/admin review visibility 保持；staff 图片读取不绑定某个 reviewerId，job 查询仍绑定。来源图片继续校验 manifest 长度/摘要且只读 full；练习图沿现有图片读取与 size 语义，无伪造来源摘要。错误大小写或跨学生 learner 不能经关闭开关走匿名签名分支。
 
-已受管来源永远不能回落到旧 create/mover。Confirm、metadata、既有练习和重分析仍可按原授权操作；reject/delete、修改 owner/source/regions、旧 CompleteReview 在副作用前拒绝。DB guards 与不可变结果关联是旧 SQL/EF 写方的最后栅栏，未使用连接级绕过标志。
+已受管来源永远不能回落到旧 create/mover。Confirm、metadata、既有练习和重分析仍可按原授权操作；delete、修改 owner/source/regions、旧 CompleteReview 在副作用前拒绝。受管 reject 只走[SourceReturns](./SourceReturns.md)；其意图存在后该 item 的 Confirm/metadata/practice/log/job 均阻止，其它 item 和后续合法 group 仍独立。DB guards 与不可变结果关联是旧 SQL/EF 写方的最后栅栏，未使用连接级绕过标志。
 
 ## 验证入口
 
