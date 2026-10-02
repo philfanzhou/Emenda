@@ -188,7 +188,7 @@ public static class DatabaseInitializer
                 await context.GetService<IMigrator>().MigrateAsync(RootCause, cancellationToken).ConfigureAwait(false);
             }
 
-            await context.GetService<IMigrator>().MigrateAsync(SourceIntakeSchema.Migration, cancellationToken).ConfigureAwait(false);
+            await context.GetService<IMigrator>().MigrateAsync(SourceTargetSchema.Migration, cancellationToken).ConfigureAwait(false);
 
             var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
             if (after.Kind != SchemaKind.Ready || !after.Target)
@@ -263,24 +263,26 @@ public static class DatabaseInitializer
         var targetHistory = new HashSet<string>(reanalyzeHistory, StringComparer.Ordinal) { $"{RootCause}|8.0.11" };
         var leaseHistory = new HashSet<string>(targetHistory, StringComparer.Ordinal) { $"{Lease}|8.0.11" };
         var intakeHistory = new HashSet<string>(leaseHistory, StringComparer.Ordinal) { $"{SourceIntakeSchema.Migration}|8.0.11" };
+        var sourceTargetHistory=new HashSet<string>(intakeHistory,StringComparer.Ordinal) { $"{SourceTargetSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
 
-        if (version == 6)
+        if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken);
+            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version==7);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
         var expectedTables = version >= 3 ? ExpectedTables :
             Without(ExpectedTables, "reanalyze_job");
         expectedTables = new HashSet<string>(expectedTables, StringComparer.Ordinal);
-        if (version == 6) expectedTables.UnionWith(SourceIntakeCatalog.Tables);
+        if (version >= 6) expectedTables.UnionWith(SourceIntakeCatalog.Tables);
+        if (version == 7) expectedTables.UnionWith(SourceTargetCatalog.Tables);
         var mismatch = Compare("relation", expectedTables, relations);
         if (mismatch is not null) return Invalid(mismatch);
 
@@ -292,7 +294,8 @@ public static class DatabaseInitializer
               AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum
             """, cancellationToken).ConfigureAwait(false);
         var expectedColumns = new HashSet<string>(ExpectedColumns, StringComparer.Ordinal);
-        if (version == 6) expectedColumns.UnionWith(SourceIntakeCatalog.Columns);
+        if (version >= 6) expectedColumns.UnionWith(SourceIntakeCatalog.Columns);
+        if (version == 7) expectedColumns.UnionWith(SourceTargetCatalog.Columns);
         if (version < 3)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
         else if (version < 5)
@@ -340,9 +343,9 @@ public static class DatabaseInitializer
             SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
             WHERE c.relnamespace='public'::regnamespace AND NOT t.tgisinternal ORDER BY t.tgname
             """, cancellationToken).ConfigureAwait(false);
-        if (version == 6)
+        if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken);
+            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version==7);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (triggers.Count > 0) return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");
@@ -358,7 +361,8 @@ public static class DatabaseInitializer
             WHERE tbl.relnamespace='public'::regnamespace ORDER BY idx.relname
             """, cancellationToken).ConfigureAwait(false);
         var expectedIndexes = new HashSet<string>(ExpectedIndexes, StringComparer.Ordinal);
-        if (version == 6) expectedIndexes.UnionWith(SourceIntakeCatalog.Indexes);
+        if (version >= 6) expectedIndexes.UnionWith(SourceIntakeCatalog.Indexes);
+        if (version == 7) expectedIndexes.UnionWith(SourceTargetCatalog.Indexes);
         if (version < 3)
             expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
         if (version < 2)
@@ -395,12 +399,13 @@ public static class DatabaseInitializer
         var expectedConstraints = version >= 3 ? ExpectedConstraints :
             Without(ExpectedConstraints, "PK_reanalyze_job|p|id|-|-|-|V");
         expectedConstraints = new HashSet<string>(expectedConstraints,StringComparer.Ordinal);
-        if (version == 6) expectedConstraints.UnionWith(SourceIntakeCatalog.Constraints);
+        if (version >= 6) expectedConstraints.UnionWith(SourceIntakeCatalog.Constraints);
+        if (version == 7) expectedConstraints.UnionWith(SourceTargetCatalog.Constraints);
         mismatch = Compare("constraint", expectedConstraints, constraints);
         if (mismatch is not null) return Invalid(mismatch);
 
-        if (version == 6)
-            return new SchemaState(SchemaKind.Ready, true, 6, "Mistake target schema and history are consistent.");
+        if (version >= 6)
+            return new SchemaState(version==7 ? SchemaKind.Ready : SchemaKind.Known, version==7, version, "Mistake target schema and history are consistent.");
         if (legacyRuntime)
             return new SchemaState(SchemaKind.LegacyRuntime, false, version,
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");

@@ -13,9 +13,9 @@ using Ruoyu.Study.Mistake.Service.Intake;
 using Ruoyu.Study.Mistake.Service.Services;
 namespace Ruoyu.Study.Mistake.Host.Services.Intake;
 
-public sealed class SourceIntakeService(DbContextOptions<MistakeDbContext> databaseOptions,
+public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContext> databaseOptions,
     SourceIntakeOptions options, SourceSnapshotClient snapshots, IOssService oss,
-    IVlAnalyzer analyzer, IOptions<VlAnalyzerOptions> vlOptions) : ISourceIntakeService, IMistakeSourceGuard
+    IVlAnalyzer analyzer, IOptions<VlAnalyzerOptions> vlOptions, SourceTargetOptions? targetOptions = null) : ISourceIntakeService, IMistakeSourceGuard, ISourceTargetService
 {
     public bool Enabled => options.Enabled;
     private MistakeDbContext Open() => new(databaseOptions);
@@ -205,14 +205,14 @@ public sealed class SourceIntakeService(DbContextOptions<MistakeDbContext> datab
         }
     }
 
-    private async Task HeartbeatAsync(Lease lease,CancellationTokenSource processing,CancellationToken stop)
+    private async Task HeartbeatAsync(Lease lease,CancellationTokenSource processing,CancellationToken stop, bool targets = false)
     {
         try
         {
             using var timer=new PeriodicTimer(TimeSpan.FromSeconds(20));
             while (await timer.WaitForNextTickAsync(stop))
             {
-                if (!Enabled) { processing.Cancel(); return; }
+                if (!(targets ? TargetsEnabled : Enabled)) { processing.Cancel(); return; }
                 await using var db=Open();
                 var changed=await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE source_intake SET lease_until=clock_timestamp()+interval '60 seconds' WHERE source_upload_id={lease.Source} AND content_revision={lease.Revision} AND owner_id={lease.Owner} AND fence={lease.Fence} AND lease_until>clock_timestamp()",stop);
                 if (changed!=1) { processing.Cancel(); return; }
@@ -364,11 +364,13 @@ public sealed class SourceIntakeService(DbContextOptions<MistakeDbContext> datab
         var source=await db.SourceIntakes.AsNoTracking().SingleOrDefaultAsync(s=>s.SourceUploadId==sourceId && s.ContentRevision==revision,ct);
         if (source==null) return null;
         var ids=await db.SourceIntakeGroups.Where(g=>g.SourceUploadId==sourceId && g.ContentRevision==revision).Select(g=>g.ItemId).ToListAsync(ct);
-        return new(JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!,source.Mode,source.Fence,source.LeaseUntil,source.Materialized,"SourceRetained",ids);
+        var targets=await TargetViewsAsync(db,sourceId,revision,ct);
+        return new(JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!,source.Mode,source.Fence,source.LeaseUntil,source.Materialized,"SourceRetained",ids,targets,targets.Count>0 && targets.All(t=>t.State=="Verified"),false);
     }
     public async Task<string?> GetManagedObjectStudentAsync(string path,CancellationToken ct=default)
     {
         await using var db=Open();
+        if(ReservedSourceTargetPath.IsReserved(path)) return (await SelectedTargetAsync(db,path,ct)).StudentId;
         var groups=await db.SourceIntakeGroups.AsNoTracking().ToListAsync(ct);
         var match=groups.FirstOrDefault(g=>JsonSerializer.Deserialize<List<SourceRegionEntry>>(g.Regions,IntakeCanonical.Json)!.Any(r=>r.SourceImagePath==path));
         if (match==null)
@@ -401,6 +403,13 @@ public sealed class SourceIntakeService(DbContextOptions<MistakeDbContext> datab
     public async Task VerifyManagedObjectAsync(string path,CancellationToken ct=default)
     {
         await using var db=Open();
+        if(ReservedSourceTargetPath.IsReserved(path))
+        {
+            var selected=await SelectedTargetAsync(db,path,ct);
+            if(!await TryVerifyCandidateAsync(path,new ManifestImage {Length=selected.ExpectedLength,Sha256=selected.ExpectedSha256},ct))
+                throw new SourceIntakeException("target_bytes_conflict",503);
+            return;
+        }
         var sources=await db.SourceIntakes.AsNoTracking().ToListAsync(ct);
         var manifest=sources.Select(s=>JsonSerializer.Deserialize<SourceManifest>(s.Manifest,IntakeCanonical.Json)!)
             .FirstOrDefault(m=>m.Images.Any(i=>i.Path==path && i.Type=="mistake")) ?? throw new SourceIntakeException("object_not_managed",403);

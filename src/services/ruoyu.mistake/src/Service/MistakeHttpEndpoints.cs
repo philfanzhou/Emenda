@@ -45,6 +45,7 @@ public static partial class MistakeHttpEndpoints
         var group = app.MapGroup("/api");
         group.AddEndpointFilter(IntakeEndpointFilterAsync);
         group.MapGet("/mistakes/intakes/{sourceId:guid}/{revision:guid}", GetSourceIntakeAsync);
+        group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/targets", ResumeSourceTargetsAsync);
 
         if (requireAuthenticatedApi)
             group.RequireAuthorization(MistakeApiAuthorization.PolicyName);
@@ -388,6 +389,9 @@ public static partial class MistakeHttpEndpoints
             return MistakeHttpResponse.ServiceUnavailable("Student 集成未启用，退回审核不可用（Mistake:Student:Enabled=false）");
         }
 
+        var beforeReview=await mistakeService.GetMistakeItemAsync(id);
+        if(beforeReview?.SourceRegions.Any(r=>ReservedSourceTargetPath.IsReserved(r.SourceImagePath))==true)
+            return IntakeError("reserved_target",409);
         try
         {
             int? grade = request.Grade > 0 ? request.Grade : null;
@@ -426,6 +430,7 @@ public static partial class MistakeHttpEndpoints
                         if (mistakePath.StartsWith("mistakes/", StringComparison.OrdinalIgnoreCase))
                         {
                             var uploadPath = "uploads/" + mistakePath.Substring("mistakes/".Length);
+                            ReservedSourceTargetPath.EnsureLegacy(mistakePath);ReservedSourceTargetPath.EnsureLegacy(uploadPath);
                             await ossService.CopyObjectAsync(mistakePath, uploadPath).ConfigureAwait(false);
                             await ossService.DeleteAsync(mistakePath).ConfigureAwait(false);
                             migratedBackPaths.Add(uploadPath);
@@ -911,6 +916,9 @@ public static partial class MistakeHttpEndpoints
                 return bindingDecision.ToHttpResponse();
         }
 
+        var beforeComplete=await mistakeService.GetMistakeItemsByUploadAsync(request.SourceUploadId);
+        if(beforeComplete?.Any(i=>i.SourceRegions.Any(r=>ReservedSourceTargetPath.IsReserved(r.SourceImagePath)))==true)
+            return IntakeError("reserved_target",409);
         try
         {
             var result = await mistakeService.CompleteUploadReviewAsync(
@@ -956,6 +964,7 @@ public static partial class MistakeHttpEndpoints
                     try
                     {
                         var newPath = "mistakes/" + oldPath.Substring("uploads/".Length);
+                        ReservedSourceTargetPath.EnsureLegacy(oldPath);ReservedSourceTargetPath.EnsureLegacy(newPath);
                         await ossService.CopyObjectAsync(oldPath, newPath).ConfigureAwait(false);
                         await ossService.DeleteAsync(oldPath).ConfigureAwait(false);
                         pathMapping[oldPath] = newPath;
@@ -1182,7 +1191,9 @@ public static partial class MistakeHttpEndpoints
             if (user.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user)))
                 return IntakeError("authentication_required", 401);
             if (managed != null && !string.IsNullOrWhiteSpace(request.Size) && request.Size != "full") return IntakeError("managed_full_only", 400);
-            var permission = await resourceAuthz.DecidePresignedAccessAsync("source intake image read", user, request.ObjectPath, ct);
+            var permission = ReservedSourceTargetPath.IsReserved(request.ObjectPath) && managed!=null
+                ? await resourceAuthz.DecideItemOwnershipAsync("source target image read",user,request.ObjectPath,managed,ct)
+                : await resourceAuthz.DecidePresignedAccessAsync("source intake image read", user, request.ObjectPath, ct);
             if (!permission.Allowed) return permission.ToHttpResponse();
             if (managed != null)
             {

@@ -21,7 +21,7 @@ dotnet test Ruoyu.Study.Mistake.sln --configuration Release --filter FullyQualif
 1. 停止 Mistake 全部写入，核实 PostgreSQL 主机、库名、版本、容量、备份保管位置与维护账号权限；确认是精确受支持的 EF 历史形态或受支持的三历史 text 路径形态（含精确小写索引变体）。旧 `public.mistake`、其他误盖章及未知/混合结构直接停止，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK)；不得删表或手工写迁移历史。
 2. 用 PostgreSQL **15** 客户端对停写的源库作 custom-format dump，记录源库结构、四张业务表中实际存在的表及 `__EFMigrationsHistory` 的行数、稳定 ID、外键、关键索引、JSONB 路径与内容。InitialCreate 的 `mistake_practice.image_paths` 是 text，升级后才是 jsonb。清单只存受保护位置；不要把备份文件、凭据或业务明文提交到仓库。
 3. 新建一只**不同名称的空测试库**，向该库执行 `pg_restore --single-transaction --exit-on-error`。检查退出状态后，再独立查询恢复库的结构、历史、行数、ID、引用及关键内容，与源库清单逐项比较。仅 dump 文件存在、`pg_restore` 成功或表数一致都不足以确认可恢复。若有失败、取消、容量不足或权限错误，标记该目标库不可用，保留无敏感内容的诊断，另建空库重试；不得覆盖源库。
-4. 恢复库匹配后，才可把**该次备份**记为已验证。受支持的旧 EF 与精确 text 路径形态可在隔离恢复库用精确目标库名、停写与已验证备份确认运行 `--upgrade-known-db`，随后核对五条历史、四张表、行/ID/引用及只读启动。对生产库是否升级仍需操作者独立确认同一源库备份和当前停写状态；测试结果不能自动授权生产操作。
+4. 恢复库匹配后，才可把**该次备份**记为已验证。受支持的旧 EF 与精确 text 路径形态可在隔离恢复库用精确目标库名、停写与已验证备份确认运行 `--upgrade-known-db`，随后核对七条历史、全部业务/source/group/request/target object/attempt表、行/ID/引用和函数/trigger/FK保护及只读启动。对生产库是否升级仍需操作者独立确认同一源库备份和当前停写状态；测试结果不能自动授权生产操作。
 5. 若升级后行为异常或提交结果不明，继续停写，先查询当前库实际 schema、历史和业务行；从原备份**再建新库**恢复并校验，再决定实际恢复或重试。不要把 EF Down 当作生产恢复保证。
 
 适用范围及显式命令详见[部署说明](./Deployment.md)与[迁移历史](../database/migrations.md)。本演练不证明旧 `public.mistake` 的数据映射，也不证明生产灾备能力。

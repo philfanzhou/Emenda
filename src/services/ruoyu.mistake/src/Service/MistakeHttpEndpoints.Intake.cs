@@ -29,6 +29,14 @@ public static partial class MistakeHttpEndpoints
         var result=await intake.GetAsync(sourceId,revision,ct);
         return result==null ? IntakeError("intake_not_found",404) : Results.Ok(result);
     }
+    private static async Task<IResult> ResumeSourceTargetsAsync(Guid sourceId,Guid revision,ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService authorization,ISourceTargetService targets,CancellationToken ct)
+    {
+        var error=IntakeRole(user,authorization,MistakeResourceAccessGate.AdminOnly);
+        if(error!=null)return error;
+        if(sourceId==Guid.Empty || revision==Guid.Empty)return IntakeError("invalid_condition",400);
+        return Results.Ok(await targets.ResumeTargetsAsync(sourceId,revision,ct));
+    }
     private static async ValueTask<object?> IntakeEndpointFilterAsync(EndpointFilterInvocationContext context,EndpointFilterDelegate next)
     {
         try
@@ -47,6 +55,8 @@ public static partial class MistakeHttpEndpoints
                     var result=await context.HttpContext.AuthenticateAsync(name);
                     if(result.Succeeded && result.Principal!=null) identities.AddRange(result.Principal.Identities);
                 }
+                if(identities.Count==0 && context.Arguments.OfType<GetPresignedUrlRequest>().Any(r=>Ruoyu.Study.Common.Oss.ReservedSourceTargetPath.IsReserved(r.ObjectPath)))
+                    return IntakeError("authentication_required",401);
                 if(identities.Count>0)
                 {
                     context.HttpContext.User=new ClaimsPrincipal(identities);
@@ -94,7 +104,7 @@ public static partial class MistakeHttpEndpoints
         catch (Exception ex) when (FindDatabaseError(ex)!=null)
         {
             var database=FindDatabaseError(ex)!;
-            var kind=new[] {"source_managed","handoff_pending","legacy_source_conflict","lease_lost","grouping_conflict"}
+            var kind=new[] {"source_managed","handoff_pending","legacy_source_conflict","lease_lost","grouping_conflict","target_managed","target_unverified","target_binding","reserved_target"}
                 .FirstOrDefault(k=>database.Message.Contains(k,StringComparison.Ordinal));
             return IntakeError(kind ?? "database_unavailable",kind==null ? 503 : 409);
         }
@@ -114,7 +124,7 @@ public static partial class MistakeHttpEndpoints
                 return intake.Enabled || add.ExpectedContentRevision.HasValue || add.RequestKey.HasValue
                     || await intake.HasManagedDataAsync(sourceId:add.SourceUploadId,ct:ct);
             if(argument is GetPresignedUrlRequest image && !string.IsNullOrWhiteSpace(image.ObjectPath))
-                return await intake.GetManagedObjectStudentAsync(image.ObjectPath,ct)!=null
+                return Ruoyu.Study.Common.Oss.ReservedSourceTargetPath.IsReserved(image.ObjectPath) || await intake.GetManagedObjectStudentAsync(image.ObjectPath,ct)!=null
                     || await intake.IsManagedPracticeObjectAsync(image.ObjectPath,ct);
             if(argument is GetReanalyzeJobsRequest jobs && jobs.JobIds is {Count: >0 and <=100})
             {

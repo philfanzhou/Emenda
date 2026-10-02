@@ -227,7 +227,13 @@ public sealed class SourceIntakePostgresTests
     public async Task RealBackupRestoreKeepsManifestRequestModeLeaseItemLogAndDowngradeGuardAsync()
     {
         await using var f=await SourceIntakeFixture.CreateAsync();var source=await f.SeedAsync();var key=Guid.NewGuid();var result=await f.ManualAsync(source,key);
-        await using(var db=f.Context())await Assert.ThrowsAnyAsync<Exception>(()=>db.GetService<IMigrator>().MigrateAsync("20260930000001_LeaseReanalyzeJobs"));
+        await using(var db=f.Context())
+        {
+            await Assert.ThrowsAnyAsync<Exception>(()=>db.GetService<IMigrator>().MigrateAsync("20260930000001_LeaseReanalyzeJobs"));
+            // Empty target migration can downgrade before the older nonempty intake guard rejects.
+            await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
+            await DatabaseInitializer.UpgradeKnownAsync(db,f.Name,true,true);
+        }
         await f.StartAsync();
         using(var confirm=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{result.Single().Id}/review",new{reviewStatus=2,reviewerId=f.Actor.ToString()},f.Token()))Assert.Equal(HttpStatusCode.OK,confirm.StatusCode);
         using(var practice=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{result.Single().Id}/practices",new{studentId=source.StudentId,isCorrect=true,studentAnswer="retained"},f.Token("user")))Assert.Equal(HttpStatusCode.OK,practice.StatusCode);
