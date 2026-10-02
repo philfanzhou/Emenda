@@ -318,7 +318,14 @@ else
                      ?? "http://localhost:5005";
     studentAddressSource = "Platform";
 }
+var studentServiceAuthentication = StudentServiceAuthenticationOptions.Read(builder.Configuration, studentBaseUrl);
+if (studentServiceAuthentication.Enabled && !studentEnabled)
+    throw new InvalidOperationException("Mistake:Student:ServiceAuthentication:Enabled requires Mistake:Student:Enabled.");
+builder.Services.AddSingleton(studentServiceAuthentication);
+builder.Services.AddTransient<StudentServiceTokenHandler>();
 builder.Services.AddStudentHttpClient(studentBaseUrl);
+builder.Services.AddHttpClient<IStudentHttpClient, StudentHttpClient>()
+    .AddHttpMessageHandler<StudentServiceTokenHandler>();
 builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 
 // Readiness dependency matrix (IKJFIX): registered after every capability
