@@ -1,3 +1,4 @@
+using Ruoyu.Study.Common.StorageReferences;
 using System.Data.Common;
 namespace Ruoyu.Study.Mistake.Database;
 
@@ -29,7 +30,7 @@ internal static class SourceIntakeCatalog
         "FK_source_intake_group_created_log|f|created_log_id|process_log|id|r|V",
         "PK_source_intake_request|p|actor,action,request_key|-|-|-|V",
         "FK_source_intake_request_source_intake|f|source_upload_id,content_revision|source_intake|source_upload_id,content_revision|r|V"];
-    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false)
+    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false)
     {
         await using var command=connection.CreateCommand();
         command.CommandText="""
@@ -41,6 +42,7 @@ internal static class SourceIntakeCatalog
         if(targets) foreach(var pair in SourceTargetSchema.Bodies) bodies.Add(pair.Key,pair.Value);
         if(returns) { bodies["guard_managed_item"]=SourceReturnSchema.ManagedItemBody; foreach(var pair in SourceReturnSchema.Bodies) bodies.Add(pair.Key,pair.Value); }
         if(handoffs) foreach(var pair in SourceHandoffSchema.Bodies) bodies[pair.Key]=pair.Value;
+        if(references) bodies.Add("guard_storage_reference_snapshot",StorageReferenceSchema.GuardBody);
         var found=new HashSet<string>(StringComparer.Ordinal);
         while(await reader.ReadAsync(ct))
         {
@@ -52,7 +54,7 @@ internal static class SourceIntakeCatalog
         }
         return found.SetEquals(bodies.Keys) ? null : "missing source intake routine.";
     }
-    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false)
+    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false)
     {
         var expected=new HashSet<string>(StringComparer.Ordinal)
         {
@@ -73,6 +75,7 @@ internal static class SourceIntakeCatalog
         if(targets) expected.UnionWith(SourceTargetSchema.Triggers);
         if(returns) expected.UnionWith(SourceReturnSchema.Triggers);
         if(handoffs) expected.UnionWith(SourceHandoffCatalog.Triggers);
+        if(references) expected.UnionWith(StorageReferenceSchema.Triggers);
         await using var command=connection.CreateCommand();
         command.CommandText="""
             SELECT c.relname,t.tgname,t.tgtype,p.proname,t.tgdeferrable,t.tginitdeferred,t.tgnargs,t.tgenabled,t.tgqual IS NULL

@@ -1,3 +1,4 @@
+using Ruoyu.Study.Common.StorageReferences;
 using System.Data.Common;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
@@ -356,6 +357,8 @@ builder.Services.AddScoped<MistakeReadinessProbe>();
 builder.Services.AddSingleton(new MistakeApiResourceAuthOptions { Enabled = resourceApiAuth });
 builder.Services.AddScoped<IMistakeApiResourceAuthorizationService, MistakeApiResourceAuthorizationService>();
 
+builder.Services.AddStorageReferences(builder.Configuration, connectionString ?? "", "mistake");
+
 var app = builder.Build();
 
 app.Logger.LogInformation("Mistake Service starting");
@@ -429,6 +432,8 @@ app.MapMistakeHttpEndpoints(requireAuthenticatedApi: strictApiAuth);
 // Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.
 app.MapMistakeHealthEndpoints();
 app.MapGet("/", () => "Mistake WebAPI host is running.");
+
+app.MapStorageReferences();
 
 app.Run();
 

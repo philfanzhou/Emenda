@@ -145,7 +145,7 @@ public sealed class SourceTargetPostgresTests
             await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
             await DatabaseInitializer.UpgradeKnownAsync(db,f.Name,true,true);
         }
-        Assert.Equal(item.Id,await f.ScalarAsync<Guid>("SELECT id FROM mistake_item"));Assert.Equal(9,await f.ScalarAsync<int>("SELECT count(*)::int FROM \"__EFMigrationsHistory\""));
+        Assert.Equal(item.Id,await f.ScalarAsync<Guid>("SELECT id FROM mistake_item"));Assert.Equal(10,await f.ScalarAsync<int>("SELECT count(*)::int FROM \"__EFMigrationsHistory\""));
         f.Copy=(_,_)=>throw new IOException("Injected outage preserves reservation.");await Assert.ThrowsAsync<SourceIntakeException>(()=>f.Service().ResumeTargetsAsync(source.Id,source.ContentRevision));
         var dump=await f.BackupAsync();
         // Destroy only this random fixture database, then exercise an actual pg_dump restoration.

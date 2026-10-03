@@ -36,7 +36,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        Assert.Equal(9, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(4, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == running)).Status);
         Assert.Equal("upgrade_interrupted", (await context.ReanalyzeJobs.SingleAsync(j => j.Id == running)).ErrorMessage);
         Assert.Equal(1, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == pending)).Status);
@@ -70,7 +70,7 @@ public sealed class ReadOnlyStartupPostgresTests
 
         await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        Assert.Equal(9, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
         Assert.Equal(job, (await context.ReanalyzeJobs.SingleAsync()).Id);
         Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
@@ -154,7 +154,7 @@ public sealed class ReadOnlyStartupPostgresTests
         }));
         await using var check = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
-        Assert.Equal(9, (await check.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await check.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Theory]
@@ -360,7 +360,7 @@ public sealed class ReadOnlyStartupPostgresTests
 
     private static async Task AssertMisstampedTargetAsync(MistakeDbContext context, Guid item, Guid practice, Guid log, Guid job)
     {
-        Assert.Equal(9, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
         var savedPractice = await context.MistakePractices.SingleAsync();
         Assert.Equal(practice, savedPractice.Id);
@@ -398,13 +398,15 @@ public sealed class ReadOnlyStartupPostgresTests
     [InlineData(5, false)]
     [InlineData(6, false)]
     [InlineData(7, false)]
+    [InlineData(8, false)]
+    [InlineData(9, false)]
     public async Task KnownHistoryUpgradesRowsAndReferencesToOneRepeatableTarget(int version, bool renamed)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
         await context.GetService<IMigrator>().MigrateAsync(version switch
         {
-            1 => Initial, 2 => ProcessLog, 3 => Reanalyze, 4 => RootCause, 5 => "20260930000001_LeaseReanalyzeJobs", 6 => SourceIntakeSchema.Migration, 7 => SourceTargetSchema.Migration, _ => null
+            1 => Initial, 2 => ProcessLog, 3 => Reanalyze, 4 => RootCause, 5 => "20260930000001_LeaseReanalyzeJobs", 6 => SourceIntakeSchema.Migration, 7 => SourceTargetSchema.Migration, 8 => SourceReturnSchema.Migration, 9 => SourceHandoffSchema.Migration, _ => null
         });
         if (renamed)
             await database.ExecuteAsync("ALTER TABLE mistake_item RENAME COLUMN review_comment TO root_cause");
@@ -430,7 +432,7 @@ public sealed class ReadOnlyStartupPostgresTests
             await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
 
         await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
-        Assert.Equal(9, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         var savedItem = await context.MistakeItems.SingleAsync();
         var savedPractice = await context.MistakePractices.SingleAsync();
@@ -496,7 +498,7 @@ public sealed class ReadOnlyStartupPostgresTests
         }));
         await using var check = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
-        Assert.Equal(9, (await check.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await check.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal("uploads/fixed", Assert.Single((await check.MistakePractices.SingleAsync()).ImagePaths));
     }
 
@@ -595,7 +597,7 @@ public sealed class ReadOnlyStartupPostgresTests
 
         await DatabaseInitializer.UpgradeEmptyAsync(context);
         var after = await database.SnapshotAsync();
-        Assert.Equal(9, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         await DatabaseInitializer.UpgradeEmptyAsync(context);
@@ -699,7 +701,7 @@ public sealed class ReadOnlyStartupPostgresTests
             await DatabaseInitializer.UpgradeEmptyAsync(context);
         }));
         await using var check = database.CreateContext();
-        Assert.Equal(9, (await check.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10, (await check.Database.GetAppliedMigrationsAsync()).Count());
         await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
     }
 

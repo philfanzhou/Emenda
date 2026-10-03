@@ -59,3 +59,5 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 PostgreSQL（Npgsql 提供程序）。
 
 - [来源入库数据](./tables/source_intake.md)
+
+[StorageReferences v1](../../../../../docs/integrations/StorageReferences.md)包含本域引用全集、shared snapshot schema/迁移、配置与验证门禁。
