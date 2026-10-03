@@ -93,22 +93,22 @@ caller复用真实登录cookie/CSRF、Code/S256与真实RS256/JWKS验证；接�
 
 ## 显式 Student-enabled 两模式运行
 
-`--student-enabled-fixture /absolute/path/fixture.json --seaweed-image <image@sha256:digest>` 在原19格及可选 strict 阶段之后，串行启动同 commit 的真实 Student/Mistake Release Host。fixture 沿上述真实 provider 字段，并增加 `runtime_image`（固定 .NET 8 ASP.NET 镜像 digest）和 `issuer_control`（`container`、`label`、`owner`，只能控制部署者授权的 owned provider 容器）。文件0600、父目录0700、不得 symlink；缺输入或所有权不匹配直接失败。Seaweed 使用 `volume.max=32`、800MiB 上限，等待未认证 S3 root 返回403后建随机桶；无需预装 MinIO Server。MC 仍由显式镜像提供建桶/seed工具。
+`--student-enabled-fixture /absolute/path/fixture.json --seaweed-image <image@sha256:digest> --transport-image <python-3.11@sha256:digest>` 在原19格及可选 strict 阶段之后，串行启动同 commit 的真实 Student/Mistake Release Host。fixture 沿上述真实 provider 字段，并增加 `runtime_image`（固定 .NET 8 ASP.NET 镜像 digest）和 `issuer_control`（`container`、`label`、`owner`，只能控制部署者授权的 owned provider 容器）。文件0600、父目录0700、不得 symlink；缺输入或所有权不匹配直接失败。Seaweed 使用 `volume.max=32`、800MiB 上限，等待未认证 S3 root 返回403后建随机桶；无需预装 MinIO Server。MC 仍由显式镜像提供建桶/seed工具。
 
 ```bash
 bash script/build-script/07-mistake.isolated-deploy-verification.sh \
   --target /absolute/owned/runtime-run --commit <exact-sha> \
   --pg-image <postgres-15.18@sha256:digest> --mc-image <mc@sha256:digest> \
-  --seaweed-image <seaweed-4.48@sha256:digest> \
+  --seaweed-image <seaweed-4.48@sha256:digest> --transport-image <python-3.11@sha256:digest> \
   --strict-fixture /absolute/private/provider.json \
   --student-enabled-fixture /absolute/private/provider.json
 python3 -m unittest discover -s tests/deployment -p test_runtime_transport.py -v
 ```
 
-Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG 库，actual Student 位于 owned Docker network、固定5005，前方是自有正常 CA/SAN HTTPS transport；Mistake 是独立原生进程与随机 HTTP1 端口。共享环境的 DNS、CA、issuer密钥/seed、KV与业务库不修改。VL 仅使用明确授权的确定性兼容 HTTP dependency；真实上传、分类、采集与后续 worker 均走生产 Host。当前 SimpleClassifier 全部标 mistake，mixed 格在真实上传/分类后、首次 snapshot 前只通过正常 SQL guard 设置新增 homework 类型，报告这一受控输入边界。
+Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG 库，actual Student 位于 owned Docker network、固定5005，前方是自有正常 CA/SAN HTTPS transport；PG fault transport是同自有 network 的80MiB独立容器（Student走内部DNS5433，Mistake走绑定127的随机高端口），不开放共享防火墙；Mistake 是独立原生进程与随机 HTTP1 端口。共享环境的 DNS、CA、issuer密钥/seed、KV与业务库不修改。VL 仅使用明确授权的确定性兼容 HTTP dependency；真实上传、分类、采集与后续 worker 均走生产 Host。当前 SimpleClassifier 全部标 mistake，mixed 格在真实上传/分类后、首次 snapshot 前只通过正常 SQL guard 设置新增 homework 类型，报告这一受控输入边界。
 
 逐 cell 覆盖实际启动与5项依赖、单/多图/多crop/manual多批、完整 automatic worker、正反 receipt、练习/reanalysis/签名图片、合法 COW/newrevision、永久重放；Student/Mistake COMMIT 前/中/后、S3 Copy 后丢响应、历史 GET 失败、两个独立实例竞争与旧 fence 拒绝；正常业务认证/TLS、逐个停止自己的 PG/S3/Student/provider并恢复、显式关闭、实际1–9已知历史升级、双库完整 dump→新库 restore、guards与非空 Down、unknown schema、30秒SIGTERM重启。故障在恢复前单独保存事实与真实结果；PG during 格使用仅 owned DB 的临时 deferred trigger 等待，并确认选中 backend 在 PgSleep 后终止，移除临时 trigger后才冷启。未知 S3响应保留已实际复制的随机候选键，不覆写、不补偿删除。
 
-`.deploy-verify/enabled/summary.json` 保存固定 head/digest/UTC、每 cell 布尔、0 dependency skips、owner manifest 与 before/after 无关容器核对。受限 Host 日志、双库 dumps、连接/证书/服务密钥与恢复参数在 target 的 `private/`，不可公开上传；公开报告只保存 hash/count/status，不保存 bearer、code/cookie、密码或签名URL。失败保留属于本次 owner 的容器/库/对象/日志；成功清理时同时核对精确名称及 owner label，删除自身匿名 PG volume，拒绝无关资源。程序只停止其自身 Popen PID，取消传播至自身 listeners，并保留已提交历史；不得清理归档或物理 GC。
+`.deploy-verify/enabled/summary.json` 保存固定 head/digest/UTC、每 cell 布尔、0 dependency skips、owner manifest 与 before/after 无关容器核对（Mounts仅按Destination规范无序集合，保留全部字段）。受限 Host 日志、双库 dumps、连接/证书/服务密钥与恢复参数在 target 的 `private/`，不可公开上传；公开报告只保存 hash/count/status，不保存 bearer、code/cookie、密码或签名URL。失败保留属于本次 owner 的容器/库/对象/日志；成功清理时同时核对精确名称及 owner label，删除自身匿名 PG volume，拒绝无关资源。程序只停止其自身 Popen PID，取消传播至自身 listeners，并保留已提交历史；不得清理归档或物理 GC。
 
 本地 transport 测试只验证协议 fault 选择和安全参数退出，不代表真实运行验收；只有完整矩阵结果可作为运行门禁。诊断用 subset 明确不是完整验收并返回失败，不能用于发布 SUCCESS。该运行证据不关闭原父的 fullrefs/fixed Admin/legacy/physical release 范围。
