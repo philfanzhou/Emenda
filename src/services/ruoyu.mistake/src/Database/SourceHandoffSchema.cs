@@ -36,8 +36,9 @@ public static class SourceHandoffSchema
         END IF;
         IF TG_OP='INSERT' THEN RETURN NEW; END IF;
         """);
-    public static string ItemBody=>SourceReturnSchema.ManagedItemBody.Replace("BEGIN", """
-        BEGIN
+    public static string ItemBody=>SourceReturnSchema.ManagedItemBody.Replace(
+        "PERFORM pg_advisory_xact_lock(hashtextextended(source_key,791249));", """
+        PERFORM pg_advisory_xact_lock(hashtextextended(source_key,791249));
           IF TG_OP='UPDATE' AND EXISTS(SELECT 1 FROM source_intake_group g JOIN source_handoff h USING(source_upload_id,content_revision) WHERE g.item_id=OLD.id)
             AND NEW.review_status IS DISTINCT FROM OLD.review_status THEN
             RAISE EXCEPTION 'source_sealed' USING ERRCODE='P0001'; END IF;

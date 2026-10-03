@@ -58,6 +58,71 @@ public sealed class SourceHandoffPostgresTests
         {using var confirmed=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{item.Id}/review",new {reviewStatus=2,reviewerId=f.Actor},f.Token("teacher"));Assert.Equal(HttpStatusCode.OK,confirmed.StatusCode);}
         f.Fault.CommitCount=0;return record;
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WaitingOldWriterRechecksTerminalStatusAfterSourceLockAsync(bool seal)
+    {
+        await using var f=await FixtureAsync();var record=await ReadyAsync(f);
+        var other=await ReadyAsync(f);
+        await using var owner=new NpgsqlConnection(f.Connection);await owner.OpenAsync();
+        await using var transaction=await owner.BeginTransactionAsync();
+        async Task SqlAsync(string sql)
+        {
+            await using var command=new NpgsqlCommand(sql,owner,transaction);
+            command.Parameters.AddWithValue("source",record.Id);command.Parameters.AddWithValue("revision",record.ContentRevision);
+            await command.ExecuteNonQueryAsync();
+        }
+        await SqlAsync("SELECT pg_advisory_xact_lock(hashtextextended(@source::text,791249))");
+        var applicationName="handoff-waiting-writer-"+Guid.NewGuid().ToString("N");
+        await using var writer=new NpgsqlConnection(new NpgsqlConnectionStringBuilder(f.Connection){ApplicationName=applicationName}.ConnectionString);
+        await writer.OpenAsync();
+        await using var update=new NpgsqlCommand("UPDATE mistake_item SET review_status=1 WHERE source_upload_id=@source",writer){CommandTimeout=20};
+        update.Parameters.AddWithValue("source",record.Id.ToString("D"));
+        var waitingWrite=update.ExecuteNonQueryAsync();
+        try
+        {
+            var blocked=false;var deadline=DateTime.UtcNow.AddSeconds(10);
+            while(!blocked && DateTime.UtcNow<deadline)
+            {
+                await SqlAsync("SELECT pg_stat_clear_snapshot()");
+                await using var observation=new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE application_name=@name AND wait_event='advisory')",owner,transaction);
+                observation.Parameters.AddWithValue("name",applicationName);blocked=(bool)(await observation.ExecuteScalarAsync())!;
+                if(!blocked)await Task.Delay(25);
+            }
+            Assert.True(blocked,"The old writer must wait on the source advisory lock before sealing.");
+            // A different source remains writable while this source is locked.
+            await f.SqlAsync("UPDATE mistake_item SET review_status=1 WHERE source_upload_id=@source",new NpgsqlParameter("source",other.Id.ToString("D")));
+            if(seal)
+            {
+                await SqlAsync("UPDATE source_intake SET owner_id=gen_random_uuid(),fence=fence+1,lease_until=clock_timestamp()+interval '60 seconds' WHERE source_upload_id=@source AND content_revision=@revision");
+                await SqlAsync("""
+                    WITH groups AS(SELECT handoff_encode(VARIADIC ARRAY['mistake-handoff-groups-v1']||array_agg(handoff_encode(item_id::text,canonical) ORDER BY item_id::text COLLATE "C")) canonical FROM source_intake_group WHERE source_upload_id=@source AND content_revision=@revision),
+                    targets AS(SELECT jsonb_agg(jsonb_build_object('sourcePath',o.source_path,'targetKey',a.target_key,'length',o.expected_length,'sha256',o.expected_sha256) ORDER BY handoff_sort_key(o.source_path) COLLATE "C")::text payload FROM source_target_object o JOIN source_target_attempt a ON a.attempt_id=o.selected_attempt_id WHERE o.source_upload_id=@source AND o.content_revision=@revision AND a.phase='Verified'),
+                    fixed AS(SELECT s.*,g.canonical groups_canonical,encode(sha256(convert_to(g.canonical,'UTF8')),'hex') groups_digest,t.payload targets FROM source_intake s CROSS JOIN groups g CROSS JOIN targets t WHERE s.source_upload_id=@source AND s.content_revision=@revision),
+                    encoded AS(SELECT f.*,handoff_payload(source_upload_id,content_revision,snapshot_id,student_id,groups_digest,targets) canonical FROM fixed f)
+                    INSERT INTO source_handoff(source_upload_id,content_revision,snapshot_id,student_id,operation_id,actor,sealed_at,groups_canonical,groups_digest,targets,payload_canonical,payload_digest,owner_id,fence,phase)
+                    SELECT source_upload_id,content_revision,snapshot_id,student_id,'mistake-handoff:'||snapshot_id::text,'ruoyu.mistake',clock_timestamp(),groups_canonical,groups_digest,targets,canonical,encode(sha256(convert_to(canonical,'UTF8')),'hex'),owner_id,fence,'Prepared' FROM encoded
+                    """);
+            }
+            await transaction.CommitAsync();
+            if(seal)
+            {
+                var rejected=await Assert.ThrowsAsync<PostgresException>(async()=>await waitingWrite.WaitAsync(TimeSpan.FromSeconds(10)));
+                Assert.Equal("P0001",rejected.SqlState);Assert.Equal("source_sealed",rejected.MessageText);
+            }
+            else Assert.Equal(1,await waitingWrite.WaitAsync(TimeSpan.FromSeconds(10)));
+            await using var final=f.Context();
+            Assert.Equal(seal ? 2 : 1,(await final.MistakeItems.SingleAsync(i=>i.SourceUploadId==record.Id.ToString("D"))).ReviewStatus);
+            Assert.Equal(1,(await final.MistakeItems.SingleAsync(i=>i.SourceUploadId==other.Id.ToString("D"))).ReviewStatus);
+            if(seal)Assert.Equal("Prepared",(await final.SourceHandoffs.SingleAsync()).Phase);
+            else Assert.Empty(await final.SourceHandoffs.ToListAsync());
+        }
+        finally
+        {
+            if(!waitingWrite.IsCompleted){update.Cancel();try{await waitingWrite;}catch(PostgresException){ }catch(OperationCanceledException){ }}
+        }
+    }
     [Fact]
     public async Task IncompleteManualThenMultipleCropGroupsSealAllAndExistingCreateReplaysAsync()
     {
