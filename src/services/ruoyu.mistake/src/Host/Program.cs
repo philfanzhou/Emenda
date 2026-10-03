@@ -130,6 +130,12 @@ var returnsEnabled=returnValue is null ? false : bool.TryParse(returnValue,out v
 if(returnsEnabled && (!studentEnabled || !strictApiAuth || !resourceApiAuth))
     throw new InvalidOperationException("Source returns require Student, strict API authentication and resource authorization.");
 builder.Services.AddSingleton(new SourceReturnOptions(returnsEnabled));
+var handoffValue=builder.Configuration["Mistake:SourceHandoffs:Enabled"];
+var handoffsEnabled=handoffValue is null ? false : bool.TryParse(handoffValue,out var parsedHandoffs)
+    ? parsedHandoffs : throw new InvalidOperationException("Mistake:SourceHandoffs:Enabled must be true or false.");
+if(handoffsEnabled && (!studentEnabled || !strictApiAuth || !resourceApiAuth))
+    throw new InvalidOperationException("Source handoffs require Student, strict API authentication and resource authorization.");
+builder.Services.AddSingleton(new SourceHandoffOptions(handoffsEnabled));
 
 
 var identityTrustOptions = builder.Configuration
@@ -188,7 +194,7 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 // An enabled source intake must validate its credential and HTTPS snapshot even for explicit upgrade commands.
-var intakeSettings = (intakeEnabled || returnsEnabled) ? ResolveStudentSettings() : ((string Url, string Source, StudentServiceAuthenticationOptions Authentication)?)null;
+var intakeSettings = (intakeEnabled || returnsEnabled || handoffsEnabled) ? ResolveStudentSettings() : ((string Url, string Source, StudentServiceAuthenticationOptions Authentication)?)null;
 
 string? connectionString;
 if (localMode)
@@ -315,6 +321,11 @@ builder.Services.AddHttpClient<SourceReturnClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(35);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
   .AddHttpMessageHandler<StudentServiceTokenHandler>();
+builder.Services.AddHttpClient<SourceHandoffClient>(client =>
+{
+    client.BaseAddress=new Uri(studentBaseUrl);client.Timeout=TimeSpan.FromSeconds(35);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler {AllowAutoRedirect=false})
+  .AddHttpMessageHandler<StudentServiceTokenHandler>();
 builder.Services.AddScoped<SourceIntakeService>();
 builder.Services.AddScoped<ISourceIntakeService>(sp => sp.GetRequiredService<SourceIntakeService>());
 builder.Services.AddScoped<IMistakeSourceGuard>(sp => sp.GetRequiredService<SourceIntakeService>());
@@ -322,6 +333,8 @@ builder.Services.AddScoped<ISourceTargetService>(sp => sp.GetRequiredService<Sou
 if(targetsEnabled) builder.Services.AddHostedService<SourceTargetWorker>();
 builder.Services.AddScoped<ISourceReturnService>(sp => sp.GetRequiredService<SourceIntakeService>());
 if(returnsEnabled) builder.Services.AddHostedService<SourceReturnWorker>();
+builder.Services.AddScoped<ISourceHandoffService>(sp=>sp.GetRequiredService<SourceIntakeService>());
+if(handoffsEnabled) builder.Services.AddHostedService<SourceHandoffWorker>();
 builder.Services.AddSingleton(studentServiceAuthentication);
 builder.Services.AddTransient<StudentServiceTokenHandler>();
 builder.Services.AddStudentHttpClient(studentBaseUrl);
@@ -465,9 +478,9 @@ app.Run();
     var studentServiceAuthentication = StudentServiceAuthenticationOptions.Read(builder.Configuration, studentBaseUrl);
     if (studentServiceAuthentication.Enabled && !studentEnabled)
         throw new InvalidOperationException("Mistake:Student:ServiceAuthentication:Enabled requires Mistake:Student:Enabled.");
-    if ((intakeEnabled || returnsEnabled) && (!studentServiceAuthentication.Enabled ||
+    if ((intakeEnabled || returnsEnabled || handoffsEnabled) && (!studentServiceAuthentication.Enabled ||
         !Uri.TryCreate(studentBaseUrl, UriKind.Absolute, out var intakeStudentUri) || intakeStudentUri.Scheme != "https"))
-        throw new InvalidOperationException(intakeEnabled ? "Source intake requires RS256 Student service credentials and HTTPS." : "Source returns require RS256 Student service credentials and HTTPS.");
+        throw new InvalidOperationException(intakeEnabled ? "Source intake requires RS256 Student service credentials and HTTPS." : returnsEnabled ? "Source returns require RS256 Student service credentials and HTTPS." : "Source handoffs require RS256 Student service credentials and HTTPS.");
     return (studentBaseUrl, studentAddressSource, studentServiceAuthentication);
 }
 

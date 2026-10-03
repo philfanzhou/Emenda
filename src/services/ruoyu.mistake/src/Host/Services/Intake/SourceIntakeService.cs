@@ -15,7 +15,7 @@ namespace Ruoyu.Study.Mistake.Host.Services.Intake;
 
 public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContext> databaseOptions,
     SourceIntakeOptions options, SourceSnapshotClient snapshots, IOssService oss,
-    IVlAnalyzer analyzer, IOptions<VlAnalyzerOptions> vlOptions, SourceTargetOptions? targetOptions = null, SourceReturnOptions? returnOptions = null, SourceReturnClient? returns = null) : ISourceIntakeService, IMistakeSourceGuard, ISourceTargetService, ISourceReturnService
+    IVlAnalyzer analyzer, IOptions<VlAnalyzerOptions> vlOptions, SourceTargetOptions? targetOptions = null, SourceReturnOptions? returnOptions = null, SourceReturnClient? returns = null, SourceHandoffOptions? handoffOptions = null, SourceHandoffClient? handoffs = null) : ISourceIntakeService, IMistakeSourceGuard, ISourceTargetService, ISourceReturnService, ISourceHandoffService
 {
     public bool Enabled => options.Enabled;
     private MistakeDbContext Open() => new(databaseOptions);
@@ -119,6 +119,10 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
         {
             var legacyIds = await db.MistakeItems.FromSqlInterpolated($"SELECT * FROM mistake_item WHERE intake_source_key(source_upload_id)={manifest.SourceUploadId.ToString("D")}")
                 .Select(i=>i.Id).ToListAsync(ct);
+            var allowedIds=await (from g in db.SourceIntakeGroups join h in db.SourceHandoffs
+                on new {g.SourceUploadId,g.ContentRevision} equals new {h.SourceUploadId,h.ContentRevision}
+                where g.SourceUploadId==manifest.SourceUploadId && h.Phase=="Completed" && h.StudentId==manifest.StudentId select g.ItemId).ToListAsync(ct);
+            legacyIds=legacyIds.Except(allowedIds).ToList();
             if (legacyIds.Count>0) throw new SourceIntakeException("legacy_source_conflict") { ConflictingItemIds=legacyIds };
             source=new SourceIntakeEntity {SourceUploadId=manifest.SourceUploadId,ContentRevision=manifest.ContentRevision,
                 SnapshotId=manifest.SnapshotId,StudentId=manifest.StudentId,Manifest=JsonSerializer.Serialize(manifest,IntakeCanonical.Json),
@@ -152,6 +156,8 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
                 await transaction.CommitAsync(ct);
                 return (null,[DeserializeResult(same)]);
             }
+            if (await db.SourceHandoffs.AnyAsync(h=>h.SourceUploadId==source.SourceUploadId && h.ContentRevision==source.ContentRevision,ct))
+                throw new SourceIntakeException("source_sealed",409);
             if (source.Mode=="Automatic") throw new SourceIntakeException("source_mode_conflict");
             if (existing.Any(g=>g.Atoms.Intersect(plan!.Atoms,StringComparer.Ordinal).Any())) throw new SourceIntakeException("grouping_conflict");
         }
@@ -205,14 +211,14 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
         }
     }
 
-    private async Task HeartbeatAsync(Lease lease,CancellationTokenSource processing,CancellationToken stop, bool targets = false, bool reverse = false)
+    private async Task HeartbeatAsync(Lease lease,CancellationTokenSource processing,CancellationToken stop, bool targets = false, bool reverse = false, bool forward = false)
     {
         try
         {
             using var timer=new PeriodicTimer(TimeSpan.FromSeconds(20));
             while (await timer.WaitForNextTickAsync(stop))
             {
-                if (!(reverse ? ReturnsEnabled : targets ? TargetsEnabled : Enabled)) { processing.Cancel(); return; }
+                if (!(forward ? HandoffsEnabled : reverse ? ReturnsEnabled : targets ? TargetsEnabled : Enabled)) { processing.Cancel(); return; }
                 await using var db=Open();
                 var changed=await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE source_intake SET lease_until=clock_timestamp()+interval '60 seconds' WHERE source_upload_id={lease.Source} AND content_revision={lease.Revision} AND owner_id={lease.Owner} AND fence={lease.Fence} AND lease_until>clock_timestamp()",stop);
                 if (changed!=1) { processing.Cancel(); return; }
@@ -233,6 +239,7 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
             var source=await LockIntakeAsync(db,lease.Source,lease.Revision,ct) ?? throw new SourceIntakeException("lease_lost");
             if (!Enabled || source.OwnerId!=lease.Owner || source.Fence!=lease.Fence || source.LeaseUntil<=await DbNowAsync(db,ct))
                 throw new SourceIntakeException("lease_lost");
+            if(await db.SourceHandoffs.AnyAsync(h=>h.SourceUploadId==lease.Source && h.ContentRevision==lease.Revision,ct)) throw new SourceIntakeException("source_sealed",409);
             var prior=await db.SourceIntakeGroups.Where(g=>g.SourceUploadId==lease.Source && g.ContentRevision==lease.Revision).ToListAsync(ct);
             var results=new List<MistakeItemModel>();
             foreach (var plan in plans)
@@ -365,7 +372,8 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
         if (source==null) return null;
         var ids=await db.SourceIntakeGroups.Where(g=>g.SourceUploadId==sourceId && g.ContentRevision==revision).Select(g=>g.ItemId).ToListAsync(ct);
         var targets=await TargetViewsAsync(db,sourceId,revision,ct);
-        return new(JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!,source.Mode,source.Fence,source.LeaseUntil,source.Materialized,"SourceRetained",ids,targets,targets.Count>0 && targets.All(t=>t.State=="Verified"),false,(await db.SourceReturns.AsNoTracking().Where(o=>ids.Contains(o.ItemId)).ToListAsync(ct)).Select(ReturnView).ToList());
+        var handoff=await db.SourceHandoffs.AsNoTracking().SingleOrDefaultAsync(h=>h.SourceUploadId==sourceId && h.ContentRevision==revision,ct);
+        return new(JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!,source.Mode,source.Fence,source.LeaseUntil,source.Materialized,"SourceRetained",ids,targets,targets.Count>0 && targets.All(t=>t.State=="Verified"),handoff?.Phase=="Completed",(await db.SourceReturns.AsNoTracking().Where(o=>ids.Contains(o.ItemId)).ToListAsync(ct)).Select(ReturnView).ToList(),handoff==null ? null : HandoffView(handoff));
     }
     public async Task<string?> GetManagedObjectStudentAsync(string path,CancellationToken ct=default)
     {

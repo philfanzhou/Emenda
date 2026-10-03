@@ -18,6 +18,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
             SourceIntakeModel.Configure(modelBuilder);
             SourceTargetModel.Configure(modelBuilder);
             SourceReturnModel.Configure(modelBuilder);
+            SourceHandoffModel.Configure(modelBuilder);
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "8.0.11")

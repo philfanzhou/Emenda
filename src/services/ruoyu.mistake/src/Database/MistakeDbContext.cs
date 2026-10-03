@@ -24,6 +24,7 @@ public class MistakeDbContext : DbContext
     public DbSet<SourceTargetObjectEntity> SourceTargetObjects => Set<SourceTargetObjectEntity>();
     public DbSet<SourceTargetAttemptEntity> SourceTargetAttempts => Set<SourceTargetAttemptEntity>();
 
+    public DbSet<SourceHandoffEntity> SourceHandoffs => Set<SourceHandoffEntity>();
     public DbSet<SourceReturnEntity> SourceReturns => Set<SourceReturnEntity>();
     public DbSet<SourceReturnObjectEntity> SourceReturnObjects => Set<SourceReturnObjectEntity>();
     public DbSet<SourceReturnAttemptEntity> SourceReturnAttempts => Set<SourceReturnAttemptEntity>();
@@ -39,6 +40,7 @@ public class MistakeDbContext : DbContext
         SourceIntakeModel.Configure(modelBuilder);
         SourceTargetModel.Configure(modelBuilder);
         SourceReturnModel.Configure(modelBuilder);
+            SourceHandoffModel.Configure(modelBuilder);
 
         var sourceRegionComparer = new ValueComparer<List<SourceRegionEntry>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),

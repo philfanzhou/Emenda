@@ -16,3 +16,4 @@
 - [SourceTargets](./SourceTargets.md) — 保留来源、持久候选与核验目标恢复性物化。
 
 - [受管持久退回](./SourceReturns.md)
+- [完整来源交接与永久归档](./SourceHandoffs.md)

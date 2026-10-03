@@ -59,6 +59,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
     internal bool ConfiguredVl { get; set; }
     internal bool Enabled { get; set; }=true;
     internal bool TargetsEnabled { get; set; }
+    internal bool HandoffsEnabled { get; set; }
     internal bool ReturnsEnabled { get; set; }
     internal Func<string,string,Task>? Copy { get; set; }
     internal WebApplication? App { get; private set; }
@@ -102,7 +103,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
     }
     internal DbContextOptions<MistakeDbContext> DatabaseOptions=>new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(Connection).AddInterceptors(Fault).Options;
     internal MistakeDbContext Context()=>new(DatabaseOptions);
-    internal SourceIntakeService Service(SourceReturnClient? returnClient=null)=>new(DatabaseOptions,new SourceIntakeOptions(Enabled),Snapshots,Oss.Object,Analyzer.Object,Options.Create(new VlAnalyzerOptions {ApiKey=ConfiguredVl ? "fixture" : ""}),new SourceTargetOptions(TargetsEnabled),new SourceReturnOptions(ReturnsEnabled),returnClient ?? new SourceReturnClient(SnapshotHttp,Identity));
+    internal SourceIntakeService Service(SourceReturnClient? returnClient=null)=>new(DatabaseOptions,new SourceIntakeOptions(Enabled),Snapshots,Oss.Object,Analyzer.Object,Options.Create(new VlAnalyzerOptions {ApiKey=ConfiguredVl ? "fixture" : ""}),new SourceTargetOptions(TargetsEnabled),new SourceReturnOptions(ReturnsEnabled),returnClient ?? new SourceReturnClient(SnapshotHttp,Identity),new SourceHandoffOptions(HandoffsEnabled),new SourceHandoffClient(SnapshotHttp,Identity));
     internal async Task<StudentRecord> SeedAsync(string[]? paths=null,string[]? types=null,int[]? rotations=null)
     {
         var record=await Source.SeedAsync(paths,types:types,rotations:rotations);
@@ -128,7 +129,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
             new SigningCredentials(new RsaSecurityKey(UserKey),SecurityAlgorithms.RsaSha256));
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
-    internal async Task StartAsync(bool strict=true,bool resource=true)
+    internal async Task StartAsync(bool strict=true,bool resource=true,bool handoffWorker=false)
     {
         Client?.Dispose();if(App!=null)await App.DisposeAsync();
         var builder=WebApplication.CreateBuilder();builder.Logging.ClearProviders();builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Error);
@@ -146,11 +147,13 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         builder.Services.AddScoped<IMistakeItemRepository,MistakeItemRepository>();builder.Services.AddScoped<IMistakePracticeRepository,MistakePracticeRepository>();
         builder.Services.AddScoped<IProcessLogRepository,ProcessLogRepository>();builder.Services.AddScoped<IUnitOfWork,UnitOfWork>();
         builder.Services.AddScoped<IMistakeDomainService,MistakeDomainService>();
+        builder.Services.AddSingleton(new SourceHandoffOptions(HandoffsEnabled));builder.Services.AddSingleton(new SourceHandoffClient(SnapshotHttp,Identity));
         builder.Services.AddSingleton(new SourceReturnOptions(ReturnsEnabled));builder.Services.AddSingleton(new SourceReturnClient(SnapshotHttp,Identity));
         builder.Services.AddSingleton(new SourceIntakeOptions(Enabled));builder.Services.AddSingleton(new SourceTargetOptions(TargetsEnabled));builder.Services.AddSingleton(Snapshots);builder.Services.AddSingleton(Oss.Object);
         builder.Services.AddSingleton(Analyzer.Object);builder.Services.AddSingleton(Options.Create(new VlAnalyzerOptions{ApiKey=ConfiguredVl ? "fixture" : ""}));
         builder.Services.AddScoped<SourceIntakeService>();builder.Services.AddScoped<ISourceIntakeService>(s=>s.GetRequiredService<SourceIntakeService>());
         builder.Services.AddScoped<ISourceTargetService>(s=>s.GetRequiredService<SourceIntakeService>());
+        builder.Services.AddScoped<ISourceHandoffService>(s=>s.GetRequiredService<SourceIntakeService>());
         builder.Services.AddScoped<ISourceReturnService>(s=>s.GetRequiredService<SourceIntakeService>());
         builder.Services.AddScoped<IMistakeSourceGuard>(s=>s.GetRequiredService<SourceIntakeService>());
         var studentClient=new StudentHttpClient(SnapshotHttp,NullLogger<StudentHttpClient>.Instance);
@@ -158,6 +161,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         builder.Services.AddSingleton(new StudentCapabilityOptions{Enabled=true});
         builder.Services.AddSingleton(new MistakeApiResourceAuthOptions{Enabled=resource});builder.Services.AddScoped<IMistakeApiResourceAuthorizationService,MistakeApiResourceAuthorizationService>();
         builder.Services.AddScoped<IReanalyzeJobRepository,ReanalyzeJobRepository>();builder.Services.AddScoped<IReanalyzeJobService,ReanalyzeJobService>();
+        if(handoffWorker)builder.Services.AddHostedService<SourceHandoffWorker>();
         App=builder.Build();App.UseAuthentication();App.UseAuthorization();App.MapMistakeHttpEndpoints(strict);await App.StartAsync();
         Client=new HttpClient(new HttpClientHandler{UseProxy=false}){BaseAddress=new Uri(App.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
     }

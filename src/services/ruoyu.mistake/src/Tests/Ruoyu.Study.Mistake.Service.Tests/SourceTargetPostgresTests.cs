@@ -138,14 +138,14 @@ public sealed class SourceTargetPostgresTests
     public async Task KnownSixHistoryNonemptyUpgradeAndDumpRestoreRetainIdsAndResumeAsync()
     {
         await using var f=await FixtureAsync();
-        await using(var db=f.Context()) await db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>().MigrateAsync(SourceIntakeSchema.Migration);
         var source=await f.SeedAsync(["uploads/a.jpg"]);var item=(await f.ManualAsync(source)).Single();
+        await using(var db=f.Context()) await db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>().MigrateAsync(SourceIntakeSchema.Migration);
         await using(var db=f.Context())
         {
             await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
             await DatabaseInitializer.UpgradeKnownAsync(db,f.Name,true,true);
         }
-        Assert.Equal(item.Id,await f.ScalarAsync<Guid>("SELECT id FROM mistake_item"));Assert.Equal(8,await f.ScalarAsync<int>("SELECT count(*)::int FROM \"__EFMigrationsHistory\""));
+        Assert.Equal(item.Id,await f.ScalarAsync<Guid>("SELECT id FROM mistake_item"));Assert.Equal(9,await f.ScalarAsync<int>("SELECT count(*)::int FROM \"__EFMigrationsHistory\""));
         f.Copy=(_,_)=>throw new IOException("Injected outage preserves reservation.");await Assert.ThrowsAsync<SourceIntakeException>(()=>f.Service().ResumeTargetsAsync(source.Id,source.ContentRevision));
         var dump=await f.BackupAsync();
         // Destroy only this random fixture database, then exercise an actual pg_dump restoration.

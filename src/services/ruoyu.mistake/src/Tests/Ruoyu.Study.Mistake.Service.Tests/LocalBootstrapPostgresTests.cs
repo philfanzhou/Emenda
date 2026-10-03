@@ -50,7 +50,7 @@ public sealed class LocalBootstrapPostgresTests
         Assert.Contains("Endpoint: HTTP=5007", normal.Output);
         Assert.Equal(0, consul.RequestCount);
         Assert.Equal(0, loki.RequestCount);
-        Assert.Equal("8", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        Assert.Equal("9", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
     }
 
     [Fact]
@@ -84,13 +84,13 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("Source=Environment", result.Output);
             Assert.Equal("0", await fileDatabase.ScalarAsync("SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relname='mistake_item'"));
-            Assert.Equal("8", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("9", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings.Remove("ConnectionStrings__MistakeLocal");
             var fromFile = await RunHostAsync(["--upgrade-empty-db"], settings);
             Assert.Equal(0, fromFile.ExitCode);
             Assert.Contains("Source=File", fromFile.Output);
-            Assert.Equal("8", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("9", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
                 { Database = environmentDatabase.Name, Password = "wrong-password-marker" }.ConnectionString;
@@ -143,14 +143,14 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Contains("Mode=Platform", fallback.Output);
             Assert.Contains("Source=Cache", fallback.Output);
             Assert.True(consul.RequestCount > 0);
-            Assert.Equal("8", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("9", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment["Mistake__ConfigMode"] = "Platform";
             environment["Database__Name"] = environmentDatabase.Name;
             var overrideResult = await RunHostAsync(["--upgrade-empty-db"], environment);
             Assert.Equal(0, overrideResult.ExitCode);
             Assert.Contains("Mode=Platform", overrideResult.Output);
-            Assert.Equal("8", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("9", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment.Remove("Mistake__Http__Port");
             var invalidCachedPort = await RunHostAsync(["--upgrade-empty-db"], environment);
@@ -688,7 +688,8 @@ public sealed class LocalBootstrapPostgresTests
             else start.Environment[key] = value;
         }
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Cannot start Mistake Host.");
-        var output = process.StandardOutput.ReadToEndAsync();
+        var schemaVerified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var output = ReadOutputAsync();
         var errors = process.StandardError.ReadToEndAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         try
@@ -698,8 +699,14 @@ public sealed class LocalBootstrapPostgresTests
                 try
                 {
                     if (duringStartup is not null) await duringStartup(timeout.Token);
-                    else await Task.WhenAny(process.WaitForExitAsync(timeout.Token),
-                        Task.Delay(startupDelay ?? TimeSpan.FromSeconds(2), timeout.Token));
+                    else
+                    {
+                        if (startupDelay is null)
+                            await Task.WhenAny(process.WaitForExitAsync(timeout.Token),
+                                schemaVerified.Task).WaitAsync(timeout.Token);
+                        await Task.WhenAny(process.WaitForExitAsync(timeout.Token),
+                            Task.Delay(startupDelay ?? TimeSpan.FromSeconds(2), timeout.Token));
+                    }
                 }
                 finally
                 {
@@ -725,6 +732,18 @@ public sealed class LocalBootstrapPostgresTests
         }
         await process.WaitForExitAsync();
         return new RunResult(process.ExitCode, await output + await errors);
+
+        async Task<string> ReadOutputAsync()
+        {
+            var lines = new StringBuilder();
+            while (await process.StandardOutput.ReadLineAsync() is { } line)
+            {
+                lines.AppendLine(line);
+                if (line.Contains("Mistake database schema verified for read-only startup", StringComparison.Ordinal))
+                    schemaVerified.TrySetResult();
+            }
+            return lines.ToString();
+        }
     }
 
     internal sealed record RunResult(int ExitCode, string Output);

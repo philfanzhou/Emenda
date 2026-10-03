@@ -22,6 +22,12 @@ public sealed class StudentServiceTokenHandler : DelegatingHandler
             && Guid.TryParseExact(segments[7], "D", out var revision) && revision != Guid.Empty;
     }
 
+    private static bool IsHandoffRoute(HttpMethod method,Uri uri)
+    {
+        var segments=uri.AbsolutePath.Split('/');
+        return segments.Length==9 && segments[8]=="handoff" && IsSnapshotRoute(method,new UriBuilder(uri){Path=string.Join('/',segments.Take(8))}.Uri);
+    }
+
     private static bool IsReceiptRoute(HttpMethod method, Uri uri)
     {
         var segments=uri.AbsolutePath.Split('/');
@@ -46,6 +52,7 @@ public sealed class StudentServiceTokenHandler : DelegatingHandler
         var scope = path switch
         {
             "/api/uploads/processing/scan" => "uploads.scan",
+            _ when IsHandoffRoute(request.Method, uri) => "uploads.handoff",
             _ when IsReceiptRoute(request.Method, uri) => "uploads.return",
             _ when IsSnapshotRoute(request.Method, uri) => "uploads.snapshot",
             _ when path.StartsWith("/api/integrations/mistake/accounts/", StringComparison.Ordinal) => "accounts.read",

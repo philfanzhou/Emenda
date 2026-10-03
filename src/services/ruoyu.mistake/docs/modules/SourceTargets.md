@@ -20,7 +20,7 @@ Copy 不支持取消或条件创建。取消、超时、响应丢失与进程停
 
 `POST /api/mistakes/intakes/{sourceUploadId}/{revision}/targets` 无自定义路径/hash/student 请求体。GET 同一 intake 路由与 POST 始终只允许有效 Admin；与严格 API 相同的 JWT schemes 验证 issuer/audience/签名/有效期/sub。未知来源 404、并发持有或确定冲突 409、能力禁用/依赖不可用/结果未知未收敛 503；尚未齐备不返回成功。
 
-GET 增加 `targets`（SourcePath/State/TargetKey）、`targetReady` 与 `handoffCompleted`。仅选定 Verified 公开 TargetKey；targetReady 是当前已提交组图片集合齐备，合法新组可能使它重新 false；handoffCompleted 恒为 false。SourceState 恒为 SourceRetained，不作为来源释放或 GC 授权。
+GET 增加 `targets`（SourcePath/State/TargetKey）、`targetReady` 与 `handoffCompleted`。仅选定 Verified 公开 TargetKey；targetReady 是当前已提交组图片集合齐备，合法新组可能使它重新 false；handoffCompleted 仅由[SourceHandoffs](./SourceHandoffs.md)的durable Completed决定；单独targetReady不证明完成。SourceState 恒为 SourceRetained，不作为来源释放或 GC 授权。
 
 选定目标通过已有 `POST /api/mistakes/presigned-url`，`size=full` 读取，签名前再次 Download 核验长度/SHA256。精确目标→来源组→真实 item→student 决定归属，沿用 learner 本人、Staff 审核可见性、Admin 矩阵；learner 学生范围解析失败 503。其他 size、未知/待定/失败候选、错误大小写或失配字节均失败关闭；原图读取继续有效。关闭任意能力开关不降低受管读取的身份与归属校验。
 
@@ -30,7 +30,7 @@ GET 增加 `targets`（SourcePath/State/TargetKey）、`targetReady` 与 `handof
 
 `Mistake:SourceTargets:Enabled` 默认 false，仅接受 bool；true 要求 strict API authentication 与 resource auth 有效，启动时验证已有身份信任配置。无新服务、依赖、Student token 或接口；既有 PostgreSQL 与 OSS 承载处理。关闭只停止新 copy，不撤销安全读取、状态及 guards。
 
-[来源表](../database/tables/source_intake.md)描述 object/attempt 的 restrict 关系、唯一键、永久 pin、选定与 fence guards；[部署](../development/Deployment.md#图片目标启用与恢复)定义当前八历史升级、停写/备份/恢复和回退。
+[来源表](../database/tables/source_intake.md)描述 object/attempt 的 restrict 关系、唯一键、永久 pin、选定与 fence guards；[部署](../development/Deployment.md#图片目标启用与恢复)定义当前九历史升级、停写/备份/恢复和回退。
 
 测试位于 `SourceTargetPostgresTests` 和 `SourceTargetS3Tests`：实际 PG、实际提交响应丢失、取消/晚到 owner、SQL 保护、六历史非空升级、pg_dump/restore、严格 HTTP/full 下载；S3 用当前 S3OssService 的实际 Copy/Download 和任务自有 S3 bucket。只提供专用 PostgreSQL admin 连接和专用 S3 实例，fixture 创建随机数据库/bucket；不得填共享业务环境。配置 `MISTAKE_INTAKE_TEST_CONNECTION`、`STUDENT_SCAN_TEST_CONNECTION`、`MISTAKE_INTAKE_TEST_PG_CONTAINER` 与 `MISTAKE_TARGET_TEST_S3_ENDPOINT` 后运行：
 

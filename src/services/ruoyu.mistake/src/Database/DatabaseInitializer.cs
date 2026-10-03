@@ -188,7 +188,7 @@ public static class DatabaseInitializer
                 await context.GetService<IMigrator>().MigrateAsync(RootCause, cancellationToken).ConfigureAwait(false);
             }
 
-            await context.GetService<IMigrator>().MigrateAsync(SourceReturnSchema.Migration, cancellationToken).ConfigureAwait(false);
+            await context.GetService<IMigrator>().MigrateAsync(SourceHandoffSchema.Migration, cancellationToken).ConfigureAwait(false);
 
             var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
             if (after.Kind != SchemaKind.Ready || !after.Target)
@@ -265,17 +265,18 @@ public static class DatabaseInitializer
         var intakeHistory = new HashSet<string>(leaseHistory, StringComparer.Ordinal) { $"{SourceIntakeSchema.Migration}|8.0.11" };
         var sourceTargetHistory=new HashSet<string>(intakeHistory,StringComparer.Ordinal) { $"{SourceTargetSchema.Migration}|8.0.11" };
         var sourceReturnHistory=new HashSet<string>(sourceTargetHistory,StringComparer.Ordinal) { $"{SourceReturnSchema.Migration}|8.0.11" };
+        var sourceHandoffHistory=new HashSet<string>(sourceReturnHistory,StringComparer.Ordinal) { $"{SourceHandoffSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
 
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version==8);
+            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version==9);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
@@ -284,7 +285,8 @@ public static class DatabaseInitializer
         expectedTables = new HashSet<string>(expectedTables, StringComparer.Ordinal);
         if (version >= 6) expectedTables.UnionWith(SourceIntakeCatalog.Tables);
         if (version >= 7) expectedTables.UnionWith(SourceTargetCatalog.Tables);
-        if (version == 8) expectedTables.UnionWith(SourceReturnCatalog.Tables);
+        if (version >= 8) expectedTables.UnionWith(SourceReturnCatalog.Tables);
+        if (version == 9) expectedTables.UnionWith(SourceHandoffCatalog.Tables);
         var mismatch = Compare("relation", expectedTables, relations);
         if (mismatch is not null) return Invalid(mismatch);
 
@@ -298,7 +300,8 @@ public static class DatabaseInitializer
         var expectedColumns = new HashSet<string>(ExpectedColumns, StringComparer.Ordinal);
         if (version >= 6) expectedColumns.UnionWith(SourceIntakeCatalog.Columns);
         if (version >= 7) expectedColumns.UnionWith(SourceTargetCatalog.Columns);
-        if (version == 8) expectedColumns.UnionWith(SourceReturnCatalog.Columns);
+        if (version >= 8) expectedColumns.UnionWith(SourceReturnCatalog.Columns);
+        if (version == 9) expectedColumns.UnionWith(SourceHandoffCatalog.Columns);
         if (version < 3)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
         else if (version < 5)
@@ -348,7 +351,7 @@ public static class DatabaseInitializer
             """, cancellationToken).ConfigureAwait(false);
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version==8);
+            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version==9);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (triggers.Count > 0) return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");
@@ -366,7 +369,8 @@ public static class DatabaseInitializer
         var expectedIndexes = new HashSet<string>(ExpectedIndexes, StringComparer.Ordinal);
         if (version >= 6) expectedIndexes.UnionWith(SourceIntakeCatalog.Indexes);
         if (version >= 7) expectedIndexes.UnionWith(SourceTargetCatalog.Indexes);
-        if (version == 8) expectedIndexes.UnionWith(SourceReturnCatalog.Indexes);
+        if (version >= 8) expectedIndexes.UnionWith(SourceReturnCatalog.Indexes);
+        if (version == 9) expectedIndexes.UnionWith(SourceHandoffCatalog.Indexes);
         if (version < 3)
             expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
         if (version < 2)
@@ -405,12 +409,13 @@ public static class DatabaseInitializer
         expectedConstraints = new HashSet<string>(expectedConstraints,StringComparer.Ordinal);
         if (version >= 6) expectedConstraints.UnionWith(SourceIntakeCatalog.Constraints);
         if (version >= 7) expectedConstraints.UnionWith(SourceTargetCatalog.Constraints);
-        if (version == 8) expectedConstraints.UnionWith(SourceReturnCatalog.Constraints);
+        if (version >= 8) expectedConstraints.UnionWith(SourceReturnCatalog.Constraints);
+        if (version == 9) expectedConstraints.UnionWith(SourceHandoffCatalog.Constraints);
         mismatch = Compare("constraint", expectedConstraints, constraints);
         if (mismatch is not null) return Invalid(mismatch);
 
         if (version >= 6)
-            return new SchemaState(version==8 ? SchemaKind.Ready : SchemaKind.Known, version==8, version, "Mistake target schema and history are consistent.");
+            return new SchemaState(version==9 ? SchemaKind.Ready : SchemaKind.Known, version==9, version, "Mistake target schema and history are consistent.");
         if (legacyRuntime)
             return new SchemaState(SchemaKind.LegacyRuntime, false, version,
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
