@@ -118,3 +118,5 @@ Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG �
 本地 transport 测试只验证协议 fault 选择和安全参数退出，不代表真实运行验收；只有完整矩阵结果可作为运行门禁。诊断用 subset 明确不是完整验收并返回失败，不能用于发布 SUCCESS。该运行证据不关闭原父的 fullrefs/fixed Admin/legacy/physical release 范围。
 
 旧 owner 场景仅停止该 Mistake 实例独立的自有 PG transport；Student 与接管实例保持真实 PG 连通；接管后按有界 readiness 恢复旧实例 PG，再等待旧 VL 响应尝试。VL 证据分别记录旧响应在接管后的发送尝试与 socket write 结果，后者不等于客户端已经消费响应；无论旧请求被取消或迟到，都核对同一 snapshot、新 fence、唯一 group 与 receipt，不把尝试计数冒称实际送达。
+
+依赖恢复最多等待180秒，ready探测间隔5秒并保存各组件真实恢复结果；每次探测包含实际 discovery/JWKS 请求，不能以高频重试耗尽 owned provider 的 metadata 限流预算。保持 provider 正常限流、TLS 与身份配置，不用关闭校验来恢复通过。
