@@ -107,6 +107,8 @@ python3 -m unittest discover -s tests/deployment -p test_runtime_transport.py -v
 
 Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG 库，actual Student 位于 owned Docker network、固定5005，前方是自有正常 CA/SAN HTTPS transport；PG fault transport是同自有 network 的80MiB独立容器（Student走内部DNS5433，Mistake走绑定127的随机高端口），不开放共享防火墙；Mistake 是独立原生进程与随机 HTTP1 端口。共享环境的 DNS、CA、issuer密钥/seed、KV与业务库不修改。VL 仅使用明确授权的确定性兼容 HTTP dependency；真实上传、分类、采集与后续 worker 均走生产 Host。当前 SimpleClassifier 全部标 mistake，mixed 格在真实上传/分类后、首次 snapshot 前只通过正常 SQL guard 设置新增 homework 类型，报告这一受控输入边界。
 
+两模式显式提供 .NET Host 的 `DOTNET_SHUTDOWNTIMEOUTSECONDS=10`，为在途 HTTP graceful drain 留出有界取消预算，在30秒运维期限内退出。默认 .NET Host 的30秒 drain 不能直接当成“总退出小于30秒”的保证；完整复现必须保留本项配置。native进程与携带凭据的 Student/PG transport 容器均禁用 core dump。
+
 逐 cell 覆盖实际启动与5项依赖、单/多图/多crop/manual多批、完整 automatic worker、正反 receipt、练习/reanalysis/签名图片、合法 COW/newrevision、永久重放；Student/Mistake COMMIT 前/中/后、S3 Copy 后丢响应、历史 GET 失败、两个独立实例竞争与旧 fence 拒绝（旧 worker 的真实 VL 在途时只停本任务 PG transport，新实例走相同 owned PG 的独立连接，按数据库自然时间接管，迟到分析不能重复提交）；正常业务认证/TLS、逐个停止自己的 PG/S3/Student/provider并恢复、显式关闭、实际1–9已知历史升级、双库完整 dump→新库 restore、guards与非空 Down、unknown schema、30秒SIGTERM重启及真实 reverse Copy 在途取消。Provider token 过期格等待真实签发的 `exp` 加启动快照30秒 skew，不伪造签发、不改全局时钟，可能需要等待签发方既有 TTL；等待期间只输出剩余秒数。全状态格通过真实依赖故障产生 forward/reverse Prepared、Sending、Conflict、Completed 和全部候选阶段，显式关闭能力后 dump/restore，确认全字段历史一致，再恢复受控依赖与能力、以原 operation/payload 推进可恢复事实。故障在恢复前单独保存事实与真实结果；PG during 格使用仅 owned DB 的临时 deferred trigger 等待，并确认选中 backend 在 PgSleep 后终止，移除临时 trigger后才冷启。未知 S3响应保留已实际复制的随机候选键，不覆写、不补偿删除。
 
 当前 `S3OssService.CopyObjectAsync` 实际采用 GET 源对象、PUT 候选对象；故障 transport 按该格精确 owned source/item 的候选前缀，在最后 PUT 已由真实 S3 返回200后丢响应，并另保留 server-side COPY 协议测试。不能仅等待 `x-amz-copy-source` 来证明当前生产 copy 在途。
