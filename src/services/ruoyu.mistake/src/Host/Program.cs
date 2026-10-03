@@ -345,9 +345,13 @@ builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 // Readiness dependency matrix (IKJFIX): registered after every capability
 // switch and address is resolved so the snapshot reflects the wired process.
 builder.Services.AddSingleton(new MistakeReadinessSnapshot(
-    studentEnabled, studentBaseUrl, vlAnalyzerOptions.IsConfigured, vlAnalyzerOptions.BaseUrl));
+    studentEnabled, studentBaseUrl, vlAnalyzerOptions.IsConfigured, vlAnalyzerOptions.BaseUrl,
+    strictApiAuth, identityTrustOptions.Authority, identityTrustOptions.Issuer));
 builder.Services.AddHttpClient(MistakeReadinessProbe.HttpClientName)
     .ConfigureHttpClient(client => client.Timeout = MistakeReadinessProbe.ProbeTimeout);
+builder.Services.AddHttpClient(MistakeReadinessProbe.IdentityHttpClientName)
+    .ConfigureHttpClient(client => client.Timeout = MistakeReadinessProbe.ProbeTimeout)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<MistakeReadinessProbe>();
 
 // Per-resource authorization (IKJEPZ): startup snapshot like every identity

@@ -206,4 +206,63 @@ public sealed class MistakeReadinessProbeTests
         db.Ok.Should().BeFalse();
         db.Reason.Should().BeOneOf("connect failed", "timeout");
     }
+
+    [Theory]
+    [InlineData("valid", true, 2)]
+    [InlineData("wrong-issuer", false, 1)]
+    [InlineData("wrong-origin", false, 1)]
+    [InlineData("unavailable", false, 1)]
+    [InlineData("bad-json", false, 1)]
+    [InlineData("empty-keys", false, 2)]
+    public async Task StrictIdentityProbe_ShouldRequireActualDiscoveryAndKeysAsync(
+        string scenario, bool expected, int expectedRequests)
+    {
+        var requests = 0;
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient(MistakeReadinessProbe.IdentityHttpClientName))
+            .Returns(() => new HttpClient(new StubHttpMessageHandler((request, _) =>
+            {
+                requests++;
+                var discovery = request.RequestUri!.AbsolutePath.Contains("openid-configuration");
+                var body = discovery
+                    ? "{\"issuer\":\"https://identity.test\",\"jwks_uri\":\"https://identity.test/.well-known/jwks\"}"
+                    : "{\"keys\":[{\"kty\":\"RSA\"}]}";
+                if (scenario == "wrong-issuer") body = body.Replace("\"issuer\":\"https://identity.test\"", "\"issuer\":\"https://other.test\"");
+                if (scenario == "wrong-origin") body = body.Replace("identity.test/.well-known", "other.test/.well-known");
+                if (scenario == "bad-json") body = "not-json";
+                if (scenario == "empty-keys" && !discovery) body = "{\"keys\":[]}";
+                return Task.FromResult(new HttpResponseMessage(scenario == "unavailable"
+                    ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new StringContent(body) });
+            })));
+        var probe = CreateProbe(httpClientFactory: factory,
+            snapshot: new MistakeReadinessSnapshot(false, "", false, "", true, "https://identity.test", "https://identity.test"));
+
+        var components = await probe.ProbeAsync(CancellationToken.None);
+
+        var issuer = components.Single(x => x.Name == "issuer");
+        issuer.Ok.Should().Be(expected);
+        issuer.Reason.Should().Be(expected ? null : "probe failed");
+        requests.Should().Be(expectedRequests);
+    }
+
+    [Fact]
+    public async Task StrictIdentityProbe_ShouldBoundTimeoutAndPropagateCallerCancellationAsync()
+    {
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient(MistakeReadinessProbe.IdentityHttpClientName))
+            .Returns(() => new HttpClient(new StubHttpMessageHandler(async (_, cancellationToken) =>
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            })) { Timeout = TimeSpan.FromMilliseconds(50) });
+        var probe = CreateProbe(httpClientFactory: factory,
+            snapshot: new MistakeReadinessSnapshot(false, "", false, "", true, "https://identity.test", "https://identity.test"));
+
+        (await probe.ProbeAsync(CancellationToken.None)).Single(x => x.Name == "issuer")
+            .Should().Be(new MistakeReadinessComponent("issuer", false, "timeout"));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await FluentActions.Awaiting(() => probe.ProbeAsync(cancelled.Token))
+            .Should().ThrowAsync<OperationCanceledException>();
+    }
 }
