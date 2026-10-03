@@ -119,6 +119,8 @@ Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG �
 
 旧 owner 场景仅停止该 Mistake 实例独立的自有 PG transport；Student 与接管实例保持真实 PG 连通；接管后按有界 readiness 恢复旧实例 PG，再等待旧 VL 响应尝试。VL 证据分别记录旧响应在接管后的发送尝试与 socket write 结果，后者不等于客户端已经消费响应；无论旧请求被取消或迟到，都核对同一 snapshot、新 fence、唯一 group 与 receipt，不把尝试计数冒称实际送达。
 
+双实例 HTTP 竞争与自然 lease 接管完成后，旧 fence 的直接 SQL 事务拒绝验证先停止两个自有 Mistake writer，再保存完整重复读快照，要求真实 `P0001/source_managed` 和全部表、行、字段逐字不变；随后重启 Host 完成原目标、业务确认与唯一 receipt。冻结仅用于区分拒绝事务的副作用和合法 target worker 推进，不减少独立旧 worker 在途竞态，也不排除任何历史或操作字段。
+
 依赖恢复最多等待180秒，ready探测间隔5秒并保存各组件真实恢复结果；每次探测包含实际 discovery/JWKS 请求，不能以高频重试耗尽 owned provider 的 metadata 限流预算。保持 provider 正常限流、TLS 与身份配置，不用关闭校验来恢复通过。
 
 Student 活跃重启的比较保存每库每表完整行快照，不把当前上传记录的所有操作元数据当作冻结历史。只有实际 worker 日志证明 `Processing→Pending→Processing` 的三次 Save，且同一 ID、状态2、content revision、所有其他字段/所有其他表严格一致时，允许 `Version` 精确+3、`ProcessingEnteredAt` 与 `UpdatedAt` 落在本次重启窗口内；每个变化逐行登记。字段、行集、历史 receipt 或业务事实的其他差异立即失败。依赖恢复与 SIGTERM 使用此有界因果断言；停止全部写入后的完整 dump/restore 仍要求全部字段、schema 和历史逐字一致。
