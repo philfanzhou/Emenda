@@ -109,6 +109,8 @@ Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG �
 
 逐 cell 覆盖实际启动与5项依赖、单/多图/多crop/manual多批、完整 automatic worker、正反 receipt、练习/reanalysis/签名图片、合法 COW/newrevision、永久重放；Student/Mistake COMMIT 前/中/后、S3 Copy 后丢响应、历史 GET 失败、两个独立实例竞争与旧 fence 拒绝（旧 worker 的真实 VL 在途时只停本任务 PG transport，新实例走相同 owned PG 的独立连接，按数据库自然时间接管，迟到分析不能重复提交）；正常业务认证/TLS、逐个停止自己的 PG/S3/Student/provider并恢复、显式关闭、实际1–9已知历史升级、双库完整 dump→新库 restore、guards与非空 Down、unknown schema、30秒SIGTERM重启及真实 reverse Copy 在途取消。Provider token 过期格等待真实签发的 `exp` 加启动快照30秒 skew，不伪造签发、不改全局时钟，可能需要等待签发方既有 TTL；等待期间只输出剩余秒数。全状态格通过真实依赖故障产生 forward/reverse Prepared、Sending、Conflict、Completed 和全部候选阶段，显式关闭能力后 dump/restore，确认全字段历史一致，再恢复受控依赖与能力、以原 operation/payload 推进可恢复事实。故障在恢复前单独保存事实与真实结果；PG during 格使用仅 owned DB 的临时 deferred trigger 等待，并确认选中 backend 在 PgSleep 后终止，移除临时 trigger后才冷启。未知 S3响应保留已实际复制的随机候选键，不覆写、不补偿删除。
 
+当前 `S3OssService.CopyObjectAsync` 实际采用 GET 源对象、PUT 候选对象；故障 transport 按该格精确 owned source/item 的候选前缀，在最后 PUT 已由真实 S3 返回200后丢响应，并另保留 server-side COPY 协议测试。不能仅等待 `x-amz-copy-source` 来证明当前生产 copy 在途。
+
 `.deploy-verify/enabled/summary.json` 保存固定 head/digest/UTC、每 cell 布尔、0 dependency skips、owner manifest 与 before/after 无关容器核对（Mounts仅按Destination规范无序集合，保留全部字段）。受限 Host 日志、双库 dumps、连接/证书/服务密钥与恢复参数在 target 的 `private/`，不可公开上传；公开报告只保存 hash/count/status，不保存 bearer、code/cookie、密码或签名URL。失败保留属于本次 owner 的容器/库/对象/日志；成功清理时同时核对精确名称及 owner label，删除自身匿名 PG volume，拒绝无关资源。程序只停止其自身 Popen PID，取消传播至自身 listeners，并保留已提交历史；不得清理归档或物理 GC。
 
 本地 transport 测试只验证协议 fault 选择和安全参数退出，不代表真实运行验收；只有完整矩阵结果可作为运行门禁。诊断用 subset 明确不是完整验收并返回失败，不能用于发布 SUCCESS。该运行证据不关闭原父的 fullrefs/fixed Admin/legacy/physical release 范围。
