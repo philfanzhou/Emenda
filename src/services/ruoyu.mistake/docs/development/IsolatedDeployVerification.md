@@ -116,3 +116,5 @@ Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG �
 `.deploy-verify/enabled/summary.json` 保存固定 head/digest/UTC、每 cell 布尔、0 dependency skips、owner manifest 与 before/after 无关容器核对（Mounts仅按Destination规范无序集合，保留全部字段）。受限 Host 日志、双库 dumps、连接/证书/服务密钥与恢复参数在 target 的 `private/`，不可公开上传；公开报告只保存 hash/count/status，不保存 bearer、code/cookie、密码或签名URL。失败保留属于本次 owner 的容器/库/对象/日志；成功清理时同时核对精确名称及 owner label，删除自身匿名 PG volume，拒绝无关资源。程序只停止其自身 Popen PID，取消传播至自身 listeners，并保留已提交历史；不得清理归档或物理 GC。
 
 本地 transport 测试只验证协议 fault 选择和安全参数退出，不代表真实运行验收；只有完整矩阵结果可作为运行门禁。诊断用 subset 明确不是完整验收并返回失败，不能用于发布 SUCCESS。该运行证据不关闭原父的 fullrefs/fixed Admin/legacy/physical release 范围。
+
+旧 owner 场景仅停止该 Mistake 实例独立的自有 PG transport；Student 与接管实例保持真实 PG 连通。VL 证据分别记录旧响应在接管后的发送尝试与 socket write 结果，后者不等于客户端已经消费响应；无论旧请求被取消或迟到，都核对同一 snapshot、新 fence、唯一 group 与 receipt，不把尝试计数冒称实际送达。
