@@ -165,7 +165,7 @@ public sealed class SourceReturnRecoveryPostgresTests
         await using var f=await FixtureAsync();var id=await ReadyAsync(f);
         await using(var db=f.Context())await db.GetService<IMigrator>().MigrateAsync(SourceTargetSchema.Migration);
         await using(var db=f.Context()){await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));await DatabaseInitializer.UpgradeKnownAsync(db,f.Name,true,true);await DatabaseInitializer.UpgradeKnownAsync(db,f.Name,true,true);}
-        Assert.Equal(id,await f.ScalarAsync<Guid>("SELECT id FROM mistake_item"));Assert.Equal(8,await f.ScalarAsync<int>("SELECT count(*)::int FROM \"__EFMigrationsHistory\""));
+        Assert.Equal(id,await f.ScalarAsync<Guid>("SELECT id FROM mistake_item"));Assert.Equal(9,await f.ScalarAsync<int>("SELECT count(*)::int FROM \"__EFMigrationsHistory\""));
         await f.SqlAsync("ALTER TABLE source_return DISABLE TRIGGER trg_source_return");
         await using(var db=f.Context())await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
         Assert.Equal("D",await f.ScalarAsync<string>("SELECT tgenabled::text FROM pg_trigger WHERE tgname='trg_source_return'"));

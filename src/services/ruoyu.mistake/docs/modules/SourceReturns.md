@@ -1,6 +1,6 @@
 # 受管错题持久退回
 
-[SourceIntake](./SourceIntake.md) 的实际 group→item→source 是唯一输入，使用本组已经 [Verified 的目标](./SourceTargets.md)。一个 PendingReview item 对应一个永久操作 `mistake-return:{itemId:D}`；成功同时需要 Student 原载荷的[可信历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)和本域原子 Completed/Rejected/最终日志。来源、创建重放、group、item、practice、所有日志和 source/target pins 保留；SourceRetained、handoffCompleted=false 不变。[ADR-0017](../../../../../docs/adr/0017-managed-mistake-durable-return.md)说明主责与取舍。
+[SourceIntake](./SourceIntake.md) 的实际 group→item→source 是唯一输入，使用本组已经 [Verified 的目标](./SourceTargets.md)。一个 PendingReview item 对应一个永久操作 `mistake-return:{itemId:D}`；成功同时需要 Student 原载荷的[可信历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)和本域原子 Completed/Rejected/最终日志。来源、创建重放、group、item、practice、所有日志和 source/target pins 保留；SourceRetained不变；handoffCompleted由独立[完整来源交接](./SourceHandoffs.md)的durable结果决定，单个退回不证明整来源完成。[ADR-0017](../../../../../docs/adr/0017-managed-mistake-durable-return.md)说明主责与取舍。
 
 ## 操作与图片
 

@@ -10,6 +10,7 @@
 | `mistake_practice` | 错题练习记录 | [tables/mistake_practice.md](./tables/mistake_practice.md) |
 | `process_log` | 处理日志，记录错题生命周期 | [tables/process_log.md](./tables/process_log.md) |
 | `reanalyze_job` | 错题再分析任务 | [tables/reanalyze_job.md](./tables/reanalyze_job.md) |
+| `source_handoff` | 完整来源交接固定意图与原回执 | [tables/source_handoff.md](./tables/source_handoff.md) |
 
 ## 实体关系
 

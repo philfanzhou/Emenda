@@ -196,14 +196,14 @@ public sealed class SourceIntakeSecurityTests
     public async Task StartupExactNewSchemaRejectsUnknownCatalogWithoutRepairAsync(string mutation)
     {
         await using var f=await SourceIntakeFixture.CreateAsync();await f.SqlAsync(mutation);
-        await using var db=f.Context();await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));Assert.Equal(8,(await db.Database.GetAppliedMigrationsAsync()).Count());
+        await using var db=f.Context();await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));Assert.Equal(9,(await db.Database.GetAppliedMigrationsAsync()).Count());
     }
     [Fact]
     public async Task EmptyIntakeDownAndKnownFiveHistoryUpgradeAreControlledAndRepeatableAsync()
     {
         await using var f=await SourceIntakeFixture.CreateAsync();await using var db=f.Context();await db.GetService<IMigrator>().MigrateAsync("20260930000001_LeaseReanalyzeJobs");Assert.Equal(5,(await db.Database.GetAppliedMigrationsAsync()).Count());
         await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
-        await Task.WhenAll(UpgradeAsync(),UpgradeAsync());await DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance);Assert.Equal(8,(await db.Database.GetAppliedMigrationsAsync()).Count());
+        await Task.WhenAll(UpgradeAsync(),UpgradeAsync());await DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance);Assert.Equal(9,(await db.Database.GetAppliedMigrationsAsync()).Count());
         async Task UpgradeAsync(){await using var fresh=f.Context();await DatabaseInitializer.UpgradeKnownAsync(fresh,f.Name,true,true);}
     }
     private sealed class ResponseFault(string kind):DelegatingHandler

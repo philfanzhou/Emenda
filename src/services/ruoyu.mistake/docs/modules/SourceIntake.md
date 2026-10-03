@@ -11,7 +11,7 @@ Worker 与两个 HTTP 创建入口共用 `ISourceIntakeService`。它把 Student
 - 规范版本 `mistake-intake-v1`。区域 atom = 精确原对象键 + manifest 字节身份 + `Full` 或已有整数矩形 `(x1,y1,x2,y2)`。不转换 uploads/mistakes、不 lower-case、不 Unicode normalization、不以 UI/分页/VL 数组 index 做身份。manifest 位置只用于把 VL index 映射回稳定 atom；重复 exact path/bytes 的 full atom 不被当不同图片重复入库。
 - 矩形采用现有整数坐标表示，要求 `0<=x1<x2`、`0<=y1<y2`；不擅自宣称现有协议有像素尺寸或归一化单位，不裁剪/变换图像。本切片不保证 box 在真实宽高内（provider 未提供尺寸），但 rotation/来源 revision 绑定，整数值原样保留。框相同才同 atom；不同合法矩形（含几何重叠）可独立建题，不能按 uploadId/原图粗糙唯一误杀合法裁剪。
 - group key = 该来源 + 分类 mistake + 经 Ordinal 排序去重的区域 atom 集合的版本化、长度前缀无歧义编码；哈希只是索引，遇哈希碰撞仍比较 canonical bytes，不把 digest 当绝对身份证明。group 顺序/图片排序/VL重新编号不改变同一组；multi-image 合成一题保持一项结果；同 atom 不可同时归属于两个不同 group，重组共享 atom 返回 `grouping_conflict`，不静默复制。subject/grade/rootCause 是创建 payload，不是生成第二个业务 ID 的漏洞；同 group 不同创建 payload 明确 `payload_conflict`，后续正常编辑另用现有操作。
-- 来源归属模式 first valid owner：Automatic / Manual 持久互斥。worker 先赢则一次完整自动分组已物化后冻结计划，重复不再调用 VL；手动随后相同 group+payload 可重放已有项，其余明确 `source_mode_conflict`。手动先赢则 worker 明确 manual-owned 并跳过，不自动补一条全图项；手动可继续提交多个不同区域/多图组，遵守共同 atom 归属约束。一个手动请求对应一个 group；现有两个手动端点映射 full/cropped group 的同一业务键，不依端点改变键。合法组可能分多次手动提交，不能“首批整体封死”所有后继区域。
+- 来源归属模式 first valid owner：Automatic / Manual 持久互斥。worker 先赢则一次完整自动分组已物化后冻结计划，重复不再调用 VL；手动随后相同 group+payload 可重放已有项，其余明确 `source_mode_conflict`。手动先赢则 worker 明确 manual-owned 并跳过，不自动补一条全图项；显式交接封口前手动可继续提交多个不同区域/多图组，遵守共同 atom 归属约束。一个手动请求对应一个 group；现有两个手动端点映射 full/cropped group 的同一业务键，不依端点改变键。合法组可能分多次手动提交，不能“首批整体封死”所有后继区域。
 - automatic 组必须覆盖全部 distinct mistake full atom，各 atom 恰一次；VL omissions/重复/越界/坏类型不容许部分创建或以第二份 fallback 计划静默覆盖。VL 未配置时明确一次完整 fallback group（沿既有 subject=1,grade=7 与固定备注），作为已保存选择；配置但分析失败/不完整时保留可重试 claim、零新 items。canonical map 保存原显示顺序，规范排序只用于身份。
 
 ### 事件 × 产物 × 结果
@@ -31,7 +31,7 @@ Worker 与两个 HTTP 创建入口共用 `ISourceIntakeService`。它把 Student
 | 禁用新领取/重启 | 持久关联、业务键、guards与重放一直有效；停止新增/续领 | 不回落legacy，不清claim/manifest/items/pins |
 | legacy insert/edit/delete/complete与managed source竞争 | 同来源序列化的DB guard及应用显式拒绝；不得删除/重指向managed identity/result | 409 `source_managed` / `handoff_pending`，在任何OSS/Student动作之前拒绝 |
 
-lease release仅影响本域处理权，不释放Student snapshot或删除任何对象。自动组物化后仍保持 SourceRetained；不存在本能力的 CompletedHandoff/Released状态。
+lease release仅影响本域处理权，不释放Student snapshot或删除任何对象。自动组物化后仍保持 SourceRetained；完整封口/交接由[SourceHandoffs](./SourceHandoffs.md)推进，SourceRetained与HandoffCompleted可同时为真，无Released状态。
 
 ### 产物 × 持久关联
 

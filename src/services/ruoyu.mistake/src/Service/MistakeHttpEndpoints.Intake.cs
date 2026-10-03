@@ -37,6 +37,15 @@ public static partial class MistakeHttpEndpoints
         if(sourceId==Guid.Empty || revision==Guid.Empty)return IntakeError("invalid_condition",400);
         return Results.Ok(await targets.ResumeTargetsAsync(sourceId,revision,ct));
     }
+    private static async Task<IResult> HandoffSourceAsync(Guid sourceId,Guid revision,ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService authorization,ISourceHandoffService handoffs,CancellationToken ct)
+    {
+        var error=IntakeRole(user,authorization,MistakeResourceAccessGate.AdminOnly);if(error!=null)return error;
+        var result=await handoffs.HandoffAsync(sourceId,revision,authorization.GetSubjectId(user)!,ct:ct);
+        var success=result.State=="Completed";
+        return Results.Json(new {success=true,data=new {success,errorKind=success ? null : "handoff_pending",
+            errorMessage=success ? null : "来源交接处理中，请稍后重试",handoff=result}},statusCode:success ? 200 : 202);
+    }
     private static async ValueTask<object?> IntakeEndpointFilterAsync(EndpointFilterInvocationContext context,EndpointFilterDelegate next)
     {
         try
@@ -104,7 +113,7 @@ public static partial class MistakeHttpEndpoints
         catch (Exception ex) when (FindDatabaseError(ex)!=null)
         {
             var database=FindDatabaseError(ex)!;
-            var kind=new[] {"source_managed","handoff_pending","legacy_source_conflict","lease_lost","grouping_conflict","target_managed","target_unverified","target_binding","reserved_target","return_managed","return_binding","return_unverified","return_payload_binding","return_receipt_binding","return_in_progress","return_final_binding","reanalysis_active"}
+            var kind=new[] {"source_sealed","handoff_binding","handoff_receipt_binding","handoff_not_ready","handoff_targets_pending","source_managed","handoff_pending","legacy_source_conflict","lease_lost","grouping_conflict","target_managed","target_unverified","target_binding","reserved_target","return_managed","return_binding","return_unverified","return_payload_binding","return_receipt_binding","return_in_progress","return_final_binding","reanalysis_active"}
                 .FirstOrDefault(k=>database.Message.Contains(k,StringComparison.Ordinal));
             return IntakeError(kind ?? "database_unavailable",kind==null ? 503 : 409);
         }

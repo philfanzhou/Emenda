@@ -31,6 +31,17 @@ public sealed class StudentServiceTokenHandlerTests
         if(allowed){using var response=await http.SendAsync(request);Assert.Equal(1,calls);}else{await Assert.ThrowsAsync<InvalidOperationException>(()=>http.SendAsync(request));Assert.Equal(0,calls);Assert.Equal("user-canary",request.Headers.Authorization!.Parameter);}
     }
 
+    [Theory]
+    [InlineData("GET","",true)][InlineData("PUT","",true)][InlineData("POST","",false)]
+    [InlineData("GET","?extra=1",false)][InlineData("PUT","/",false)][InlineData("DELETE","",false)]
+    public async Task HandoffSignsOnlyExactPutGetWithoutQueryAsync(string method,string suffix,bool allowed)
+    {
+        using var keys=new KeyFile();var calls=0;
+        using var handler=new StudentServiceTokenHandler(keys.Options()){InnerHandler=new Sender((request,_)=>{calls++;Assert.Equal("uploads.handoff",keys.Validate(request.Headers.Authorization?.Parameter).Claims.Single(c=>c.Type=="scope").Value);return Task.FromResult(Json(HttpStatusCode.OK,"{}"));})};
+        using var http=new HttpClient(handler){BaseAddress=new Uri("https://student.test")};var route=$"/api/integrations/mistake/uploads/{Guid.NewGuid():D}/snapshots/{Guid.NewGuid():D}/handoff{suffix}";
+        if(allowed){using var response=await http.SendAsync(new(new HttpMethod(method),route));Assert.Equal(1,calls);}else{await Assert.ThrowsAsync<InvalidOperationException>(()=>http.SendAsync(new(new HttpMethod(method),route)));Assert.Equal(0,calls);}
+    }
+
     [Fact]
     public async Task ActualTypedClientUsesServiceIdentityForWorkerCallbacksAndAccountResolutionAsync()
     {

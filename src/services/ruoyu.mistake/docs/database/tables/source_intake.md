@@ -26,4 +26,8 @@ object 插入必须绑定不可变 manifest 的实际图/hash/长度，并有已
 
 数据库核验 actual group→source→snapshot/student、ordered first-path full 去重、原元数据、target选定身份、lease/fence、settled-before-verify-before-select、payload键/顺序/类型与 returned-payload-v1；全部 final tuple/item/log 在提交时延期检查。retained history 与新意图共同阻止所有 item/practice/process-log/reanalysis 写方绕过或复活。非空 return/对象/候选不允许 DELETE/TRUNCATE/Down，候选不设置 TTL。
 
-当前精确历史为八条迁移；正常启动核验新增完整 catalog/函数体/触发器。known1–7 升级保留原行/字节/状态；未知 public.mistake 仍原状拒绝。包含全部 operation/object/attempt 和 guards 的备份恢复流程见[部署](../../development/Deployment.md#受管持久退回启用与恢复)。
+当前精确历史为九条迁移；正常启动核验新增完整 catalog/函数体/触发器。known1–8 升级保留原行/字节/状态；未知 public.mistake 仍原状拒绝。包含全部 operation/object/attempt 和 guards 的备份恢复流程见[部署](../../development/Deployment.md#受管持久退回启用与恢复)。
+
+## 完整交接封口
+
+[source_handoff](./source_handoff.md)以现source lease/fence固定完整group集合、targets/canonical和原receipt。封口后的group/request新物化/terminal回退由最终guards拒绝；原完整创建结果可重放。source的新revision仅在所有旧managed handoff.Completed且历史student相同时接受，unmanaged旧item仍冲突。原source/target/return各保护继续成立。
