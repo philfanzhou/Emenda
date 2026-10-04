@@ -6292,7 +6292,7 @@
           200,
           503
         ],
-        "dependencies": "fixed startup DB/OSS/enabled Student/configured VL snapshot"
+        "dependencies": "fixed startup DB/OSS/enabled Student/configured VL snapshot; strict-enabled issuer requires exact discovery issuer and same-origin nonempty JWKS"
       },
       "GET /contracts/mistake-http-v1.json": {
         "authorization": "anonymous",

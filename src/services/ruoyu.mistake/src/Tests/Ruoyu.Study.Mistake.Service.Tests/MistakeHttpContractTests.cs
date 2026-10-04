@@ -15,6 +15,19 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 
 public sealed class MistakeHttpContractTests
 {
+    [Fact]
+    public void OperationalReadinessContractIncludesConditionalStrictIssuerDependency()
+    {
+        var ops = MistakeHttpContract.Definition.GetProperty("x-ruoyu").GetProperty("ops");
+        var ready = ops.GetProperty("GET /health/ready");
+        ready.GetProperty("authorization").GetString().Should().Be("anonymous");
+        ready.GetProperty("status").EnumerateArray().Select(value => value.GetInt32()).Should().Equal(200, 503);
+        ready.GetProperty("dependencies").GetString().Should()
+            .Contain("strict-enabled issuer").And.Contain("exact discovery issuer").And.Contain("same-origin nonempty JWKS");
+        ops.GetProperty("GET /health/live").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
+        ops.GetProperty("GET /contracts/mistake-http-v1.json").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("mistake")]
     [InlineData("homework")]

@@ -15,6 +15,8 @@ curl --cacert '<CA-file>' --dump-header headers.txt \
 sha256sum contract.json
 ```
 
+`x-ruoyu.ops` 将健康探针与业务路由分开：live 无依赖；ready 按固定启动快照检查 DB、OSS、已启用 Student、已配置 VL；strict 启用时还要求 issuer Discovery 与精确配置匹配、同源 JWKS 非空。任一必需组件失败返回503，spec取得仍独立可用。
+
 hash 是发布身份，不是业务权限。回滚规格发布不改变原 schema、开关默认值、认证、历史 guards 或来源 pins。破坏性改动使用新版本并保留原路径与兼容窗口，不能用同名 v1 覆盖旧消费者所需字段。
 
 ## 按真实结果消费

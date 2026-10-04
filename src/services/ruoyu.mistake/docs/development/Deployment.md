@@ -364,6 +364,7 @@ curl http://<host>:5007/               # 兼容保留："Mistake WebAPI host is 
 | `oss` | 总是 | S3 桶存在性 HEAD（轻量授权探测） |
 | `student` | 仅 `Mistake:Student:Enabled=true` | 对已解析 BaseUrl 的短超时 HTTP 探测，任意 HTTP 响应视为可达 |
 | `vl` | 仅 `VlAnalyzer` 已配置（ApiKey 非空） | 对已配置 BaseUrl 的短超时 HTTP 探测，任意 HTTP 响应视为可达 |
+| `issuer` | 仅 strict API 认证启用 | 正常 CA/SAN 的 HTTPS discovery 与同 origin JWKS；精确 issuer、非空 keys，拒绝 redirect；共同 3 秒上限 |
 
 规则与边界：
 
@@ -375,7 +376,7 @@ curl http://<host>:5007/               # 兼容保留："Mistake WebAPI host is 
 运维建议：
 
 - 探测频率不宜激进：ready 每次请求都会产生一次 db 连接与一次 S3 HEAD，编排系统建议 ≥ 10s 间隔并按连续失败次数判定，不要以单次 503 立即重启。
-- ready 503 处置：`db` 失败 → 检查 PostgreSQL 可达性与连接串；`oss` 失败 → 检查 S3 endpoint/凭据/桶存在；`student` 失败 → 检查 `Mistake:Student:Enabled` 对应的 BaseUrl 可达性；`vl` 失败 → 检查 VL Provider BaseUrl。任一项持续失败先摘流量再排查，进程无需重启（开关与地址为启动快照，变更需重启）。
+- ready 503 处置：`db` 失败 → 检查 PostgreSQL 可达性与连接串；`oss` 失败 → 检查 S3 endpoint/凭据/桶存在；`student` 失败 → 检查 `Mistake:Student:Enabled` 对应的 BaseUrl 可达性；`vl` 失败 → 检查 VL Provider BaseUrl；`issuer` 失败 → 检查已配置 Authority/Issuer、正常 CA 与真实 discovery/JWKS。任一项持续失败先摘流量再排查，进程无需重启（开关与地址为启动快照，变更需重启）。
 - 组件集合随启动快照固定：修改能力开关或地址后必须重启进程，探针矩阵才会随之变化。
 
 > **注意**：健康检查走 HTTP 端口（默认 5007），承载全部 19 个业务端点。mistake→student 的调用也通过 HTTP（见 [ADR-001](../overview/ADR-001-mistake-webapi-only.md)）。
@@ -510,3 +511,9 @@ sealed Manual仅Admin首次固定，worker只恢复已有Manual并扫描完整Au
 ## 机器 HTTP 合同发布
 
 Host 发布资源携带固定 `mistake-http-v1`，匿名 `/contracts/mistake-http-v1.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
+
+## Student-enabled 两模式受控运行
+
+[隔离部署验证](./IsolatedDeployVerification.md#显式-student-enabled-两模式运行)的 `--student-enabled-fixture` 使用同一指定 commit 的真实 Student/Mistake Release Host，开启 strict/resource、服务 RS256、intake/targets/returns/handoffs，在自有双 PG 与同一 Seaweed bucket 验证业务与恢复。每模式使用独立随机库，Platform 显式拒绝 Consul 端口并使用完整 fallback。全 cell 与原 19 格均通过才成功；任何故障、缺输入或取消保留自身现场并失败，不把 target ready 当 source completed。共享发布仍必须按既有 rollout 门禁。
+
+该运行配置显式使用 `DOTNET_SHUTDOWNTIMEOUTSECONDS=10`，为在途 HTTP drain 和取消设置 .NET Host 预算，使完整进程退出可在30秒期限内验证；不能仅用框架默认30秒 drain 推定总退出时长。配合服务自身的取消/候选保全机制，取消未正常确认的 copy 不发布历史结果，也不补偿删除候选。
