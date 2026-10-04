@@ -18,6 +18,7 @@ COPY src/services/ruoyu.mistake/src/StudentClient/Ruoyu.Study.Mistake.StudentCli
 RUN dotnet restore "src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj"
 
 COPY src/services/ruoyu.mistake/src src/services/ruoyu.mistake/src
+COPY src/services/ruoyu.mistake/docs/Integration/mistake-http-v1.json src/services/ruoyu.mistake/docs/Integration/mistake-http-v1.json
 COPY src/ruoyu.common/backend/Ruoyu.Study.Common src/ruoyu.common/backend/Ruoyu.Study.Common
 COPY src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared
 COPY src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared

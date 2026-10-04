@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <EmbeddedResource Include="../../docs/Integration/mistake-http-v1.json" LogicalName="mistake-http-v1.json" />
     <ProjectReference Include="..\Domain\Ruoyu.Study.Mistake.Domain.csproj" />
   </ItemGroup>
 

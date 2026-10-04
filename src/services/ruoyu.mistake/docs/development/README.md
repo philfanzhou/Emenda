@@ -10,3 +10,5 @@
 | [IsolatedDeployVerification.md](./IsolatedDeployVerification.md) | 隔离部署验证入口：干净环境自定义端口/库名/桶/公开 URL 的 Local 启动矩阵与 Platform 回归 |
 
 [StorageReferences v1](../../../../../docs/integrations/StorageReferences.md)包含本域引用全集、shared snapshot schema/迁移、配置与验证门禁。
+
+- [机器 HTTP 合同验证](../Integration/MachineHttpContract.md#可执行检查)：发布 bytes、runtime inventory、真实消费与显式差异门禁。
