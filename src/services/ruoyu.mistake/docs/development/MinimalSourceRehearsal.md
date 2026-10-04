@@ -64,3 +64,5 @@ bash script/build-script/06-mistake.minimal-source-rehearsal.sh --docker-only --
 - 本入口是独立预演命令，不并入 `pre-commit.sh` 快速路径，不改变既有构建命令。
 
 版本化 HTTP artifact 是 Service 的嵌入资源，也由 Host Dockerfile 显式复制；因此 manifest 的 context_files 必须包含它。共享消费者仅 source-link 无领域依赖的 schema 执行器，不属于提供方发布闭包。
+
+当前完整测试闭包存在已复现的主线回归，回链原 [IKJFHR](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJFHR)：在 `5c84d43d` 的原 manifest 导出树中，Service.Tests 已引用 Student 项目和 SourceSnapshotFixture，而 manifest 仍禁止 Student 内容，因此 Release build 报 CS2001；不能据此声称完整预演成功。生产 Host 发布不需要这些测试引用。HTTP artifact context 同步保留原禁止范围，没有通过导出 Student 全树或跳过测试掩盖失败；原闭包方案和完整预演恢复须由该能力任务继续处理。

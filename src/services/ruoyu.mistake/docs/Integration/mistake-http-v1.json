@@ -77,7 +77,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -269,7 +276,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -447,7 +461,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -635,7 +656,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -814,7 +842,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -1037,7 +1072,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -1205,7 +1247,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -1412,7 +1461,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -1593,7 +1649,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -1796,7 +1859,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -1976,7 +2046,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -2164,7 +2241,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -2333,7 +2417,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -2524,7 +2615,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -2712,7 +2810,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -2892,7 +2997,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -3080,7 +3192,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -3249,7 +3368,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -3461,7 +3587,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -3652,7 +3785,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -3843,7 +3983,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessageError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
                 }
               },
               "text/plain": {
@@ -5290,9 +5437,10 @@
           },
           "type": {
             "type": "string",
-            "enum": [
+            "x-ruoyu-known-values": [
               "mistake"
-            ]
+            ],
+            "description": "Required preserved Student image metadata, including homework/custom types; only type exactly mistake is eligible for Mistake intake grouping. This metadata field is not a closed enum."
           },
           "length": {
             "type": "integer",

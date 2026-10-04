@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -14,6 +15,23 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 
 public sealed class MistakeHttpContractTests
 {
+    [Theory]
+    [InlineData("mistake")]
+    [InlineData("homework")]
+    [InlineData("custom-preserved-metadata")]
+    public void SourceImageMetadataIsRequiredButDoesNotPretendToBeAClosedEligibilityEnum(string type)
+    {
+        using var image = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            path = "uploads/synthetic.png", type, rotation = 0, length = 64, sha256 = new string('a', 64)
+        }));
+        var schema = MistakeHttpContract.Definition.GetProperty("components").GetProperty("schemas").GetProperty("ManifestImage");
+        MistakeHttpContract.ValidateSchema(image.RootElement, schema);
+        using var missing = JsonDocument.Parse("{}");
+        Action absent = () => MistakeHttpContract.ValidateSchema(missing.RootElement, schema);
+        absent.Should().Throw<JsonException>();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

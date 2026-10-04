@@ -24,6 +24,7 @@ hash 是发布身份，不是业务权限。回滚规格发布不改变原 schem
 - 普通 envelope 的外层 `success=true` 只表示成功适配，内层 `success=false` 仍是业务失败，例如缺失项 DELETE 或 legacy complete-review。
 - 受管 review/handoff 的 202 具有外层 true、内层 false，表示可恢复的 pending；只有 durable Completed 的 200/内层 true 才成功。SourceRetained、targetReady、handoffCompleted 是不同事实。
 - intake GET/targets 使用 raw summary，包含 nullable 安全 receipt 状态，不能按 envelope 解析或公开 canonical payload。
+- Source manifest 的 `type` 是必需的原始 metadata string，保留 homework/custom 等非 mistake 值；只有 mistake 类型具备入库资格，不把该字段伪造为只允许 mistake 的封闭 enum。
 - 应用 message 错误与 intake `errorKind/conflictingItemIds` 不统一；framework binding 400、constraint 404、method 405 与 default server/transport 错误可能是 empty、ProblemDetails 或非 JSON。客户端不可据状态码或 DTO 初值猜测成功。
 - presigned URL 是短期 bearer 能力，不记录活 URL；实际 auth、Ordinal 前缀、full-only、size/expiry 与存在性语义按该 operation 的条件执行。
 
