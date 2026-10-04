@@ -21,12 +21,10 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <InternalsVisibleTo Include="Ruoyu.Study.Mistake.Provider.Tests" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\..\ruoyu.student\src\Tests\SourceSnapshotFixture.cs" Link="Fixtures\SourceSnapshotFixture.cs" />
-    <ProjectReference Include="..\..\..\..\ruoyu.student\src\Database\Ruoyu.Study.Student.Database.csproj" />
-    <ProjectReference Include="..\..\..\..\ruoyu.student\src\Service\Ruoyu.Study.Student.Service.csproj" />
     <ProjectReference Include="..\..\Service\Ruoyu.Study.Mistake.Service.csproj" />
     <ProjectReference Include="..\..\Host\Ruoyu.Study.Mistake.Host.csproj" />
   </ItemGroup>

@@ -35,7 +35,8 @@ GET 增加 `targets`（SourcePath/State/TargetKey）、`targetReady` 与 `handof
 测试位于 `SourceTargetPostgresTests` 和 `SourceTargetS3Tests`：实际 PG、实际提交响应丢失、取消/晚到 owner、SQL 保护、六历史非空升级、pg_dump/restore、严格 HTTP/full 下载；S3 用当前 S3OssService 的实际 Copy/Download 和任务自有 S3 bucket。只提供专用 PostgreSQL admin 连接和专用 S3 实例，fixture 创建随机数据库/bucket；不得填共享业务环境。配置 `MISTAKE_INTAKE_TEST_CONNECTION`、`STUDENT_SCAN_TEST_CONNECTION`、`MISTAKE_INTAKE_TEST_PG_CONTAINER` 与 `MISTAKE_TARGET_TEST_S3_ENDPOINT` 后运行：
 
 ```bash
-cd src/services/ruoyu.mistake/src
-dotnet build Ruoyu.Study.Mistake.sln --configuration Release
-dotnet test Ruoyu.Study.Mistake.sln --configuration Release --filter 'FullyQualifiedName~SourceTarget'
+# Run from the repository root; provider and portable suites are both required.
+dotnet build tests/integration/Ruoyu.Study.IntegrationTests.sln --configuration Release
+dotnet test src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln --configuration Release --filter 'FullyQualifiedName~SourceTarget'
+dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study.Mistake.Provider.Tests.csproj --configuration Release --filter 'FullyQualifiedName~SourceTarget'
 ```
