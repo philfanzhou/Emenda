@@ -28,6 +28,7 @@ hash 是发布身份，不是业务权限。回滚规格发布不改变原 schem
 - intake GET/targets/handoff 三个入口在 compatibility/strict/resource 各模式均要求已认证 Admin subject，无匿名兼容窗口；legacy 入口的条件匿名权限不得套用到它们。
 - intake GET/targets 使用 raw summary，包含 nullable 安全 receipt 状态，不能按 envelope 解析或公开 canonical payload。
 - Source manifest 的 `type` 是必需的原始 metadata string，保留 homework/custom 等非 mistake 值；只有 mistake 类型具备入库资格，不把该字段伪造为只允许 mistake 的封闭 enum。
+- upload 的可选 `sourceRegions` 是同一路由的兼容添加：absent/null 保持旧 paths Full，显式区域与非空 paths 互斥，并始终要求原 managed 条件和认证；同 canonical 的 Full/crop 沿原请求结果重放。现共享 Submit 和 Admin 消费者仍使用旧 paths。新消费者仅在固定 producer 发布资源证明字段存在后启用；关闭新领取保留历史重放，不把旧 binary 忽略未知字段当安全回退。
 - 应用 message 错误与 intake `errorKind/conflictingItemIds` 不统一；framework binding 400、constraint 404、method 405 与 default server/transport 错误可能是 empty、ProblemDetails 或非 JSON。客户端不可据状态码或 DTO 初值猜测成功。
 - presigned URL 是短期 bearer 能力，不记录活 URL；实际 auth、Ordinal 前缀、full-only、size/expiry 与存在性语义按该 operation 的条件执行。
 

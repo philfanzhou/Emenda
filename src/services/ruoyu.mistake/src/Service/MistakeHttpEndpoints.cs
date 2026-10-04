@@ -115,15 +115,32 @@ public static partial class MistakeHttpEndpoints
                 return decision.ToHttpResponse();
         }
 
-        if (intake.Enabled || request.ExpectedContentRevision.HasValue || request.RequestKey.HasValue)
+        if (request.SourceRegions != null || intake.Enabled || request.ExpectedContentRevision.HasValue || request.RequestKey.HasValue)
         {
             var auth = IntakeRole(user, resourceAuthz, MistakeResourceAccessGate.AdminOnly);
             if (auth != null) return auth;
             if (!Guid.TryParse(request.SourceUploadId, out var source) || !request.ExpectedContentRevision.HasValue || !request.RequestKey.HasValue)
                 return IntakeError("invalid_request", 400);
+            List<SourceRegionModel> regions;
+            if (request.SourceRegions != null)
+            {
+                if (request.ImagePaths is { Count: > 0 }) return IntakeError("invalid_request", 400);
+                if (request.SourceRegions.Count is < 1 or > 100) return IntakeError("invalid_region", 400);
+                regions = new List<SourceRegionModel>(request.SourceRegions.Count);
+                foreach (var region in request.SourceRegions)
+                {
+                    var box = region?.BoundingBox;
+                    if (region == null || string.IsNullOrEmpty(region.SourceImagePath)
+                        || box != null && (box.X1 < 0 || box.Y1 < 0 || box.X1 >= box.X2 || box.Y1 >= box.Y2))
+                        return IntakeError("invalid_region", 400);
+                    regions.Add(new SourceRegionModel { SourceImagePath = region.SourceImagePath,
+                        BoundingBox = box == null ? null : new BoundingBoxModel {
+                            X1 = box.X1, Y1 = box.Y1, X2 = box.X2, Y2 = box.Y2 } });
+                }
+            }
+            else regions = (request.ImagePaths ?? []).Select(path => new SourceRegionModel { SourceImagePath = path }).ToList();
             var items = await intake.CreateManualAsync(source, request.ExpectedContentRevision.Value, request.RequestKey.Value,
-                resourceAuthz.GetSubjectId(user)!, request.StudentId, request.Subject, request.Grade, request.RootCause,
-                (request.ImagePaths ?? []).Select(path => new SourceRegionModel { SourceImagePath = path }).ToList(), ct);
+                resourceAuthz.GetSubjectId(user)!, request.StudentId, request.Subject, request.Grade, request.RootCause, regions, ct);
             return MistakeHttpResponse.Ok(new SubmitMistakeUploadResponse { Success = true, CreatedItemIds = items.Select(i=>i.Id.ToString()).ToList() });
         }
         logger.LogDebug("SubmitMistakeUpload called: studentId={StudentId}, subject={Subject}, grade={Grade}, sourceUploadId={SourceUploadId}, imagePaths={ImagePaths}",

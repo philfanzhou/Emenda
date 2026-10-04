@@ -179,7 +179,14 @@
           "semantics": {
             "validation": "legacy: student/source nonblank, subject1..9, grade1..12, images nonempty; managed: nonzero source/revision/requestKey, canonical exact paths and trusted source student/type",
             "managed": "enabled or either nullable managed key present; always Admin authentication; full-original paths only; no crop body",
-            "replay": "same requestKey + canonical body returns original IDs; changed body/grouping/source mode/seal/lease =>409; disabled rejects new writes but historical replay remains guarded"
+            "replay": "same requestKey + canonical body returns original IDs; changed body/grouping/source mode/seal/lease =>409; disabled rejects new writes but historical replay remains guarded",
+            "sourceRegions": {
+              "absentOrNull": "All baseline imagePaths validation/managed/replay semantics above remain unchanged; full-original paths only applies to that baseline input.",
+              "nonNull": "Additive managed-only alternative; 1..100 nonnull SourceRegionDto entries, nonempty exact sourceImagePath, nullable box with valid int32 rectangle 0<=x1<x2 and 0<=y1<y2; same existing crop/Full canonical as Add.",
+              "exclusive": "imagePaths must be null/empty; two nonempty forms =>400 invalid_request; empty/invalid regions =>400 invalid_region; fractional/overflow =>binding400; invalid regions rejected before external IO.",
+              "conditions": "Original nonzero source/revision/requestKey and trusted Admin subject required even when disabled; no legacy fallback; existing completed requests remain authenticated replay; disabled new requests503.",
+              "consumer": "Shared Submit signatures and Admin DTO remain old paths; new consumers must prove fixed producer artifact supports sourceRegions; old binary ignoring JSON is not safe rollback."
+            }
           }
         },
         "requestBody": {
@@ -4343,6 +4350,27 @@
               }
             ],
             "x-ruoyu-binding-default": ""
+          },
+          "sourceRegions": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SourceRegionDto"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
           }
         },
         "required": [],

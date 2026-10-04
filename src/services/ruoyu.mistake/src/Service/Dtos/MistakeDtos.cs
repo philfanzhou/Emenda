@@ -73,6 +73,7 @@ public class SubmitMistakeUploadRequest
     public int Subject { get; set; }
     public int Grade { get; set; }
     public List<string> ImagePaths { get; set; } = new();
+    public List<SourceRegionDto?>? SourceRegions { get; set; }
     public string? RootCause { get; set; }
     public string SourceUploadId { get; set; } = string.Empty;
 }
