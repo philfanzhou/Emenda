@@ -55,6 +55,18 @@ public sealed class MistakeHttpContractTests
         var specified = MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .SelectMany(path => path.Value.EnumerateObject().Select(method => method.Name + " " + path.Name)).ToHashSet();
         actual.Should().HaveCount(21).And.BeEquivalentTo(specified);
+        foreach (var path in MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
+            .Where(path => path.Name.StartsWith("/api/mistakes/intakes/", StringComparison.Ordinal)))
+        {
+            foreach (var operation in path.Value.EnumerateObject())
+            {
+                var security = operation.Value.GetProperty("security").EnumerateArray().ToList();
+                security.Should().HaveCount(1);
+                security[0].EnumerateObject().Select(value => value.Name).Should().Equal("Bearer");
+                operation.Value.GetProperty("x-ruoyu").GetProperty("authorization").GetProperty("compatibility")
+                    .GetString().Should().Be("always authenticated Admin subject; no anonymous compatibility window");
+            }
+        }
         foreach (var other in endpoints.Where(endpoint => !IsBusiness(endpoint.RoutePattern.RawText!)))
         {
             var path = other.RoutePattern.RawText!;

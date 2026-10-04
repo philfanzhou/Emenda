@@ -4,7 +4,7 @@
   "description": "Mistake 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外预演与未来迁出按清单复制使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
   "source_commit": "1f76fedaa2bf96a4bfc3fe7da84cb200228aa197",
   "source_commit_note": "HTTP v1 发布资源审计基线。该 commit 已含 Service 嵌入和 Docker COPY；本变更的 manifest context 成员须随显式 --commit 一同导出。其余闭包与版本仍沿用原基线，既有 Service.Tests 的 Student 引用由实际预演判定，不以 manifest 宣称独立。",
-  "service_identity_note": "Host 本地 RS256 signer/config 和对应 Service.Tests 随递归成员导出，不依赖 Student 项目。跨服务 TLS/PG harness 位于 tests/deployment 且不属于此闭包；secret 仅外部只读挂载，不导出或 COPY。",
+  "service_identity_note": "Host 本地 RS256 signer/config 生产源码随递归成员导出，不依赖 Student 项目。当前 Service.Tests 的 Student 引用导致仓外测试闭包回归（IKJFHR），不能以此 manifest 声称完整预演独立。跨服务 TLS/PG harness 位于 tests/deployment 且不属于此闭包；secret 仅外部只读挂载，不导出或 COPY。",
   "solution": "src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln",
   "members": {
     "mistake_projects": [

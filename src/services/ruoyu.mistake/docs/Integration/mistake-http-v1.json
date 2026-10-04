@@ -3673,14 +3673,13 @@
           }
         },
         "security": [
-          {},
           {
             "Bearer": []
           }
         ],
         "x-ruoyu": {
           "authorization": {
-            "compatibility": "anonymous unmanaged when strict=false",
+            "compatibility": "always authenticated Admin subject; no anonymous compatibility window",
             "strict": "shared audience or configured Admin AppId authenticated principal",
             "resource": "AdminOnly",
             "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
@@ -3871,14 +3870,13 @@
           }
         },
         "security": [
-          {},
           {
             "Bearer": []
           }
         ],
         "x-ruoyu": {
           "authorization": {
-            "compatibility": "anonymous unmanaged when strict=false",
+            "compatibility": "always authenticated Admin subject; no anonymous compatibility window",
             "strict": "shared audience or configured Admin AppId authenticated principal",
             "resource": "AdminOnly",
             "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
@@ -4079,14 +4077,13 @@
           }
         },
         "security": [
-          {},
           {
             "Bearer": []
           }
         ],
         "x-ruoyu": {
           "authorization": {
-            "compatibility": "anonymous unmanaged when strict=false",
+            "compatibility": "always authenticated Admin subject; no anonymous compatibility window",
             "strict": "shared audience or configured Admin AppId authenticated principal",
             "resource": "AdminOnly",
             "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
