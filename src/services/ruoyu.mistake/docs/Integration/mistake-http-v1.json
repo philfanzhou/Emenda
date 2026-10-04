@@ -1,0 +1,6324 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Mistake HTTP contract",
+    "version": "mistake-http-v1"
+  },
+  "paths": {
+    "/api/mistakes/upload": {
+      "post": {
+        "operationId": "SubmitMistakeUpload",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeSubmitMistakeUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "AdminOnly",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "legacy: student/source nonblank, subject1..9, grade1..12, images nonempty; managed: nonzero source/revision/requestKey, canonical exact paths and trusted source student/type",
+            "managed": "enabled or either nullable managed key present; always Admin authentication; full-original paths only; no crop body",
+            "replay": "same requestKey + canonical body returns original IDs; changed body/grouping/source mode/seal/lease =>409; disabled rejects new writes but historical replay remains guarded"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitMistakeUploadRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mistakes/{id}": {
+      "get": {
+        "operationId": "GetMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "ItemOwnership",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "notfound": "404message envelope; resource or managed owner authorization"
+          }
+        }
+      },
+      "put": {
+        "operationId": "UpdateMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "AdminOnly",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "patch": "blank student/nonpositive subject/grade => unchanged; empty regions => unchanged, not clear; managed history/binding guards409"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMistakeItemRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "DeleteMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeBooleanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "ItemOwnership",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "completion": "HTTP200 outertrue innerfalse means item missing; managed/history restrictions409, never authorizes source deletion"
+          }
+        }
+      }
+    },
+    "/api/mistakes/by-upload/{sourceUploadId}": {
+      "get": {
+        "operationId": "GetMistakeItemsByUpload",
+        "parameters": [
+          {
+            "name": "sourceUploadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-ruoyu-route-constraint": "none"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemsByUploadResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "ItemsOwnership",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "scope": "resource or managed item ownership; managed anonymous401;200items may empty"
+          }
+        }
+      }
+    },
+    "/api/mistakes": {
+      "get": {
+        "operationId": "GetMistakeItemList",
+        "parameters": [
+          {
+            "name": "studentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "grade",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "reviewStatus",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemPageResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "ListScope",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "pagination": "page<=0=>1; size<=0=>10; size>100=>100; raw integer query parameters are required bindings",
+            "scope": "resource or existing managed student scope applies owner filtering; anonymous managed401; no student defaults to allowed learners under resource"
+          }
+        }
+      },
+      "post": {
+        "operationId": "AddMistakeItem",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "StaffOrAdmin",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "managed source/revision/key as upload; sourceRegions have optional crop coordinates, grouping determined by canonical region atoms",
+            "managed": "enabled or managed keys => StaffOrAdmin always authentication, original history and request receipts retained"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMistakeItemRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mistakes/pending-reviews": {
+      "get": {
+        "operationId": "GetPendingReviewUploads",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "subjects",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePendingReviewUploadListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "StaffOrAdmin",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "pagination": "page<=0=>1; size<=0=>10; size>100=>100",
+            "subjects": "comma-separated positive integers; invalid tokens ignored; empty valid list becomes no filter"
+          }
+        }
+      }
+    },
+    "/api/mistakes/{id}/review": {
+      "post": {
+        "operationId": "ReviewMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeReviewMistakeItemResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "202": {
+            "description": "Managed operation pending; outer success true, inner success false. Retry/read same fixed operation, no terminal success inference.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeReviewMistakeItemResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "StaffOrAdmin",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "reviewStatus only Confirmed2/Rejected3, reviewer bound under resource or managed",
+            "completion": "legacy200 outertrue innerfalse is failure; managedRejected202 innerfalse return_pending fixed message, operationId/returnState tracked; only durableCompleted200 innertrue",
+            "disabled": "Student off rejects legacyRejected503 before effects; managed returns off503 except completed history replay",
+            "history": "managed return retains item/log/receipt and frozen payload; reserved target protected409"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewMistakeItemRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mistakes/{id}/reanalyze": {
+      "post": {
+        "operationId": "ReanalyzeMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeReanalyzeMistakeItemResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "StaffOrAdmin",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "nonzero id, nonblank reviewer/student; stored owner binding",
+            "completion": "enqueue genuine independent jobID with Pending1; Running2,Completed3,Failed4 read from jobs; HTTP200 innerfalse precondition,400 invalid,404 notfound; cancellation/lease loss never completed"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReanalyzeMistakeItemRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mistakes/reanalyze/jobs": {
+      "post": {
+        "operationId": "GetReanalyzeJobs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeGetReanalyzeJobsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "StaffOrAdmin",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "missing reviewer or jobIDs count outside1..100 =>200innerfalse; unparseable IDs omitted; managed reviewer ownership checked before legacy row filtering"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetReanalyzeJobsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mistakes/reanalyze/active": {
+      "get": {
+        "operationId": "GetActiveReanalyzeJobs",
+        "parameters": [
+          {
+            "name": "reviewerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeGetReanalyzeJobsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "StaffOrAdmin",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "missing reviewer=>200innerfalse; managed jobs require same authenticated reviewer"
+          }
+        }
+      }
+    },
+    "/api/mistakes/complete-review": {
+      "post": {
+        "operationId": "CompleteUploadReview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeCompleteUploadReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "StaffOrAdmin",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "compatibility": "obsolete legacy operations window only;200innerfalse validation; managed/reserved409; not handoff or physicalGC"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteUploadReviewRequest"
+              }
+            }
+          }
+        },
+        "deprecated": true
+      }
+    },
+    "/api/mistakes/{id}/practices": {
+      "post": {
+        "operationId": "AddMistakePractice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakePracticeDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "LearnerOnly",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "confirmed item only; learner-only owner binding under resource/managed; route id authoritative over body mistakeItemId; image paths optional; required business values preserved"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMistakePracticeRequest"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "GetMistakePractices",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakePracticeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "ItemOwnership",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "empty": "missing item may200 empty list; resource scope checked when item exists"
+          }
+        }
+      }
+    },
+    "/api/mistakes/{id}/process-logs": {
+      "post": {
+        "operationId": "LogMistakeProcess",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeBooleanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "LearnerOnly",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "learner-only owner binding under resource/managed; route id authoritative; absent details=>empty; numeric action persists per legacy input semantics"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogMistakeProcessRequest"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "GetMistakeProcessHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeProcessLogListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "ItemOwnership",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "empty": "missing item may200 empty list; dates millisecondUTC or empty; process action numeric legacy values not artificially normalized"
+          }
+        }
+      }
+    },
+    "/api/mistakes/presigned-url": {
+      "post": {
+        "operationId": "GetPresignedUrl",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePresignedUrlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "500": {
+            "description": "OSS generation failure envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "anonymous unmanaged when strict=false",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "PresignedOwnership",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "validation": "exact Ordinal mistakes/ prefix for legacy; full default, size normalizedlowercase; expiry<=0=>3600",
+            "managed": "verified managed source path may be uploads/; full only; always authenticated owner; reserved unverified targets denied; practice ownership checked",
+            "capability": "short-lived bearer URL; never log URL or infer readability from object existence;404 missing object;500message on ordinary OSS generation failure"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetPresignedUrlRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mistakes/intakes/{sourceId}/{revision}": {
+      "get": {
+        "operationId": "GetSourceIntake",
+        "parameters": [
+          {
+            "name": "sourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "always authenticated Admin subject; no anonymous compatibility window",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "AdminOnly",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "authentication": "alwaysAdmin including all switches off; nonzero source/revision400; missing404",
+            "summary": "SourceRetained is not targetsReady/handoffCompleted; nullable safe receipt summaries only, no canonical payload"
+          }
+        }
+      }
+    },
+    "/api/mistakes/intakes/{sourceId}/{revision}/targets": {
+      "post": {
+        "operationId": "ResumeSourceTargets",
+        "parameters": [
+          {
+            "name": "sourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "always authenticated Admin subject; no anonymous compatibility window",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "AdminOnly",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "authentication": "alwaysAdmin; nonzero source/revision400",
+            "completion": "verified selection required; targetsReady independent of SourceRetained; off rejects new progression503; preserved historical state stays guarded"
+          }
+        }
+      }
+    },
+    "/api/mistakes/intakes/{sourceId}/{revision}/handoff": {
+      "post": {
+        "operationId": "HandoffSource",
+        "parameters": [
+          {
+            "name": "sourceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeHandoffResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role, actor or owner denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "202": {
+            "description": "Managed operation pending; outer success true, inner success false. Retry/read same fixed operation, no terminal success inference.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeHandoffResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "always authenticated Admin subject; no anonymous compatibility window",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "AdminOnly",
+            "managed": "always authenticated subject + role/owner/binding even when compatibility enabled",
+            "startup": "resource requires strict; SourceIntake requires Student+strict+resource"
+          },
+          "semantics": {
+            "authentication": "alwaysAdmin evenoff",
+            "completion": "202 outertrue innerfalse while Prepared/Sending; only durable matching receipt Completed200true; canonical payload never published",
+            "replay": "fixed sealed source+payload; unknown response read-recover; off only priorCompleted replay; group/targets/reanalysis/returns guards409; no physical source release"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BoundingBoxDto": {
+        "type": "object",
+        "properties": {
+          "x1": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "y1": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "x2": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "y2": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "x1",
+          "y1",
+          "x2",
+          "y2"
+        ],
+        "additionalProperties": true
+      },
+      "SourceRegionDto": {
+        "type": "object",
+        "properties": {
+          "sourceImagePath": {
+            "type": "string"
+          },
+          "boundingBox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundingBoxDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sourceImagePath",
+          "boundingBox"
+        ],
+        "additionalProperties": true
+      },
+      "PageMetaDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "page",
+          "size",
+          "totalCount",
+          "totalPages"
+        ],
+        "additionalProperties": true
+      },
+      "MistakeItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sourceUploadId": {
+            "type": "string"
+          },
+          "sourceRegions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRegionDto"
+            }
+          },
+          "reviewStatus": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3
+            ]
+          },
+          "reviewerId": {
+            "type": "string"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "rootCause": {
+            "type": "string"
+          },
+          "questionId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          }
+        },
+        "required": [
+          "id",
+          "studentId",
+          "subject",
+          "grade",
+          "sourceUploadId",
+          "sourceRegions",
+          "reviewStatus",
+          "reviewerId",
+          "reviewedAt",
+          "rootCause",
+          "questionId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": true
+      },
+      "SubmitMistakeUploadRequest": {
+        "type": "object",
+        "properties": {
+          "expectedContentRevision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "requestKey": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "imagePaths": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": []
+          },
+          "rootCause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "sourceUploadId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "SubmitMistakeUploadResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "createdItemIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "errorMessage",
+          "createdItemIds"
+        ],
+        "additionalProperties": true
+      },
+      "GetMistakeItemListRequest": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "reviewStatus": {
+            "type": "integer",
+            "x-ruoyu-binding-default": 0,
+            "x-ruoyu-business-values": [
+              2,
+              3
+            ]
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "MistakeItemPageResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MistakeItemDto"
+            }
+          },
+          "pageMeta": {
+            "$ref": "#/components/schemas/PageMetaDto"
+          }
+        },
+        "required": [
+          "items",
+          "pageMeta"
+        ],
+        "additionalProperties": true
+      },
+      "PendingReviewUploadDto": {
+        "type": "object",
+        "properties": {
+          "sourceUploadId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pendingCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "earliestCreatedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          }
+        },
+        "required": [
+          "sourceUploadId",
+          "studentId",
+          "subject",
+          "grade",
+          "pendingCount",
+          "totalCount",
+          "earliestCreatedAt"
+        ],
+        "additionalProperties": true
+      },
+      "PendingReviewUploadListResponse": {
+        "type": "object",
+        "properties": {
+          "uploads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingReviewUploadDto"
+            }
+          },
+          "pageMeta": {
+            "$ref": "#/components/schemas/PageMetaDto"
+          }
+        },
+        "required": [
+          "uploads",
+          "pageMeta"
+        ],
+        "additionalProperties": true
+      },
+      "ReviewMistakeItemRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "reviewStatus": {
+            "type": "integer",
+            "x-ruoyu-binding-default": 0,
+            "x-ruoyu-business-values": [
+              2,
+              3
+            ]
+          },
+          "reviewerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "rootCause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "returnReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "ReviewMistakeItemResponse": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "returnState": {
+            "type": "string",
+            "enum": [
+              "Prepared",
+              "Unknown",
+              "Sending",
+              "Conflict",
+              "Completed"
+            ]
+          },
+          "confirmedRecordId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "sourceUploadId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "removedImagePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "errorMessage",
+          "sourceUploadId",
+          "studentId",
+          "removedImagePaths"
+        ],
+        "additionalProperties": true
+      },
+      "ReanalyzeMistakeItemRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "reviewerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "teacherDescription": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "ReanalyzeMistakeItemResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "errorMessage",
+          "jobId"
+        ],
+        "additionalProperties": true
+      },
+      "ReanalyzeJobDto": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "newRootCause": {
+            "type": "string"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "startedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "completedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "vlDurationMs": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "jobId",
+          "itemId",
+          "studentId",
+          "status",
+          "newRootCause",
+          "errorMessage",
+          "createdAt",
+          "startedAt",
+          "completedAt",
+          "vlDurationMs"
+        ],
+        "additionalProperties": true
+      },
+      "GetReanalyzeJobsRequest": {
+        "type": "object",
+        "properties": {
+          "reviewerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "jobIds": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": []
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "GetReanalyzeJobsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReanalyzeJobDto"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "errorMessage",
+          "jobs"
+        ],
+        "additionalProperties": true
+      },
+      "AddMistakeItemRequest": {
+        "type": "object",
+        "properties": {
+          "expectedContentRevision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "requestKey": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "sourceUploadId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "sourceRegions": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InputSourceRegion"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": []
+          },
+          "rootCause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "UpdateMistakeItemRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "sourceRegions": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InputSourceRegion"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": []
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "CompleteUploadReviewRequest": {
+        "type": "object",
+        "properties": {
+          "sourceUploadId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "reviewerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "CompleteUploadReviewResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "removedImagePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "errorMessage",
+          "studentId",
+          "removedImagePaths"
+        ],
+        "additionalProperties": true
+      },
+      "AddMistakePracticeRequest": {
+        "type": "object",
+        "properties": {
+          "mistakeItemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "imagePaths": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": []
+          },
+          "studentAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "isCorrect": {
+            "type": "boolean",
+            "x-ruoyu-binding-default": false
+          },
+          "comments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "MistakePracticeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mistakeItemId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "practiceDate": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "imagePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "studentAnswer": {
+            "type": "string"
+          },
+          "isCorrect": {
+            "type": "boolean"
+          },
+          "comments": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mistakeItemId",
+          "studentId",
+          "practiceDate",
+          "imagePaths",
+          "studentAnswer",
+          "isCorrect",
+          "comments"
+        ],
+        "additionalProperties": true
+      },
+      "MistakePracticeListResponse": {
+        "type": "object",
+        "properties": {
+          "practices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MistakePracticeDto"
+            }
+          }
+        },
+        "required": [
+          "practices"
+        ],
+        "additionalProperties": true
+      },
+      "LogMistakeProcessRequest": {
+        "type": "object",
+        "properties": {
+          "mistakeItemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "action": {
+            "type": "integer",
+            "x-ruoyu-known-values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "x-ruoyu-binding-default": 0,
+            "x-ruoyu-business-values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          },
+          "details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "ProcessLogDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mistakeItemId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "integer",
+            "x-ruoyu-known-values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          },
+          "details": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "studentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mistakeItemId",
+          "action",
+          "details",
+          "createdAt",
+          "studentId"
+        ],
+        "additionalProperties": true
+      },
+      "ProcessLogListResponse": {
+        "type": "object",
+        "properties": {
+          "logs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProcessLogDto"
+            }
+          }
+        },
+        "required": [
+          "logs"
+        ],
+        "additionalProperties": true
+      },
+      "GetPresignedUrlRequest": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "expirySeconds": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "PresignedUrlResponse": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "expirySeconds": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "url",
+          "expirySeconds"
+        ],
+        "additionalProperties": true
+      },
+      "MistakeItemsByUploadResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MistakeItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": true
+      },
+      "BooleanResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "additionalProperties": true
+      },
+      "MessageError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": false
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "additionalProperties": true
+      },
+      "IntakeError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": false
+          },
+          "errorKind": {
+            "type": "string"
+          },
+          "conflictingItemIds": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "errorKind"
+        ],
+        "additionalProperties": true
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Framework binding ProblemDetails when configured; empty/non-JSON is also allowed by the response content alternatives."
+      },
+      "ManifestImage": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "x-ruoyu-known-values": [
+              "mistake"
+            ],
+            "description": "Required preserved Student image metadata, including homework/custom types; only type exactly mistake is eligible for Mistake intake grouping. This metadata field is not a closed enum."
+          },
+          "length": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "path",
+          "type",
+          "length",
+          "sha256"
+        ],
+        "additionalProperties": true
+      },
+      "SourceManifest": {
+        "type": "object",
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceUploadId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "contentRevision": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acquiredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "acquiredBy": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestImage"
+            }
+          },
+          "imageRotations": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        },
+        "required": [
+          "snapshotId",
+          "sourceUploadId",
+          "studentId",
+          "contentRevision",
+          "acquiredAt",
+          "acquiredBy",
+          "images",
+          "imageRotations"
+        ],
+        "additionalProperties": true
+      },
+      "SourceTargetView": {
+        "type": "object",
+        "properties": {
+          "sourcePath": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "Pending",
+              "Verified"
+            ]
+          },
+          "targetKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sourcePath",
+          "state",
+          "targetKey"
+        ],
+        "additionalProperties": true
+      },
+      "SourceReturnView": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "Prepared",
+              "Unknown",
+              "Sending",
+              "Conflict",
+              "Completed"
+            ]
+          },
+          "confirmedRecordId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "itemId",
+          "operationId",
+          "state",
+          "confirmedRecordId",
+          "completedAt",
+          "errorKind",
+          "success"
+        ],
+        "additionalProperties": true
+      },
+      "SourceHandoffView": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "Prepared",
+              "Sending",
+              "Conflict",
+              "Completed"
+            ]
+          },
+          "receiptId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sealed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operationId",
+          "state",
+          "receiptId",
+          "completedAt",
+          "errorKind",
+          "sealed"
+        ],
+        "additionalProperties": true
+      },
+      "IntakeView": {
+        "type": "object",
+        "properties": {
+          "manifest": {
+            "$ref": "#/components/schemas/SourceManifest"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "Manual",
+              "Automatic"
+            ]
+          },
+          "fence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "leaseUntil": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "materialized": {
+            "type": "boolean"
+          },
+          "sourceState": {
+            "const": "SourceRetained"
+          },
+          "itemIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceTargetView"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetReady": {
+            "type": "boolean"
+          },
+          "handoffCompleted": {
+            "type": "boolean"
+          },
+          "returns": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceReturnView"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "handoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceHandoffView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "manifest",
+          "mode",
+          "fence",
+          "leaseUntil",
+          "materialized",
+          "sourceState",
+          "itemIds",
+          "targets",
+          "targetReady",
+          "handoffCompleted",
+          "returns",
+          "handoff"
+        ],
+        "additionalProperties": true
+      },
+      "HandoffResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "errorKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "handoff": {
+            "$ref": "#/components/schemas/SourceHandoffView"
+          }
+        },
+        "required": [
+          "success",
+          "errorKind",
+          "errorMessage",
+          "handoff"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeBoundingBoxDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/BoundingBoxDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeSourceRegionDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/SourceRegionDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopePageMetaDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageMetaDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeMistakeItemDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakeItemDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeSubmitMistakeUploadResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/SubmitMistakeUploadResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeMistakeItemPageResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakeItemPageResult"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopePendingReviewUploadDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PendingReviewUploadDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopePendingReviewUploadListResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PendingReviewUploadListResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeReviewMistakeItemResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReviewMistakeItemResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeReanalyzeMistakeItemResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReanalyzeMistakeItemResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeReanalyzeJobDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReanalyzeJobDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeGetReanalyzeJobsResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/GetReanalyzeJobsResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeCompleteUploadReviewResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/CompleteUploadReviewResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeMistakePracticeDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakePracticeDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeMistakePracticeListResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakePracticeListResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeProcessLogDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ProcessLogDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeProcessLogListResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ProcessLogListResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopePresignedUrlResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PresignedUrlResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeMistakeItemsByUploadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakeItemsByUploadResult"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeBooleanResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/BooleanResult"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeManifestImage": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ManifestImage"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeSourceManifest": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/SourceManifest"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeSourceTargetView": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/SourceTargetView"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeSourceReturnView": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/SourceReturnView"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeSourceHandoffView": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/SourceHandoffView"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeIntakeView": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/IntakeView"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeHandoffResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/HandoffResult"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "InputSourceRegion": {
+        "type": "object",
+        "properties": {
+          "sourceImagePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "boundingBox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundingBoxDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "x-ruoyu": {
+    "businessPredicate": "/api/mistakes",
+    "businessOperationCount": 21,
+    "ops": {
+      "GET /": {
+        "authorization": "anonymous",
+        "content": "text/plain"
+      },
+      "GET /health/live": {
+        "authorization": "anonymous",
+        "dependencyCalls": false
+      },
+      "GET /health/ready": {
+        "authorization": "anonymous",
+        "status": [
+          200,
+          503
+        ],
+        "dependencies": "fixed startup DB/OSS/enabled Student/configured VL snapshot; strict-enabled issuer requires exact discovery issuer and same-origin nonempty JWKS"
+      },
+      "GET /contracts/mistake-http-v1.json": {
+        "authorization": "anonymous",
+        "content": "application/json",
+        "etag": "quoted lowercase SHA256 of exact embedded bytes; If-None-Match weak/list/* allowed;304 empty",
+        "dependencyCalls": false,
+        "unknownVersion": 404
+      }
+    },
+    "otherNamespaces": {
+      "/contracts": "versioned machine artifacts",
+      "/health": "operational probes",
+      "/": "operational banner"
+    },
+    "compatibility": {
+      "additionalFields": "allowed; required response fields/types/known enums cannot silently change",
+      "breaking": "new version + retain original path/compatibility window",
+      "nonGuarantees": [
+        "not proof of all business invariants",
+        "not a physicalGC authorization",
+        "not replacement of fixed immutable source/return/handoff protocol",
+        "ordinary legacy list failure-to-empty behavior not rewritten"
+      ]
+    },
+    "consumerMethods": 14,
+    "frameworkErrors": "binding400, route404, method405, unmapped500 or cancellation may be empty/nonJSON; never fabricate unified envelope",
+    "sensitiveExamples": "none; no real IDs, keys, presigned URLs, credentials or current data"
+  }
+}

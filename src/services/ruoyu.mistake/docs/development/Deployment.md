@@ -508,6 +508,10 @@ sealed Manual仅Admin首次固定，worker只恢复已有Manual并扫描完整Au
 
 专项测试只用任务自有随机PG库/Seaweed4.48桶，两服务target核验均实际同一S3，正常CA/SAN HTTPS与RS256 uploads.handoff。变量沿SourceReturns，backup容器须与连接同自有PG；通过55.10 SDK8串行运行控制内存。协议/验证策略见[SourceHandoffs](../modules/SourceHandoffs.md)。SourceRetained和HandoffCompleted同时为真不授权物理GC/SourceReleased；外部StorageAudit/旧movers与共享rollout仍由原父项协调。
 
+## 机器 HTTP 合同发布
+
+Host 发布资源携带固定 `mistake-http-v1`，匿名 `/contracts/mistake-http-v1.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
+
 ## Student-enabled 两模式受控运行
 
 [隔离部署验证](./IsolatedDeployVerification.md#显式-student-enabled-两模式运行)的 `--student-enabled-fixture` 使用同一指定 commit 的真实 Student/Mistake Release Host，开启 strict/resource、服务 RS256、intake/targets/returns/handoffs，在自有双 PG 与同一 Seaweed bucket 验证业务与恢复。每模式使用独立随机库，Platform 显式拒绝 Consul 端口并使用完整 fallback。全 cell 与原 19 格均通过才成功；任何故障、缺输入或取消保留自身现场并失败，不把 target ready 当 source completed。共享发布仍必须按既有 rollout 门禁。

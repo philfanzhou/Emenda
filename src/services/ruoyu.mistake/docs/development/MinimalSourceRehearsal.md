@@ -9,7 +9,7 @@ Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定
 | manifest | `src/services/ruoyu.mistake/manifest/mistake-minimal-source-package.json` | 固定源 commit、闭包成员路径（7 个 Mistake 项目 + 3 个共享项目 + sln + .dockerignore）、NuGet 直接依赖 id/版本/许可证表达式、导出排除规则 |
 | 预演脚本 | `script/build-script/06-mistake.minimal-source-rehearsal.sh` | 从指定 commit 按 manifest 导出到仓库外空目录，依次执行 restore、Release build、Domain 测试、Service 测试、docker 镜像构建 |
 
-最小闭包成员：Database、Domain、Service、Host、StudentClient、Domain.Tests、Service.Tests（Mistake 7 项）+ ruoyu.common/backend 下 Common、Ai.Shared、Consul.Shared（共享 3 项）+ sln + 仓库根 `.dockerignore`。不含 4 个 Portal BFF 共享库、common frontend/docs/test、其他服务与 Portal 源码。
+最小闭包成员：Database、Domain、Service、Host、StudentClient、Domain.Tests、Service.Tests（Mistake 7 项）+ ruoyu.common/backend 下 Common、Ai.Shared、Consul.Shared（共享 3 项）+ sln + 仓库根 `.dockerignore` + 权威 `docs/Integration/mistake-http-v1.json` 发布资源。不含 4 个 Portal BFF 共享库、common frontend/docs/test、其他服务与 Portal 源码。
 
 ## 命令
 
@@ -62,3 +62,7 @@ bash script/build-script/06-mistake.minimal-source-rehearsal.sh --docker-only --
 - **回退**：manifest 是纯数据文件，`git revert` 其所在提交即回到旧闭包定义；预演脚本按 manifest 内容判定，不依赖 git 历史。
 - **重复执行**：脚本要求目标目录为空（或不存在）；重复预演换新目录或清空旧目录。`--docker-only` 可在已有预演目录上只重跑镜像阶段。
 - 本入口是独立预演命令，不并入 `pre-commit.sh` 快速路径，不改变既有构建命令。
+
+版本化 HTTP artifact 是 Service 的嵌入资源，也由 Host Dockerfile 显式复制；因此 manifest 的 context_files 必须包含它。共享消费者仅 source-link 无领域依赖的 schema 执行器，不属于提供方发布闭包。
+
+当前完整测试闭包存在已复现的主线回归，回链原 [IKJFHR](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJFHR)：在 `5c84d43d` 的原 manifest 导出树中，Service.Tests 已引用 Student 项目和 SourceSnapshotFixture，而 manifest 仍禁止 Student 内容，因此 Release build 报 CS2001；不能据此声称完整预演成功。生产 Host 发布不需要这些测试引用。HTTP artifact context 同步保留原禁止范围，没有通过导出 Student 全树或跳过测试掩盖失败；原闭包方案和完整预演恢复须由该能力任务继续处理。
