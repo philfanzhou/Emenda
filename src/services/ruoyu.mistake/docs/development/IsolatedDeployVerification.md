@@ -90,3 +90,37 @@ caller复用真实登录cookie/CSRF、Code/S256与真实RS256/JWKS验证；接�
 两轮使用独立的新库和新桶，每个库经历strict停启与安全回退后仍拒绝匿名，缺CA/单独错Issuer/错Authority+Issuer/错ADMINaud新consumer返回401且不匿名降级，缺Authority以键名启动失败。单独错Issuer负例保持真实Authority、CA、ADMIN受众与token不变，仅改Issuer；默认与Admin scheme均只接受显式Issuer及AdditionalValidIssuers，metadata不扩展该列表。另保留错误Authority+Issuer来源负例，不声称覆盖全平台issuer迁移。运行中取消先停任务child listener，Popen只管理自身PID，credential-bearing子进程禁用自身core dump；失败保留自己PG/S3和证据，成功按精确owner前缀清理。维护/回退保持strict/resource=true或暂停listener，不能把匿名窗口作为strict安全回退。公开strict-summary只保存status、hash、计数和能力，不保存JWT/code/cookie/密码/连接串/签名URL。
 
 这只证明 Student-disabled Local 的实际身份和能力边界。全平台18端点完整角色矩阵由现有自动测试覆盖，Student-enabled采集/退回/Saga、Portal/Admin真实会话、共享issuer切换及父级最终联验仍按原任务实施；本入口不替代它们。
+
+## 显式 Student-enabled 两模式运行
+
+`--student-enabled-fixture /absolute/path/fixture.json --seaweed-image <image@sha256:digest> --transport-image <python-3.11@sha256:digest>` 在原19格及可选 strict 阶段之后，串行启动同 commit 的真实 Student/Mistake Release Host。fixture 沿上述真实 provider 字段，并增加 `runtime_image`（固定 .NET 8 ASP.NET 镜像 digest）和 `issuer_control`（`container`、`label`、`owner`，只能控制部署者授权的 owned provider 容器）。文件0600、父目录0700、不得 symlink；缺输入或所有权不匹配直接失败。Seaweed 使用 `volume.max=32`、800MiB 上限，等待未认证 S3 root 返回403后建随机桶；无需预装 MinIO Server。MC 仍由显式镜像提供建桶/seed工具。
+
+```bash
+bash script/build-script/07-mistake.isolated-deploy-verification.sh \
+  --target /absolute/owned/runtime-run --commit <exact-sha> \
+  --pg-image <postgres-15.18@sha256:digest> --mc-image <mc@sha256:digest> \
+  --seaweed-image <seaweed-4.48@sha256:digest> --transport-image <python-3.11@sha256:digest> \
+  --strict-fixture /absolute/private/provider.json \
+  --student-enabled-fixture /absolute/private/provider.json
+python3 -m unittest discover -s tests/deployment -p test_runtime_transport.py -v
+```
+
+Local/Platform 是 ConfigMode，两者均真实 S3。每模式新建两个 PG 库，actual Student 位于 owned Docker network、固定5005，前方是自有正常 CA/SAN HTTPS transport；PG fault transport是同自有 network 的80MiB独立容器（Student走内部DNS5433，Mistake走绑定127的随机高端口），不开放共享防火墙；Mistake 是独立原生进程与随机 HTTP1 端口。共享环境的 DNS、CA、issuer密钥/seed、KV与业务库不修改。VL 仅使用明确授权的确定性兼容 HTTP dependency；真实上传、分类、采集与后续 worker 均走生产 Host。当前 SimpleClassifier 全部标 mistake，mixed 格在真实上传/分类后、首次 snapshot 前只通过正常 SQL guard 设置新增 homework 类型，报告这一受控输入边界。
+
+两模式显式提供 .NET Host 的 `DOTNET_SHUTDOWNTIMEOUTSECONDS=10`，为在途 HTTP graceful drain 留出有界取消预算，在30秒运维期限内退出。默认 .NET Host 的30秒 drain 不能直接当成“总退出小于30秒”的保证；完整复现必须保留本项配置。native进程与携带凭据的 Student/PG transport 容器均禁用 core dump。
+
+逐 cell 覆盖实际启动与5项依赖、单/多图/多crop/manual多批、完整 automatic worker、正反 receipt、练习/reanalysis/签名图片、合法 COW/newrevision、永久重放；Student/Mistake COMMIT 前/中/后、S3 Copy 后丢响应、历史 GET 失败、两个独立实例竞争与旧 fence 拒绝（旧 worker 的真实 VL 在途时只停本任务 PG transport，新实例走相同 owned PG 的独立连接，按数据库自然时间接管，迟到分析不能重复提交）；正常业务认证/TLS、逐个停止自己的 PG/S3/Student/provider并恢复、显式关闭、实际1–9已知历史升级、双库完整 dump→新库 restore、guards与非空 Down、unknown schema、30秒SIGTERM重启及真实 reverse Copy 在途取消。Provider token 过期格等待真实签发的 `exp` 加启动快照30秒 skew，不伪造签发、不改全局时钟，可能需要等待签发方既有 TTL；等待期间只输出剩余秒数。全状态格通过真实依赖故障产生 forward/reverse Prepared、Sending、Conflict、Completed 和全部候选阶段，显式关闭能力后 dump/restore，确认全字段历史一致，再恢复受控依赖与能力、以原 operation/payload 推进可恢复事实。故障在恢复前单独保存事实与真实结果；PG during 格使用仅 owned DB 的临时 deferred trigger 等待，并确认选中 backend 在 PgSleep 后终止，移除临时 trigger后才冷启。未知 S3响应保留已实际复制的随机候选键，不覆写、不补偿删除。
+
+当前 `S3OssService.CopyObjectAsync` 实际采用 GET 源对象、PUT 候选对象；故障 transport 按该格精确 owned source/item 的候选前缀，在最后 PUT 已由真实 S3 返回200后丢响应，并另保留 server-side COPY 协议测试。不能仅等待 `x-amz-copy-source` 来证明当前生产 copy 在途。
+
+`.deploy-verify/enabled/summary.json` 保存固定 head/digest/UTC、每 cell 布尔、0 dependency skips、owner manifest 与 before/after 无关容器核对（Mounts仅按Destination规范无序集合，保留全部字段）。受限 Host 日志、双库 dumps、连接/证书/服务密钥与恢复参数在 target 的 `private/`，不可公开上传；公开报告只保存 hash/count/status，不保存 bearer、code/cookie、密码或签名URL。失败保留属于本次 owner 的容器/库/对象/日志；成功清理时同时核对精确名称及 owner label，删除自身匿名 PG volume，拒绝无关资源。程序只停止其自身 Popen PID，取消传播至自身 listeners，并保留已提交历史；不得清理归档或物理 GC。
+
+本地 transport 测试只验证协议 fault 选择和安全参数退出，不代表真实运行验收；只有完整矩阵结果可作为运行门禁。诊断用 subset 明确不是完整验收并返回失败，不能用于发布 SUCCESS。该运行证据不关闭原父的 fullrefs/fixed Admin/legacy/physical release 范围。
+
+旧 owner 场景仅停止该 Mistake 实例独立的自有 PG transport；Student 与接管实例保持真实 PG 连通；接管后按有界 readiness 恢复旧实例 PG，再等待旧 VL 响应尝试。VL 证据分别记录旧响应在接管后的发送尝试与 socket write 结果，后者不等于客户端已经消费响应；无论旧请求被取消或迟到，都核对同一 snapshot、新 fence、唯一 group 与 receipt，不把尝试计数冒称实际送达。
+
+双实例 HTTP 竞争与自然 lease 接管完成后，旧 fence 的直接 SQL 事务拒绝验证先停止两个自有 Mistake writer，再保存完整重复读快照，要求真实 `P0001/source_managed` 和全部表、行、字段逐字不变；随后重启 Host 完成原目标、业务确认与唯一 receipt。冻结仅用于区分拒绝事务的副作用和合法 target worker 推进，不减少独立旧 worker 在途竞态，也不排除任何历史或操作字段。
+
+依赖恢复最多等待180秒，ready探测间隔5秒并保存各组件真实恢复结果；每次探测包含实际 discovery/JWKS 请求，不能以高频重试耗尽 owned provider 的 metadata 限流预算。保持 provider 正常限流、TLS 与身份配置，不用关闭校验来恢复通过。
+
+Student 活跃重启的比较保存每库每表完整行快照，不把当前上传记录的所有操作元数据当作冻结历史。只有实际 worker 日志证明 `Processing→Pending→Processing` 的三次 Save，且同一 ID、状态2、content revision、所有其他字段/所有其他表严格一致时，允许 `Version` 精确+3、`ProcessingEnteredAt` 与 `UpdatedAt` 落在本次重启窗口内；每个变化逐行登记。字段、行集、历史 receipt 或业务事实的其他差异立即失败。依赖恢复与 SIGTERM 使用此有界因果断言；停止全部写入后的完整 dump/restore 仍要求全部字段、schema 和历史逐字一致。

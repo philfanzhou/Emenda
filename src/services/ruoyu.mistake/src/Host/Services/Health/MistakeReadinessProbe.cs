@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Database;
@@ -14,7 +15,10 @@ public sealed record MistakeReadinessSnapshot(
     bool StudentEnabled,
     string StudentBaseUrl,
     bool VlConfigured,
-    string VlBaseUrl);
+    string VlBaseUrl,
+    bool IdentityRequired = false,
+    string IdentityAuthority = "",
+    string IdentityIssuer = "");
 
 /// <summary>
 /// One readiness component outcome. <see cref="Reason"/> uses a fixed short
@@ -34,6 +38,7 @@ public sealed record MistakeReadinessComponent(string Name, bool Ok, string? Rea
 public sealed class MistakeReadinessProbe
 {
     public const string HttpClientName = "mistake-readiness-probe";
+    public const string IdentityHttpClientName = "mistake-identity-readiness-probe";
     public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
 
     private readonly MistakeDbContext _dbContext;
@@ -76,7 +81,49 @@ public sealed class MistakeReadinessProbe
                 "vl", _snapshot.VlBaseUrl, cancellationToken).ConfigureAwait(false));
         }
 
+        if (_snapshot.IdentityRequired)
+        {
+            components.Add(await ProbeIdentityAsync(cancellationToken).ConfigureAwait(false));
+        }
+
         return components;
+    }
+
+    private async Task<MistakeReadinessComponent> ProbeIdentityAsync(CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ProbeTimeout);
+        try
+        {
+            using var client = _httpClientFactory.CreateClient(IdentityHttpClientName);
+            var authority = new Uri(_snapshot.IdentityAuthority.TrimEnd('/') + "/");
+            using var discoveryResponse = await client.GetAsync(
+                new Uri(authority, ".well-known/openid-configuration"), timeout.Token).ConfigureAwait(false);
+            discoveryResponse.EnsureSuccessStatusCode();
+            using var discovery = JsonDocument.Parse(await discoveryResponse.Content
+                .ReadAsStringAsync(timeout.Token).ConfigureAwait(false));
+            var root = discovery.RootElement;
+            if (root.GetProperty("issuer").GetString() != _snapshot.IdentityIssuer
+                || !Uri.TryCreate(root.GetProperty("jwks_uri").GetString(), UriKind.Absolute, out var jwksUri)
+                || jwksUri.Scheme != authority.Scheme || jwksUri.Authority != authority.Authority)
+                return Log(new MistakeReadinessComponent("issuer", false, "probe failed"));
+            using var keysResponse = await client.GetAsync(jwksUri, timeout.Token).ConfigureAwait(false);
+            keysResponse.EnsureSuccessStatusCode();
+            using var keys = JsonDocument.Parse(await keysResponse.Content
+                .ReadAsStringAsync(timeout.Token).ConfigureAwait(false));
+            var available = keys.RootElement.GetProperty("keys");
+            if (available.ValueKind != JsonValueKind.Array || available.GetArrayLength() == 0)
+                return Log(new MistakeReadinessComponent("issuer", false, "probe failed"));
+            return Log(new MistakeReadinessComponent("issuer", true));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Log(new MistakeReadinessComponent("issuer", false, "timeout"));
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Log(new MistakeReadinessComponent("issuer", false, "probe failed"));
+        }
     }
 
     private async Task<MistakeReadinessComponent> ProbeDatabaseAsync(CancellationToken cancellationToken)
