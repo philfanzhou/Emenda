@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "name": "mistake-minimal-source-package",
   "description": "Mistake 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外预演与未来迁出按清单复制使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
-  "source_commit": "93e3f1d5a644f08c2822b17c6f748971a7aadd66",
-  "source_commit_note": "闭包与依赖清单的审计基线（!27/IKJFHO 窄化 Dockerfile 与 !28/IKJFHP 依赖升级合入后的 master）。演进规则见 docs/development/MinimalSourceRehearsal.md：任何改变闭包成员或直接依赖版本的变更必须在同一提交中更新本 manifest 并重跑预演。",
+  "source_commit": "1f76fedaa2bf96a4bfc3fe7da84cb200228aa197",
+  "source_commit_note": "HTTP v1 发布资源审计基线。该 commit 已含 Service 嵌入和 Docker COPY；本变更的 manifest context 成员须随显式 --commit 一同导出。其余闭包与版本仍沿用原基线，既有 Service.Tests 的 Student 引用由实际预演判定，不以 manifest 宣称独立。",
   "service_identity_note": "Host 本地 RS256 signer/config 和对应 Service.Tests 随递归成员导出，不依赖 Student 项目。跨服务 TLS/PG harness 位于 tests/deployment 且不属于此闭包；secret 仅外部只读挂载，不导出或 COPY。",
   "solution": "src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln",
   "members": {
@@ -22,7 +22,8 @@
       "src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared"
     ],
     "context_files": [
-      ".dockerignore"
+      ".dockerignore",
+      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v1.json"
     ]
   },
   "export": {
