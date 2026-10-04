@@ -37,6 +37,12 @@ public sealed class SourceHandoffPostgresTests
         await f.Service().ResumeTargetsAsync(record.Id,record.ContentRevision);
         using var confirm=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{id}/review",new{reviewStatus=2,reviewerId=f.Actor},f.Token("teacher"));Assert.Equal(HttpStatusCode.OK,confirm.StatusCode);
         using var handoff=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/intakes/{record.Id}/{record.ContentRevision}/handoff",token:f.Token());Assert.Equal(HttpStatusCode.OK,handoff.StatusCode);
+        var lateRegion=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(body))!;
+        lateRegion["requestKey"]=Guid.NewGuid().ToString();
+        lateRegion["sourceRegions"]![0]!["boundingBox"]!["x1"]=20;
+        lateRegion["sourceRegions"]![0]!["boundingBox"]!["x2"]=30;
+        using var sealedSource=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",lateRegion,f.Token());
+        Assert.Equal(HttpStatusCode.Conflict,sealedSource.StatusCode);Assert.Contains("source_sealed",await sealedSource.Content.ReadAsStringAsync());
         await using(var student=f.Source.Context())
         {
             var current=await student.ImageUploadRecords.SingleAsync(r=>r.Id==record.Id);Assert.NotEqual(record.ContentRevision,current.ContentRevision);

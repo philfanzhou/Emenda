@@ -45,9 +45,14 @@ public sealed class SourceReturnPostgresTests
         if(entry=="automatic") id=(await f.Service().CreateAutomaticAsync(record.Id,record.ContentRevision)).Single().Id;
         else
         {
-            await f.StartAsync();using var created=await f.SendAsync(HttpMethod.Post,entry=="upload" ? "/api/mistakes/upload" : "/api/mistakes",new
-            {studentId=record.StudentId,sourceUploadId=record.Id,expectedContentRevision=record.ContentRevision,requestKey=Guid.NewGuid(),subject=1,grade=7,
-                imagePaths=record.ImagePaths.Select(i=>i.Path),sourceRegions=f.Regions(record)},f.Token());Assert.Equal(HttpStatusCode.OK,created.StatusCode);
+            await f.StartAsync();var payload=new Dictionary<string,object?>
+            {
+                ["studentId"]=record.StudentId,["sourceUploadId"]=record.Id,["expectedContentRevision"]=record.ContentRevision,
+                ["requestKey"]=Guid.NewGuid(),["subject"]=1,["grade"]=7
+            };
+            // Keep the actual legacy upload paths and Add regions contracts separate.
+            payload[entry=="upload" ? "imagePaths" : "sourceRegions"]=entry=="upload" ? (object)record.ImagePaths.Select(i=>i.Path) : f.Regions(record);
+            using var created=await f.SendAsync(HttpMethod.Post,entry=="upload" ? "/api/mistakes/upload" : "/api/mistakes",payload,f.Token());Assert.Equal(HttpStatusCode.OK,created.StatusCode);
             await using var before=f.Context();id=(await before.SourceIntakeGroups.SingleAsync()).ItemId;
         }
         await f.Service().ResumeTargetsAsync(record.Id,record.ContentRevision);await f.StartAsync();
