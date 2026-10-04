@@ -20,6 +20,37 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 
 public sealed class SourceIntakePostgresTests
 {
+    [Theory]
+    [InlineData(false)][InlineData(true)]
+    public async Task IndependentHttpsUploadInstancesKeepLeaseFenceAndSingleCropResultAsync(bool expireLease)
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();var source=await f.SeedAsync();await f.StartAsync(tls:true);
+        await using var firstHost=f.App!;using var firstClient=f.Client!;await f.StartAsync(tls:true,replace:false);
+        var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var calls=0;
+        f.BeforeRead=async _=>{if(Interlocked.Increment(ref calls)==1){entered.TrySetResult();await release.Task;}};
+        var body=new {sourceUploadId=source.Id,expectedContentRevision=source.ContentRevision,requestKey=Guid.NewGuid(),studentId=source.StudentId,
+            subject=1,grade=7,sourceRegions=new[]{new{sourceImagePath=source.ImagePaths[0].Path,boundingBox=new{x1=1,y1=1,x2=11,y2=11}}}};
+        using var request=new HttpRequestMessage(HttpMethod.Post,"/api/mistakes/upload"){Content=JsonContent.Create(body)};
+        request.Headers.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",f.Token());
+        var first=firstClient.SendAsync(request);await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            var automatic=await Assert.ThrowsAsync<SourceIntakeException>(()=>f.Service().CreateAutomaticAsync(source.Id,source.ContentRevision));Assert.Equal("source_mode_conflict",automatic.ErrorKind);
+            if(expireLease)await f.SqlAsync("UPDATE source_intake SET lease_until=clock_timestamp()-interval '1 second'");
+            using var second=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());
+            Assert.Equal(expireLease ? HttpStatusCode.OK : HttpStatusCode.Conflict,second.StatusCode);
+            release.TrySetResult();using var firstResponse=await first;
+            Assert.Equal(expireLease ? HttpStatusCode.Conflict : HttpStatusCode.OK,firstResponse.StatusCode);
+            if(expireLease)Assert.Contains("lease_lost",await firstResponse.Content.ReadAsStringAsync());
+            else Assert.Contains("intake_busy",await second.Content.ReadAsStringAsync());
+            using var replay=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());Assert.Equal(HttpStatusCode.OK,replay.StatusCode);
+            Assert.Equal(await (expireLease ? second : firstResponse).Content.ReadAsStringAsync(),await replay.Content.ReadAsStringAsync());
+            await using var db=f.Context();Assert.Single(await db.MistakeItems.ToListAsync());Assert.Single(await db.ProcessLogs.ToListAsync());Assert.Equal(expireLease ? 2 : 1,(await db.SourceIntakes.SingleAsync()).Fence);
+        }
+        finally {release.TrySetResult();await first;}
+        await f.AssertRetainedAsync(source);
+    }
+
     [Fact]
     public async Task UploadCropUnknownCommitAndTransportCancellationKeepOneRecoverableResultAsync()
     {

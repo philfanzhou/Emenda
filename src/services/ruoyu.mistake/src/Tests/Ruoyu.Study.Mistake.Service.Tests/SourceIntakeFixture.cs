@@ -130,9 +130,9 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
             new SigningCredentials(new RsaSecurityKey(UserKey),SecurityAlgorithms.RsaSha256));
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
-    internal async Task StartAsync(bool strict=true,bool resource=true,bool handoffWorker=false,bool tls=false)
+    internal async Task StartAsync(bool strict=true,bool resource=true,bool handoffWorker=false,bool tls=false,bool replace=true)
     {
-        Client?.Dispose();if(App!=null)await App.DisposeAsync();
+        if(replace){Client?.Dispose();if(App!=null)await App.DisposeAsync();}
         var builder=WebApplication.CreateBuilder();builder.Logging.ClearProviders();builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Error);
         builder.WebHost.ConfigureKestrel(k=>k.Listen(IPAddress.Loopback,0,listen=>{if(tls)listen.UseHttps(Source.TlsCertificate);}));
         void Jwt(JwtBearerOptions jwt)
