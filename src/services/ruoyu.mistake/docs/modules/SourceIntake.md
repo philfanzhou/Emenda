@@ -93,9 +93,10 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 提供 `MISTAKE_INTAKE_TEST_CONNECTION` 与 `STUDENT_SCAN_TEST_CONNECTION` 为同一自有 PG15 admin 连接；backup 另需 `MISTAKE_INTAKE_TEST_PG_CONTAINER` 和 `STUDENT_SNAPSHOT_TEST_PG_CONTAINER`。全部测试使用随机库并清理；不得填共享业务库。
 
 ```bash
-cd src/services/ruoyu.mistake/src
-dotnet build Ruoyu.Study.Mistake.sln --configuration Release
-dotnet test Ruoyu.Study.Mistake.sln --configuration Release
+# Run from the repository root; provider and portable suites are both required.
+dotnet build tests/integration/Ruoyu.Study.IntegrationTests.sln --configuration Release
+dotnet test src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln --configuration Release
+dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study.Mistake.Provider.Tests.csproj --configuration Release
 ```
 
 迁移结构见[来源入库表](../database/tables/source_intake.md)，启停/备份/恢复见[部署说明](../development/Deployment.md#来源入库启用与回退)，Student 与 OSS 交互分别见[Student](../Integration/Student.md)和[对象存储](../Integration/Oss/Oss.md)。

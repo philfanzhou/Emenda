@@ -49,4 +49,4 @@ SourceHandoffWorker 启动及每20秒扫描 Prepared/Sending 和完整 Automatic
 
 SourceHandoffPostgresTests 覆盖完整分组、manual missing/多crop、实际 Admin/worker、故障恢复/取消/独立 lease 接管与新revision；SourceHandoffRecoveryPostgresTests 覆盖精确known1–8、只读catalog、双方所有阶段真实dump/restore和非空Down；SourceHandoffStartupTests 检查启动前约束。SourceHandoffS3Tests 的双方验证均连接同一任务自有真实 S3，独立正常 CA/SAN HTTPS、RS256、实际Copy/Download/consume/receipt和响应丢失。Student 的对应测试覆盖精确投影/历史/guards/认证/并发。
 
-在 src/services/ruoyu.mistake/src 运行 dotnet build Ruoyu.Study.Mistake.sln --configuration Release 和 dotnet test Ruoyu.Study.Mistake.sln --configuration Release。专项环境变量沿[SourceReturns验证](./SourceReturns.md)和部署文档，必须任务自有 PG15/S3随机库桶，禁止共享业务库。没有前端产品变化；UI/fullE2E、共享消费者升级与物理GC不由本协议证明。
+在仓库根运行 `dotnet build tests/integration/Ruoyu.Study.IntegrationTests.sln --configuration Release`，再执行 Mistake solution 的 portable 测试与 `dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study.Mistake.Provider.Tests.csproj --configuration Release --filter FullyQualifiedName~SourceHandoff`；provider 与核心覆盖必须共同保留。专项环境变量沿[SourceReturns验证](./SourceReturns.md)和部署文档，必须任务自有 PG15/S3随机库桶，禁止共享业务库。没有前端产品变化；UI/fullE2E、共享消费者升级与物理GC不由本协议证明。

@@ -11,6 +11,8 @@ Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定
 
 最小闭包成员：Database、Domain、Service、Host、StudentClient、Domain.Tests、Service.Tests（Mistake 7 项）+ ruoyu.common/backend 下 Common、Ai.Shared、Consul.Shared（共享 3 项）+ sln + 仓库根 `.dockerignore` + 权威 `docs/Integration/mistake-http-v1.json` 发布资源。不含 4 个 Portal BFF 共享库、common frontend/docs/test、其他服务与 Portal 源码。
 
+Service.Tests 只保留 portable 核心/宿主测试，不引用 Student 项目或源码。需要真实 Student provider 的来源入库、目标、退回与交接测试由 `tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests` 主责；该项目不进入最小包。仓库常规回归必须执行两套，不能以最小包成功替代 provider 正常 TLS/PG/S3 验证。
+
 ## 命令
 
 ```bash
@@ -65,4 +67,15 @@ bash script/build-script/06-mistake.minimal-source-rehearsal.sh --docker-only --
 
 版本化 HTTP artifact 是 Service 的嵌入资源，也由 Host Dockerfile 显式复制；因此 manifest 的 context_files 必须包含它。共享消费者仅 source-link 无领域依赖的 schema 执行器，不属于提供方发布闭包。
 
-当前完整测试闭包存在已复现的主线回归，回链原 [IKJFHR](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJFHR)：在 `5c84d43d` 的原 manifest 导出树中，Service.Tests 已引用 Student 项目和 SourceSnapshotFixture，而 manifest 仍禁止 Student 内容，因此 Release build 报 CS2001；不能据此声称完整预演成功。生产 Host 发布不需要这些测试引用。HTTP artifact context 同步保留原禁止范围，没有通过导出 Student 全树或跳过测试掩盖失败；原闭包方案和完整预演恢复须由该能力任务继续处理。
+跨域 provider 项目通过 test-only friend 与 ProjectReference 复用 Service.Tests 的内部 RunHostAsync；其独立 BaseOutputPath 位于 Mistake Tests 同层的专属 bin 目录，保持既有 fixture 查找真实 Host 的布局。源码与项目仍在 integration 下，输出互不覆盖，不复制 helper，不改变生产可见性。构建产物仍受 **/bin 与 **/obj 排除；最小导出只含 portable Service.Tests。
+
+仓库回归在仓库根运行：
+
+```bash
+dotnet build tests/integration/Ruoyu.Study.IntegrationTests.sln --configuration Release
+dotnet test src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln --configuration Release
+dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study.Mistake.Provider.Tests.csproj --configuration Release
+./tests/integration/scripts/pre-commit.sh --skip-docker --skip-e2e --skip-integration
+```
+
+pre-commit 的原常规 UNIT 阶段同时执行 core 与 provider；--skip-integration 仅省略可选 Portal integration 集，不省略原 Mistake provider 覆盖。环境沿 SourceIntake/Targets/Returns/Handoffs 的专用 PG15/S3与正常 TLS要求；没有环境时原动态门控如实记录，不能称全量通过。调整源码归属时保持原测试并集/断言不变，manifest 禁止 Student 内容的保证不变。

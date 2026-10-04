@@ -47,9 +47,10 @@ receipt 必须来自正常 TLS 和 RS256 uploads.return 服务身份，核对 op
 实际 PG、正常 CA/SAN HTTPS/RS256 Student 与独立 Mistake HTTP、提交前故障/真实提交后响应丢失、取消/晚到 Copy、SQL/授权/恢复见 `SourceReturnPostgresTests`。真实 S3 Copy/Get 与同提供方联合链路见 `SourceReturnS3Tests`。提供任务自有随机 PG/S3，不能使用共享业务库；跳过不代表通过。
 
 ```bash
-cd src/services/ruoyu.mistake/src
-dotnet build Ruoyu.Study.Mistake.sln --configuration Release
-dotnet test Ruoyu.Study.Mistake.sln --configuration Release --filter 'FullyQualifiedName~SourceReturn'
+# Run from the repository root; provider and portable suites are both required.
+dotnet build tests/integration/Ruoyu.Study.IntegrationTests.sln --configuration Release
+dotnet test src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln --configuration Release --filter 'FullyQualifiedName~SourceReturn'
+dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study.Mistake.Provider.Tests.csproj --configuration Release --filter 'FullyQualifiedName~SourceReturn'
 ```
 
 共享消费回归：`MANAGED_RETURN_BFF_EVIDENCE=<evidence-dir> dotnet test src/ruoyu.common/test/Ruoyu.Study.MistakeReviewBff.Shared.Tests/Ruoyu.Study.MistakeReviewBff.Shared.Tests.csproj -c Release --filter FullyQualifiedName~ActualHttpClientPreservesManagedPending` 通过实际 HttpClient 与共享 Controller 保存 pending/Completed BFF JSON。随后 `node tests/integration/scripts/test-managed-return-ui.cjs <evidence-dir> [frontend-dependency-dir]` 用已有 Vue/TypeScript 依赖编译并执行实际 ReviewDetail 的提交方法，断言中文提示与 reviewed/close 事件；无新 UI 或依赖。
