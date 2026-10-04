@@ -14,14 +14,14 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 public sealed class SourceHandoffRecoveryPostgresTests
 {
     [Theory]
-    [InlineData(1)][InlineData(2)][InlineData(3)][InlineData(4)][InlineData(5)][InlineData(6)][InlineData(7)][InlineData(8)]
-    public async Task EveryExactKnownSchemaUpgradesExplicitlyToNineAndReadOnlyCatalogRejectsCorruptionAsync(int version)
+    [InlineData(1)][InlineData(2)][InlineData(3)][InlineData(4)][InlineData(5)][InlineData(6)][InlineData(7)][InlineData(8)][InlineData(9)]
+    public async Task EveryExactKnownSchemaUpgradesExplicitlyToTenAndReadOnlyCatalogRejectsCorruptionAsync(int version)
     {
         await using var f=await SourceIntakeFixture.CreateAsync(initialize:false);await using var db=f.Context();
         var target=db.Database.GetMigrations().Take(version).Last();await db.GetService<IMigrator>().MigrateAsync(target);
         await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
         await DatabaseInitializer.UpgradeKnownAsync(db,f.Name,true,true);await DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance);
-        Assert.Equal(9,(await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(10,(await db.Database.GetAppliedMigrationsAsync()).Count());
         await f.SqlAsync("ALTER TABLE source_handoff ADD COLUMN unrecognized text");
         await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.InitializeAsync(db,NullLoggerFactory.Instance));
         await Assert.ThrowsAsync<InvalidOperationException>(()=>DatabaseInitializer.UpgradeKnownAsync(db,f.Name,true,true));

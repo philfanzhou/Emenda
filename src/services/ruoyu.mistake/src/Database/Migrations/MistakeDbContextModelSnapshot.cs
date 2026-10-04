@@ -307,6 +307,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
                     b.ToTable("reanalyze_job");
                 });
+Ruoyu.Study.Common.StorageReferences.StorageReferenceSchema.Configure(modelBuilder);
 #pragma warning restore 612, 618
         }
     }

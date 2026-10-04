@@ -37,6 +37,7 @@ public class MistakeDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        Ruoyu.Study.Common.StorageReferences.StorageReferenceSchema.Configure(modelBuilder);
         SourceIntakeModel.Configure(modelBuilder);
         SourceTargetModel.Configure(modelBuilder);
         SourceReturnModel.Configure(modelBuilder);
