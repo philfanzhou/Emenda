@@ -1,6 +1,6 @@
 # Mistake 版本化 HTTP 合同
 
-[mistake-http-v1.json](./mistake-http-v1.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；本版本不包括未来 StorageReferences 或物理 GC。
+[mistake-http-v1.json](./mistake-http-v1.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 由已实现的 [StorageReferences v1](../../../../../docs/integrations/StorageReferences.md) 主责，快照/pages、机器身份与恒 false 删除许可仍按其独立不可变合同。本业务 v1 只登记该 namespace 的归属，不并入其 wire，也不授予物理 GC。
 
 ## 取得发布版本
 

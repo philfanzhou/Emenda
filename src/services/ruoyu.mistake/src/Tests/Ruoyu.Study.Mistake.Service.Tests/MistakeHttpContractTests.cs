@@ -83,9 +83,10 @@ public sealed class MistakeHttpContractTests
         foreach (var other in endpoints.Where(endpoint => !IsBusiness(endpoint.RoutePattern.RawText!)))
         {
             var path = other.RoutePattern.RawText!;
-            var owner = path == "/" ? "/" : "/" + path.Split('/')[1];
-            MistakeHttpContract.Definition.GetProperty("x-ruoyu").GetProperty("otherNamespaces")
-                .TryGetProperty(owner, out _).Should().BeTrue("every other public namespace must have an explicit owner");
+            var namespaces = MistakeHttpContract.Definition.GetProperty("x-ruoyu")
+                .GetProperty("otherNamespaces").EnumerateObject().Select(entry => entry.Name);
+            namespaces.Should().Contain(owner => BelongsToNamespace(path, owner),
+                "every other public route must have an explicit namespace owner: {0}", path);
         }
         using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v1.json");
         conditional.Headers.TryAddWithoutValidation("If-None-Match", "\"different\", W/" + response.Headers.ETag.Tag);
@@ -94,6 +95,22 @@ public sealed class MistakeHttpContractTests
         (await unchanged.Content.ReadAsByteArrayAsync()).Should().BeEmpty();
         (await client.GetAsync("/contracts/mistake-http-v999.json")).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
+
+    [Theory]
+    [InlineData("/api/integrations/storage-audit/references/snapshots", true)]
+    [InlineData("/api/integrations/storage-audit/references", true)]
+    [InlineData("/api/integrations/storage-audit/references-extra", false)]
+    [InlineData("/api/integrations/unowned", false)]
+    [InlineData("/api/other", false)]
+    public void IntegrationNamespaceOwnershipDoesNotHideOtherPublicRoutes(string path, bool expected)
+    {
+        var namespaces = MistakeHttpContract.Definition.GetProperty("x-ruoyu")
+            .GetProperty("otherNamespaces").EnumerateObject().Select(entry => entry.Name);
+        namespaces.Any(owner => BelongsToNamespace(path, owner)).Should().Be(expected);
+    }
+
+    private static bool BelongsToNamespace(string path, string owner) =>
+        path == owner || (owner != "/" && path.StartsWith(owner + "/", StringComparison.Ordinal));
 
     [Fact]
     public async Task PublisherWorksWithoutAnyBusinessRegistrationAndCancellationCannotCallInfrastructureAsync()

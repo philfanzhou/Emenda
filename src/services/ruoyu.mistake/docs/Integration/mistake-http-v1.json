@@ -6303,6 +6303,7 @@
       }
     },
     "otherNamespaces": {
+      "/api/integrations/storage-audit/references": "StorageReferences v1 machine snapshots; see docs/integrations/StorageReferences.md for the separate immutable reference contract; deletionAuthorized is always false",
       "/contracts": "versioned machine artifacts",
       "/health": "operational probes",
       "/": "operational banner"
