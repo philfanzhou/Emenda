@@ -30,6 +30,7 @@ using Ruoyu.Study.Mistake.Domain.Models;
 using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host;
+using Ruoyu.Study.Mistake.HttpContracts;
 using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Host.Services.Intake;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
@@ -169,7 +170,16 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
     {
         using var request=new HttpRequestMessage(method,path){Content=body==null ? null : JsonContent.Create(body)};
         if(token!=null)request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",token);
-        return await Client!.SendAsync(request);
+        var response = await Client!.SendAsync(request);
+        // Existing real PG/HTTP protocol scenarios are also provider wire fixtures.
+        // ReadAsStringAsync buffers content, so the scenario's original assertions remain intact.
+        if (response.Content.Headers.ContentType?.MediaType is "application/json" or "application/problem+json")
+        {
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            MistakeHttpContract.ValidateResponse(method.Method, new Uri(Client.BaseAddress!, path).AbsolutePath,
+                (int)response.StatusCode, json.RootElement);
+        }
+        return response;
     }
     internal async Task<string> BackupAsync()
     {var container=Environment.GetEnvironmentVariable("MISTAKE_INTAKE_TEST_PG_CONTAINER") ?? throw new InvalidOperationException("Owned PostgreSQL container required.");return await ProcessAsync(["exec",container,"pg_dump","-U","postgres","-d",Name]);}

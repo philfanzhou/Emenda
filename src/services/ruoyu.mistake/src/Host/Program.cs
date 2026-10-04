@@ -426,6 +426,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapMistakeHttpEndpoints(requireAuthenticatedApi: strictApiAuth);
+app.MapMistakeContractEndpoints();
 // Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.
 app.MapMistakeHealthEndpoints();
 app.MapGet("/", () => "Mistake WebAPI host is running.");
