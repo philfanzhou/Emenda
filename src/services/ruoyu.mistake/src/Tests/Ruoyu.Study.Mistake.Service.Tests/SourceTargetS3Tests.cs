@@ -38,9 +38,14 @@ public sealed class SourceTargetS3Tests
             else
             {
                 var path=entry=="manual-missing" ? "/api/mistakes/upload" : "/api/mistakes";
-                using var created=await f.SendAsync(HttpMethod.Post,path,new{studentId=record.StudentId,sourceUploadId=record.Id,
-                    expectedContentRevision=record.ContentRevision,requestKey=Guid.NewGuid(),subject=1,grade=7,
-                    imagePaths=new[]{"uploads/a.jpg","uploads/b.jpg"},sourceRegions=new[]{new{sourceImagePath="uploads/a.jpg"},new{sourceImagePath="uploads/b.jpg"}}},f.Token());
+                var payload=new Dictionary<string,object?>
+                {
+                    ["studentId"]=record.StudentId,["sourceUploadId"]=record.Id,["expectedContentRevision"]=record.ContentRevision,
+                    ["requestKey"]=Guid.NewGuid(),["subject"]=1,["grade"]=7
+                };
+                payload[entry=="manual-missing" ? "imagePaths" : "sourceRegions"]=entry=="manual-missing"
+                    ? (object)new[]{"uploads/a.jpg","uploads/b.jpg"} : new[]{new{sourceImagePath="uploads/a.jpg"},new{sourceImagePath="uploads/b.jpg"}};
+                using var created=await f.SendAsync(HttpMethod.Post,path,payload,f.Token());
                 Assert.Equal(HttpStatusCode.OK,created.StatusCode);
             }
             var before=await f.Service().GetAsync(record.Id,record.ContentRevision);Assert.False(before!.TargetReady);

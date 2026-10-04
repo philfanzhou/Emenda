@@ -127,7 +127,7 @@ public static partial class MistakeHttpEndpoints
         foreach(var argument in context.Arguments)
         {
             if(argument is SubmitMistakeUploadRequest upload)
-                return intake.Enabled || upload.ExpectedContentRevision.HasValue || upload.RequestKey.HasValue
+                return upload.SourceRegions != null || intake.Enabled || upload.ExpectedContentRevision.HasValue || upload.RequestKey.HasValue
                     || await intake.HasManagedDataAsync(sourceId:upload.SourceUploadId,ct:ct);
             if(argument is AddMistakeItemRequest add)
                 return intake.Enabled || add.ExpectedContentRevision.HasValue || add.RequestKey.HasValue

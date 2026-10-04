@@ -20,6 +20,173 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 
 public sealed class SourceIntakePostgresTests
 {
+    [Theory]
+    [InlineData(false)][InlineData(true)]
+    public async Task IndependentHttpsUploadInstancesKeepLeaseFenceAndSingleCropResultAsync(bool expireLease)
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();var source=await f.SeedAsync();await f.StartAsync(tls:true);
+        await using var firstHost=f.App!;using var firstClient=f.Client!;await f.StartAsync(tls:true,replace:false);
+        var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var calls=0;
+        f.BeforeRead=async _=>{if(Interlocked.Increment(ref calls)==1){entered.TrySetResult();await release.Task;}};
+        var body=new {sourceUploadId=source.Id,expectedContentRevision=source.ContentRevision,requestKey=Guid.NewGuid(),studentId=source.StudentId,
+            subject=1,grade=7,sourceRegions=new[]{new{sourceImagePath=source.ImagePaths[0].Path,boundingBox=new{x1=1,y1=1,x2=11,y2=11}}}};
+        using var request=new HttpRequestMessage(HttpMethod.Post,"/api/mistakes/upload"){Content=JsonContent.Create(body)};
+        request.Headers.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",f.Token());
+        var first=firstClient.SendAsync(request);await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            var automatic=await Assert.ThrowsAsync<SourceIntakeException>(()=>f.Service().CreateAutomaticAsync(source.Id,source.ContentRevision));Assert.Equal("source_mode_conflict",automatic.ErrorKind);
+            if(expireLease)await f.SqlAsync("UPDATE source_intake SET lease_until=clock_timestamp()-interval '1 second'");
+            using var second=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());
+            Assert.Equal(expireLease ? HttpStatusCode.OK : HttpStatusCode.Conflict,second.StatusCode);
+            release.TrySetResult();using var firstResponse=await first;
+            Assert.Equal(expireLease ? HttpStatusCode.Conflict : HttpStatusCode.OK,firstResponse.StatusCode);
+            if(expireLease)Assert.Contains("lease_lost",await firstResponse.Content.ReadAsStringAsync());
+            else Assert.Contains("intake_busy",await second.Content.ReadAsStringAsync());
+            using var replay=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());Assert.Equal(HttpStatusCode.OK,replay.StatusCode);
+            Assert.Equal(await (expireLease ? second : firstResponse).Content.ReadAsStringAsync(),await replay.Content.ReadAsStringAsync());
+            await using var db=f.Context();Assert.Single(await db.MistakeItems.ToListAsync());Assert.Single(await db.ProcessLogs.ToListAsync());Assert.Equal(expireLease ? 2 : 1,(await db.SourceIntakes.SingleAsync()).Fence);
+        }
+        finally {release.TrySetResult();await first;}
+        await f.AssertRetainedAsync(source);
+    }
+
+    [Fact]
+    public async Task UploadCropUnknownCommitAndTransportCancellationKeepOneRecoverableResultAsync()
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();var source=await f.SeedAsync();await f.StartAsync(tls:true);
+        var body=new {sourceUploadId=source.Id,expectedContentRevision=source.ContentRevision,requestKey=Guid.NewGuid(),studentId=source.StudentId,
+            subject=1,grade=7,sourceRegions=new[]{new{sourceImagePath=source.ImagePaths[0].Path,boundingBox=new{x1=0,y1=0,x2=10,y2=10}}}};
+        f.Fault.LoseCommitNumber=f.Fault.CommitCount+2;
+        using var response=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+        Assert.Equal(f.Fault.LoseCommitNumber,f.Fault.CommitCount);
+        await f.StartAsync(tls:true);using var replay=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());
+        Assert.Equal(await response.Content.ReadAsStringAsync(),await replay.Content.ReadAsStringAsync());
+        var second=await f.SeedAsync(["uploads/cancel-crop.jpg"]);var key=Guid.NewGuid();
+        var canceledBody=new {sourceUploadId=second.Id,expectedContentRevision=second.ContentRevision,requestKey=key,studentId=second.StudentId,
+            subject=1,grade=7,sourceRegions=new[]{new{sourceImagePath=second.ImagePaths[0].Path,boundingBox=new{x1=1,y1=1,x2=11,y2=11}}}};
+        var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        f.BeforeRead=async _=>{entered.TrySetResult();await release.Task;};using var cancel=new CancellationTokenSource();
+        using var request=new HttpRequestMessage(HttpMethod.Post,"/api/mistakes/upload"){Content=JsonContent.Create(canceledBody)};
+        request.Headers.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",f.Token());
+        var sending=f.Client!.SendAsync(request,cancel.Token);await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));cancel.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>sending);release.TrySetResult();
+        // Stop the independent listener so cancellation/finally completes before recovery.
+        await f.App!.StopAsync();f.BeforeRead=null;await f.StartAsync(tls:true);
+        using var recovered=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",canceledBody,f.Token());Assert.Equal(HttpStatusCode.OK,recovered.StatusCode);
+        using var repeated=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",canceledBody,f.Token());Assert.Equal(await recovered.Content.ReadAsStringAsync(),await repeated.Content.ReadAsStringAsync());
+        await using var db=f.Context();Assert.Equal(2,await db.MistakeItems.CountAsync());Assert.Equal(2,await db.ProcessLogs.CountAsync());await f.AssertRetainedAsync(source);await f.AssertRetainedAsync(second);
+    }
+
+    [Fact]
+    public async Task UploadRegionsPreserveIntegerCropsMultiImageGroupsAndOriginalCanonicalAliasesAsync()
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();
+        var source=await f.SeedAsync(["uploads/中文/A.JPG","uploads/B.jpg","uploads/other.jpg"],["mistake","mistake","homework"]);
+        await f.StartAsync(tls:true);var path=source.ImagePaths[0].Path;var key=Guid.NewGuid();
+        object Body(Guid requestKey,object[] regions,int subject=1)=>new {sourceUploadId=source.Id,expectedContentRevision=source.ContentRevision,
+            requestKey,studentId=source.StudentId,subject,grade=7,rootCause="cause",sourceRegions=regions};
+        object Region(int x)=>new {sourceImagePath=path,boundingBox=new{x1=x,y1=x,x2=x+10,y2=x+10}};
+        async Task<Guid> Create(object body,string route="/api/mistakes/upload")
+        {
+            using var response=await f.SendAsync(HttpMethod.Post,route,body,f.Token());Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+            using var json=JsonDocument.Parse(await response.Content.ReadAsStringAsync());var data=json.RootElement.GetProperty("data");
+            return Guid.Parse(route=="/api/mistakes" ? data.GetProperty("id").GetString()! : data.GetProperty("createdItemIds")[0].GetString()!);
+        }
+        var first=await Create(Body(key,[Region(0)]));var overlap=await Create(Body(Guid.NewGuid(),[Region(1)]));
+        var multi=await Create(Body(Guid.NewGuid(),[Region(20),new {sourceImagePath="uploads/B.jpg"}]));
+        Assert.NotEqual(first,overlap);Assert.NotEqual(first,multi);
+        Assert.Equal(first,await Create(Body(key,[Region(0)])));
+        Assert.Equal(first,await Create(Body(Guid.NewGuid(),[Region(0)])));
+        Assert.Equal(first,await Create(Body(Guid.NewGuid(),[Region(0)]),"/api/mistakes"));
+        using var conflict=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",Body(key,[Region(2)]),f.Token());
+        Assert.Equal(HttpStatusCode.Conflict,conflict.StatusCode);Assert.Contains("request_payload_conflict",await conflict.Content.ReadAsStringAsync());
+        using var regroup=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",Body(Guid.NewGuid(),[Region(0),Region(30)]),f.Token());
+        Assert.Equal(HttpStatusCode.Conflict,regroup.StatusCode);Assert.Contains("grouping_conflict",await regroup.Content.ReadAsStringAsync());
+        using var wrongType=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",Body(Guid.NewGuid(),[new {sourceImagePath="uploads/other.jpg"}]),f.Token());
+        Assert.Equal(HttpStatusCode.BadRequest,wrongType.StatusCode);
+        using var wrongCase=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",Body(Guid.NewGuid(),[new {sourceImagePath="uploads/中文/a.JPG"}]),f.Token());
+        Assert.Equal(HttpStatusCode.BadRequest,wrongCase.StatusCode);
+        await using(var db=f.Context())
+        {
+            Assert.Equal(3,await db.MistakeItems.CountAsync());Assert.Equal(3,await db.ProcessLogs.CountAsync());
+            Assert.Equal(3,await db.SourceIntakeGroups.CountAsync());var item=await db.MistakeItems.SingleAsync(i=>i.Id==first);
+            Assert.Equal(source.StudentId,item.StudentId);Assert.Equal(source.Id.ToString(),item.SourceUploadId);
+            Assert.Equal(0,item.SourceRegions.Single().BoundingBox!.X1);Assert.Equal(10,item.SourceRegions.Single().BoundingBox!.X2);
+            Assert.Equal(2,(await db.MistakeItems.SingleAsync(i=>i.Id==multi)).SourceRegions.Count);
+            Assert.Equal(source.ContentRevision,(await db.SourceIntakes.SingleAsync()).ContentRevision);
+        }
+        await f.AssertRetainedAsync(source);
+    }
+
+    [Fact]
+    public async Task UploadAbsentNullAndExplicitFullRegionsAliasTheSameManagedCreationAsync()
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();var source=await f.SeedAsync();await f.StartAsync(tls:true);var key=Guid.NewGuid();
+        var common=new {sourceUploadId=source.Id,expectedContentRevision=source.ContentRevision,requestKey=key,studentId=source.StudentId,
+            subject=1,grade=7,imagePaths=new[]{source.ImagePaths[0].Path}};
+        using var first=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",common,f.Token());Assert.Equal(HttpStatusCode.OK,first.StatusCode);
+        var expected=await first.Content.ReadAsStringAsync();var node=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(common))!;
+        node["sourceRegions"]=null;
+        using var nullField=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",node,f.Token());Assert.Equal(expected,await nullField.Content.ReadAsStringAsync());
+        node["imagePaths"]=new System.Text.Json.Nodes.JsonArray();
+        node["sourceRegions"]=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(new[]{new{sourceImagePath=source.ImagePaths[0].Path,boundingBox=(object?)null}}));
+        using var full=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",node,f.Token());Assert.Equal(HttpStatusCode.OK,full.StatusCode);Assert.Equal(expected,await full.Content.ReadAsStringAsync());
+        await using var db=f.Context();Assert.Equal(1,await db.MistakeItems.CountAsync());Assert.Equal(1,await db.ProcessLogs.CountAsync());Assert.Equal(1,await db.SourceIntakeRequests.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("empty")][InlineData("null_entry")][InlineData("empty_path")][InlineData("negative")]
+    [InlineData("rectangle")][InlineData("fractional")][InlineData("overflow")][InlineData("ambiguous")]
+    [InlineData("missing_revision")][InlineData("missing_key")][InlineData("zero_revision")][InlineData("zero_key")][InlineData("too_many")]
+    public async Task ExplicitUploadRegionsRejectInvalidInputsBeforeProviderOrObjectIOAsync(string kind)
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();var source=await f.SeedAsync();await f.StartAsync(tls:true);
+        var body=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(new {sourceUploadId=source.Id,expectedContentRevision=source.ContentRevision,
+            requestKey=Guid.NewGuid(),studentId=source.StudentId,subject=1,grade=7,sourceRegions=new[]{new{sourceImagePath=source.ImagePaths[0].Path,boundingBox=new{x1=0,y1=0,x2=10,y2=10}}}}))!;
+        switch(kind)
+        {
+            case "empty":body["sourceRegions"]=new System.Text.Json.Nodes.JsonArray();break;
+            case "null_entry":body["sourceRegions"]=new System.Text.Json.Nodes.JsonArray((System.Text.Json.Nodes.JsonNode?)null);break;
+            case "empty_path":body["sourceRegions"]![0]!["sourceImagePath"]="";break;
+            case "negative":body["sourceRegions"]![0]!["boundingBox"]!["x1"]=-1;break;
+            case "rectangle":body["sourceRegions"]![0]!["boundingBox"]!["x2"]=0;break;
+            case "fractional":body["sourceRegions"]![0]!["boundingBox"]!["x1"]=0.5;break;
+            case "overflow":body["sourceRegions"]![0]!["boundingBox"]!["x2"]=2147483648L;break;
+            case "ambiguous":body["imagePaths"]=new System.Text.Json.Nodes.JsonArray(source.ImagePaths[0].Path);break;
+            case "missing_revision":body.AsObject().Remove("expectedContentRevision");break;
+            case "missing_key":body.AsObject().Remove("requestKey");break;
+            case "zero_revision":body["expectedContentRevision"]=Guid.Empty.ToString();break;
+            case "zero_key":body["requestKey"]=Guid.Empty.ToString();break;
+            case "too_many":body["sourceRegions"]=new System.Text.Json.Nodes.JsonArray(Enumerable.Range(0,101).Select(_=>body["sourceRegions"]![0]!.DeepClone()).ToArray());break;
+        }
+        var requests=f.Source.Requests.Count;
+        using var response=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());Assert.Equal(HttpStatusCode.BadRequest,response.StatusCode);
+        Assert.Equal(requests,f.Source.Requests.Count);Assert.Empty(f.Reads);Assert.Empty(f.SideEffects);Assert.Empty(f.Source.Deletes);
+        await using var db=f.Context();Assert.Empty(await db.MistakeItems.ToListAsync());Assert.Empty(await db.ProcessLogs.ToListAsync());Assert.Empty(await db.SourceIntakes.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false,false)][InlineData(true,false)][InlineData(true,true)]
+    public async Task UploadRegionsKeepTrustedAdminAndOwnerAcrossAuthModesAsync(bool strict,bool resource)
+    {
+        await using var f=await SourceIntakeFixture.CreateAsync();var source=await f.SeedAsync();await f.StartAsync(strict,resource,tls:true);
+        var body=new {sourceUploadId=source.Id,expectedContentRevision=source.ContentRevision,requestKey=Guid.NewGuid(),studentId=source.StudentId,
+            subject=1,grade=7,sourceRegions=new[]{new{sourceImagePath=source.ImagePaths[0].Path,boundingBox=new{x1=0,y1=0,x2=10,y2=10}}}};
+        using var anonymous=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body);Assert.Equal(HttpStatusCode.Unauthorized,anonymous.StatusCode);
+        foreach(var token in new[]{f.Token(issuer:"https://wrong.invalid"),f.Token(audience:"wrong"),f.Token(sub:""),f.Token(expired:true)})
+        {using var response=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,token);Assert.Equal(HttpStatusCode.Unauthorized,response.StatusCode);}
+        using var wrongRole=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token("teacher"));Assert.Equal(HttpStatusCode.Forbidden,wrongRole.StatusCode);
+        var wrongOwner=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(body))!;wrongOwner["studentId"]=Guid.NewGuid().ToString();
+        using var wrongStudent=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",wrongOwner,f.Token());Assert.Equal(HttpStatusCode.Forbidden,wrongStudent.StatusCode);
+        using var accepted=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token(audience:"intake-admin"));Assert.Equal(HttpStatusCode.OK,accepted.StatusCode);
+        f.Enabled=false;await f.StartAsync(strict,resource,tls:true);f.BeforeRead=_=>throw new IOException("Source must not be read on replay.");
+        using var replay=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());Assert.Equal(HttpStatusCode.OK,replay.StatusCode);Assert.Equal(await accepted.Content.ReadAsStringAsync(),await replay.Content.ReadAsStringAsync());
+        var unknown=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(body))!;unknown["requestKey"]=Guid.NewGuid().ToString();
+        using var disabled=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",unknown,f.Token());Assert.Equal(HttpStatusCode.ServiceUnavailable,disabled.StatusCode);
+        await using var db=f.Context();Assert.Equal(1,await db.MistakeItems.CountAsync());Assert.Equal(1,await db.ProcessLogs.CountAsync());await f.AssertRetainedAsync(source);
+    }
+
     [Fact]
     public async Task BothHttpCreateEntriesCanonicalAliasesOriginalResultAndAuthenticatedReadSurviveRestartDisableAsync()
     {

@@ -23,6 +23,40 @@ public sealed class SourceHandoffPostgresTests
         await f.Source.StartAsync(strict:true,handoffsEnabled:true);
         f.Copy=(a,b)=>f.Source.Files.CopyObjectAsync(a,b);return f;
     }
+    [Fact]
+    public async Task UploadCropCreationReplaysAfterCompletedHandoffLawfulCurrentRevisionEditAndDeleteAsync()
+    {
+        await using var f=await FixtureAsync();f.SnapshotHttp.BaseAddress=f.Source.Client!.BaseAddress;
+        var record=await f.SeedAsync(["uploads/crop-history.jpg","uploads/current-homework.jpg"],types:["mistake","homework"]);await f.StartAsync(tls:true);
+        var body=new {sourceUploadId=record.Id,expectedContentRevision=record.ContentRevision,requestKey=Guid.NewGuid(),studentId=record.StudentId,
+            subject=1,grade=7,rootCause="original",sourceRegions=new[]{new{sourceImagePath=record.ImagePaths[0].Path,boundingBox=new{x1=1,y1=2,x2=11,y2=12}}}};
+        using var first=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());Assert.Equal(HttpStatusCode.OK,first.StatusCode);
+        var original=await first.Content.ReadAsStringAsync();using var json=JsonDocument.Parse(original);var id=Guid.Parse(json.RootElement.GetProperty("data").GetProperty("createdItemIds")[0].GetString()!);
+        using var blockedDelete=await f.SendAsync(HttpMethod.Delete,$"/api/mistakes/{id}",token:f.Token());Assert.Equal(HttpStatusCode.Conflict,blockedDelete.StatusCode);
+        using var blockedIdentity=await f.SendAsync(HttpMethod.Put,$"/api/mistakes/{id}",new{studentId=Guid.NewGuid().ToString()},f.Token());Assert.Equal(HttpStatusCode.Conflict,blockedIdentity.StatusCode);
+        await f.Service().ResumeTargetsAsync(record.Id,record.ContentRevision);
+        using var confirm=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/{id}/review",new{reviewStatus=2,reviewerId=f.Actor},f.Token("teacher"));Assert.Equal(HttpStatusCode.OK,confirm.StatusCode);
+        using var handoff=await f.SendAsync(HttpMethod.Post,$"/api/mistakes/intakes/{record.Id}/{record.ContentRevision}/handoff",token:f.Token());Assert.Equal(HttpStatusCode.OK,handoff.StatusCode);
+        var lateRegion=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(body))!;
+        lateRegion["requestKey"]=Guid.NewGuid().ToString();
+        lateRegion["sourceRegions"]![0]!["boundingBox"]!["x1"]=20;
+        lateRegion["sourceRegions"]![0]!["boundingBox"]!["x2"]=30;
+        using var sealedSource=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",lateRegion,f.Token());
+        Assert.Equal(HttpStatusCode.Conflict,sealedSource.StatusCode);Assert.Contains("source_sealed",await sealedSource.Content.ReadAsStringAsync());
+        await using(var student=f.Source.Context())
+        {
+            var current=await student.ImageUploadRecords.SingleAsync(r=>r.Id==record.Id);Assert.NotEqual(record.ContentRevision,current.ContentRevision);
+            var consumedRevision=current.ContentRevision;current.ImagePaths="[]";await student.SaveChangesAsync();Assert.NotEqual(consumedRevision,current.ContentRevision);
+            student.ImageUploadRecords.Remove(current);await student.SaveChangesAsync();Assert.False(await student.ImageUploadRecords.AnyAsync(r=>r.Id==record.Id));
+            Assert.Single(await student.SourceHandoffReceipts.ToListAsync());Assert.Single(await student.UploadSourceSnapshots.ToListAsync());
+        }
+        f.Enabled=false;await f.StartAsync(strict:false,resource:false,tls:true);f.BeforeRead=_=>throw new IOException("Replay must use permanent creation facts.");
+        using var replay=await f.SendAsync(HttpMethod.Post,"/api/mistakes/upload",body,f.Token());Assert.Equal(HttpStatusCode.OK,replay.StatusCode);Assert.Equal(original,await replay.Content.ReadAsStringAsync());
+        await using var db=f.Context();Assert.Single(await db.MistakeItems.ToListAsync());Assert.Single(await db.SourceIntakeGroups.ToListAsync());Assert.Single(await db.SourceIntakeRequests.ToListAsync());
+        Assert.Equal("Completed",(await db.SourceHandoffs.SingleAsync()).Phase);Assert.Equal(1,await db.ProcessLogs.CountAsync(l=>l.Action==1));
+        Assert.Empty(f.Source.Deletes);Assert.DoesNotContain("delete",f.SideEffects);
+    }
+
     [Theory]
     [InlineData(false)] [InlineData(true)]
     public async Task RealProviderBothHttpEntriesTerminalSourceConsumedOnceAndRetainedAsync(bool automatic)

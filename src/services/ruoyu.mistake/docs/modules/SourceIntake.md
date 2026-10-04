@@ -56,6 +56,10 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 
 两个旧入口增加 `expectedContentRevision`、`requestKey` UUID；开启时必填且非零，body 的 studentId 必须与 manifest 完全相同。upload 仍要求 AdminOnly，Add 仍要求 StaffOrAdmin，actor 始终取已验证 sub。两个端点使用同一个 `create` 请求 action，JSON 属性顺序、端点名称和 full 图片排序不改变请求语义；null rootCause 与空字符串为同一创建值。upload 返回原 createdItemIds；Add 返回原创建 item DTO。
 
+同一路由 upload 兼容可选 `sourceRegions`，复用既有 SourceRegionDto 与整数矩形。字段缺省或 null 仍将旧 `imagePaths` 映为 Full；显式非 null 必须为 1–100 个非 null 条目，精确非空路径和合法矩形，且 `imagePaths` 为 null/空数组。两种非空表达同时提供返回 400 invalid_request，显式空数组/非法区域返回 400 invalid_region；fractional/overflow 在 JSON binding 返回 400。非法区域在依赖读取/业务写入前拒绝。显式 regions 即使新领取关闭也要求原 managed revision/key、可信管理员认证，不能忽略 box 回落 legacy。bbox=null 的 Full 与旧 paths、Add 使用相同 create canonical 和原 IDs。
+
+门户共享 Submit 签名和外部 Admin DTO 继续发送旧 paths，没有 crop UI 能力声明。新消费者发送 regions 前须证明固定 producer 发布的 v1 合同包含该字段；旧 binary 会忽略未知 JSON，不能安全接收 regions。默认回退保留当前 binary/schema/journal、关闭新领取；需要回到旧 binary 时须先停新 region 消费者。
+
 新 GET `/api/mistakes/intakes/{sourceId}/{revision}` 始终 admin/authenticated，返回完整关联、模式、fence、leaseUntil、materialized、SourceRetained 与已存在 IDs。它不返回 JWT、签名 URL 或凭据。
 
 | 原因 | HTTP / errorKind |

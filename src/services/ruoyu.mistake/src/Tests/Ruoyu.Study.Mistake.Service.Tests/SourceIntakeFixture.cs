@@ -130,11 +130,11 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
             new SigningCredentials(new RsaSecurityKey(UserKey),SecurityAlgorithms.RsaSha256));
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
-    internal async Task StartAsync(bool strict=true,bool resource=true,bool handoffWorker=false)
+    internal async Task StartAsync(bool strict=true,bool resource=true,bool handoffWorker=false,bool tls=false,bool replace=true)
     {
-        Client?.Dispose();if(App!=null)await App.DisposeAsync();
+        if(replace){Client?.Dispose();if(App!=null)await App.DisposeAsync();}
         var builder=WebApplication.CreateBuilder();builder.Logging.ClearProviders();builder.Logging.AddConsole().SetMinimumLevel(LogLevel.Error);
-        builder.WebHost.ConfigureKestrel(k=>k.Listen(IPAddress.Loopback,0));
+        builder.WebHost.ConfigureKestrel(k=>k.Listen(IPAddress.Loopback,0,listen=>{if(tls)listen.UseHttps(Source.TlsCertificate);}));
         void Jwt(JwtBearerOptions jwt)
         {
             jwt.MapInboundClaims=false;jwt.TokenValidationParameters=new TokenValidationParameters
@@ -164,7 +164,7 @@ internal sealed class SourceIntakeFixture : IAsyncDisposable
         builder.Services.AddScoped<IReanalyzeJobRepository,ReanalyzeJobRepository>();builder.Services.AddScoped<IReanalyzeJobService,ReanalyzeJobService>();
         if(handoffWorker)builder.Services.AddHostedService<SourceHandoffWorker>();
         App=builder.Build();App.UseAuthentication();App.UseAuthorization();App.MapMistakeHttpEndpoints(strict);await App.StartAsync();
-        Client=new HttpClient(new HttpClientHandler{UseProxy=false}){BaseAddress=new Uri(App.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
+        Client=new HttpClient(tls ? Source.CreateTrustedHandler() : new HttpClientHandler{UseProxy=false}){BaseAddress=new Uri(App.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
     }
     internal async Task<HttpResponseMessage> SendAsync(HttpMethod method,string path,object? body=null,string? token=null)
     {
