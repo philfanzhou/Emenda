@@ -27,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Service\Ruoyu.Study.Mistake.Service.csproj" />
     <ProjectReference Include="..\..\Host\Ruoyu.Study.Mistake.Host.csproj" />
+    <ProjectReference Include="../../../../../ruoyu.common/backend/Ruoyu.Study.MistakeBff.HttpClients/Ruoyu.Study.MistakeBff.HttpClients.csproj" Aliases="consumer" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

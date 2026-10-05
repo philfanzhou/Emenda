@@ -32,7 +32,11 @@ hash 是发布身份，不是业务权限。回滚规格发布不改变原 schem
 - 应用 message 错误与 intake `errorKind/conflictingItemIds` 不统一；framework binding 400、constraint 404、method 405 与 default server/transport 错误可能是 empty、ProblemDetails 或非 JSON。客户端不可据状态码或 DTO 初值猜测成功。
 - presigned URL 是短期 bearer 能力，不记录活 URL；实际 auth、Ordinal 前缀、full-only、size/expiry 与存在性语义按该 operation 的条件执行。
 
-现共享 MistakeHttpClient 的 14 个方法在反序列化前按固定版本校验实际 response。添加未知字段可忽略；缺少必需字段、null/type 不匹配、未知已声明 enum 或相矛盾的 pending 结果抛出 JsonException，调用 BFF 现有异常路径保留失败；取消继续传播。普通列表的旧 HTTP failure-to-empty 映射没有在此改写。ReviewBFF 保持 pending false/固定提示与 Completed true，并通过真实 HTTP client 解析；镜像 metadata 保留 operation/returnState/receipt/errorKind。
+共享 MistakeHttpClient 的 14 个方法按固定版本校验实际 response，并共用 [Portal 安全失败/取消边界](../../../../ruoyu.common/docs/bff-shared/MistakeBff.HttpClients.md)。合法 200/Review 202、空列表、详情实际 404、Delete/legacy complete-review 内层 false 和 managed pending 形状保留。合法应用 400/409 映射到相同 Portal 状态码与固定安全提示；其他认证拒绝、未知状态、ProblemDetails、空/非 JSON 或 schema/type/enum/矛盾 pending、传输未知和非调用方 timeout 映射安全 502。provider 401 不等于 Portal 登录 401，不 retry/fallback，也不把失败包装成成功空列表。
+
+异常/InnerException、响应与日志不得保留远端 body/message、原异常、URI、token/Cookie 或 signed URL。调用方 CancellationToken / RequestAborted 在预取消、发送与读取阶段透传，停止后续 I/O；未知响应不证明未提交，取消不承诺回滚。真实 wire 对不安全方法验证最多一次发送；DELETE 保持零字节 payload 并避免 bodyless 请求的底层 EOF 重发。所有实际 Portal Mistake action 消费同一分类；聚合页取数失败立即终止完整成功页，后续 Student 写入受前置 Mistake 成功约束。
+
+这是 consumer 错误报告的演进，producer v1 artifact、发布资源、身份绑定、认证默认值、严格入口、managed pending 与来源永久 pins 均未改变。旧共享客户端的 HTTP failure-to-empty 映射遵循当时规格；完整 Portal binary 回退会恢复旧错误报告，不能宣称仍通过新负向断言，也不得为回退放松 producer guards。legacy Return 删除成功后 Student Mark 失败的旧一致性问题不由本边界新增补偿/事务。
 
 ## 可执行检查
 
@@ -46,6 +50,12 @@ dotnet test src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tes
   --configuration Release --filter FullyQualifiedName~MistakeHttpContract
 dotnet test src/ruoyu.common/test/Ruoyu.Study.MistakeBff.HttpClients.Tests/Ruoyu.Study.MistakeBff.HttpClients.Tests.csproj --configuration Release
 dotnet test src/ruoyu.common/test/Ruoyu.Study.MistakeReviewBff.Shared.Tests/Ruoyu.Study.MistakeReviewBff.Shared.Tests.csproj --configuration Release
+# 实际 producer 模式与已注册 Portal 的 DI/HTTP、RequestAborted 边界。
+dotnet test src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj \
+  --configuration Release --filter FullyQualifiedName~MistakeConsumerHostModes
+dotnet test src/user_portal/backend/Tests/WebApi.Tests.csproj --configuration Release --filter FullyQualifiedName~MistakePortalBoundary
+dotnet test src/teacher_portal/backend/Tests/TeacherWebApi.Tests.csproj --configuration Release --filter FullyQualifiedName~MistakePortalBoundary
+dotnet test src/assistant_portal/backend/Tests/AssistantWebApi.Tests.csproj --configuration Release --filter FullyQualifiedName~MistakePortalBoundary
 ```
 
 `pre-commit.sh` 接入 vocabulary/diff/独立 CLI mutation 检查；它要求可读的 `origin/master` 基线，首次该版本不存在时明确记录 initial_version。已批准的 additive 变更可给验证脚本设置 `MISTAKE_HTTP_ALLOW_ADDITIVE=true`；任何 breaking 仍拒绝。runtime EndpointDataSource 与 spec path/method 集合 exact 对比发现新增/删除业务路由，其他公开 namespace 必须登记主责。发布 bytes/hash、匿名/conditional GET、无业务注册的取消、实际 provider binding/serialization 及 14 concrete consumer 方法分别测试；独立 mutation 对 route、required、type、enum、security、error 缩减必须以 exit 1 失败。
