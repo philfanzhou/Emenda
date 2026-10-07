@@ -211,8 +211,11 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
                 var digest=Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
                 if(!expected.All(entry=>bytes.LongLength==entry.Length && digest==entry.Sha256))
                 {
-                    var first=expected.First();
-                    dangling.Add(new(key,"bytes_conflict",first.Length,first.Sha256,references[key].Count>ReferenceOriginLimit,Origins(references[key])));
+                    // The judgment covers every persisted expectation, but the displayed
+                    // representative is the deterministic minimum (length, then ordinal
+                    // sha256) so the same persisted state always reports the same value.
+                    var representative=expected.OrderBy(entry=>entry.Length).ThenBy(entry=>entry.Sha256,StringComparer.Ordinal).First();
+                    dangling.Add(new(key,"bytes_conflict",representative.Length,representative.Sha256,references[key].Count>ReferenceOriginLimit,Origins(references[key])));
                 }
             }
         }

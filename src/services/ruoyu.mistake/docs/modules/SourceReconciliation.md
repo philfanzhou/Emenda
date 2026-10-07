@@ -6,7 +6,7 @@
 
 - 引用全集复用 `Ruoyu.Study.Common.StorageReferences.StorageReferenceSource` 的 mistake 查询列与 `Parse` 语义（含 Rejected 墓碑 `source_return.original_item/payload`、`source_handoff.targets` 等），逐行记录表/行/字段来源；解析失败按其规则失败关闭，不静默跳过。
 - 全部数据库状态在单一 PostgreSQL `REPEATABLE READ READ ONLY` 事务内读取（与 StorageReferences capture 同隔离级别），事务只回滚不提交；报告不持有任何行锁或 advisory lock。
-- OSS 侧对每个引用键执行实际 `DownloadAsync` 核验（与 SourceTargets 选定验证同标准）：对象缺失（not-found 族异常）→ 悬挂 `missing`；有持久期望（manifest/target object/verified attempt/return object/handoff targets）且长度或 SHA256 不符 → 悬挂 `bytes_conflict`；其他读取异常 → 依赖不可用 503，不输出部分结果。
+- OSS 侧对每个引用键执行实际 `DownloadAsync` 核验（与 SourceTargets 选定验证同标准）：对象缺失（not-found 族异常）→ 悬挂 `missing`；有持久期望（manifest/target object/verified attempt/return object/handoff targets）且长度或 SHA256 不符 → 悬挂 `bytes_conflict`；其他读取异常 → 依赖不可用 503，不输出部分结果。同一键存在多个互不相同的持久期望时，判定按全部期望（任一不符即冲突）；`expectedLength/expectedSha256` 展示按 (length, sha256) 确定序最小的代表期望，同一持久状态输出唯一确定——代表值不构成单一权威期望，多期望本身仍属待 owner 修复的持久不一致（父项 [#IKJ0IO](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IO) 范围）。
 - 请求取消全程传播；报告运行前后业务表与 OSS 字节零变化。
 
 ## 异常类 × 唯一结果
