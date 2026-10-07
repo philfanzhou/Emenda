@@ -129,6 +129,49 @@ Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 
 
 resource=false（默认）时 legacy 未受管端点与基线 `91fb253e` 行为逐字节一致，不额外启用本开关的授权判定；受管入库数据永久执行新能力的认证与归属保护。启用前置（Ruoyu.Admin 直连调用方 Bearer 升级、跨服务 E2E、回滚演练）属父项 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；回滚 = 置 `false` 重启，无数据迁移。学科管辖裁决仍留 Portal BFF（`ISubjectResolver`）。真实管线矩阵验收测试位于 `src/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/MistakeApiResourceAuthTests.cs`，启动快照测试位于同目录 `MistakeApiResourceAuthStartupTests.cs`。
 
+### 独立运行(Local)匿名边界与收紧路径
+
+本节固化独立部署者视角的匿名面与收紧路径；配置键语义以上方[入站 API 认证](#入站-api-认证兼容窗口默认关闭)配置表为准，逐资源矩阵见 [ADR-0013](../../../../../docs/adr/0013-mistake-per-resource-authorization.md)，严格模式运行验证见 [IsolatedDeployVerification.md](./IsolatedDeployVerification.md) 的 `--strict-fixture` 阶段，此处不复制第二套规则。
+
+**两模式匿名面（逐端点，与 master `27626bf2` 实际行为一致）**：
+
+| 端点 | Local | Platform | strict=true 后 |
+|---|---|---|---|
+| `GET /`（兼容状态串） | 匿名 | 匿名 | 仍匿名 |
+| `GET /health/live`、`GET /health/ready` | 匿名 | 匿名 | 仍匿名（位于 `/api` 组之外） |
+| `GET /contracts/mistake-http-v1.json` | 匿名 | 匿名 | 仍匿名（机器合同独立于业务授权） |
+| `/api/*` 18 个业务端点 + 3 个受管来源端点 | 匿名兼容窗口 | 匿名兼容窗口 | 未认证 401；resource=true 时再按矩阵 403/503 |
+
+匿名兼容窗口语义（strict=false，两模式相同）：
+
+- 有效令牌（共忍受众或 Admin AppId 受众）解析进 `HttpContext.User`，请求照常放行；
+- 令牌验证失败（过期、伪造、错 issuer、错受众）视为匿名，**不拒绝请求**；
+- 不启用全局 fallback policy；`/`、健康与合同端点不受窗口影响。
+- 窗口是历史行为的兼容保留，**不是**已获批准的终态运行方式：父项 [IKJ0IL](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IL) 明确不开启「匿名全权限独立模式」，独立部署者不得据此把 Local 匿名面当作授权决定。
+
+**收紧路径矩阵**：
+
+| 项 | 语义 |
+|---|---|
+| `IdentityService:MistakeApiStrictAuth`（默认 `false`） | 启动快照；`true` 时 `/api/*` 要求已认证主体（双 scheme），匿名与无效令牌一律 401 |
+| `IdentityService:MistakeApiResourceAuth`（默认 `false`） | 启动快照；`true` 前置要求 strict=true（否则启动失败，错误仅引用两个键）；启用后 18 端点执行 ADR-0013 矩阵 |
+| strict=true 且信任配置缺失/非法 | 在数据库访问前以键名显式启动失败；strict=false 不校验——完全未配置 `IdentityService` 也能正常启动（Local 无 SignaCore 依赖可运行） |
+| 回滚 | 置 `false`（或移除键）后重启即恢复匿名窗口；无数据库、schema 或数据迁移 |
+| 下游能力开关依赖 | `Mistake:SourceIntake/SourceReturns/SourceHandoffs:Enabled=true` 要求 Student+strict+resource 同为 true；`Mistake:SourceTargets:Enabled=true` 要求 strict+resource；不满足在 DB/S3 初始化前失败 |
+
+**启用时点与当前限制（截至 2026-10-07，如实记录）**：
+
+- 当前部署**不应启用** strict。
+- 消费者升级证据：Ruoyu.Admin #40/#41 已在其主线交付「服务端会话令牌作 Bearer 调用 Mistake」（`MistakeSessionHandler` 白名单转发），但**尚无含该能力的官方发布制品**——最新 tag `0.1.2-rc.2` 早于该交付；2026-10-07 在 55.10 实测该镜像对 Mistake 不携带任何 Authorization，登录仍为密码授权。
+- 真实环境：192.168.55.10 于 2026-10-07 实测恢复（ServiceMap HTTP 200）；其 Mistake 官方制品 `ruoyu.study.mistake:20260501` 不含两开关代码。
+- 演练前置（均为维护者发布/部署动作）：发布并部署含两开关的官方 Mistake 制品、SignaCore `ADMIN` 应用 PerApplication 收敛、发布并部署含会话 Bearer 转发的官方 Ruoyu.Admin 制品。启用顺序、联测与回滚演练属 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；本节不宣称已启用或已演练。
+
+**独立部署者责任**：
+
+- 匿名业务 API（`/api/*`）**不得暴露公网**；窗口期间的访问控制完全依赖网络边界。
+- 启用 strict 前须为每个调用方备妥：受信 `IdentityService:Issuer`（及可选 `AdditionalValidIssuers`）、共忍受众 `Audience`、Admin 直连调用方的 `AdminAudience`（=其 AppId），以及经 `Authority` 的 JWKS 发现（HTTPS，或隔离 HTTP 环境显式 `RequireHttpsMetadata=false`）；issuer/受众/JWKS 与凭据的保管责任在部署者。
+- strict 启用后，未携带有效令牌的调用方（含旧脚本与自定义集成）将收到 401——先完成调用方升级与跨服务联测再启用。
+
 共享 Consul 配置承载：
 
 - `config/ruoyu/shared.json`
