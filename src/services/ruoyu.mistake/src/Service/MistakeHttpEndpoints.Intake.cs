@@ -13,6 +13,9 @@ namespace Ruoyu.Study.Mistake.Service;
 public static partial class MistakeHttpEndpoints
 {
     private static IResult IntakeError(string kind,int status) => Results.Json(new {success=false,errorKind=kind},statusCode:status);
+    // Managed Admin namespaces that always authenticate through the configured schemes.
+    private static bool IsManagedNamespace(PathString path) =>
+        path.StartsWithSegments("/api/mistakes/intakes") || path.StartsWithSegments("/api/mistakes/reconciliation");
     private static IResult? IntakeRole(ClaimsPrincipal user,IMistakeApiResourceAuthorizationService authorization,MistakeResourceAccessGate gate)
     {
         if (user.Identity?.IsAuthenticated!=true || string.IsNullOrWhiteSpace(authorization.GetSubjectId(user)))
@@ -46,6 +49,16 @@ public static partial class MistakeHttpEndpoints
         return Results.Json(new {success=true,data=new {success,errorKind=success ? null : "handoff_pending",
             errorMessage=success ? null : "来源交接处理中，请稍后重试",handoff=result}},statusCode:success ? 200 : 202);
     }
+    private static async Task<IResult> GetReconciliationAsync(HttpContext http,ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService authorization,ISourceReconciliationService reconciliation,CancellationToken ct)
+    {
+        var error=IntakeRole(user,authorization,MistakeResourceAccessGate.AdminOnly);
+        if(error!=null) return error;
+        var raw=http.Request.Query["sourceUploadId"].ToString();
+        if(string.IsNullOrEmpty(raw)) return Results.Ok(await reconciliation.ReportAsync(null,ct));
+        if(!Guid.TryParse(raw,out var source) || source==Guid.Empty) return IntakeError("invalid_condition",400);
+        return Results.Ok(await reconciliation.ReportAsync(source,ct));
+    }
     private static async ValueTask<object?> IntakeEndpointFilterAsync(EndpointFilterInvocationContext context,EndpointFilterDelegate next)
     {
         try
@@ -74,7 +87,7 @@ public static partial class MistakeHttpEndpoints
                 }
             }
             var authorization=context.HttpContext.RequestServices.GetRequiredService<IMistakeApiResourceAuthorizationService>();
-            if (intake!=null && !context.HttpContext.Request.Path.StartsWithSegments("/api/mistakes/intakes"))
+            if (intake!=null && !IsManagedNamespace(context.HttpContext.Request.Path))
             {
                 var id=context.Arguments.OfType<Guid>().FirstOrDefault();
                 var student=id==Guid.Empty ? null : await intake.GetManagedItemStudentAsync(id,context.HttpContext.RequestAborted);
@@ -121,7 +134,7 @@ public static partial class MistakeHttpEndpoints
     private static async Task<bool> NeedsManagedAuthenticationAsync(EndpointFilterInvocationContext context,ISourceIntakeService intake)
     {
         var http=context.HttpContext;var ct=http.RequestAborted;var path=http.Request.Path.Value ?? "";
-        if(http.Request.Path.StartsWithSegments("/api/mistakes/intakes")) return true;
+        if(IsManagedNamespace(http.Request.Path)) return true;
         var id=context.Arguments.OfType<Guid>().FirstOrDefault();
         if(id!=Guid.Empty && await intake.GetManagedItemStudentAsync(id,ct)!=null) return true;
         foreach(var argument in context.Arguments)

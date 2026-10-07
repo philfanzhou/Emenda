@@ -336,6 +336,7 @@ builder.Services.AddScoped<ISourceReturnService>(sp => sp.GetRequiredService<Sou
 if(returnsEnabled) builder.Services.AddHostedService<SourceReturnWorker>();
 builder.Services.AddScoped<ISourceHandoffService>(sp=>sp.GetRequiredService<SourceIntakeService>());
 if(handoffsEnabled) builder.Services.AddHostedService<SourceHandoffWorker>();
+builder.Services.AddScoped<ISourceReconciliationService, SourceReconciliationService>();
 builder.Services.AddSingleton(studentServiceAuthentication);
 builder.Services.AddTransient<StudentServiceTokenHandler>();
 builder.Services.AddStudentHttpClient(studentBaseUrl);

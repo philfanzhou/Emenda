@@ -47,6 +47,7 @@ public static partial class MistakeHttpEndpoints
         group.MapGet("/mistakes/intakes/{sourceId:guid}/{revision:guid}", GetSourceIntakeAsync);
         group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/targets", ResumeSourceTargetsAsync);
         group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/handoff", HandoffSourceAsync);
+        group.MapGet("/mistakes/reconciliation", GetReconciliationAsync);
 
         if (requireAuthenticatedApi)
             group.RequireAuthorization(MistakeApiAuthorization.PolicyName);

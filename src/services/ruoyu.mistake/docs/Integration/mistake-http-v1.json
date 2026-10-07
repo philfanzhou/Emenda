@@ -4103,6 +4103,253 @@
           }
         }
       }
+    },
+    "/api/mistakes/reconciliation": {
+      "get": {
+        "operationId": "GetReconciliationReport",
+        "parameters": [
+          {
+            "name": "sourceUploadId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only reconciliation report; category counts are full totals and entries are capped with an explicit truncated flag.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON for a malformed sourceUploadId query; framework malformed/missing binding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Managed application error or strict JwtBearer empty challenge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Role denial; strict scheme challenge may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Scoped sourceUploadId unknown to the mistake domain; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "409": {
+            "description": "Uniform managed error surface; this read-only report never emits a conflict, but the shape stays pinned for the shared managed route family.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "503": {
+            "description": "OSS or database dependency failure, or a persisted reference row that fails the StorageReferences parsing rules; never a partial report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "compatibility": "always authenticated Admin subject; no anonymous compatibility window",
+            "strict": "shared audience or configured Admin AppId authenticated principal",
+            "resource": "AdminOnly",
+            "managed": "always authenticated subject + role gate even when compatibility enabled",
+            "startup": "resource requires strict"
+          },
+          "semantics": {
+            "authentication": "alwaysAdmin including all switches off; malformed or empty-guid sourceUploadId query 400 invalid_condition; scope unknown to the mistake domain 404 source_not_found",
+            "summary": "strictly read-only: one REPEATABLE READ READ ONLY PostgreSQL transaction plus actual OSS downloads; never repairs, never advances workers; danglingReferences=missing or corrupted keys with persisted row origins, permanentConflicts=Conflict handoff/return rows, pendingRecovery=non-terminal durable states, unmanagedReferences=item/practice records or keys not attributable to the managed chain (classification unknown)"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6292,6 +6539,441 @@
         },
         "required": [],
         "additionalProperties": true
+      },
+      "ReconciliationReport": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ReconciliationScope"
+          },
+          "danglingReferences": {
+            "$ref": "#/components/schemas/ReconciliationDanglingCategory"
+          },
+          "permanentConflicts": {
+            "$ref": "#/components/schemas/ReconciliationConflictCategory"
+          },
+          "pendingRecovery": {
+            "$ref": "#/components/schemas/ReconciliationPendingCategory"
+          },
+          "unmanagedReferences": {
+            "$ref": "#/components/schemas/ReconciliationUnmanagedCategory"
+          },
+          "repairPreview": {
+            "$ref": "#/components/schemas/ReconciliationRepairPreview"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "scope",
+          "danglingReferences",
+          "permanentConflicts",
+          "pendingRecovery",
+          "unmanagedReferences",
+          "repairPreview"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationScope": {
+        "type": "object",
+        "properties": {
+          "sourceUploadId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "filtered": {
+            "type": "boolean"
+          },
+          "referenceKeyCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sourceUploadId",
+          "filtered",
+          "referenceKeyCount"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationDanglingCategory": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationDanglingReference"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "truncated",
+          "entries"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationConflictCategory": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationConflict"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "truncated",
+          "entries"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationPendingCategory": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationPending"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "truncated",
+          "entries"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationUnmanagedCategory": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationUnmanaged"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "truncated",
+          "entries"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationDanglingReference": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "bytes_conflict"
+            ]
+          },
+          "expectedLength": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "format": "int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expectedSha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "referencesTruncated": {
+            "type": "boolean"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationReferenceOrigin"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "reason",
+          "expectedLength",
+          "expectedSha256",
+          "referencesTruncated",
+          "references"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationReferenceOrigin": {
+        "type": "object",
+        "properties": {
+          "table": {
+            "type": "string"
+          },
+          "row": {
+            "type": "string"
+          },
+          "column": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "row",
+          "column"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationConflict": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "handoff",
+              "return"
+            ]
+          },
+          "sourceUploadId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentRevision": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "errorKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sealedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "sourceUploadId",
+          "contentRevision",
+          "itemId",
+          "operationId",
+          "errorKind",
+          "sealedAt"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationPending": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "handoff_prepared",
+              "handoff_sending",
+              "return_prepared",
+              "return_sending",
+              "intake_not_materialized",
+              "target_attempt_reserved",
+              "target_attempt_unknown",
+              "target_attempt_copied"
+            ]
+          },
+          "sourceUploadId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentRevision": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "Prepared",
+              "Sending",
+              "Reserved",
+              "Unknown",
+              "Copied",
+              "NotMaterialized"
+            ]
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ageSeconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "format": "int64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "sourceUploadId",
+          "contentRevision",
+          "itemId",
+          "state",
+          "since",
+          "ageSeconds"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationUnmanaged": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "item_without_intake",
+              "item_outside_managed_group",
+              "region_unattributable",
+              "practice_without_managed_item"
+            ]
+          },
+          "row": {
+            "type": "string"
+          },
+          "sourceUploadId": {
+            "type": "string"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "row",
+          "sourceUploadId",
+          "keys"
+        ],
+        "additionalProperties": true
+      },
+      "ReconciliationRepairPreview": {
+        "type": "object",
+        "properties": {
+          "classification": {
+            "type": "string",
+            "enum": [
+              "unknown"
+            ]
+          },
+          "unmanagedCount": {
+            "type": "integer"
+          },
+          "requiredInputs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "classification",
+          "unmanagedCount",
+          "requiredInputs"
+        ],
+        "additionalProperties": true
       }
     },
     "securitySchemes": {
@@ -6304,7 +6986,7 @@
   },
   "x-ruoyu": {
     "businessPredicate": "/api/mistakes",
-    "businessOperationCount": 21,
+    "businessOperationCount": 22,
     "ops": {
       "GET /": {
         "authorization": "anonymous",
