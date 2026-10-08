@@ -88,7 +88,7 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 
 ## 验证入口
 
-`SourceIntakePostgresTests`、`SourceIntakeSecurityTests` 使用自有 PG15 随机库、实际 Student provider 正常 CA/SAN HTTPS 与 RS256、实际本地文件字节、独立 Mistake HTTP listener。覆盖成功/别名/禁用重放、三个入口、完整计划、模式/lease/fence、字节与协议故障、真实 commit 响应丢失、SQL guards、旧写竞争和真实 pg_dump/restore。它们是文件 OSS 替身验证，不是 live S3 发布证据。现有数据库升级、只读启动、身份和 Student 全回归继续约束邻接行为。
+`SourceIntakePostgresTests`、`SourceIntakeSecurityTests` 使用自有 PG15 随机库、实际 Student provider 正常 CA/SAN HTTPS 与 RS256、实际本地文件字节、独立 Mistake HTTP listener。覆盖成功/别名/禁用重放、三个入口、完整计划、模式/lease/fence、字节与协议故障、真实 commit 响应丢失、SQL guards、旧写竞争和真实 pg_dump/restore。它们是文件 OSS 替身验证，不是 live S3 发布证据。现有数据库启动升级、身份和 Student 全回归继续约束邻接行为。
 
 提供 `MISTAKE_INTAKE_TEST_CONNECTION` 与 `STUDENT_SCAN_TEST_CONNECTION` 为同一自有 PG15 admin 连接；backup 另需 `MISTAKE_INTAKE_TEST_PG_CONTAINER` 和 `STUDENT_SNAPSHOT_TEST_PG_CONTAINER`。全部测试使用随机库并清理；不得填共享业务库。
 

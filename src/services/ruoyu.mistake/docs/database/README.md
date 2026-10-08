@@ -52,7 +52,7 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 - `20260929000001_RenameReviewCommentToRootCause`：版本化根因列重命名
 - `20260930000001_LeaseReanalyzeJobs`：全局领取租约与终态栅栏
 
-普通启动只读核验结构和历史；全新空库须显式执行 `--upgrade-empty-db`。精确匹配 EF 历史链的带数据旧库使用 `--upgrade-known-db`，详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
+服务启动时自动把空库和已知 EF 历史的旧库升级到当前结构，已是目标时不写入；不支持的旧结构拒绝启动且不修改。详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
 
 ## 数据库类型
 

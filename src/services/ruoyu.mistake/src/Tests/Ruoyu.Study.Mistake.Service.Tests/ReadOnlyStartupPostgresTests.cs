@@ -33,8 +33,7 @@ public sealed class ReadOnlyStartupPostgresTests
         var completed = Guid.NewGuid();
         await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ('{item}','student-1',1,7,'upload-1','[]'::jsonb,1,now())");
         await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,status,created_at) VALUES ('{running}','{item}','teacher-1','student-1',2,now()),('{pending}','{item}','teacher-1','student-1',1,now()),('{completed}','{item}','teacher-1','student-1',3,now())");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(4, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == running)).Status);
@@ -42,7 +41,7 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(1, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == pending)).Status);
         Assert.Equal(3, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == completed)).Status);
         Assert.Equal(1, await context.ProcessLogs.CountAsync(l => l.MistakeItemId == item));
-        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(1, await context.ProcessLogs.CountAsync(l => l.MistakeItemId == item));
     }
 
@@ -63,12 +62,6 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-1',now(),'[]',true)");
         await database.ExecuteAsync($"INSERT INTO process_log (id,mistake_item_id,student_id,action,created_at) VALUES ('{log}','{item}','student-1',1,now())");
         await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,created_at) VALUES ('{job}','{item}','teacher-1','student-1',now())");
-        var before = await database.SnapshotAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
-        Assert.Equal(before, await database.SnapshotAsync());
-
-        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
@@ -80,7 +73,7 @@ public sealed class ReadOnlyStartupPostgresTests
             practices.Single(row => row.Id == practice).ImagePaths);
         Assert.Empty(practices.Single(row => row.Id != practice).ImagePaths);
         var target = await database.SnapshotAsync();
-        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(target, await database.SnapshotAsync());
     }
 
@@ -104,7 +97,7 @@ public sealed class ReadOnlyStartupPostgresTests
         var before = await database.SnapshotAsync();
         var rows = await database.BusinessRowsAsync();
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.DoesNotContain(value, error.ToString());
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(rows, await database.BusinessRowsAsync());
@@ -124,7 +117,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync(mutation);
         var before = await database.SnapshotAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -140,17 +133,17 @@ public sealed class ReadOnlyStartupPostgresTests
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(setup, database.Name, true, true, canceled.Token));
+            DatabaseInitializer.InitializeAsync(setup, NullLoggerFactory.Instance, canceled.Token));
         Assert.Equal(before, await database.SnapshotAsync());
         await using (var readOnly = database.CreateReadOnlyContext())
             await Assert.ThrowsAnyAsync<Exception>(() =>
-                DatabaseInitializer.UpgradeKnownAsync(readOnly, database.Name, true, true));
+                DatabaseInitializer.InitializeAsync(readOnly, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
 
         await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
         {
             await using var context = database.CreateContext();
-            await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+            await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         }));
         await using var check = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
@@ -175,7 +168,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync("CREATE EVENT TRIGGER reject_misstamped_conversion ON ddl_command_end EXECUTE FUNCTION upgrade_guard.reject_conversion()");
         var before = await database.SnapshotAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -201,7 +194,7 @@ public sealed class ReadOnlyStartupPostgresTests
         var applicationName = "mistake_cancel_" + Guid.NewGuid().ToString("N");
         await using var upgrading = database.CreateContext(applicationName: applicationName);
         using var cancellation = new CancellationTokenSource();
-        var upgrade = DatabaseInitializer.UpgradeKnownAsync(upgrading, database.Name, true, true, cancellation.Token);
+        var upgrade = DatabaseInitializer.InitializeAsync(upgrading, NullLoggerFactory.Instance, cancellation.Token);
         try
         {
             await database.WaitForConversionPauseAsync(applicationName);
@@ -217,9 +210,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync("DROP SCHEMA upgrade_guard CASCADE");
 
         await using var retry = database.CreateContext();
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance));
-        await DatabaseInitializer.UpgradeKnownAsync(retry, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
         await AssertMisstampedTargetAsync(retry, item, practice, log, job);
     }
 
@@ -237,7 +228,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await using (var upgrading = database.CreateContext(new LostCommitAcknowledgementInterceptor()))
         {
             await Assert.ThrowsAsync<IOException>(() =>
-                DatabaseInitializer.UpgradeKnownAsync(upgrading, database.Name, true, true));
+                DatabaseInitializer.InitializeAsync(upgrading, NullLoggerFactory.Instance));
         }
 
         // The client saw no COMMIT result. Discard pooled sessions and inspect the durable state.
@@ -252,26 +243,25 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(committed, await database.SnapshotAsync());
         Assert.Equal(committedRows, await database.BusinessRowsAsync());
         await using var retry = database.CreateContext();
-        await DatabaseInitializer.UpgradeKnownAsync(retry, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
         Assert.Equal(committed, await database.SnapshotAsync());
         Assert.Equal(committedRows, await database.BusinessRowsAsync());
     }
 
     [Fact]
-    public async Task LowercaseEmptyShapeRequiresExplicitVerifiedUpgradeAsync()
+    public async Task LowercaseEmptyShapeUpgradesOnStartupButRejectsWrongExplicitDatabaseAsync()
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
         await CreateMisstampedTextPathsAsync(database, context, true);
         var before = await database.SnapshotAsync();
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        Assert.Contains("--upgrade-known-db", error.Message);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, "wrong", true, true));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, false, true));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, false));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(context, "wrong"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(context, ""));
         Assert.Equal(before, await database.SnapshotAsync());
-        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        var result = await DatabaseInitializer.UpgradeToTargetAsync(context, database.Name);
+        Assert.Equal(3, result.FromVersion);
+        Assert.Equal(10, result.ToVersion);
+        Assert.Contains("rename ix_process_log_student_id", result.Steps);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Empty(await context.MistakeItems.ToListAsync());
         Assert.Empty(await context.MistakePractices.ToListAsync());
@@ -301,8 +291,7 @@ public sealed class ReadOnlyStartupPostgresTests
         var before = await database.SnapshotAsync();
         var rows = await database.BusinessRowsAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(context, database.Name));
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(rows, await database.BusinessRowsAsync());
     }
@@ -321,7 +310,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync("CREATE EVENT TRIGGER fail_stage ON ddl_command_end EXECUTE FUNCTION upgrade_guard.fail_stage()");
         var before = await database.SnapshotAsync();
         var rows = await database.BusinessRowsAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(rows, await database.BusinessRowsAsync());
     }
@@ -340,7 +329,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await locking.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(5932735329232308563)");
         await using var upgrading = database.CreateContext();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
-        await Assert.ThrowsAnyAsync<Exception>(() => DatabaseInitializer.UpgradeKnownAsync(upgrading, database.Name, true, true, cancellation.Token));
+        await Assert.ThrowsAnyAsync<Exception>(() => DatabaseInitializer.InitializeAsync(upgrading, NullLoggerFactory.Instance, cancellation.Token));
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(rows, await database.BusinessRowsAsync());
     }
@@ -423,17 +412,9 @@ public sealed class ReadOnlyStartupPostgresTests
             await database.ExecuteAsync($"INSERT INTO process_log (id,mistake_item_id,action,created_at) VALUES ('{log}','{item}',1,now())");
         if (version >= 3)
             await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,teacher_description,created_at) VALUES ('{job}','{item}','teacher-1','student-1','retry details',now())");
-        if (version < 5 && !renamed)
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        if (renamed)
-            await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        if (version < 4)
-            await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
-
-        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
-        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        // Normal startup is the upgrade entry; no command, flag or backup precondition is involved.
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         var savedItem = await context.MistakeItems.SingleAsync();
         var savedPractice = await context.MistakePractices.SingleAsync();
         var savedLog = await context.ProcessLogs.SingleAsync();
@@ -453,24 +434,23 @@ public sealed class ReadOnlyStartupPostgresTests
             Assert.Equal("retry details", savedJob.TeacherDescription);
         }
         var target = await database.SnapshotAsync();
-        await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(target, await database.SnapshotAsync());
     }
 
     [Fact]
-    public async Task KnownUpgradeRejectsUnverifiedConditionsAndConflictingCatalog()
+    public async Task KnownUpgradeRejectsWrongExplicitDatabaseAndConflictingCatalog()
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
         await context.GetService<IMigrator>().MigrateAsync(Initial);
         var before = await database.SnapshotAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, "wrong", true, true));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, false, true));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, false));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(context, "wrong"));
+        Assert.Contains("--database", error.Message);
         Assert.Equal(before, await database.SnapshotAsync());
         await database.ExecuteAsync("ALTER TABLE process_log ADD COLUMN student_id varchar(36)");
         before = await database.SnapshotAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -486,7 +466,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{practice}','{item}','student-1',now(),'invalid JSON secret',false)");
         var before = await database.SnapshotAsync();
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(setup, database.Name, true, true));
+            DatabaseInitializer.InitializeAsync(setup, NullLoggerFactory.Instance));
         Assert.DoesNotContain("invalid JSON secret", error.ToString());
         Assert.Equal(before, await database.SnapshotAsync());
         await database.ExecuteAsync($"UPDATE mistake_practice SET image_paths='[\"uploads/fixed\"]' WHERE id='{practice}'");
@@ -494,7 +474,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
         {
             await using var context = database.CreateContext();
-            await DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true);
+            await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         }));
         await using var check = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
@@ -512,12 +492,12 @@ public sealed class ReadOnlyStartupPostgresTests
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true, canceled.Token));
+            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance, canceled.Token));
         Assert.Equal(before, await database.SnapshotAsync());
 
         await using (var readOnly = database.CreateReadOnlyContext())
             await Assert.ThrowsAnyAsync<Exception>(() =>
-                DatabaseInitializer.UpgradeKnownAsync(readOnly, database.Name, true, true));
+                DatabaseInitializer.InitializeAsync(readOnly, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
 
         await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
@@ -530,7 +510,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync("CREATE EVENT TRIGGER fail_known_upgrade_index ON ddl_command_end EXECUTE FUNCTION upgrade_guard.fail_index()");
         before = await database.SnapshotAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -561,7 +541,7 @@ public sealed class ReadOnlyStartupPostgresTests
         var before = await database.SnapshotAsync();
         var rows = await database.BusinessRowsAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(rows, await database.BusinessRowsAsync());
     }
@@ -580,32 +560,27 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync(mutation);
         var before = await database.SnapshotAsync();
         await Assert.ThrowsAnyAsync<Exception>(() =>
-            DatabaseInitializer.UpgradeKnownAsync(context, database.Name, true, true));
+            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
     [Fact]
-    public async Task EmptyDatabaseRequiresExplicitUpgradeThenStartsWithoutWrites()
+    public async Task EmptyDatabaseUpgradesOnStartupThenStartsWithoutWrites()
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        var before = await database.SnapshotAsync();
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        Assert.Contains("--upgrade-empty-db", error.Message);
-        Assert.Equal(before, await database.SnapshotAsync());
-
-        await DatabaseInitializer.UpgradeEmptyAsync(context);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         var after = await database.SnapshotAsync();
         Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        await DatabaseInitializer.UpgradeEmptyAsync(context);
+        var repeated = await DatabaseInitializer.UpgradeToTargetAsync(context);
+        Assert.False(repeated.Upgraded);
+        Assert.Equal(10, repeated.FromVersion);
         Assert.Equal(after, await database.SnapshotAsync());
     }
 
     [Fact]
-    public async Task KnownRuntimeShapeStartsReadOnlyAndReadsRootCauseAndJsonPaths()
+    public async Task KnownRuntimeShapeNeedsWritableAccountThenUpgradesOnStartup()
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
@@ -615,13 +590,17 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at) VALUES ('{item}','student-1',1,7,'upload-1','[]'::jsonb,1,'legacy root',now())");
         await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-1',now(),'[\"uploads/a\"]'::jsonb,false)");
         var before = await database.SnapshotAsync();
-        await using var readOnly = database.CreateReadOnlyContext();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(readOnly, NullLoggerFactory.Instance));
+        await using (var readOnly = database.CreateReadOnlyContext())
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(readOnly, NullLoggerFactory.Instance));
+            Assert.Contains("SQLSTATE 25006", error.Message);
+        }
         Assert.Equal(before, await database.SnapshotAsync());
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
         Assert.Equal("legacy root", (await context.MistakeItems.SingleAsync()).RootCause);
         Assert.Equal("uploads/a", Assert.Single((await context.MistakePractices.SingleAsync()).ImagePaths));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
-        Assert.Equal(before, await database.SnapshotAsync());
     }
 
     [Theory]
@@ -637,13 +616,13 @@ public sealed class ReadOnlyStartupPostgresTests
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await DatabaseInitializer.UpgradeEmptyAsync(context);
+        await DatabaseInitializer.UpgradeToTargetAsync(context);
         await database.ExecuteAsync(mutation);
         var before = await database.SnapshotAsync();
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
         Assert.Contains(diagnostic, error.Message);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(context));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -655,7 +634,7 @@ public sealed class ReadOnlyStartupPostgresTests
         var before = await database.SnapshotAsync();
         await using var context = database.CreateContext();
         await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(context));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -668,7 +647,7 @@ public sealed class ReadOnlyStartupPostgresTests
         var before = await database.SnapshotAsync();
         await using var context = database.CreateContext();
         await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(context));
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -686,8 +665,9 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync("CREATE EVENT TRIGGER fail_mistake_index ON ddl_command_end EXECUTE FUNCTION upgrade_guard.fail_index()");
         var before = await database.SnapshotAsync();
         await using var context = database.CreateContext();
-        var error = await Assert.ThrowsAnyAsync<Exception>(() => DatabaseInitializer.UpgradeEmptyAsync(context));
-        Assert.Contains("injected index failure", error.ToString());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
+        Assert.Contains("SQLSTATE P0001", error.Message);
+        Assert.Contains("database stays unchanged", error.Message);
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
@@ -695,11 +675,12 @@ public sealed class ReadOnlyStartupPostgresTests
     public async Task ConcurrentUpgradeProducesOneVerifiedTarget()
     {
         await using var database = await IsolatedDatabase.CreateAsync();
-        await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
+        var results = await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
         {
             await using var context = database.CreateContext();
-            await DatabaseInitializer.UpgradeEmptyAsync(context);
+            return await DatabaseInitializer.UpgradeToTargetAsync(context);
         }));
+        Assert.Single(results, result => result.Upgraded);
         await using var check = database.CreateContext();
         Assert.Equal(10, (await check.Database.GetAppliedMigrationsAsync()).Count());
         await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
@@ -713,12 +694,150 @@ public sealed class ReadOnlyStartupPostgresTests
         await using var context = database.CreateContext();
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => DatabaseInitializer.UpgradeEmptyAsync(context, canceled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance, canceled.Token));
         Assert.Equal(before, await database.SnapshotAsync());
 
         await using var readOnly = database.CreateReadOnlyContext();
-        await Assert.ThrowsAnyAsync<Exception>(() => DatabaseInitializer.UpgradeEmptyAsync(readOnly));
+        await Assert.ThrowsAnyAsync<Exception>(() => DatabaseInitializer.UpgradeToTargetAsync(readOnly));
         Assert.Equal(before, await database.SnapshotAsync());
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(5)]
+    [InlineData(9)]
+    public async Task KnownHistoryWithDuplicateSourceItemsUpgradesOnStartupAndKeepsEveryRow(int version)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await context.GetService<IMigrator>().MigrateAsync(version switch
+        {
+            1 => Initial, 3 => Reanalyze, 5 => "20260930000001_LeaseReanalyzeJobs", 9 => SourceHandoffSchema.Migration, _ => null
+        });
+        var items = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        foreach (var item in items)
+        {
+            // Same student, same source upload and same regions: legacy rows carry no uniqueness guarantee.
+            await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ('{item}','student-1',1,7,'upload-dup','[{{\"sourceImagePath\":\"uploads/a.jpg\"}}]'::jsonb,1,now())");
+            await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-1',now(),'[\"uploads/p.jpg\"]',false)");
+            if (version >= 2)
+                await database.ExecuteAsync($"INSERT INTO process_log (id,mistake_item_id,student_id,action,created_at) VALUES ('{Guid.NewGuid()}','{item}','student-1',1,now())");
+            else
+                await database.ExecuteAsync($"INSERT INTO process_log (id,mistake_item_id,action,created_at) VALUES ('{Guid.NewGuid()}','{item}',1,now())");
+        }
+
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(items.Order(), (await context.MistakeItems.Select(row => row.Id).ToListAsync()).Order());
+        foreach (var item in items)
+        {
+            Assert.Single(await context.MistakePractices.Where(row => row.MistakeItemId == item).ToListAsync());
+            Assert.Single(await context.ProcessLogs.Where(row => row.MistakeItemId == item).ToListAsync());
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    public async Task ConcurrentStartupsOnKnownHistoryUpgradeOnceWithoutDuplicateHistory(int version)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using (var setup = database.CreateContext())
+            await setup.GetService<IMigrator>().MigrateAsync(version == 1 ? Initial : "20260930000001_LeaseReanalyzeJobs");
+        var item = Guid.NewGuid();
+        await database.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ('{item}','student-1',1,7,'upload-1','[]'::jsonb,1,now())");
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
+        {
+            await using var context = database.CreateContext();
+            return await DatabaseInitializer.UpgradeToTargetAsync(context);
+        }));
+
+        var upgraded = Assert.Single(results, result => result.Upgraded);
+        Assert.Equal(version, upgraded.FromVersion);
+        Assert.All(results.Where(result => !result.Upgraded), result => Assert.Equal(10, result.FromVersion));
+        await using var check = database.CreateContext();
+        Assert.Equal(10, (await check.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(item, (await check.MistakeItems.SingleAsync()).Id);
+    }
+
+    [Fact]
+    public async Task LimitedAccountStartsOnTargetWithoutWritesButCannotUpgrade()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using (var owner = database.CreateContext())
+            await DatabaseInitializer.InitializeAsync(owner, NullLoggerFactory.Instance);
+        var target = await database.SnapshotAsync();
+        await using (var limited = await database.CreateLimitedContextAsync())
+        {
+            var result = await DatabaseInitializer.UpgradeToTargetAsync(limited);
+            Assert.False(result.Upgraded);
+            await DatabaseInitializer.InitializeAsync(limited, NullLoggerFactory.Instance);
+        }
+        await using (var readOnly = database.CreateReadOnlyContext())
+            await DatabaseInitializer.InitializeAsync(readOnly, NullLoggerFactory.Instance);
+        Assert.Equal(target, await database.SnapshotAsync());
+
+        await using var known = await IsolatedDatabase.CreateAsync();
+        await using (var owner = known.CreateContext())
+            await owner.GetService<IMigrator>().MigrateAsync(Reanalyze);
+        await known.ExecuteAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ('{Guid.NewGuid()}','student-1',1,7,'upload-1','[]'::jsonb,1,now())");
+        var before = await known.SnapshotAsync();
+        var rows = await known.BusinessRowsAsync();
+        await using (var limited = await known.CreateLimitedContextAsync())
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseInitializer.InitializeAsync(limited, NullLoggerFactory.Instance));
+            Assert.Contains("SQLSTATE 42501", error.Message);
+            Assert.DoesNotContain("Password", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        Assert.Equal(before, await known.SnapshotAsync());
+        Assert.Equal(rows, await known.BusinessRowsAsync());
+
+        await using var empty = await IsolatedDatabase.CreateAsync();
+        var emptyBefore = await empty.SnapshotAsync();
+        await using (var limited = await empty.CreateLimitedContextAsync())
+            Assert.Contains("SQLSTATE 42501", (await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                DatabaseInitializer.InitializeAsync(limited, NullLoggerFactory.Instance))).Message);
+        Assert.Equal(emptyBefore, await empty.SnapshotAsync());
+    }
+
+    [Fact]
+    public async Task ConnectionTerminatedDuringUpgradeRollsBackAndNextStartupUpgrades()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var setup = database.CreateContext();
+        await CreateMisstampedTextPathsAsync(database, setup, true);
+        var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
+        await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
+        await database.ExecuteAsync("""
+            CREATE FUNCTION upgrade_guard.pause_after_conversion() RETURNS event_trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF TG_TAG = 'ALTER TABLE' THEN PERFORM pg_sleep(20); END IF;
+            END $$
+            """);
+        await database.ExecuteAsync("CREATE EVENT TRIGGER pause_misstamped_conversion ON ddl_command_end EXECUTE FUNCTION upgrade_guard.pause_after_conversion()");
+        var before = await database.SnapshotAsync();
+        var rowsBefore = await database.BusinessRowsAsync();
+        var applicationName = "mistake_terminate_" + Guid.NewGuid().ToString("N");
+        await using (var upgrading = database.CreateContext(applicationName: applicationName))
+        {
+            var upgrade = DatabaseInitializer.InitializeAsync(upgrading, NullLoggerFactory.Instance);
+            await database.WaitForConversionPauseAsync(applicationName);
+            await database.ExecuteAsync($"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = '{applicationName}'");
+            await Assert.ThrowsAnyAsync<Exception>(() => upgrade);
+        }
+        NpgsqlConnection.ClearAllPools();
+        Assert.Equal(before, await database.SnapshotAsync());
+        Assert.Equal(rowsBefore, await database.BusinessRowsAsync());
+        await database.ExecuteAsync("DROP EVENT TRIGGER pause_misstamped_conversion");
+        await database.ExecuteAsync("DROP SCHEMA upgrade_guard CASCADE");
+
+        await using var retry = database.CreateContext();
+        await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
+        await AssertMisstampedTargetAsync(retry, item, practice, log, job);
     }
 
     private sealed class IsolatedDatabase : IAsyncDisposable
@@ -726,6 +845,7 @@ public sealed class ReadOnlyStartupPostgresTests
         private readonly string _admin;
         private readonly string _name;
         private readonly string _connection;
+        private readonly List<string> _roles = [];
 
         private IsolatedDatabase(string admin, string name)
         {
@@ -756,6 +876,19 @@ public sealed class ReadOnlyStartupPostgresTests
             var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connection.ConnectionString);
             if (interceptor != null) options.AddInterceptors(interceptor);
             return new MistakeDbContext(options.Options);
+        }
+
+        /// <summary>A login that may connect and read existing tables but owns nothing and cannot create.</summary>
+        public async Task<MistakeDbContext> CreateLimitedContextAsync()
+        {
+            var role = "mistake_limited_" + Guid.NewGuid().ToString("N");
+            var password = Guid.NewGuid().ToString("N");
+            _roles.Add(role);
+            await ExecuteAsync($"CREATE ROLE \"{role}\" LOGIN PASSWORD '{password}'; " +
+                $"GRANT CONNECT ON DATABASE \"{_name}\" TO \"{role}\"; GRANT USAGE ON SCHEMA public TO \"{role}\"; " +
+                $"REVOKE CREATE ON SCHEMA public FROM PUBLIC; GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{role}\"");
+            var connection = new NpgsqlConnectionStringBuilder(_connection) { Username = role, Password = password };
+            return new MistakeDbContext(new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connection.ConnectionString).Options);
         }
 
         public MistakeDbContext CreateReadOnlyContext() =>
@@ -833,6 +966,11 @@ public sealed class ReadOnlyStartupPostgresTests
             await connection.OpenAsync();
             await using var command = new NpgsqlCommand($"DROP DATABASE \"{_name}\" WITH (FORCE)", connection);
             await command.ExecuteNonQueryAsync();
+            foreach (var role in _roles)
+            {
+                command.CommandText = $"DROP ROLE IF EXISTS \"{role}\"";
+                await command.ExecuteNonQueryAsync();
+            }
         }
     }
 }

@@ -43,7 +43,6 @@ public sealed class BackupRestorePostgresTests
         Assert.True(drill.IsBackupVerified);
         Assert.Equal(before, await drill.ManifestAsync(restored, true));
         await using var restoredContext = drill.Context(restored);
-        await DatabaseInitializer.UpgradeKnownAsync(restoredContext, restored, true, drill.IsBackupVerified);
         await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
         Assert.Equal(10, (await drill.ManifestAsync(restored, true)).HistoryCount);
         using var paths = JsonDocument.Parse(await drill.ScalarAsync(restored,
@@ -73,7 +72,6 @@ public sealed class BackupRestorePostgresTests
         await using var restoredContext = drill.Context(restored);
         if (!targetVersion)
         {
-            await DatabaseInitializer.UpgradeKnownAsync(restoredContext, restored, true, true);
             await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
             var upgraded = await drill.ManifestAsync(restored, true);
             Assert.Equal(10, upgraded.HistoryCount);
@@ -88,7 +86,7 @@ public sealed class BackupRestorePostgresTests
         else
         {
             await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
-            await DatabaseInitializer.UpgradeKnownAsync(restoredContext, restored, true, true);
+            await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
             Assert.Equal(before, await drill.ManifestAsync(restored, true));
         }
 

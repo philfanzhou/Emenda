@@ -31,7 +31,7 @@
 }
 ```
 
-内部请求只使用 `InternalEndpoint`；预签名 URL 使用 `PublicBaseUrl` 的 scheme、Host、端口和路径前缀。公开代理必须保留用于签名的 `Host`，去掉公开路径前缀后再转发到 S3。部署者负责代理 TLS、容器网络、桶和凭据；配置校验不探测网络或桶，也不代表 `GET /` 已完成依赖就绪检查。`--upgrade-empty-db` 和 `--upgrade-known-db` 只执行数据库流程，不读取 Local OSS 配置。
+内部请求只使用 `InternalEndpoint`；预签名 URL 使用 `PublicBaseUrl` 的 scheme、Host、端口和路径前缀。公开代理必须保留用于签名的 `Host`，去掉公开路径前缀后再转发到 S3。部署者负责代理 TLS、容器网络、桶和凭据；配置校验不探测网络或桶，也不代表 `GET /` 已完成依赖就绪检查。`--upgrade-empty-db` 和 `--upgrade-known-db` 两个兼容命令只执行数据库升级，不读取 Local OSS 配置；正常启动在数据库升级前就读取并校验这些配置。
 
 正常启动在连接数据库前按缺失键或无效键失败，诊断不包含配置值。OSS 不可达、桶不存在或凭据错误属于后续对象请求故障，不会回退到通用 `Oss:*` 或生成平台公共地址。排查时先检查最终文件与环境注入、内部 endpoint 和桶，再检查公开代理的 Host 与路径剥离。回退配置时恢复上一个已验证的 Local section 并重启实例；每个实例在启动时独立读取最终值。已经签发的 URL 仍按原到期时间失效，密钥轮换须与 S3 和代理协调。
 

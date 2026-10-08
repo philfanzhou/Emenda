@@ -8,16 +8,15 @@
 
 默认和显式 `Mistake:ConfigMode=Platform` 沿用 Consul→缓存→本地回退与 Console+Loki。Mistake 通过 `ruoyu.common` 下的共享 Consul 代码读取共享配置；不向 Consul 注册服务实例，调用方直接读取 `MistakeService:Url`。`Mistake:ConfigMode=Local` 在加载 Consul 前选择，仅使用标准 `appsettings*.json`/环境配置，不请求 Consul、不读取其缓存，日志仅写 Console。仅接受 `Local` 和 `Platform`（大小写不敏感）；非法值在外部连接前失败。此切片只隔离配置和日志引导，**不代表**无 Student/认证/OSS/AI 时业务能力已可安全独立运行；这些仍按现有依赖工作。
 
-Local 必须显式提供 `ConnectionStrings:MistakeLocal`（环境键 `ConnectionStrings__MistakeLocal`），仓库默认留空。不得使用 `PostgreSql:*`、Consul 缓存或示例 `ConnectionStrings:Default` 作为 Local 连接；缺失、无效或与平台示例相同会在连接前失败。环境变量优先于文件；引导仅记录 `Mode` 和数据库连接的 `Environment`/`File` 来源，不输出连接串。选择 Local 本身不授权 DDL；两个显式升级命令仍受原数据库指纹、停写、备份和库名门禁约束。凭据应由部署者通过受保护的环境或挂载文件提供。
+Local 必须显式提供 `ConnectionStrings:MistakeLocal`（环境键 `ConnectionStrings__MistakeLocal`），仓库默认留空。不得使用 `PostgreSql:*`、Consul 缓存或示例 `ConnectionStrings:Default` 作为 Local 连接；缺失、无效或与平台示例相同会在连接前失败。环境变量优先于文件；引导仅记录 `Mode` 和数据库连接的 `Environment`/`File` 来源，不输出连接串。两种模式启动时都按[迁移历史](../database/migrations.md)自动升级受支持的数据库结构，不支持的结构拒绝启动且不修改。凭据应由部署者通过受保护的环境或挂载文件提供。
 
-Local 正常运行还必须显式提供独立的 `Mistake:Local:Oss:*` 六项配置（环境键前缀 `Mistake__Local__Oss__`），包括内部 S3 endpoint、`InternalSecure`、桶、凭据和公共预签名基础 URL。它不会从通用 `Oss:*` 或仓库 mock 配置回退。文件/环境占位示例、公开代理 Host 与路径要求、故障排查和回退见 [Local OSS 配置](../Integration/Oss/LocalConfiguration.md)。两个显式数据库升级命令不要求这些 OSS 键。
+Local 正常运行还必须显式提供独立的 `Mistake:Local:Oss:*` 六项配置（环境键前缀 `Mistake__Local__Oss__`），包括内部 S3 endpoint、`InternalSecure`、桶、凭据和公共预签名基础 URL。它不会从通用 `Oss:*` 或仓库 mock 配置回退。文件/环境占位示例、公开代理 Host 与路径要求、故障排查和回退见 [Local OSS 配置](../Integration/Oss/LocalConfiguration.md)。两个兼容升级命令（`--upgrade-empty-db`、`--upgrade-known-db`）不要求这些 OSS 键。
 
 在仅供丢弃的隔离 PostgreSQL 15 测试库中，可按下列方式验证引导；`<...>` 必须替换为测试环境值，不要把凭据写入仓库：
 
 ```bash
 export Mistake__ConfigMode=Local
 export ConnectionStrings__MistakeLocal='Host=<test-host>;Port=5432;Database=<test-database>;Username=<test-user>;Password=<test-password>'
-dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db
 export Mistake__Local__Oss__InternalEndpoint='<s3-host>:<s3-port>'
 export Mistake__Local__Oss__InternalSecure=false
 export Mistake__Local__Oss__AccessKey='<access-key>'
@@ -27,7 +26,7 @@ export Mistake__Local__Oss__PublicBaseUrl='https://<public-host>/oss'
 dotnet Ruoyu.Study.Mistake.Host.dll
 ```
 
-正常启动对数据库只读核验，空库须先显式升级。带数据且精确受支持的旧库应按下文备份恢复演练后使用 `--upgrade-known-db --database <test-database> --writes-stopped --backup-verified`。Local 模式缺连接时会报告 `Local mode requires ConnectionStrings:MistakeLocal`；模式拼写错误会报告允许值；连接失败时检查来源和目标库而不打印密码。默认 Platform 的 Consul/缓存诊断与 Loki URI 覆盖保持原样。
+正常启动时自动把空库和受支持的旧库升级到当前结构，已是目标时不写入。Local 模式缺连接时会报告 `Local mode requires ConnectionStrings:MistakeLocal`；模式拼写错误会报告允许值；连接失败时检查来源和目标库而不打印密码。默认 Platform 的 Consul/缓存诊断与 Loki URI 覆盖保持原样。
 
 ### 后台 worker 启动开关
 
@@ -70,7 +69,7 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 - Local `Enabled=true` 必须显式提供 `Mistake:Local:Student:Url`（绝对 HTTP(S) 地址，不含凭据、路径、查询或片段）。缺失、空白或无效时在任何数据库连接前报键名失败；`StudentService:Url`/`BaseUrl`/`GrpcUrl` 与仓库示例 `http://localhost:5005` 不会作为回退补齐。Platform 保持既有 `StudentService:Url` → `BaseUrl` → `GrpcUrl` → `http://localhost:5005` 地址兼容，不因本切片改动。
 - 能力禁用时：即使配置文件仍留有 Student 地址，本进程也不会向 Student 发出任何请求；`UploadPollingWorker` 不得启用；`POST /api/mistakes/{id}/review` 携带 `ReviewStatus=Rejected` 时在调用领域服务、OSS 或 Student 之前返回 HTTP 503 与稳定响应 `{"success":false,"message":"Student 集成未启用，退回审核不可用（Mistake:Student:Enabled=false）"}`，不更新审核状态、不复制/删除 OSS 对象、不删除错题条目、不创建 ReturnedRecord，重复请求结果一致。`ReviewStatus=Confirmed` 路径与既有本域读 API 不受能力关闭影响。
 - 禁用态仍保持 Host 正常依赖注入启动；共享 Student 客户端注册到保留的不可解析占位地址，任何意外调用都会立即网络失败而不是触达真实服务。启动诊断只记录 `Mode`、`Enabled`、地址来源（`Explicit`/`Platform`/`Disabled`），不输出凭据。
-- 开关在进程启动时固定；重新启用或改地址必须重启并重新通过上述校验。与 Local OSS 键一致，两个显式数据库升级命令不要求 `Mistake:Local:Student:Url`。
+- 开关在进程启动时固定；重新启用或改地址必须重启并重新通过上述校验。与 Local OSS 键一致，两个兼容升级命令不要求 `Mistake:Local:Student:Url`。
 
 兼容窗口与既有行为：启用 Student 后的失败吞没、响应丢失、重复 ReturnedRecord、跨 DB/OSS 原子性与授权仍由 [IKIZY1](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY1)、[IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3)、[IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 处理；本开关只阻止"未接入 Student"模式下的明显数据丢失路径。
 
@@ -292,14 +291,14 @@ Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存
 
 ## 流程二：数据库准备与重分析切换
 
-1. **A 停写备份**：逐一关闭所有实例的 `Mistake__Workers__ReanalyzeJobHostedService__Enabled`，等待或终止在途 VL；再停止 Mistake 写入。确认准确主机与数据库名，取得可恢复备份，并在隔离 PostgreSQL 15 库恢复核对结构、行数、稳定 ID、Job 状态与 ProcessLog。只有核验后才使用 `--backup-verified`。不可让旧 worker 与新 worker 混跑。
-2. **B 显式升级**：全新空库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`；受支持带数据历史库运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-known-db --database <目标数据库名> --writes-stopped --backup-verified`。维护账号需 DDL 与迁移历史写权限。命令在单一事务和 advisory lock 内升级至**九条** EF历史并核验精确catalog；known1–8沿正规链进入M9；第五至第八条保留原source/targets/returns结构与guards。三历史 text 路径的精确小写 `ix_process_log_student_id` 变体会先在同一事务中标准化索引名，再转换路径类型；其他形态不通过忽略大小写放宽。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。未知或矛盾结构原状拒绝，旧 `public.mistake` 由 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。
-3. **C 验库启用**：用新二进制执行正常启动，只读核验精确九历史目标，然后逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。正常启动不迁移数据库。旧二进制遇新 schema 应失败关闭。
-4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新二进制后可重新启用，过期 Job 自动重领；若确需旧二进制，停止写入，在隔离库恢复已核验的升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧二进制或 EF Down 均不是无损回退。
+1. **A 停旧实例**：先停掉旧版本 Mistake 实例（单实例替换即可满足），不要让旧 worker 与新 worker 混跑。备份不是前置；需要可回退时，建议先取得可恢复备份并按[备份恢复演练](./BackupRestoreDrill.md)在隔离库核对。
+2. **B 启动即升级**：用新版本正常启动。启动时在单一事务和 advisory lock 内把空库或已知 1–9 条 EF 历史的库升级到**十条**历史并核验精确 catalog；三历史误盖章形态（含小写 `ix_process_log_student_id` 变体）在同一事务中标准化后继续迁移。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。已是目标时不写入。未知或矛盾结构拒绝启动且不修改；旧版自动维护留下的结构见 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF)，旧 `public.mistake` 见 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK)。需要升级时数据库账号要有 DDL 与写迁移历史的权限。
+3. **C 启用 worker**：日志出现 `Mistake database schema verified at target version 10` 后，逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。旧版本镜像遇到新 schema：已是旧版本认识的目标时可以启动，否则失败关闭。
+4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新版本后可重新启用，过期 Job 自动重领；若确需回到更早的版本，停止写入，在隔离库恢复升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧版本或 EF Down 均不是无损回退。
 
-提交前故障会使升级事务回滚。COMMIT 响应丢失时结果未知，保持停写并重新只读核对 catalog、九条历史和业务行，再决定是否重复运行显式命令；不得凭异常文本猜测结果。重复升级到精确目标只核验，不增加失败日志。具体结构和支持的旧形态见[迁移历史](../database/migrations.md)，隔离备份演练见[备份恢复演练](./BackupRestoreDrill.md)。本手册不表示已执行生产升级。
+提交前任何故障（DDL 失败、取消、连接中断、权限不足）都使升级事务整体回滚，数据库保持升级前状态，启动失败。COMMIT 响应丢失时结果未知，再次启动会重新分类：已提交则直接按目标启动，未提交则重新升级；不得凭异常文本猜测结果。`--upgrade-empty-db` 与 `--upgrade-known-db` 仍可用于在启动前单独执行同一升级，`--writes-stopped`、`--backup-verified` 不再必需，显式 `--database` 与实际库名不一致时拒绝。具体结构和支持的旧形态见[迁移历史](../database/migrations.md)。本手册不表示已执行生产升级。
 
-普通启动账号需要读取 public catalog、四张业务表和迁移历史；worker 账号需要 Job/Item/ProcessLog 写权限。数据库或租约异常时，先关闭所有重分析 worker，检查 `owner_id`、`fencing_version`、`lease_until`、`attempt` 及关联日志，不手工改 owner/version 或清空队列。参见[故障排查](./Troubleshooting.md)。
+已是目标结构时，启动账号只需读取 public catalog 和迁移历史；worker 账号需要 Job/Item/ProcessLog 写权限。数据库或租约异常时，先关闭所有重分析 worker，检查 `owner_id`、`fencing_version`、`lease_until`、`attempt` 及关联日志，不手工改 owner/version 或清空队列。参见[故障排查](./Troubleshooting.md)。
 
 ---
 
@@ -363,7 +362,7 @@ Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存
 | **前置条件** | 配置准备、数据库准备、OSS 准备、依赖服务准备均已完成 |
 | **输入条件** | 编译产物、appsettings.json、环境变量 |
 | **操作步骤** | 1. 确认镜像 `ruoyu.study.mistake:20260501` 已构建<br>2. 设置实际 `CONSUL_HTTP_ADDR`、`CONSUL_TOKEN` 和 VL 私有配置<br>3. 执行 `bash start.sh`<br>4. 观察启动日志 |
-| **成功判定** | 日志中出现监听端口信息，无异常；数据库只读核验日志正常 |
+| **成功判定** | 日志中出现监听端口信息，无异常；出现 `Mistake database schema verified at target version 10` |
 | **失败后排查方向** | 1. 端口绑定失败 → 检查端口占用<br>2. 数据库连接失败 → 检查连接串和数据库状态<br>3. 依赖注入失败 → 检查配置项完整性 |
 
 ### 启动顺序
@@ -482,7 +481,7 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 | 3 | HTTP 端口可达 | portal 调用 mistake 接口 | 正常响应 | 检查 HTTP 端口 5007、防火墙规则 |
 | 4 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |
 | 5 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` 和实际 schema | 历史与表结构一致 | 保留备份，核验迁移日志与 schema，不手动 stamp |
-| 6 | 旧表保护 | 检查 `public.mistake` 是否存在 | 不存在；存在时服务拒绝启动 | 保留数据库及备份，走显式升级流程，不使用旧版本绕过 |
+| 6 | 旧表保护 | 检查 `public.mistake` 是否存在 | 不存在；存在时服务拒绝启动 | 保留数据库，等待 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 的旧表升级，不使用旧版本绕过 |
 | 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工改列 |
 | 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补外键 |
 | 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补索引 |
@@ -515,7 +514,7 @@ Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使�
 
 启用限于自有隔离验证。共享 capture 前必须停止全部旧 Mistake direct movers、manual CompleteReview 和外部破坏性 StorageAudit，并核对固定消费者已支持新参数；本服务无法阻止另持 S3 凭据的 actor。具备SourceReturns和SourceHandoffs完整恢复协议后仍须核对共享固定消费者/完整引用才能取代旧流程，不能把 SourceRetained 视为 handoff completed 或 GC 授权。
 
-先停写并核验可恢复备份，显式 empty/known 升级至九历史，正常启动只读验证后再启用。回退先停新领取/所有自身 worker，保持新 schema/new binary/guards 和 provider pins；非空禁止 EF Down/旧 binary 降级。如需灾难恢复，停写、真实 pg_dump→隔离 restore、核对完整来源/group/request/IDs/practice/log 与保护并重放同 key 后按正式恢复流程切换。未知 COMMIT 不删图补偿，只 fresh GET/同 key 确认。无超时释放 pin、无 schema 清空回退。
+先停掉旧实例，以新版本启动完成自动升级并确认目标结构后再启用；建议升级前保留可恢复备份。回退先停新领取/所有自身 worker，保持新 schema/new binary/guards 和 provider pins；非空禁止 EF Down/旧 binary 降级。如需灾难恢复，停写、真实 pg_dump→隔离 restore、核对完整来源/group/request/IDs/practice/log 与保护并重放同 key 后按正式恢复流程切换。未知 COMMIT 不删图补偿，只 fresh GET/同 key 确认。无超时释放 pin、无 schema 清空回退。
 
 新模式的创建和图片签名读取都依赖可验证原字节；本文上方旧模式“创建不依赖OSS”的表仅描述 legacy 未受管路径，不能用作新入库可用性保证。专项 PG/TLS/文件字节验证命令及专用输入见[能力验证](../modules/SourceIntake.md#验证入口)。
 
@@ -523,7 +522,7 @@ Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使�
 
 `Mistake:SourceTargets:Enabled`（`Mistake__SourceTargets__Enabled`）默认 false；true 要求 strict API + resource auth 与现有身份信任配置有效，不要求 source intake/Student capture 同时开启。一个 DB 驱动 worker 启动后及每 20 秒恢复已提交组的缺失目标，Admin POST 可触发相同幂等过程；请求与状态/读取协议见[SourceTargets](../modules/SourceTargets.md)。关闭开关只停止新 copy，保持已有安全读取、状态与 DB guards。
 
-按已有停写/真实可恢复备份流程显式升级九历史，正常服务不DDL。空库、六历史已有 item/practice/source/group/replay 库均先在隔离实例验证；不升级未知 schema。备份必须含 source_target_object/source_target_attempt、来源与组/实际 item/replay及函数/trigger/FK；restore后只读核验 catalog/IDs，再 resume，不能对响应丢失做delete补偿。非空 Down/旧 binary降级拒绝。
+新版本启动时自动升级到目标结构，建议事先保留可恢复备份。空库、六历史已有 item/practice/source/group/replay 库建议先在隔离实例验证；不升级未知 schema。备份必须含 source_target_object/source_target_attempt、来源与组/实际 item/replay及函数/trigger/FK；restore后只读核验 catalog/IDs，再 resume，不能对响应丢失做delete补偿。非空 Down/旧 binary降级拒绝。
 
 每attempt只写独立随机键，非取消Copy可能继续到请求结束后；关闭/停机仍保留reservation和所有候选。安全回退是停止自身新处理、保留schema/guards/来源pins和已有授权读取，或持续关闭listener。部署者须阻止外部旧writer/GC触碰reserved namespace；完整refs/source release不由目标能力证明；forward/reverse saga分别见SourceHandoffs/SourceReturns。
 
@@ -533,7 +532,7 @@ Student 基地址仍按当前 Platform/Local 模式配置，生产启用应使�
 
 `Mistake:SourceReturns:Enabled`（环境键 `Mistake__SourceReturns__Enabled`）默认 false，非法 bool 失败。true 在 DB/S3 初始化前要求 Student Enabled、strict API/resource auth、Student正常HTTPS 与有效RS256服务签发；无需同时开启 intake/targets 新领取。先发布 Student 的[受保护历史receipt](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)。唯一行为与信任模型见[SourceReturns](../modules/SourceReturns.md)，不以开关启用替代共享 rollout/完整fullrefs。
 
-停所有写方，真实 pg_dump 完整库并在任务自有隔离 PG 恢复检查九条历史、完整 catalog、原 IDs/practice/log/group/request/target 与所有 return phases/candidates，再使用既有 `--upgrade-empty-db` 或精确已知1–8的 `--upgrade-known-db --database <exact-name> --writes-stopped --backup-verified`。普通启动只读核验、不DDL、不自动迁移。旧misstamp支持路径仍按原数据库升级文档，未知 public.mistake 不猜测迁移。
+建议先停所有写方，真实 pg_dump 完整库并在任务自有隔离 PG 恢复检查迁移历史、完整 catalog、原 IDs/practice/log/group/request/target 与所有 return phases/candidates，再以新版本启动完成自动升级。启动只升级受支持结构、不修复漂移；旧misstamp支持路径见数据库迁移文档，未知 public.mistake 不猜测迁移。
 
 false 停本实例新增和恢复推进；其它实例/已发非取消 IO 可以晚到，状态与pins永久保留。重新true启动由DB worker启动及20秒扫描同操作恢复；不能清表、释放snapshot、更换payload、删除候选或匿名降级。Completed认证重放/历史查询与所有guards即使false仍有效。
 
@@ -543,7 +542,7 @@ false 停本实例新增和恢复推进；其它实例/已发非取消 IO 可以
 
 ## 来源交接启用与恢复
 
-Mistake__SourceHandoffs__Enabled=false默认关闭且严格bool；true在DB/S3前要求Student enabled、strict/resource、有效RS256 signer和正常HTTPS。无需intake/targets/returns三开关同时true，已保存真实事实可独立交接。必须先发布Student的SourceHandoffsEnabled/providerM16与永久归档/保护，再按完整停写备份流程显式M9升级，普通Host只读核验9，不自动DDL。
+Mistake__SourceHandoffs__Enabled=false默认关闭且严格bool；true在DB/S3前要求Student enabled、strict/resource、有效RS256 signer和正常HTTPS。无需intake/targets/returns三开关同时true，已保存真实事实可独立交接。必须先发布Student的SourceHandoffsEnabled/providerM16与永久归档/保护，再以新版本启动完成自动升级（建议事先保留完整备份）；启动只升级受支持结构，不修复漂移。
 
 sealed Manual仅Admin首次固定，worker只恢复已有Manual并扫描完整Automatic；启动及每20秒用现source60/20 lease/fence。关闭停止新处理，完成重放/授权历史/最后guards与全部pins保留。Prepared/Sending响应未知只GET原receipt，Conflict不自动解封，不删图补偿；Student已消费且当前变化/删除时只完成原本域op。
 

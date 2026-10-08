@@ -17,6 +17,7 @@ public static class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
+    private const int TargetVersion = 10;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -109,98 +110,118 @@ public static class DatabaseInitializer
         PK___EFMigrationsHistory|p|MigrationId|-|-|-|V
         """);
 
+    /// <summary>
+    /// Normal startup entry: upgrades an empty or known database to the target schema, or verifies an
+    /// existing target without writing.
+    /// </summary>
     public static async Task InitializeAsync(MistakeDbContext context, ILoggerFactory loggerFactory,
         CancellationToken cancellationToken = default)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken)
-            .ConfigureAwait(false);
-        await context.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY", cancellationToken).ConfigureAwait(false);
-        var state = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-        if (state.Kind != SchemaKind.Ready)
-            throw new InvalidOperationException(state.Diagnostic);
-        loggerFactory.CreateLogger("DatabaseInitializer").LogInformation("Mistake database schema verified for read-only startup");
+        var logger = loggerFactory.CreateLogger("DatabaseInitializer");
+        var result = await UpgradeToTargetAsync(context, null, cancellationToken).ConfigureAwait(false);
+        if (result.Upgraded)
+            logger.LogInformation(
+                "Mistake database schema verified at target version {TargetVersion} after automatic upgrade from version {FromVersion}; steps: {Steps}",
+                result.ToVersion, result.FromVersion, string.Join(", ", result.Steps));
+        else
+            logger.LogInformation("Mistake database schema verified at target version {TargetVersion}; no upgrade needed",
+                result.ToVersion);
     }
 
-    public static async Task UpgradeEmptyAsync(MistakeDbContext context, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Upgrades an empty or known database to the target schema in one transaction under the shared
+    /// advisory lock. A target database is left unchanged. Unsupported structures are rejected before
+    /// any write; a failed upgrade rolls back as a whole.
+    /// </summary>
+    /// <param name="expectedDatabase">When not null, the connected database name must match exactly.</param>
+    public static async Task<DatabaseUpgradeResult> UpgradeToTargetAsync(MistakeDbContext context,
+        string? expectedDatabase = null, CancellationToken cancellationToken = default)
     {
-        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
-            .ConfigureAwait(false);
-        await context.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({UpgradeLockKey})", cancellationToken)
-            .ConfigureAwait(false);
-        var before = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-        if (before.Kind == SchemaKind.Ready && before.Target)
-            return;
-        if (before.Kind != SchemaKind.Empty)
-            throw new InvalidOperationException(before.Diagnostic);
-
-        await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
-        var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-        if (after.Kind != SchemaKind.Ready || !after.Target)
-            throw new InvalidOperationException($"Mistake upgrade verification failed: {after.Diagnostic}");
-        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    public static async Task UpgradeKnownAsync(MistakeDbContext context, string expectedDatabase,
-        bool writesStopped, bool restorableBackupVerified, CancellationToken cancellationToken = default)
-    {
-        var actualDatabase = context.Database.GetDbConnection().Database;
-        if (string.IsNullOrWhiteSpace(expectedDatabase) ||
-            !string.Equals(expectedDatabase, actualDatabase, StringComparison.Ordinal) ||
-            !writesStopped || !restorableBackupVerified)
+        if (expectedDatabase is not null &&
+            !string.Equals(expectedDatabase, context.Database.GetDbConnection().Database, StringComparison.Ordinal))
             throw new InvalidOperationException(
-                "Known database upgrade requires the exact database name, stopped writes, and a verified restorable backup.");
+                "Mistake database upgrade refused: --database does not match the connected database. Database unchanged.");
 
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
             .ConfigureAwait(false);
+        // Instances starting together serialize here; a waiter reclassifies after the winner commits.
         await context.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({UpgradeLockKey})", cancellationToken)
             .ConfigureAwait(false);
         var before = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-        if (before.Kind == SchemaKind.Invalid || before.Kind == SchemaKind.Empty)
+        if (before.Kind == SchemaKind.Invalid)
             throw new InvalidOperationException(before.Diagnostic);
-        if (before.Target) return;
+        if (before.Target)
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new DatabaseUpgradeResult(before.Version, before.Version, []);
+        }
 
+        var steps = new List<string>();
         try
         {
-            if (before.Kind is SchemaKind.MisstampedTextPaths or SchemaKind.MisstampedLowercaseIndex)
+            if (before.Kind == SchemaKind.Empty)
             {
-                if (before.Kind == SchemaKind.MisstampedLowercaseIndex)
+                await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                steps.Add("apply all migrations");
+            }
+            else
+            {
+                if (before.Kind is SchemaKind.MisstampedTextPaths or SchemaKind.MisstampedLowercaseIndex)
+                {
+                    if (before.Kind == SchemaKind.MisstampedLowercaseIndex)
+                    {
+                        await context.Database.ExecuteSqlRawAsync(
+                            "ALTER INDEX public.ix_process_log_student_id RENAME TO \"IX_process_log_student_id\"",
+                            cancellationToken).ConfigureAwait(false);
+                        steps.Add("rename ix_process_log_student_id");
+                    }
+                    // Keep the source rows stable while checking their semantics and changing the column type.
                     await context.Database.ExecuteSqlRawAsync(
-                        "ALTER INDEX public.ix_process_log_student_id RENAME TO \"IX_process_log_student_id\"",
+                        "LOCK TABLE public.mistake_practice IN ACCESS EXCLUSIVE MODE", cancellationToken).ConfigureAwait(false);
+                    var paths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+                    await context.Database.ExecuteSqlRawAsync(
+                        "ALTER TABLE public.mistake_practice ALTER COLUMN image_paths TYPE jsonb USING image_paths::jsonb",
                         cancellationToken).ConfigureAwait(false);
-                // Keep the source rows stable while checking their semantics and changing the column type.
-                await context.Database.ExecuteSqlRawAsync(
-                    "LOCK TABLE public.mistake_practice IN ACCESS EXCLUSIVE MODE", cancellationToken).ConfigureAwait(false);
-                var paths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-                await context.Database.ExecuteSqlRawAsync(
-                    "ALTER TABLE public.mistake_practice ALTER COLUMN image_paths TYPE jsonb USING image_paths::jsonb",
-                    cancellationToken).ConfigureAwait(false);
-                var convertedPaths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
-                if (!SamePaths(paths, convertedPaths))
-                    throw new InvalidOperationException("Mistake practice paths changed during conversion.");
-                await InsertRootCauseHistoryAsync(context, cancellationToken).ConfigureAwait(false);
-            }
-            else if (before.Kind == SchemaKind.LegacyRuntime)
-            {
-                // The column was already renamed by an older runtime. Only the verified history row is missing.
-                await InsertRootCauseHistoryAsync(context, cancellationToken).ConfigureAwait(false);
-            }
-            else if (before.Version < 4)
-            {
-                await context.GetService<IMigrator>().MigrateAsync(RootCause, cancellationToken).ConfigureAwait(false);
-            }
+                    var convertedPaths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+                    if (!SamePaths(paths, convertedPaths))
+                        throw new UpgradeStepException("Mistake practice paths changed during conversion.");
+                    steps.Add("convert mistake_practice.image_paths to jsonb");
+                    await InsertRootCauseHistoryAsync(context, cancellationToken).ConfigureAwait(false);
+                    steps.Add($"record {RootCause}");
+                }
+                else if (before.Kind == SchemaKind.LegacyRuntime)
+                {
+                    // The column was already renamed by an older runtime. Only the verified history row is missing.
+                    await InsertRootCauseHistoryAsync(context, cancellationToken).ConfigureAwait(false);
+                    steps.Add($"record {RootCause}");
+                }
+                else if (before.Version < 4)
+                {
+                    await context.GetService<IMigrator>().MigrateAsync(RootCause, cancellationToken).ConfigureAwait(false);
+                    steps.Add($"migrate to {RootCause}");
+                }
 
-            await context.GetService<IMigrator>().MigrateAsync(StorageReferenceSchema.MistakeMigration, cancellationToken).ConfigureAwait(false);
+                await context.GetService<IMigrator>().MigrateAsync(StorageReferenceSchema.MistakeMigration, cancellationToken)
+                    .ConfigureAwait(false);
+                steps.Add($"migrate to {StorageReferenceSchema.MistakeMigration}");
+            }
 
             var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
             if (after.Kind != SchemaKind.Ready || !after.Target)
-                throw new InvalidOperationException($"Mistake upgrade verification failed: {after.Diagnostic}");
+                throw new UpgradeStepException($"Mistake upgrade verification failed: {after.Diagnostic}");
+            steps.Add("verify target schema");
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
-            throw new InvalidOperationException("Mistake known database upgrade failed before commit; transaction will roll back. Check server-side diagnostics and the backup.");
+            // Provider messages can quote row values, so only our own diagnostics and the SQLSTATE are surfaced.
+            var reason = error is UpgradeStepException ? error.Message :
+                error is DbException { SqlState: not null } dbError ? $"SQLSTATE {dbError.SqlState}" : error.GetType().Name;
+            throw new InvalidOperationException(
+                $"Mistake database upgrade from version {before.Version} failed before commit ({reason}); the transaction rolls back and the database stays unchanged.");
         }
-        // A connection failure during COMMIT has an unknown outcome. The next run reclassifies the database.
+        // A connection failure during COMMIT has an unknown outcome. The next start reclassifies the database.
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new DatabaseUpgradeResult(before.Version, TargetVersion, steps);
     }
 
     private static Task<int> InsertRootCauseHistoryAsync(MistakeDbContext context, CancellationToken cancellationToken) =>
@@ -223,12 +244,12 @@ public static class DatabaseInitializer
                 using var document = JsonDocument.Parse(reader.GetString(1));
                 if (document.RootElement.ValueKind != JsonValueKind.Array ||
                     document.RootElement.EnumerateArray().Any(value => value.ValueKind != JsonValueKind.String))
-                    throw new InvalidOperationException("Mistake practice paths must be JSON arrays of strings.");
+                    throw new UpgradeStepException("Mistake practice paths must be JSON arrays of strings.");
                 values = document.RootElement.EnumerateArray().Select(value => value.GetString()!).ToArray();
             }
             catch (JsonException)
             {
-                throw new InvalidOperationException("Mistake practice paths must be JSON arrays of strings.");
+                throw new UpgradeStepException("Mistake practice paths must be JSON arrays of strings.");
             }
             paths.Add(reader.GetGuid(0), values);
         }
@@ -250,9 +271,9 @@ public static class DatabaseInitializer
             cancellationToken).ConfigureAwait(false);
 
         if (relations.Count == 0)
-            return new SchemaState(SchemaKind.Empty, false, 0, "Mistake database is empty; run --upgrade-empty-db before normal startup.");
+            return new SchemaState(SchemaKind.Empty, false, 0, "Mistake database is empty.");
         if (relations.Contains("mistake"))
-            return Invalid("legacy relation public.mistake exists; back up and use a supported explicit upgrade.");
+            return Invalid("legacy relation public.mistake exists.");
         if (!relations.Contains("__EFMigrationsHistory"))
             return Invalid("missing relation __EFMigrationsHistory.");
         var history = await ReadSetAsync(connection,
@@ -427,15 +448,15 @@ public static class DatabaseInitializer
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
         if (misstampedLowercaseIndex)
             return new SchemaState(SchemaKind.MisstampedLowercaseIndex, false, version,
-                "Mistake exact three-history text paths and lowercase index shape requires --upgrade-known-db.");
+                "Mistake exact three-history text paths and lowercase index shape.");
         if (misstampedTextPaths)
             return new SchemaState(SchemaKind.MisstampedTextPaths, false, version,
-                "Mistake exact three-history text paths shape requires --upgrade-known-db.");
-        return new SchemaState(SchemaKind.Known, false, version, $"Mistake known EF migration version {version} requires --upgrade-known-db.");
+                "Mistake exact three-history text paths shape.");
+        return new SchemaState(SchemaKind.Known, false, version, $"Mistake known EF migration version {version}.");
     }
 
     private static SchemaState Invalid(string diagnostic) => new(SchemaKind.Invalid, false, 0,
-        $"Mistake database incompatible: {diagnostic} Database unchanged.");
+        $"Mistake database incompatible: {diagnostic} Automatic upgrade does not support this structure; database unchanged.");
 
     private static string? Compare(string kind, HashSet<string> expected, HashSet<string> actual)
     {
@@ -469,4 +490,7 @@ public static class DatabaseInitializer
 
     private enum SchemaKind { Empty, Known, LegacyRuntime, MisstampedTextPaths, MisstampedLowercaseIndex, Ready, Invalid }
     private sealed record SchemaState(SchemaKind Kind, bool Target, int Version, string Diagnostic);
+
+    // Failures raised by this initializer carry no connection or row data and may be surfaced as-is.
+    private sealed class UpgradeStepException(string message) : Exception(message);
 }
