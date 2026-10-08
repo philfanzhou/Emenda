@@ -188,7 +188,7 @@
 
 ### TC-17 数据库启动时自动升级 (PostgreSQL)
 
-在专用 PostgreSQL 库分别验证：空库与已知 1–9 条历史（含旧运行时 `root_cause` 与两种三历史误盖章形态、含重复条目的旧库）正常启动即升级到目标，行与 ID 保留，再次启动不写入；目标结构下只读账号与无 DDL 权限账号可启动且零写入；并发启动只升级一次；DDL 失败、取消、连接中断、权限不足均整体回滚且诊断不含行内容；`public.mistake`、新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；两个兼容命令无需 `--writes-stopped`/`--backup-verified` 即退出 0，`--database` 不一致仍拒绝。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
+在专用 PostgreSQL 库分别验证：空库与已知 1–10 条历史（含旧运行时 `root_cause` 与两种三历史误盖章形态、含重复条目的旧库）正常启动即升级到目标，行与 ID 保留，再次启动不写入；目标结构下只读账号与无 DDL 权限账号可启动且零写入；并发启动只升级一次；DDL 失败、取消、连接中断、权限不足均整体回滚且诊断不含行内容；`public.mistake`、新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；两个兼容命令无需 `--writes-stopped`/`--backup-verified` 即退出 0，`--database` 不一致仍拒绝。旧版自动维护留下的 9 种结构由重放历史 DDL 生成夹具，验证启动收敛、行/ID/外键与练习路径保留、归档条数、图片可见、并发只收敛一次、失败/取消/断连/权限不足回滚、陌生对象拒绝、超过命令超时的步骤与锁等待仍完成，以及归档表只追加与非空 Down 拒绝（`LegacySchemaConvergencePostgresTests`，同用 `MISTAKE_READONLY_TEST_CONNECTION`）。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
 
 ### TC-20 地址错误 (MistakeGrpcService:Address)
 
@@ -356,7 +356,7 @@
 | **影响范围** | 服务无法启动 |
 | **临时绕过方式** | 无；保留原库及备份，不删表、不手工写迁移历史 |
 | **是否允许降级** | 不允许自动降级；空库与已知 EF 历史链在启动时自动升级，不会进入此分支 |
-| **需要团队介入** | 旧版自动维护留下的结构见 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF)，旧 `public.mistake` 见 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) |
+| **需要团队介入** | 旧版自动维护留下的已知结构在启动时自动收敛（见[迁移历史](../database/migrations.md#旧版自动维护结构的收敛)），其余陌生对象按诊断核对；旧 `public.mistake` 见 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) |
 | **是否影响上线** | 阻塞，取得受支持的升级或映射证据后再部署 |
 
 ### 3.5 MistakeGrpcService:Address 配置错误

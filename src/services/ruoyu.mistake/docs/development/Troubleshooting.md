@@ -261,17 +261,17 @@
 
 **症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史，结尾为 `Automatic upgrade does not support this structure; database unchanged.`。`public.mistake` 旧关系、只有部分表、额外对象以及列类型或历史不一致都会这样拒绝。
 
-**处理**：数据库未被修改。核对提示所指对象及 `__EFMigrationsHistory`。空库和已知 1–9 条 EF 历史会在启动时自动升级，不会出现此错误。旧版自动维护留下的结构由 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF) 处理，旧 `public.mistake` 由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。不要删除旧表或手工补写历史。
+**处理**：数据库未被修改。核对提示所指对象及 `__EFMigrationsHistory`。空库、已知 1–10 条 EF 历史和[旧版自动维护留下的已知结构](../database/migrations.md#旧版自动维护结构的收敛)会在启动时自动升级，不会出现此错误。消息末尾带 `Legacy convergence was rolled back.` 时，表示识别到旧代码标志并尝试收敛，但收敛后仍有对象对不上已知形态（例如陌生表、列或索引），收敛已整体回滚。旧表或旧列上附加了陌生索引、约束、触发器时，提示为 `Mistake legacy convergence found unexpected object <名称> ...`。旧 `public.mistake` 由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。不要删除旧表、手工改列或补写历史。
 
 ### 5.4 自动升级失败
 
-**症状**：启动提示 `Mistake database upgrade from version N failed before commit (...)`，括号内为本服务自身的核验结论或 `SQLSTATE xxxxx`。
+**症状**：启动提示 `Mistake database upgrade from version N failed before commit (...)` 或 `Mistake legacy schema convergence failed before commit (...)`，括号内为本服务自身的核验结论或 `SQLSTATE xxxxx`。
 
-**处理**：升级事务已整体回滚，数据库保持升级前状态。按 SQLSTATE 排查：`42501` 为权限不足，升级需要 DDL 与写迁移历史的权限；`25006` 为只读连接或只读事务；其他值按 PostgreSQL 错误码核对。练习路径不是 JSON 字符串数组时会提示 `Mistake practice paths must be JSON arrays of strings.`。修正后再次启动即重新分类并重试。COMMIT 确认丢失时同样直接重启：已提交则按目标启动，未提交则重新升级。
+**处理**：升级事务已整体回滚，数据库保持升级前状态。按 SQLSTATE 排查：`42501` 为权限不足，升级需要 DDL 与写迁移历史的权限；`25006` 为只读连接或只读事务；`57014` 为宿主停止或取消；其他值按 PostgreSQL 错误码核对。升级不受连接串 `Command Timeout` 限制，大库耗时长时应放宽启动等待，不要反复杀进程。练习路径不是 JSON 字符串数组的行不会再使升级失败：原文写入 `legacy_archive`，该行改为 `[]`，日志 `Mistake legacy schema converged: ...` 给出条数。修正后再次启动即重新分类并重试。COMMIT 确认丢失时同样直接重启：已提交则按目标启动，未提交则重新升级。
 
 ### 5.5 旧版本的列/历史冲突
 
-旧启动路径可能添加了 `student_id`，但未记录 `20260612030015_AddStudentIdToProcessLog`；单有该列也不能证明 `image_paths` 已为 jsonb。当前启动会拒绝此不一致结构，避免再次尝试 `ADD COLUMN`。核对完整 schema 与历史，由 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF) 处理，勿手工 stamp。
+旧启动路径可能添加了 `student_id`，但未记录 `20260612030015_AddStudentIdToProcessLog`；单有该列也不能证明 `image_paths` 已为 jsonb。已知旧形态（含加外键失败、历史只剩 0501/0503 的库）在启动时自动收敛；不属于已知形态的此类结构仍拒绝，避免再次尝试 `ADD COLUMN`。核对完整 schema 与历史，勿手工 stamp。被收敛移除或改写的旧数据可在 `legacy_archive` 按 `source_table`、`source_key` 查到，见[归档规则](../database/migrations.md#归档规则)。
 
 ---
 
@@ -451,6 +451,7 @@
 | `"Error migrating image {Path}"` | MistakeServiceImpl.cs L328 | OSS 图片迁移失败 |
 | `"Mistake database schema verified at target version {TargetVersion}; no upgrade needed"` | DatabaseInitializer.cs | 已是目标结构，启动未写入 |
 | `"Mistake database schema verified at target version {TargetVersion} after automatic upgrade from version {FromVersion}; steps: ..."` | DatabaseInitializer.cs | 启动时已自动升级并核验 |
+| `"Mistake legacy schema converged: {ArchivedRows} removed or rewritten rows/values archived in legacy_archive; {ResetImagePaths} invalid mistake_practice.image_paths values reset to []"` | DatabaseInitializer.cs | 收敛了旧结构或重置了非法练习路径（Warning） |
 
 ### 重分析任务停滞或迁移结果不明
 

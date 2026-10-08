@@ -292,9 +292,9 @@ Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存
 ## 流程二：数据库准备与重分析切换
 
 1. **A 停旧实例**：先停掉旧版本 Mistake 实例（单实例替换即可满足），不要让旧 worker 与新 worker 混跑。备份不是前置；需要可回退时，建议先取得可恢复备份并按[备份恢复演练](./BackupRestoreDrill.md)在隔离库核对。
-2. **B 启动即升级**：用新版本正常启动。启动时在单一事务和 advisory lock 内把空库或已知 1–9 条 EF 历史的库升级到**十条**历史并核验精确 catalog；三历史误盖章形态（含小写 `ix_process_log_student_id` 变体）在同一事务中标准化后继续迁移。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。已是目标时不写入。未知或矛盾结构拒绝启动且不修改；旧版自动维护留下的结构见 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF)，旧 `public.mistake` 见 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK)。需要升级时数据库账号要有 DDL 与写迁移历史的权限。
-3. **C 启用 worker**：日志出现 `Mistake database schema verified at target version 10` 后，逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。旧版本镜像遇到新 schema：已是旧版本认识的目标时可以启动，否则失败关闭。
-4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新版本后可重新启用，过期 Job 自动重领；若确需回到更早的版本，停止写入，在隔离库恢复升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧版本或 EF Down 均不是无损回退。
+2. **B 启动即升级**：用新版本正常启动。启动时在单一事务和 advisory lock 内把空库或已知 1–10 条 EF 历史的库升级到**十一条**历史并核验精确 catalog；三历史误盖章形态（含小写 `ix_process_log_student_id` 变体）在同一事务中标准化后继续迁移；2026-05-14 至 2026-09-29 版本自动维护留下的已知结构先收敛，被移除或改写的旧数据写入 `legacy_archive`，日志以 `Mistake legacy schema converged:` 给出归档条数和重置的非法练习路径条数。旧无租约 Running 被置为 `Failed/upgrade_interrupted`，Item 存在时补一条关联日志；Pending、已有终态和 ID 保留。已是目标时不写入。未知或矛盾结构拒绝启动且不修改；旧 `public.mistake` 见 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK)。需要升级时数据库账号要有 DDL 与写迁移历史的权限。升级命令不受连接串 `Command Timeout` 限制，大库首次启动可能较久，部署的健康检查/启动等待时间需相应放宽，不要因等待超时反复杀进程重启（每次都会整体回滚重来）。
+3. **C 启用 worker**：日志出现 `Mistake database schema verified at target version 11` 后，逐一启用重分析 worker。核查 Running 的 owner/version/lease、全局有效 Running ≤ 2、过期任务可重领、同题后继等待。旧版本镜像遇到新 schema：已是旧版本认识的目标时可以启动，否则失败关闭。
+4. **D 撤回**：先关闭所有实例的重分析 worker，保留队列和 lease 诊断。修正新版本后可重新启用，过期 Job 自动重领；若确需回到更早的版本，停止写入，在隔离库恢复升级前备份并核对，再按恢复流程切换。单纯关开关、直接运行旧版本或 EF Down 均不是无损回退。已升级到十一条历史（含收敛过旧结构）的库，只认识十条迁移的版本会因历史不匹配拒绝启动；回退须使用包含 `20261008000001_AddLegacyArchive` 的版本，`legacy_archive` 非空时 Down 拒绝。
 
 提交前任何故障（DDL 失败、取消、连接中断、权限不足）都使升级事务整体回滚，数据库保持升级前状态，启动失败。COMMIT 响应丢失时结果未知，再次启动会重新分类：已提交则直接按目标启动，未提交则重新升级；不得凭异常文本猜测结果。`--upgrade-empty-db` 与 `--upgrade-known-db` 仍可用于在启动前单独执行同一升级，`--writes-stopped`、`--backup-verified` 不再必需，显式 `--database` 与实际库名不一致时拒绝。具体结构和支持的旧形态见[迁移历史](../database/migrations.md)。本手册不表示已执行生产升级。
 
@@ -482,9 +482,9 @@ user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 | 4 | OSS 读写正常 | 审核完成后检查图片迁移 | `mistakes/` 前缀下存在图片 | 检查 OSS 凭证、桶权限、磁盘空间 |
 | 5 | 数据库迁移完整 | 检查 `__EFMigrationsHistory` 和实际 schema | 历史与表结构一致 | 保留备份，核验迁移日志与 schema，不手动 stamp |
 | 6 | 旧表保护 | 检查 `public.mistake` 是否存在 | 不存在；存在时服务拒绝启动 | 保留数据库，等待 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 的旧表升级，不使用旧版本绕过 |
-| 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工改列 |
-| 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补外键 |
-| 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 停止写入，保留备份与诊断，交 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 的旧库升级切片处理；不手工补索引 |
+| 7 | 列名已更新 | 检查 `process_log` 和 `mistake_practice` 表列名 | 使用 `mistake_item_id` 而非 `mistake_id` | 已知旧结构在启动时自动收敛；启动被拒绝时保留数据库与诊断，按[故障排查](./Troubleshooting.md)处理，不手工改列 |
+| 8 | 外键约束存在 | 检查 `process_log` 和 `mistake_practice` 的外键 | 存在指向 `mistake_item(id)` 的外键 | 同上；孤儿练习/日志行在收敛时移入 `legacy_archive` 后补外键，不手工补外键 |
+| 9 | 索引已创建 | 检查 `mistake_item` 表索引 | 存在 5 个业务索引 | 同上，不手工补索引 |
 | 10 | HTTP 请求大小 | 上传含大量图片的错题 | 不超过服务器请求体大小限制 | 如需更大限制，修改 Kestrel `MaxRequestBodySize` |
 
 ## Student 本地服务签发 secret

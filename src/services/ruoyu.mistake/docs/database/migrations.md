@@ -13,26 +13,70 @@
 
 ### 启动时自动升级
 
-Host 正常启动时自动把数据库升级到当前目标结构（十条 EF 历史，最后一条为 `20261003030001_AddStorageReferenceSnapshots`），不需要人工命令、停写确认或备份前置。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。
+Host 正常启动时自动把数据库升级到当前目标结构（十一条 EF 历史，最后一条为 `20261008000001_AddLegacyArchive`），不需要人工命令、停写确认或备份前置。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。
 
 | 启动时数据库状态 | 结果 |
 |---|---|
 | 空库（public 下无对象） | 应用全部迁移并核验，继续启动 |
-| 已知 1–9 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源相关表的行与 ID 保留，继续启动 |
-| 已是目标（10 条历史） | 不写入，继续启动；只读账号也可启动 |
-| 旧表 `public.mistake`、旧版自动维护留下的漂移结构、其他未知或矛盾结构 | 拒绝启动，数据库原样保留 |
+| 已知 1–10 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源相关表的行与 ID 保留，继续启动 |
+| 2026-05-14 至 2026-09-29 版本自动维护留下的旧结构（见[旧版自动维护结构的收敛](#旧版自动维护结构的收敛)） | 同一事务内先收敛到已知形态，被移除或改写的旧数据写入 `legacy_archive`，再升级到目标，继续启动 |
+| 已是目标（11 条历史） | 不写入，继续启动；只读账号也可启动 |
+| 旧表 `public.mistake`、其他未知或矛盾结构 | 拒绝启动，数据库原样保留 |
+
+升级事务内的命令（含等待 advisory lock）不受连接串 `Command Timeout`（Npgsql 默认 30 秒）限制，大库首次升级不会因命令超时回滚；宿主停止或取消仍会中断并回滚。没有新增配置项。
 
 升级失败、取消、连接中断或权限不足时整个事务回滚，数据库保持升级前状态，启动失败；诊断只给出版本、本服务自身的核验结论或 SQLSTATE，不输出连接串、密码或业务行内容。下次启动重新分类再试；COMMIT 确认丢失时，下次启动看到已提交的目标结构直接启动。多个实例同时启动时共用同一把锁：一个升级，其余等锁后看到目标结构直接启动，不重复写历史。日志记录升级前版本、执行步骤和目标版本。
 
 已知历史的升级路径：InitialCreate（1 条）、前两条历史及前三条历史的 `review_comment` 先迁移到第四条（列重命名），再迁移到目标；前三条历史但已由旧运行时重命名为 `root_cause` 的库，在 catalog 精确核验后补第四条历史再迁移到目标；4–9 条历史直接迁移到目标。
 
-**精确三历史误盖章形态**：`root_cause` 已重命名，`process_log.student_id` 及索引和 `reanalyze_job` 已存在，但 `mistake_practice.image_paths` 仍为 `text`，其余完整指纹与该历史运行时一致。升级先锁定练习表并核验每行均为 JSON 字符串数组，保存 ID 与路径序列清单，在同一事务中用 `USING image_paths::jsonb` 转换、复核每行语义，再补第四条历史并迁移到目标。空数组、中文、大小写、顺序与重复字符串保留；无效 JSON 或非字符串数组使升级失败并回滚，不打印原始路径。
+**精确三历史误盖章形态**：`root_cause` 已重命名，`process_log.student_id` 及索引和 `reanalyze_job` 已存在，但 `mistake_practice.image_paths` 仍为 `text`，其余完整指纹与该历史运行时一致。升级先锁定练习表并核验每行均为 JSON 字符串数组，保存 ID 与路径序列清单，在同一事务中用 `USING image_paths::jsonb` 转换、复核每行语义，再补第四条历史并迁移到目标。空数组、中文、大小写、顺序与重复字符串保留。
+
+**非法练习路径**：`image_paths` 仍为 `text` 的库（InitialCreate 一条历史、上述误盖章形态及收敛后的旧结构）在转换前逐行校验；不是 JSON 字符串数组的行，原文先写入 `legacy_archive`（`kind=invalid_value`），该行改为 `[]`，日志给出条数，不再拒绝启动，也不打印原始路径。
 
 同一形态还有一个精确变体：`process_log.student_id` 索引名为小写 `ix_process_log_student_id`，完整定义必须是 `CREATE INDEX ix_process_log_student_id ON public.process_log USING btree (student_id)`，其他 catalog 和历史完全一致。升级时先将索引改名为 `IX_process_log_student_id`，再执行上述转换；失败或取消连同改名一起回滚。大小写双索引、缺失索引、表达式、部分索引、唯一索引、INCLUDE、其他访问方法均拒绝；不全局忽略索引名大小写。
 
 旧库中同一学生、同一来源、相同区域的重复条目照常升级，所有行保留；现行设计不对旧行加唯一约束，对该来源的新受管入库仍返回 `legacy_source_conflict`。
 
-自动升级只支持上述形态。`public.mistake`、历史表独存、部分对象、额外对象、其他误盖章、`ProductVersion` 不一致或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。旧版自动维护留下的结构由 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF) 处理，`public.mistake` 旧表由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。
+自动升级只支持上述形态。`public.mistake`、历史表独存、部分对象、额外对象、其他误盖章、`ProductVersion` 不一致或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。`public.mistake` 旧表由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。
+
+### 旧版自动维护结构的收敛
+
+2026-05-14 至 2026-09-29 的版本在启动时直接执行 DDL 维护数据库，留下与正规迁移不一致的结构。现在启动时在同一事务和锁内、分类之前识别并收敛这些结构，旧数据保留可用。
+
+**进入条件**：没有 `public.mistake`；迁移历史只含 `20260501042151_InitialCreate`、`20260503021905_RemoveImageFingerprint`、`20260514051544_InitialCreate`、`20260612030015_AddStudentIdToProcessLog`、`20260626000000_AddReanalyzeJob` 中的记录；并出现至少一个旧代码标志：0501/0503 历史、`mistake_detail`、`mistake_image_fingerprint`、`PK_mistake`/`pk_mistake_item`、小写 `fk_*` 外键、小写 `ix_mistake_item_*` 或 `IX_mistake_*` 旧索引名、`IX_mistake_practice_mistake_id`、`IX_process_log_mistake_id_created_at`、`mistake_item` 上的旧列、`mistake_practice.mistake_id`/`process_log.mistake_id`。不满足时不做任何收敛，已在目标的库仍零写入。
+
+**收敛规则**（先暂存、后改动）：
+
+| 对象 | 处理 |
+|---|---|
+| 0501/0503 历史行 | 整行归档后删除 |
+| `mistake_practice.mistake_id`、`process_log.mistake_id` | 改名为 `mistake_item_id` |
+| 父条目已不存在的练习/日志行（旧代码 `DROP TABLE mistake CASCADE` 留下） | 整行归档后删除，再补外键 |
+| `PK_mistake`、`pk_mistake_item`、小写 `fk_*` | 定义与目标相同时改为目标名；缺外键时补建 |
+| `mistake_item.source_regions` 缺失（da97cc6d 布局） | 补列，按 `source_image_path` 与四个 bbox 值（都有值时）折成一个区域 |
+| `mistake_item` 旧列 `type`、`source_image_path`、`bbox_x1..y2`、`question_number`、`question_text`、`student_answer`、`ai_confidence` | 每条目的非空列值归档后删列 |
+| `source_upload_id`、`source_regions` 的旧默认值 | 删除 |
+| `mistake_detail` | 整行归档；`original_images` 为 JSON 字符串数组且条目 `source_regions` 为 `[]` 时写成全图区域 `{"sourceImagePath": ..., "boundingBox": null}`；随后删表 |
+| `mistake_image_fingerprint` | 整行归档后删表 |
+| 旧索引名 | 目标名缺失时把定义相同的旧名改为目标名；同列重复的旧名删除；仍缺的目标索引补建 |
+| 历史只剩 0501/0503（旧代码加外键失败、每次启动停在同一步的库） | 删除旧代码加的 `process_log.student_id`（非空值先归档）及其索引，`root_cause` 改回 `review_comment`，写入 InitialCreate 历史，再由正规迁移链重新执行这两步 |
+
+收敛后交给现有分类器：结构必须与版本 1–4 的精确结构或上面两种误盖章/旧运行时形态之一完全一致，否则整体回滚并拒绝，诊断只给对象名。实测 9 种旧形态（首次由 05-14 至 06-24 或 06-24 之后的代码启动的 05-01/05-03 库、含指纹表的 05-01 库、05-14 至 06-24 代码新建的库、05-10 至 05-13 新旧两表并存后的三种 `mistake_item` 布局、加外键失败停在同一步的库）收敛为“三条历史 + text 路径 + 小写索引”形态或版本 1，再沿迁移链升级到目标；用例见 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/LegacySchemaConvergencePostgresTests.cs`。
+
+不在收敛规则内的对象（陌生表、列、索引、约束、函数、触发器，或旧表上附加的陌生索引/约束/触发器，或旧列上的陌生索引/约束）不自动处理，拒绝启动并原样保留数据库。已被旧代码删除的数据（旧自动升级删掉的 `date`、`image_paths`、`fingerprint` 列，05-14 代码 `DROP TABLE mistake CASCADE` 删掉的旧条目）无法找回；孤儿练习/日志行移出业务表、只在归档表。旧实例仍在写入时的滚动升级不保证。
+
+### 归档规则
+
+被移除或改写的旧数据在同一事务内先写入事务临时表，迁移到目标后一次写入 [`legacy_archive`](./tables/legacy_archive.md) 并核对条数；失败则整体回滚。归档行按 `source_table` + `source_key`（行 ID 或 MigrationId）查找：
+
+| `kind` | 内容 | `reason` |
+|---|---|---|
+| `history_row` | 被删除的历史行 | `legacy_history_removed` |
+| `row` | 被删除的整行（旧表、孤儿行） | `legacy_table_dropped`、`legacy_table_dropped_images_backfilled`、`orphan_row_removed` |
+| `column_values` | 被删列的非空值，以列名为键 | `legacy_column_dropped` |
+| `invalid_value` | 非法 `image_paths` 原文 | `invalid_image_paths_reset` |
+
+并发启动时 advisory lock 保证只收敛和归档一次。业务代码不读归档表。
 
 `--upgrade-empty-db` 与 `--upgrade-known-db` 两个命令为兼容现有脚本保留：执行与启动相同的升级后退出 0。`--writes-stopped`、`--backup-verified` 仍可传但不再必需；显式传了 `--database` 且与实际库名不同则拒绝。备份恢复演练是建议做法，不是升级前置，见[演练说明](../development/BackupRestoreDrill.md)。操作和故障恢复见[部署说明](../development/Deployment.md)。
 
@@ -71,7 +115,7 @@ Host 正常启动时自动把数据库升级到当前目标结构（十条 EF �
 
 ### 历史兼容边界
 
-旧版本可能在启动时直接添加 `student_id` 并错误地只记录 InitialCreate。此类结构与迁移历史不一致，当前启动拒绝且不会自动 stamp，由 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF) 处理；不要手工补写历史记录。
+旧版本可能在启动时直接添加 `student_id`。已知的旧形态按[旧版自动维护结构的收敛](#旧版自动维护结构的收敛)在启动时自动处理；只有 InitialCreate 历史、多出 `student_id` 且没有其他旧代码标志的结构不属于已知形态，当前启动拒绝且不会自动 stamp。不要手工补写历史记录。
 
 ### 新增列
 
@@ -120,3 +164,7 @@ Host 正常启动时自动把数据库升级到当前目标结构（十条 EF �
 第九条正规迁移新增[source_handoff](./tables/source_handoff.md)固定完整group/target/payload与原历史receipt；替换source/newrevision、group/seal、request/pending materialization、item/terminal和handoff最终guards。known1–8保持精确catalog识别，version8仍验证原returns对象/完整函数和guards；启动时不修复漂移，也不宽松stamp。未知/缺失/额外表、函数、trigger、FK/history原状拒绝。
 
 空库与已知历史在启动时同一advisory事务内升级；原rows/requests/targets/return candidates/IDs不可改。非空handoff禁止Down/旧binary回退；恢复完整全部业务/来源/目标/退回/交接表与guards，核对原op/state/receipt后同fixedpayload继续。两服务与原对象桶一并保留。
+
+## 20261008000001_AddLegacyArchive
+
+第十一条迁移新增只追加的 [`legacy_archive`](./tables/legacy_archive.md)，承载旧结构收敛时被移除或改写的数据（见[归档规则](#归档规则)）。表上的触发器拒绝 UPDATE/DELETE/TRUNCATE。Down 在归档表为空时删除表和触发器函数，非空时拒绝。收敛过的库回到只认识十条迁移的版本会因历史不匹配拒绝启动，回退须使用包含本迁移的版本。

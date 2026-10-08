@@ -4,9 +4,9 @@ Mistake 使用 Npgsql/EF Core 访问独立的 PostgreSQL 数据库。默认 Plat
 
 ## 启动时自动升级
 
-Host 在映射 HTTP 端点和启动后台 worker 前，在一个持有 advisory lock 的事务中检查 public schema 的关系、列、类型、默认值、索引、约束和 `__EFMigrationsHistory`：空库和已知 EF 历史的旧库升级到目标结构并核验后提交，已是目标时不写入；`public.mistake` 旧关系、不完整或未知结构及矛盾历史直接拒绝且不写库；其他 schema 的同名表不触发 public schema 检查。升级失败整体回滚。核验期间应避免外部并发 DDL。
+Host 在映射 HTTP 端点和启动后台 worker 前，在一个持有 advisory lock 的事务中检查 public schema 的关系、列、类型、默认值、索引、约束和 `__EFMigrationsHistory`：空库、已知 EF 历史的旧库和旧版自动维护留下的已知结构（先收敛，被移除或改写的数据归档到 `legacy_archive`）升级到目标结构并核验后提交，已是目标时不写入；`public.mistake` 旧关系、不完整或未知结构及矛盾历史直接拒绝且不写库；其他 schema 的同名表不触发 public schema 检查。升级失败整体回滚。核验期间应避免外部并发 DDL。
 
-支持的形态与边界见[迁移历史](../database/migrations.md)。`--upgrade-empty-db` 与 `--upgrade-known-db` 为兼容现有脚本保留，执行同一升级后退出。旧版自动维护留下的结构由 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF)、旧 `public.mistake` 由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。操作见[部署说明](../development/Deployment.md)。JSONB 序列化和级联删除见[表文档](../database/README.md)。
+支持的形态与边界见[迁移历史](../database/migrations.md)。`--upgrade-empty-db` 与 `--upgrade-known-db` 为兼容现有脚本保留，执行同一升级后退出。旧 `public.mistake` 由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。操作见[部署说明](../development/Deployment.md)。JSONB 序列化和级联删除见[表文档](../database/README.md)。
 
 ## 验证与运维
 

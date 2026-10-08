@@ -44,7 +44,7 @@ public sealed class BackupRestorePostgresTests
         Assert.Equal(before, await drill.ManifestAsync(restored, true));
         await using var restoredContext = drill.Context(restored);
         await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
-        Assert.Equal(10, (await drill.ManifestAsync(restored, true)).HistoryCount);
+        Assert.Equal(11, (await drill.ManifestAsync(restored, true)).HistoryCount);
         using var paths = JsonDocument.Parse(await drill.ScalarAsync(restored,
             "SELECT image_paths::text FROM mistake_practice WHERE image_paths <> '[]'::jsonb"));
         Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg" },
@@ -74,7 +74,7 @@ public sealed class BackupRestorePostgresTests
         {
             await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
             var upgraded = await drill.ManifestAsync(restored, true);
-            Assert.Equal(10, upgraded.HistoryCount);
+            Assert.Equal(11, upgraded.HistoryCount);
             Assert.StartsWith(before.RowCounts, upgraded.RowCounts);
             Assert.StartsWith(before.Ids, upgraded.Ids);
             using var paths = JsonDocument.Parse(await drill.ScalarAsync(restored,
