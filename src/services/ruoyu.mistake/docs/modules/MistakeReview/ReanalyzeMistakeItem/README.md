@@ -38,4 +38,4 @@
 
 ## 部署边界
 
-第五条迁移 `20260930000001_LeaseReanalyzeJobs` 引入租约与栅栏字段。所有旧 worker 必须停止后才可使用显式升级；旧无租约 Running 在迁移事务内变成 `Failed/upgrade_interrupted`，Item 存在时写一条关联日志。Pending 和已有终态保持，历史 ID 保持。新二进制只在精确第五历史结构上启动；旧二进制与新 schema 不兼容。停写、备份、升级、只读验库、启用和撤回步骤见[部署说明](../../../development/Deployment.md)及[故障排查](../../../development/Troubleshooting.md)。
+第五条迁移 `20260930000001_LeaseReanalyzeJobs` 引入租约与栅栏字段。升级前应先停掉旧实例，避免旧 worker 继续写入；升级在新版本启动时自动执行。旧无租约 Running 在迁移事务内变成 `Failed/upgrade_interrupted`，Item 存在时写一条关联日志。Pending 和已有终态保持，历史 ID 保持。旧版本与新 schema 不兼容。停旧实例、升级、启用和撤回步骤见[部署说明](../../../development/Deployment.md)及[故障排查](../../../development/Troubleshooting.md)。

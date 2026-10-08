@@ -37,7 +37,7 @@ public sealed class ReanalyzeLeasePostgresTests
             var jobId = Guid.NewGuid();
             await using (var setup = new MistakeDbContext(options))
             {
-                await DatabaseInitializer.UpgradeEmptyAsync(setup);
+                await DatabaseInitializer.UpgradeToTargetAsync(setup);
                 setup.MistakeItems.Add(new MistakeItemEntity
                 {
                     Id = itemId, StudentId = "student-1", Subject = 1, Grade = 7,
@@ -96,7 +96,7 @@ public sealed class ReanalyzeLeasePostgresTests
         {
             await using (var setup = new MistakeDbContext(options))
             {
-                await DatabaseInitializer.UpgradeEmptyAsync(setup);
+                await DatabaseInitializer.UpgradeToTargetAsync(setup);
                 var now = DateTimeOffset.UtcNow;
                 for (var n = 0; n < 5; n++)
                 {
@@ -244,7 +244,7 @@ public sealed class ReanalyzeLeasePostgresTests
             var jobId = Guid.NewGuid();
             await using (var setup = new MistakeDbContext(options))
             {
-                await DatabaseInitializer.UpgradeEmptyAsync(setup);
+                await DatabaseInitializer.UpgradeToTargetAsync(setup);
                 setup.MistakeItems.Add(new MistakeItemEntity
                 {
                     Id = itemId, StudentId = "student-1", Subject = 1, Grade = 7,
@@ -324,7 +324,7 @@ public sealed class ReanalyzeLeasePostgresTests
             var jobId = Guid.NewGuid();
             await using (var setup = new MistakeDbContext(options))
             {
-                await DatabaseInitializer.UpgradeEmptyAsync(setup);
+                await DatabaseInitializer.UpgradeToTargetAsync(setup);
                 setup.MistakeItems.Add(new MistakeItemEntity
                 {
                     Id = itemId, StudentId = "student-1", Subject = 1, Grade = 7,
@@ -391,7 +391,7 @@ public sealed class ReanalyzeLeasePostgresTests
             var jobId = Guid.NewGuid();
             await using (var setup = new MistakeDbContext(options))
             {
-                await DatabaseInitializer.UpgradeEmptyAsync(setup);
+                await DatabaseInitializer.UpgradeToTargetAsync(setup);
                 setup.MistakeItems.Add(new MistakeItemEntity
                 {
                     Id = itemId, StudentId = "student-1", Subject = 1, Grade = 7,
@@ -479,7 +479,7 @@ public sealed class ReanalyzeLeasePostgresTests
             var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connectionString).Options;
             await using (var setup = new MistakeDbContext(options))
             {
-                await DatabaseInitializer.UpgradeEmptyAsync(setup);
+                await DatabaseInitializer.UpgradeToTargetAsync(setup);
                 var items = Enumerable.Range(0, 4).Select(_ => new MistakeItemEntity
                 {
                     Id = Guid.NewGuid(), StudentId = "student-1", Subject = 1, Grade = 7,

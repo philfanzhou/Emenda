@@ -228,24 +228,24 @@ else
         builder.Configuration, builder.Configuration.GetConnectionString("Default"));
     Console.WriteLine("Mistake configuration: Mode=Platform, DatabaseConnectionSource=PlatformOrFallback.");
 }
-if (args.Length == 1 && args[0] == "--upgrade-empty-db")
+// Normal startup upgrades the database itself. The two commands are kept for existing scripts:
+// both run the same upgrade and exit. --writes-stopped and --backup-verified are accepted but no
+// longer required; an explicit --database must still match the connected database.
+var emptyCommand = args.Length == 1 && args[0] == "--upgrade-empty-db";
+var knownCommand = args.Contains("--upgrade-known-db", StringComparer.Ordinal);
+if (emptyCommand || knownCommand)
 {
+    string? expectedDatabase = null;
+    var databaseIndex = knownCommand ? Array.IndexOf(args, "--database") : -1;
+    if (databaseIndex >= 0)
+        expectedDatabase = databaseIndex + 1 < args.Length ? args[databaseIndex + 1] : "";
     var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connectionString).Options;
     await using var upgradeContext = new MistakeDbContext(options);
-    await DatabaseInitializer.UpgradeEmptyAsync(upgradeContext);
-    Console.WriteLine("Mistake empty database upgrade verified.");
-    return;
-}
-if (args.Contains("--upgrade-known-db", StringComparer.Ordinal))
-{
-    var databaseIndex = Array.IndexOf(args, "--database");
-    var expectedDatabase = databaseIndex >= 0 && databaseIndex + 1 < args.Length ? args[databaseIndex + 1] : "";
-    var options = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(connectionString).Options;
-    await using var upgradeContext = new MistakeDbContext(options);
-    await DatabaseInitializer.UpgradeKnownAsync(upgradeContext, expectedDatabase,
-        args.Contains("--writes-stopped", StringComparer.Ordinal),
-        args.Contains("--backup-verified", StringComparer.Ordinal));
-    Console.WriteLine("Mistake known database upgrade verified.");
+    var upgrade = await DatabaseInitializer.UpgradeToTargetAsync(upgradeContext, expectedDatabase);
+    Console.WriteLine(upgrade.Upgraded
+        ? $"Mistake database upgraded from version {upgrade.FromVersion} to target version {upgrade.ToVersion}; steps: {string.Join(", ", upgrade.Steps)}."
+        : $"Mistake database already at target version {upgrade.ToVersion}; nothing written.");
+    Console.WriteLine(emptyCommand ? "Mistake empty database upgrade verified." : "Mistake known database upgrade verified.");
     return;
 }
 // Local runtime must resolve its own OSS settings before database initialization
@@ -428,7 +428,7 @@ using (var scope = app.Services.CreateScope())
     else
     {
         // Non-relational providers are only used by the WebApplicationFactory
-        // test pipeline; the read-only PostgreSQL verification does not apply.
+        // test pipeline; the PostgreSQL upgrade and verification do not apply.
         await dbContext.Database.EnsureCreatedAsync();
     }
 }

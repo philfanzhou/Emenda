@@ -259,19 +259,19 @@
 
 ### 5.3 结构或迁移历史不匹配
 
-**症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史。`public.mistake` 旧关系、空库、只有部分表以及列类型或历史不一致均不允许普通启动。
+**症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史，结尾为 `Automatic upgrade does not support this structure; database unchanged.`。`public.mistake` 旧关系、只有部分表、额外对象以及列类型或历史不一致都会这样拒绝。
 
-**处理**：保持服务停止写入，备份数据库，核对提示所指对象及 `__EFMigrationsHistory`。启动核验是只读事务，不执行 DDL、stamp 或 EF 迁移。只有五条历史的精确目标结构可直接启动。精确受支持的 1/2/3/4 历史库及已知三历史运行时结构按[部署说明](./Deployment.md)使用显式 `--upgrade-known-db`；未知、混合或旧 `public.mistake` 结构仍按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 处理。不要删除旧表或手工补写历史。
+**处理**：数据库未被修改。核对提示所指对象及 `__EFMigrationsHistory`。空库和已知 1–9 条 EF 历史会在启动时自动升级，不会出现此错误。旧版自动维护留下的结构由 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF) 处理，旧 `public.mistake` 由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。不要删除旧表或手工补写历史。
 
-### 5.4 空库需要显式升级
+### 5.4 自动升级失败
 
-**症状**：启动提示 `Mistake database is empty; run --upgrade-empty-db`。
+**症状**：启动提示 `Mistake database upgrade from version N failed before commit (...)`，括号内为本服务自身的核验结论或 `SQLSTATE xxxxx`。
 
-**处理**：确认连接的是预期的全新空库，停止应用写入并备份，再使用相同配置运行 `dotnet Ruoyu.Study.Mistake.Host.dll --upgrade-empty-db`。命令在锁和事务内创建目标结构，失败会回滚；成功后正常启动。它不处理旧库。普通启动账号只需读取 catalog、表和历史；显式升级账号另需 DDL 和写历史权限。
+**处理**：升级事务已整体回滚，数据库保持升级前状态。按 SQLSTATE 排查：`42501` 为权限不足，升级需要 DDL 与写迁移历史的权限；`25006` 为只读连接或只读事务；其他值按 PostgreSQL 错误码核对。练习路径不是 JSON 字符串数组时会提示 `Mistake practice paths must be JSON arrays of strings.`。修正后再次启动即重新分类并重试。COMMIT 确认丢失时同样直接重启：已提交则按目标启动，未提交则重新升级。
 
 ### 5.5 旧版本的列/历史冲突
 
-旧启动路径可能添加了 `student_id`，但未记录 `20260612030015_AddStudentIdToProcessLog`；单有该列也不能证明 `image_paths` 已为 jsonb。新启动会拒绝此不一致结构，避免再次尝试 `ADD COLUMN`。保留备份，核对完整 schema 与历史，再按父项 IKJ0IK 处理，勿手工 stamp。
+旧启动路径可能添加了 `student_id`，但未记录 `20260612030015_AddStudentIdToProcessLog`；单有该列也不能证明 `image_paths` 已为 jsonb。当前启动会拒绝此不一致结构，避免再次尝试 `ADD COLUMN`。核对完整 schema 与历史，由 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF) 处理，勿手工 stamp。
 
 ---
 
@@ -372,7 +372,7 @@
 
 ### 8.2 旧表 `mistake` 数据待升级
 
-当前启动初始化不会把 `mistake` 自动重命名为 `mistake_item`，也不会删除旧表、外键或旧列。若库中仍有旧表，先停止应用写入并备份，核对历史 schema、行和关联关系，再通过显式升级流程处理。旧表与新表同时存在也不得直接删除任一方。
+当前启动初始化不会把 `mistake` 自动重命名为 `mistake_item`，也不会删除旧表、外键或旧列。若库中仍有旧表，服务拒绝启动且不修改；旧表升级由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。旧表与新表同时存在也不得直接删除任一方。
 
 ---
 
@@ -449,10 +449,11 @@
 | `"Mistake gRPC host is running."` | Program.cs L86 | 服务正常启动 |
 | `"Migrated image from {OldPath} to {NewPath}"` | MistakeServiceImpl.cs L322 | OSS 图片迁移成功 |
 | `"Error migrating image {Path}"` | MistakeServiceImpl.cs L328 | OSS 图片迁移失败 |
-| `"Mistake database schema verified for read-only startup"` | DatabaseInitializer.cs | 启动已完成只读结构核验 |
+| `"Mistake database schema verified at target version {TargetVersion}; no upgrade needed"` | DatabaseInitializer.cs | 已是目标结构，启动未写入 |
+| `"Mistake database schema verified at target version {TargetVersion} after automatic upgrade from version {FromVersion}; steps: ..."` | DatabaseInitializer.cs | 启动时已自动升级并核验 |
 
 ### 重分析任务停滞或迁移结果不明
 
 先检查全部 Mistake 实例的重分析 worker 开关。有效 Running 由 `lease_until > clock_timestamp()` 判定；健康 worker 每 20 秒续租，租约 90 秒。单个失联 Job 到期可由其他实例重领，最多三次；旧 owner 的迟到结果会被栅栏拒绝。若数据库不可用或重领持续失败，关闭所有重分析 worker，保留 Job 行及日志，核查数据库连接和权限后再启用。不要手工把 Running 改 Pending、删 Job 或改 `owner_id`/`fencing_version`。
 
-升级发生连接断开时保持停写，以只读连接核验 `__EFMigrationsHistory` 是否已有第五条 `20260930000001_LeaseReanalyzeJobs`、六个租约/执行字段、旧 Running 的 `upgrade_interrupted` 状态和关联日志；五历史精确目标可重复执行显式升级。结构不匹配时保留备份并停止切换，按[部署流程](./Deployment.md)处理。旧二进制不能直接对第五历史库回退运行。
+升级发生连接断开时直接重新启动：启动会重新分类，已提交则按目标启动，未提交则重新升级。如需人工确认，可核验 `__EFMigrationsHistory`、租约/执行字段、旧 Running 的 `upgrade_interrupted` 状态和关联日志。结构不匹配时停止切换，按[部署流程](./Deployment.md)处理。旧版本不能直接对已升级的库回退运行。

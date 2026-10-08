@@ -29,29 +29,51 @@ public sealed class LocalBootstrapPostgresTests
             ["Loki__Uri"] = $"http://127.0.0.1:{loki.Port}"
         };
 
-        var created = await RunHostAsync(["--upgrade-empty-db"], settings);
-        Assert.Equal(0, created.ExitCode);
-        Assert.Contains("Mode=Local", created.Output);
-        Assert.Contains("Source=Environment", created.Output);
-        Assert.Contains("empty database upgrade verified", created.Output);
-        Assert.DoesNotContain("Consul KV load", created.Output);
-        Assert.Equal(0, consul.RequestCount);
-        Assert.Equal(0, loki.RequestCount);
-
-        var known = await RunHostAsync(["--upgrade-known-db", "--database", database.Name,
-            "--writes-stopped", "--backup-verified"], settings);
-        Assert.Equal(0, known.ExitCode);
-        Assert.Contains("known database upgrade verified", known.Output);
-        Assert.Equal(0, consul.RequestCount);
-        Assert.Equal(0, loki.RequestCount);
+        // Normal startup on an empty database upgrades it without any command or flag.
+        var first = await RunHostAsync([], settings, waitForStartup: true);
+        Assert.Contains("Mode=Local", first.Output);
+        Assert.Contains("Source=Environment", first.Output);
+        Assert.Contains("after automatic upgrade from version 0", first.Output);
+        Assert.Contains("Endpoint: HTTP=5007", first.Output);
+        Assert.DoesNotContain("Consul KV load", first.Output);
+        Assert.Equal("10", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        var catalog = await database.ScalarAsync(CatalogSql);
 
         var normal = await RunHostAsync([], settings, waitForStartup: true);
-        Assert.Contains("Mistake database schema verified for read-only startup", normal.Output);
-        Assert.Contains("Endpoint: HTTP=5007", normal.Output);
+        Assert.Contains("Mistake database schema verified at target version 10; no upgrade needed", normal.Output);
+        Assert.Equal(catalog, await database.ScalarAsync(CatalogSql));
+
+        // The old commands stay usable for existing scripts; the safety flags are optional.
+        var created = await RunHostAsync(["--upgrade-empty-db"], settings);
+        Assert.Equal(0, created.ExitCode);
+        Assert.Contains("empty database upgrade verified", created.Output);
+        foreach (var arguments in new[]
+        {
+            new[] { "--upgrade-known-db", "--database", database.Name },
+            new[] { "--upgrade-known-db" },
+            new[] { "--upgrade-known-db", "--database", database.Name, "--writes-stopped", "--backup-verified" }
+        })
+        {
+            var known = await RunHostAsync(arguments, settings);
+            Assert.Equal(0, known.ExitCode);
+            Assert.Contains("already at target version 10", known.Output);
+            Assert.Contains("known database upgrade verified", known.Output);
+        }
+        var wrong = await RunHostAsync(["--upgrade-known-db", "--database", database.Name + "_other",
+            "--writes-stopped", "--backup-verified"], settings);
+        Assert.NotEqual(0, wrong.ExitCode);
+        Assert.Contains("--database does not match", wrong.Output);
+        Assert.DoesNotContain("known database upgrade verified", wrong.Output);
+        Assert.Equal(catalog, await database.ScalarAsync(CatalogSql));
         Assert.Equal(0, consul.RequestCount);
         Assert.Equal(0, loki.RequestCount);
-        Assert.Equal("10", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
     }
+
+    private const string CatalogSql = """
+        SELECT string_agg(relname, ',' ORDER BY relname) || '|' ||
+               (SELECT string_agg("MigrationId", ',' ORDER BY "MigrationId") FROM "__EFMigrationsHistory")
+        FROM pg_class WHERE relnamespace = 'public'::regnamespace
+        """;
 
     [Fact]
     public async Task LocalModeUsesEnvironmentBeforeFileAndRejectsWrongCredentialsAsync()
@@ -331,7 +353,7 @@ public sealed class LocalBootstrapPostgresTests
                     while (student.RequestCount == 0) await Task.Delay(100, token);
                 else await Task.Delay(1000, token);
             });
-        Assert.Contains("Mistake database schema verified for read-only startup", runningHost.Output);
+        Assert.Contains("Mistake database schema verified at target version 10; no upgrade needed", runningHost.Output);
         Assert.Contains("Endpoint: HTTP=5007", runningHost.Output);
         Assert.Contains($"UploadPollingWorker: Enabled={polling}", runningHost.Output);
         Assert.Contains($"ReanalyzeJobHostedService: Enabled={reanalyze}", runningHost.Output);
@@ -739,7 +761,7 @@ public sealed class LocalBootstrapPostgresTests
             while (await process.StandardOutput.ReadLineAsync() is { } line)
             {
                 lines.AppendLine(line);
-                if (line.Contains("Mistake database schema verified for read-only startup", StringComparison.Ordinal))
+                if (line.Contains("Mistake database schema verified at target version", StringComparison.Ordinal))
                     schemaVerified.TrySetResult();
             }
             return lines.ToString();

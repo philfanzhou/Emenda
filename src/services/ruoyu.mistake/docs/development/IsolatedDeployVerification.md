@@ -36,8 +36,8 @@ bash script/build-script/07-mistake.isolated-deploy-verification.sh --target /tm
 3. `dotnet publish` Host（Release）——构建路径选择记录在 `.deploy-verify/build-path.txt`。脚本把发布的 `appsettings*.json` 复制进每个 cell 工作目录：以 `dotnet <publish>/Host.dll` 从其他目录启动时 content root 是 CWD，进程旁没有该文件会使 Platform 模式的 Serilog `ReadFrom.Configuration` 解析不到任何 sink 而静默丢弃全部日志。
 4. 临时 PostgreSQL（随机高位端口、随机自定义库名/用户/密码，仅绑定 127.0.0.1）。
 5. 临时 MinIO 兼容容器（随机高位端口、随机凭据、随机自定义桶）并种入 `mistakes/` 前缀对象。
-6. Local 空库 `--upgrade-empty-db` 成功且连续两次执行幂等（自定义库名）。
-7. Local 正常启动：`Mistake__Http__Port` 为非 5007 的随机自定义端口；启动日志含 `Mode=Local` 与最终端口与只读 schema 核验行；`GET /health/live` 200；`GET /health/ready` 200 且 checks 恰为 `db`/`oss` 且全部 ok；`GET /` 200 兼容串；匿名兼容窗口 `GET /api/mistakes` 200。
+6. Local 空库 `--upgrade-empty-db`（兼容命令，执行与启动相同的自动升级）成功且连续两次执行幂等（自定义库名）。
+7. Local 正常启动：`Mistake__Http__Port` 为非 5007 的随机自定义端口；启动日志含 `Mode=Local` 与最终端口与 `Mistake database schema verified` 核验行；`GET /health/live` 200；`GET /health/ready` 200 且 checks 恰为 `db`/`oss` 且全部 ok；`GET /` 200 兼容串；匿名兼容窗口 `GET /api/mistakes` 200。
 8. 预签名 URL：`POST /api/mistakes/presigned-url` 响应 URL 的 scheme/authority 与路径前缀等于自定义 `PublicBaseUrl`（静态断言；真实公网代理链路为排除项）。
 9. 能力关闭语义：`ReviewStatus=Rejected` 审核两次请求均返回 503 稳定响应体 `{"success":false,"message":"Student 集成未启用，退回审核不可用（Mistake:Student:Enabled=false）"}`（该分支在任何领域/OSS/Student 副作用之前返回）。
 10. 失败诊断面（四格，均以键名报错退出且未进入数据库阶段）：缺 `ConnectionStrings__MistakeLocal`；`Mistake__Http__Port` 越界（70000）；`Mistake__Student__Enabled=true` 缺 `Mistake__Local__Student__Url`；worker 开关非布尔值。

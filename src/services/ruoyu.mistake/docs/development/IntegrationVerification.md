@@ -186,9 +186,9 @@
 | **预期结果** | 1. 返回 success=true<br>2. 所有图片迁移均失败，日志中每张图片均有 "Error migrating image" 记录<br>3. sourceImagePath 未更新（仍为 uploads/ 前缀） |
 | **失败判断** | 返回 success=false；流程被中断；抛出未捕获异常 |
 
-### TC-17 数据库只读启动与显式空库升级 (PostgreSQL)
+### TC-17 数据库启动时自动升级 (PostgreSQL)
 
-在专用 PostgreSQL 库分别验证：空库普通启动拒绝而 `--upgrade-empty-db` 成功且可重复；已知三历史运行时 `root_cause` 与四历史目标均须显式升级，五历史目标可只读启动；`public.mistake`、新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；并发空库升级只产生一个完整目标；DDL 失败回滚。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
+在专用 PostgreSQL 库分别验证：空库与已知 1–9 条历史（含旧运行时 `root_cause` 与两种三历史误盖章形态、含重复条目的旧库）正常启动即升级到目标，行与 ID 保留，再次启动不写入；目标结构下只读账号与无 DDL 权限账号可启动且零写入；并发启动只升级一次；DDL 失败、取消、连接中断、权限不足均整体回滚且诊断不含行内容；`public.mistake`、新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；两个兼容命令无需 `--writes-stopped`/`--backup-verified` 即退出 0，`--database` 不一致仍拒绝。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
 
 ### TC-20 地址错误 (MistakeGrpcService:Address)
 
@@ -352,11 +352,11 @@
 
 | 项目 | 说明 |
 |------|------|
-| **触发条件** | 检测到旧 `public.mistake`、误盖章、混合或未知结构；普通启动只读拒绝 |
+| **触发条件** | 检测到旧 `public.mistake`、不受支持的误盖章、混合或未知结构；启动拒绝且不修改数据库 |
 | **影响范围** | 服务无法启动 |
 | **临时绕过方式** | 无；保留原库及备份，不删表、不手工写迁移历史 |
-| **是否允许降级** | 不允许自动降级；仅精确受支持 EF 历史链可用显式升级命令 |
-| **需要团队介入** | DBA 提供可信脱敏旧 schema/样本，按 [IKJ0IK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKJ0IK) 确定映射；已支持 EF 形态按[备份恢复演练](./BackupRestoreDrill.md)验证 |
+| **是否允许降级** | 不允许自动降级；空库与已知 EF 历史链在启动时自动升级，不会进入此分支 |
+| **需要团队介入** | 旧版自动维护留下的结构见 [IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF)，旧 `public.mistake` 见 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) |
 | **是否影响上线** | 阻塞，取得受支持的升级或映射证据后再部署 |
 
 ### 3.5 MistakeGrpcService:Address 配置错误

@@ -24,7 +24,9 @@ public class LegacySchemaGuardPostgresTests
             () => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
 
         Assert.Contains("legacy relation public.mistake", error.Message);
-        Assert.Contains("back up", error.Message);
+        Assert.Contains("Automatic upgrade does not support this structure", error.Message);
+        Assert.DoesNotContain("--upgrade", error.Message);
+        Assert.DoesNotContain("backup", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Password", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(before, await database.SnapshotAsync());
     }
@@ -64,16 +66,15 @@ public class LegacySchemaGuardPostgresTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task NoPublicLegacyRelation_EmptyPublicSchemaRequiresExplicitUpgrade(bool sameNameInOtherSchema)
+    public async Task NoPublicLegacyRelation_EmptyPublicSchemaUpgradesOnStartup(bool sameNameInOtherSchema)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         if (sameNameInOtherSchema)
             await database.ExecuteAsync("CREATE SCHEMA alternate; CREATE TABLE alternate.mistake (id integer PRIMARY KEY)");
         await using var context = database.CreateContextWithConnection(database.ConnectionString);
 
-        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
-        Assert.Contains("--upgrade-empty-db", failure.Message);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         if (sameNameInOtherSchema)
             Assert.Equal("alternate.mistake", await database.ScalarAsync<string>("SELECT to_regclass('alternate.mistake')::text"));
     }
