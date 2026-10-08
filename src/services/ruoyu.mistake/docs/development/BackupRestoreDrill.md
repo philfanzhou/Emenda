@@ -18,7 +18,7 @@ dotnet test Ruoyu.Study.Mistake.sln --configuration Release --filter FullyQualif
 
 ## 实际环境的操作清单
 
-1. 停止 Mistake 全部写入，核实 PostgreSQL 主机、库名、版本、容量、备份保管位置与维护账号权限。旧 `public.mistake`、其他误盖章及未知/混合结构当前会被启动拒绝且不修改，分别由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK)、[IKK6UF](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UF) 处理；不得删表或手工写迁移历史。
+1. 停止 Mistake 全部写入，核实 PostgreSQL 主机、库名、版本、容量、备份保管位置与维护账号权限。旧版自动维护留下的已知结构在启动时自动收敛并归档被移除的数据；旧 `public.mistake`（由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理）及其他未知/混合结构会被启动拒绝且不修改；不得删表或手工写迁移历史。
 2. 用 PostgreSQL **15** 客户端对停写的源库作 custom-format dump，记录源库结构、四张业务表中实际存在的表及 `__EFMigrationsHistory` 的行数、稳定 ID、外键、关键索引、JSONB 路径与内容。InitialCreate 的 `mistake_practice.image_paths` 是 text，升级后才是 jsonb。清单只存受保护位置；不要把备份文件、凭据或业务明文提交到仓库。
 3. 新建一只**不同名称的空测试库**，向该库执行 `pg_restore --single-transaction --exit-on-error`。检查退出状态后，再独立查询恢复库的结构、历史、行数、ID、引用及关键内容，与源库清单逐项比较。仅 dump 文件存在、`pg_restore` 成功或表数一致都不足以确认可恢复。若有失败、取消、容量不足或权限错误，标记该目标库不可用，保留无敏感内容的诊断，另建空库重试；不得覆盖源库。
 4. 恢复库匹配后，才可把**该次备份**记为已验证。可在隔离恢复库用新版本正常启动做一次升级预演，随后核对迁移历史、全部业务/source/group/request/target object/attempt/return operation/object/attempt 表、行/ID/引用和函数/trigger/FK保护。测试结果不能自动授权生产操作。

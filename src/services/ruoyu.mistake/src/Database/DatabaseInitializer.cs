@@ -17,7 +17,7 @@ public static class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
-    private const int TargetVersion = 10;
+    private const int TargetVersion = 11;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -119,6 +119,10 @@ public static class DatabaseInitializer
     {
         var logger = loggerFactory.CreateLogger("DatabaseInitializer");
         var result = await UpgradeToTargetAsync(context, null, cancellationToken).ConfigureAwait(false);
+        if (result.ArchivedRows > 0 || result.ResetImagePaths > 0)
+            logger.LogWarning(
+                "Mistake legacy schema converged: {ArchivedRows} removed or rewritten rows/values archived in legacy_archive; {ResetImagePaths} invalid mistake_practice.image_paths values reset to []",
+                result.ArchivedRows, result.ResetImagePaths);
         if (result.Upgraded)
             logger.LogInformation(
                 "Mistake database schema verified at target version {TargetVersion} after automatic upgrade from version {FromVersion}; steps: {Steps}",
@@ -129,9 +133,11 @@ public static class DatabaseInitializer
     }
 
     /// <summary>
-    /// Upgrades an empty or known database to the target schema in one transaction under the shared
-    /// advisory lock. A target database is left unchanged. Unsupported structures are rejected before
-    /// any write; a failed upgrade rolls back as a whole.
+    /// Upgrades an empty, known or legacy auto-maintained database to the target schema in one transaction under the
+    /// shared advisory lock. A target database is left unchanged. Legacy structures are first converged to a known
+    /// shape, with every removed or rewritten value archived in <c>legacy_archive</c>. Unsupported structures are
+    /// rejected; a failed upgrade rolls back as a whole. Commands inside the upgrade are not bound by the connection's
+    /// command timeout and stop only on cancellation or failure.
     /// </summary>
     /// <param name="expectedDatabase">When not null, the connected database name must match exactly.</param>
     public static async Task<DatabaseUpgradeResult> UpgradeToTargetAsync(MistakeDbContext context,
@@ -142,23 +148,57 @@ public static class DatabaseInitializer
             throw new InvalidOperationException(
                 "Mistake database upgrade refused: --database does not match the connected database. Database unchanged.");
 
+        var commandTimeout = context.Database.GetCommandTimeout();
+        context.Database.SetCommandTimeout(0);
+        try
+        {
+            return await UpgradeInTransactionAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.Database.SetCommandTimeout(commandTimeout);
+        }
+    }
+
+    private static async Task<DatabaseUpgradeResult> UpgradeInTransactionAsync(MistakeDbContext context,
+        CancellationToken cancellationToken)
+    {
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
             .ConfigureAwait(false);
         // Instances starting together serialize here; a waiter reclassifies after the winner commits.
         await context.Database.ExecuteSqlRawAsync($"SELECT pg_advisory_xact_lock({UpgradeLockKey})", cancellationToken)
             .ConfigureAwait(false);
-        var before = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+        var connection = context.Database.GetDbConnection();
+        var stage = new LegacyArchiveStage(connection);
+        List<string> steps;
+        try
+        {
+            steps = await LegacySchemaNormalizer.NormalizeAsync(connection, stage, [Initial, ProcessLog, Reanalyze], Initial,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            throw new InvalidOperationException(
+                $"Mistake legacy schema convergence failed before commit ({Reason(error)}); the transaction rolls back and the database stays unchanged.");
+        }
+        var before = await ClassifyAsync(connection, cancellationToken).ConfigureAwait(false);
         if (before.Kind == SchemaKind.Invalid)
-            throw new InvalidOperationException(before.Diagnostic);
-        if (before.Target)
+            throw new InvalidOperationException(steps.Count == 0 ? before.Diagnostic :
+                $"{before.Diagnostic} Legacy convergence was rolled back.");
+        if (before.Target && steps.Count == 0)
         {
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return new DatabaseUpgradeResult(before.Version, before.Version, []);
         }
 
-        var steps = new List<string>();
+        var resetPaths = 0;
+        long archived;
         try
         {
+            resetPaths = await LegacySchemaNormalizer.ResetInvalidTextPathsAsync(connection, stage, cancellationToken)
+                .ConfigureAwait(false);
+            if (resetPaths > 0)
+                steps.Add($"archive and reset {resetPaths} invalid mistake_practice.image_paths values");
             if (before.Kind == SchemaKind.Empty)
             {
                 await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
@@ -178,11 +218,11 @@ public static class DatabaseInitializer
                     // Keep the source rows stable while checking their semantics and changing the column type.
                     await context.Database.ExecuteSqlRawAsync(
                         "LOCK TABLE public.mistake_practice IN ACCESS EXCLUSIVE MODE", cancellationToken).ConfigureAwait(false);
-                    var paths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+                    var paths = await ReadPathsAsync(connection, cancellationToken).ConfigureAwait(false);
                     await context.Database.ExecuteSqlRawAsync(
                         "ALTER TABLE public.mistake_practice ALTER COLUMN image_paths TYPE jsonb USING image_paths::jsonb",
                         cancellationToken).ConfigureAwait(false);
-                    var convertedPaths = await ReadPathsAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+                    var convertedPaths = await ReadPathsAsync(connection, cancellationToken).ConfigureAwait(false);
                     if (!SamePaths(paths, convertedPaths))
                         throw new UpgradeStepException("Mistake practice paths changed during conversion.");
                     steps.Add("convert mistake_practice.image_paths to jsonb");
@@ -201,28 +241,37 @@ public static class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(StorageReferenceSchema.MistakeMigration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration, cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {StorageReferenceSchema.MistakeMigration}");
+                steps.Add($"migrate to {LegacyArchiveSchema.Migration}");
             }
 
-            var after = await ClassifyAsync(context.Database.GetDbConnection(), cancellationToken).ConfigureAwait(false);
+            archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);
+            if (archived > 0)
+                steps.Add($"archive {archived} legacy rows/values in legacy_archive");
+            var after = await ClassifyAsync(connection, cancellationToken).ConfigureAwait(false);
             if (after.Kind != SchemaKind.Ready || !after.Target)
                 throw new UpgradeStepException($"Mistake upgrade verification failed: {after.Diagnostic}");
             steps.Add("verify target schema");
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
-            // Provider messages can quote row values, so only our own diagnostics and the SQLSTATE are surfaced.
-            var reason = error is UpgradeStepException ? error.Message :
-                error is DbException { SqlState: not null } dbError ? $"SQLSTATE {dbError.SqlState}" : error.GetType().Name;
             throw new InvalidOperationException(
-                $"Mistake database upgrade from version {before.Version} failed before commit ({reason}); the transaction rolls back and the database stays unchanged.");
+                $"Mistake database upgrade from version {before.Version} failed before commit ({Reason(error)}); the transaction rolls back and the database stays unchanged.");
         }
         // A connection failure during COMMIT has an unknown outcome. The next start reclassifies the database.
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return new DatabaseUpgradeResult(before.Version, TargetVersion, steps);
+        return new DatabaseUpgradeResult(before.Version, TargetVersion, steps)
+        {
+            ArchivedRows = archived,
+            ResetImagePaths = resetPaths,
+        };
     }
+
+    // Provider messages can quote row values, so only our own diagnostics and the SQLSTATE are surfaced.
+    private static string Reason(Exception error) =>
+        error is UpgradeStepException ? error.Message :
+        error is DbException { SqlState: not null } dbError ? $"SQLSTATE {dbError.SqlState}" : error.GetType().Name;
 
     private static Task<int> InsertRootCauseHistoryAsync(MistakeDbContext context, CancellationToken cancellationToken) =>
         context.Database.ExecuteSqlRawAsync(
@@ -234,6 +283,7 @@ public static class DatabaseInitializer
     {
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT id, image_paths::text FROM public.mistake_practice ORDER BY id";
+        command.CommandTimeout = 0;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         var paths = new Dictionary<Guid, string[]>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -289,17 +339,18 @@ public static class DatabaseInitializer
         var sourceReturnHistory=new HashSet<string>(sourceTargetHistory,StringComparer.Ordinal) { $"{SourceReturnSchema.Migration}|8.0.11" };
         var sourceHandoffHistory=new HashSet<string>(sourceReturnHistory,StringComparer.Ordinal) { $"{SourceHandoffSchema.Migration}|8.0.11" };
         var referenceHistory = new HashSet<string>(sourceHandoffHistory,StringComparer.Ordinal) { $"{StorageReferenceSchema.MistakeMigration}|8.0.11" };
+        var archiveHistory = new HashSet<string>(referenceHistory, StringComparer.Ordinal) { $"{LegacyArchiveSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
 
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,version==10);
+            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,version>=10,version>=11);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
@@ -310,7 +361,8 @@ public static class DatabaseInitializer
         if (version >= 7) expectedTables.UnionWith(SourceTargetCatalog.Tables);
         if (version >= 8) expectedTables.UnionWith(SourceReturnCatalog.Tables);
         if (version >= 9) expectedTables.UnionWith(SourceHandoffCatalog.Tables);
-        if (version == 10) expectedTables.Add("storage_reference_snapshot");
+        if (version >= 10) expectedTables.Add("storage_reference_snapshot");
+        if (version >= 11) expectedTables.UnionWith(LegacyArchiveSchema.Relations);
         var mismatch = Compare("relation", expectedTables, relations);
         if (mismatch is not null) return Invalid(mismatch);
 
@@ -326,7 +378,8 @@ public static class DatabaseInitializer
         if (version >= 7) expectedColumns.UnionWith(SourceTargetCatalog.Columns);
         if (version >= 8) expectedColumns.UnionWith(SourceReturnCatalog.Columns);
         if (version >= 9) expectedColumns.UnionWith(SourceHandoffCatalog.Columns);
-        if (version == 10) expectedColumns.UnionWith(StorageReferenceSchema.Columns);
+        if (version >= 10) expectedColumns.UnionWith(StorageReferenceSchema.Columns);
+        if (version >= 11) expectedColumns.UnionWith(LegacyArchiveSchema.Columns);
         if (version < 3)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
         else if (version < 5)
@@ -350,13 +403,15 @@ public static class DatabaseInitializer
         var legacyColumns = new HashSet<string>(expectedColumns, StringComparer.Ordinal);
         legacyColumns.Remove("mistake_item|review_comment|text|Y");
         legacyColumns.Add("mistake_item|root_cause|text|Y");
-        var legacyRuntime = version == 3 && columns.SetEquals(legacyColumns);
         var misstampedColumns = new HashSet<string>(legacyColumns, StringComparer.Ordinal);
         misstampedColumns.Remove("mistake_practice|image_paths|jsonb|N");
         misstampedColumns.Add("mistake_practice|image_paths|text|N");
-        var misstampedTextPaths = version == 3 && columns.SetEquals(misstampedColumns);
+        // The variant is chosen by its distinguishing columns, so a deviation is reported against that variant.
+        var rootCauseVariant = version == 3 && columns.Contains("mistake_item|root_cause|text|Y");
+        var misstampedTextPaths = rootCauseVariant && columns.Contains("mistake_practice|image_paths|text|N");
+        var legacyRuntime = rootCauseVariant && !misstampedTextPaths;
         mismatch = Compare("column/type/nullability",
-            legacyRuntime ? legacyColumns : misstampedTextPaths ? misstampedColumns : expectedColumns, columns);
+            misstampedTextPaths ? misstampedColumns : legacyRuntime ? legacyColumns : expectedColumns, columns);
         if (mismatch is not null) return Invalid(mismatch);
 
         var defaults = await ReadSetAsync(connection, """
@@ -376,7 +431,7 @@ public static class DatabaseInitializer
             """, cancellationToken).ConfigureAwait(false);
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,version==10);
+            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,version>=10,version>=11);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (triggers.Count > 0) return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");
@@ -396,7 +451,8 @@ public static class DatabaseInitializer
         if (version >= 7) expectedIndexes.UnionWith(SourceTargetCatalog.Indexes);
         if (version >= 8) expectedIndexes.UnionWith(SourceReturnCatalog.Indexes);
         if (version >= 9) expectedIndexes.UnionWith(SourceHandoffCatalog.Indexes);
-        if (version == 10) expectedIndexes.UnionWith(StorageReferenceSchema.Indexes);
+        if (version >= 10) expectedIndexes.UnionWith(StorageReferenceSchema.Indexes);
+        if (version >= 11) expectedIndexes.UnionWith(LegacyArchiveSchema.Indexes);
         if (version < 3)
             expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
         if (version < 2)
@@ -404,7 +460,7 @@ public static class DatabaseInitializer
         var lowercaseIndexes = new HashSet<string>(expectedIndexes, StringComparer.Ordinal);
         lowercaseIndexes.Remove("IX_process_log_student_id|process_log|student_id|N");
         lowercaseIndexes.Add("ix_process_log_student_id|process_log|student_id|N");
-        var misstampedLowercaseIndex = misstampedTextPaths && indexes.SetEquals(lowercaseIndexes);
+        var misstampedLowercaseIndex = misstampedTextPaths && indexes.Contains("ix_process_log_student_id|process_log|student_id|N");
         if (misstampedLowercaseIndex)
         {
             var definitions = await ReadSetAsync(connection,
@@ -437,12 +493,13 @@ public static class DatabaseInitializer
         if (version >= 7) expectedConstraints.UnionWith(SourceTargetCatalog.Constraints);
         if (version >= 8) expectedConstraints.UnionWith(SourceReturnCatalog.Constraints);
         if (version >= 9) expectedConstraints.UnionWith(SourceHandoffCatalog.Constraints);
-        if (version == 10) expectedConstraints.UnionWith(StorageReferenceSchema.Constraints);
+        if (version >= 10) expectedConstraints.UnionWith(StorageReferenceSchema.Constraints);
+        if (version >= 11) expectedConstraints.UnionWith(LegacyArchiveSchema.Constraints);
         mismatch = Compare("constraint", expectedConstraints, constraints);
         if (mismatch is not null) return Invalid(mismatch);
 
         if (version >= 6)
-            return new SchemaState(version==10 ? SchemaKind.Ready : SchemaKind.Known, version==10, version, "Mistake target schema and history are consistent.");
+            return new SchemaState(version == TargetVersion ? SchemaKind.Ready : SchemaKind.Known, version == TargetVersion, version, "Mistake target schema and history are consistent.");
         if (legacyRuntime)
             return new SchemaState(SchemaKind.LegacyRuntime, false, version,
                 "Mistake legacy runtime shape accepted: root_cause replaces InitialCreate.review_comment without a versioned history row.");
@@ -470,6 +527,7 @@ public static class DatabaseInitializer
     {
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
+        command.CommandTimeout = 0;
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         var rows = new HashSet<string>(StringComparer.Ordinal);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -490,7 +548,4 @@ public static class DatabaseInitializer
 
     private enum SchemaKind { Empty, Known, LegacyRuntime, MisstampedTextPaths, MisstampedLowercaseIndex, Ready, Invalid }
     private sealed record SchemaState(SchemaKind Kind, bool Target, int Version, string Diagnostic);
-
-    // Failures raised by this initializer carry no connection or row data and may be surfaced as-is.
-    private sealed class UpgradeStepException(string message) : Exception(message);
 }

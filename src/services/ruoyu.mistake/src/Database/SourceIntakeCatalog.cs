@@ -30,9 +30,10 @@ internal static class SourceIntakeCatalog
         "FK_source_intake_group_created_log|f|created_log_id|process_log|id|r|V",
         "PK_source_intake_request|p|actor,action,request_key|-|-|-|V",
         "FK_source_intake_request_source_intake|f|source_upload_id,content_revision|source_intake|source_upload_id,content_revision|r|V"];
-    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false)
+    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false)
     {
         await using var command=connection.CreateCommand();
+        command.CommandTimeout=0;
         command.CommandText="""
             SELECT p.proname,p.prosrc,l.lanname,p.prorettype::regtype::text,p.pronargs,p.prosecdef,p.provolatile,p.proconfig IS NULL,pg_get_function_identity_arguments(p.oid)
             FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang WHERE p.pronamespace='public'::regnamespace
@@ -43,6 +44,7 @@ internal static class SourceIntakeCatalog
         if(returns) { bodies["guard_managed_item"]=SourceReturnSchema.ManagedItemBody; foreach(var pair in SourceReturnSchema.Bodies) bodies.Add(pair.Key,pair.Value); }
         if(handoffs) foreach(var pair in SourceHandoffSchema.Bodies) bodies[pair.Key]=pair.Value;
         if(references) bodies.Add("guard_storage_reference_snapshot",StorageReferenceSchema.GuardBody);
+        if(archive) bodies.Add("guard_legacy_archive",LegacyArchiveSchema.GuardBody);
         var found=new HashSet<string>(StringComparer.Ordinal);
         while(await reader.ReadAsync(ct))
         {
@@ -54,7 +56,7 @@ internal static class SourceIntakeCatalog
         }
         return found.SetEquals(bodies.Keys) ? null : "missing source intake routine.";
     }
-    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false)
+    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false)
     {
         var expected=new HashSet<string>(StringComparer.Ordinal)
         {
@@ -76,7 +78,9 @@ internal static class SourceIntakeCatalog
         if(returns) expected.UnionWith(SourceReturnSchema.Triggers);
         if(handoffs) expected.UnionWith(SourceHandoffCatalog.Triggers);
         if(references) expected.UnionWith(StorageReferenceSchema.Triggers);
+        if(archive) expected.UnionWith(LegacyArchiveSchema.Triggers);
         await using var command=connection.CreateCommand();
+        command.CommandTimeout=0;
         command.CommandText="""
             SELECT c.relname,t.tgname,t.tgtype,p.proname,t.tgdeferrable,t.tginitdeferred,t.tgnargs,t.tgenabled,t.tgqual IS NULL
             FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_proc p ON p.oid=t.tgfoid
