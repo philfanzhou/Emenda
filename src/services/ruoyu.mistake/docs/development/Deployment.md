@@ -159,12 +159,12 @@ resource=false（默认）时 legacy 未受管端点与基线 `91fb253e` 行为�
 | 回滚 | 置 `false`（或移除键）后重启即恢复匿名窗口；无数据库、schema 或数据迁移 |
 | 下游能力开关依赖 | `Mistake:SourceIntake/SourceReturns/SourceHandoffs:Enabled=true` 要求 Student+strict+resource 同为 true；`Mistake:SourceTargets:Enabled=true` 要求 strict+resource；不满足在 DB/S3 初始化前失败 |
 
-**启用时点与当前限制（截至 2026-10-07，如实记录）**：
+**启用时点与当前限制（截至 2026-10-08，如实记录）**：
 
 - 当前部署**不应启用** strict。
-- 消费者升级证据：Ruoyu.Admin #40/#41 已在其主线交付「服务端会话令牌作 Bearer 调用 Mistake」（`MistakeSessionHandler` 白名单转发），但**尚无含该能力的官方发布制品**——最新 tag `0.1.2-rc.2` 早于该交付；2026-10-07 在 55.10 实测该镜像对 Mistake 不携带任何 Authorization，登录仍为密码授权。
-- 真实环境：192.168.55.10 于 2026-10-07 实测恢复（ServiceMap HTTP 200）；其 Mistake 官方制品 `ruoyu.study.mistake:20260501` 不含两开关代码。
-- 演练前置（均为维护者发布/部署动作）：发布并部署含两开关的官方 Mistake 制品、SignaCore `ADMIN` 应用 PerApplication 收敛、发布并部署含会话 Bearer 转发的官方 Ruoyu.Admin 制品。启用顺序、联测与回滚演练属 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；本节不宣称已启用或已演练。
+- 消费者升级：Ruoyu.Admin 官方版本 `0.1.2`（2026-10-08 发布于 GHCR）已包含「服务端会话令牌作 Bearer 调用 Mistake」（`MistakeSessionHandler` 白名单转发）；此前的 `0.1.2-rc.2` 对 Mistake 不携带任何 Authorization，登录仍为密码授权。
+- 真实环境：192.168.55.10 当前运行的 Ruoyu.Study 服务镜像 `20261008` 构建自 master `90e6334c`，已包含两开关代码（`/health/live`、`/health/ready` 返回 200）；Ruoyu.Admin 仍为 `0.1.2-rc.2`。Ruoyu.Study 自有镜像不受 55.10「GitHub 项目只用官方版本」规则约束，由本仓库自行构建部署。
+- 演练前置（部署动作）：55.10 升级到 Ruoyu.Admin 官方 `0.1.2`、SignaCore `ADMIN` 应用 PerApplication 收敛。启用顺序、联测与回滚演练属 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；本节不宣称已启用或已演练。
 
 **独立部署者责任**：
 
