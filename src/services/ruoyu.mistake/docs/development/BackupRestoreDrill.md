@@ -18,12 +18,12 @@ dotnet test Ruoyu.Study.Mistake.sln --configuration Release --filter FullyQualif
 
 ## 实际环境的操作清单
 
-1. 停止 Mistake 全部写入，核实 PostgreSQL 主机、库名、版本、容量、备份保管位置与维护账号权限。旧版自动维护留下的已知结构在启动时自动收敛并归档被移除的数据；旧 `public.mistake`（由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理）及其他未知/混合结构会被启动拒绝且不修改；不得删表或手工写迁移历史。
+1. 停止 Mistake 全部写入，核实 PostgreSQL 主机、库名、版本、容量、备份保管位置与维护账号权限。旧版自动维护留下的已知结构在启动时自动收敛并归档被移除的数据；受支持旧 `public.mistake` 按[映射规则](../database/migrations.md#旧表-mistake-的转换)自动转换；陌生旧表及其他未知/混合结构会被启动拒绝且不修改；不得删表或手工写迁移历史。
 2. 用 PostgreSQL **15** 客户端对停写的源库作 custom-format dump，记录源库结构、四张业务表中实际存在的表及 `__EFMigrationsHistory` 的行数、稳定 ID、外键、关键索引、JSONB 路径与内容。InitialCreate 的 `mistake_practice.image_paths` 是 text，升级后才是 jsonb。清单只存受保护位置；不要把备份文件、凭据或业务明文提交到仓库。
 3. 新建一只**不同名称的空测试库**，向该库执行 `pg_restore --single-transaction --exit-on-error`。检查退出状态后，再独立查询恢复库的结构、历史、行数、ID、引用及关键内容，与源库清单逐项比较。仅 dump 文件存在、`pg_restore` 成功或表数一致都不足以确认可恢复。若有失败、取消、容量不足或权限错误，标记该目标库不可用，保留无敏感内容的诊断，另建空库重试；不得覆盖源库。
 4. 恢复库匹配后，才可把**该次备份**记为已验证。可在隔离恢复库用新版本正常启动做一次升级预演，随后核对迁移历史、全部业务/source/group/request/target object/attempt/return operation/object/attempt 表、行/ID/引用和函数/trigger/FK保护。测试结果不能自动授权生产操作。
 5. 若升级后行为异常或提交结果不明，继续停写，先查询当前库实际 schema、历史和业务行；从原备份**再建新库**恢复并校验，再决定实际恢复或重试。不要把 EF Down 当作生产恢复保证。
 
-适用范围及兼容命令详见[部署说明](./Deployment.md)与[迁移历史](../database/migrations.md)。本演练不证明旧 `public.mistake` 的数据映射，也不证明生产灾备能力。
+适用范围及兼容命令详见[部署说明](./Deployment.md)与[迁移历史](../database/migrations.md)。旧 `public.mistake` 的映射由隔离 PostgreSQL 重放夹具核验，见[验证入口](./IntegrationVerification.md#tc-17-数据库启动时自动升级-postgresql)。本演练不证明生产灾备能力。
 
 受管退回阶段恢复另由 `SourceReturnRecoveryPostgresTests.RealDumpRestoreAllReturnStatesAndCandidatesRetainsFactsAndResumesAsync` 通过实际 PG dump/restore 校验 Prepared、未知 Copy、持久 CopySettled、Sending、Conflict、Completed 的操作/候选完整行。恢复后正常启动核验目标结构，非 Conflict 同 operation 恢复；Conflict 永久保留且不重复发布。该组沿[SourceReturns](../modules/SourceReturns.md)的 owned fixture 配置运行，不能省略 Student 历史receipt和来源 pins。

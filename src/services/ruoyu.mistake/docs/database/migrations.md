@@ -21,7 +21,8 @@ Host 正常启动时自动把数据库升级到当前目标结构（十一条 EF
 | 已知 1–10 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源相关表的行与 ID 保留，继续启动 |
 | 2026-05-14 至 2026-09-29 版本自动维护留下的旧结构（见[旧版自动维护结构的收敛](#旧版自动维护结构的收敛)） | 同一事务内先收敛到已知形态，被移除或改写的旧数据写入 `legacy_archive`，再升级到目标，继续启动 |
 | 已是目标（11 条历史） | 不写入，继续启动；只读账号也可启动 |
-| 旧表 `public.mistake`、其他未知或矛盾结构 | 拒绝启动，数据库原样保留 |
+| 2026-04-19 至 2026-05-13 版本留下的精确 `public.mistake`（见[旧表转换](#旧表-mistake-的转换)） | 保留旧条目与关系，同事务转换、归档并升级，继续启动 |
+| 其他未知或矛盾结构 | 拒绝启动，数据库原样保留 |
 
 升级事务内的命令（含等待 advisory lock）不受连接串 `Command Timeout`（Npgsql 默认 30 秒）限制，大库首次升级不会因命令超时回滚；宿主停止或取消仍会中断并回滚。没有新增配置项。
 
@@ -37,13 +38,34 @@ Host 正常启动时自动把数据库升级到当前目标结构（十一条 EF
 
 旧库中同一学生、同一来源、相同区域的重复条目照常升级，所有行保留；现行设计不对旧行加唯一约束，对该来源的新受管入库仍返回 `legacy_source_conflict`。
 
-自动升级只支持上述形态。`public.mistake`、历史表独存、部分对象、额外对象、其他误盖章、`ProductVersion` 不一致或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。`public.mistake` 旧表由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。
+自动升级只支持上述形态。不受支持的旧表、历史表独存、部分对象、额外对象、其他误盖章、`ProductVersion` 不一致或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。旧表转换的精确边界见下节。
+
+### 旧表 `mistake` 的转换
+
+仍保有 `public.mistake` 的 2026-04-19 至 2026-05-13 旧库，在外层升级事务和 advisory lock 内先只读识别；识别发生在任何表锁、DDL 和数据写入之前。旧表须完整符合 0501 的十列类型/空值性、主键及六个非唯一 btree 索引，练习、日志、明细和可选指纹表须符合 0501 列集。指向旧表的外键只允许历史四种已验证的 `mistake_id → mistake(id)` CASCADE 约束；旧表没有额外索引、约束、触发器、规则、策略或默认值。陌生结构原状拒绝，不进行转换。获取表锁后再次核验，随后先暂存旧条目整行。
+
+| 形态 | 历史与结构 | 结果 |
+|---|---|---|
+| P0 / P0f | 没有历史表；0501 无指纹表 / 含完整指纹表 | 创建标准历史表，转换并升级 |
+| P1 / P1x | 只有 0501 历史；0501 含指纹表 / 缺指纹表 | 转换并升级 |
+| P2 / P2f | 0501、0503 历史；0503 无指纹表 / 仍含指纹表 | 转换并升级 |
+| M-da / M-05 / M-e0 | P2 或 P2f 加 05-10 至 05-13 三种 `mistake_item` 布局，两表并存 | 先去除现表旧列，再转换；现表已有 ID 优先 |
+
+0501 指纹表包含 `IX_mistake_image_fingerprint_oss_path`。旧历史的 `ProductVersion` 为 `8.0.4`，正规目标历史仍为 `8.0.11`。
+
+没有 `mistake_item` 时按 InitialCreate 建立十三列。只移除四种已知的旧外键，把旧列处理提前到插入旧条目之前，再在孤儿判定和新外键之前写入旧条目：ID、学生、学科、年级、题目 ID、创建/更新时间保留，`status → review_status`，`source_upload_id=''`、`source_regions=[]`，其他审核字段为空。同 ID 已存在时保留现条目，旧整行按 `legacy_mistake_superseded` 归档；新增条目的旧整行按 `legacy_mistake_converted` 归档。转换合成的值不归档。旧练习和日志 ID、父子关系保留；旧日志动作 1/2 保留，3/4 分别改为 5/6，改前原值按 `legacy_action_renumbered` 归档。
+
+明细图片按下节回填，现条目已有区域不覆盖；每条明细只有实际影响 UPDATE 的那行标为已回填。明细与指纹整行归档后删除，最后删除已经没有依赖的 `mistake`（不使用 CASCADE），沿现有收敛和正规迁移链到十一条历史并整体核验。归档条数为旧条目数 + 改号日志数 + 下节既有归档规则的条数，例如 P2（两条旧条目、一条明细、动作 1/3/4 各一条）为历史 2 + 旧条目 2 + 明细 1 + 改号 2 = 7。
+
+重复启动零写入，并发启动只转换、归档一次。SQL 失败、核验失败、取消、断连、只读或无 DDL 权限均整体回滚，旧表及其数据、索引、约束、历史原样；诊断不含行内容或连接串。归档按业务数据保护，不通过 HTTP 暴露。转换后与普通目标库使用同一结构，无新增迁移；归档非空不能 Down 到第十条。
+
+转换条目没有来源记录，不进入受管入库或受管退回，教师退回走既有旧退回流程，见[来源退回](../modules/SourceReturns.md)；该流程的恢复保证由 [IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3) 决定。已经由 05-14 及以后版本转换过的库中，旧、新编号可能混在一起，动作不再改号。04-19 之前模型、旧代码已经删除的数据及旧实例仍写入时的滚动升级不在保证范围。首次转换需 DDL 与写历史权限，大库启动等待按[部署说明](../development/Deployment.md)放宽。
 
 ### 旧版自动维护结构的收敛
 
 2026-05-14 至 2026-09-29 的版本在启动时直接执行 DDL 维护数据库，留下与正规迁移不一致的结构。现在启动时在同一事务和锁内、分类之前识别并收敛这些结构，旧数据保留可用。
 
-**进入条件**：没有 `public.mistake`；迁移历史只含 `20260501042151_InitialCreate`、`20260503021905_RemoveImageFingerprint`、`20260514051544_InitialCreate`、`20260612030015_AddStudentIdToProcessLog`、`20260626000000_AddReanalyzeJob` 中的记录；并出现至少一个旧代码标志：0501/0503 历史、`mistake_detail`、`mistake_image_fingerprint`、`PK_mistake`/`pk_mistake_item`、小写 `fk_*` 外键、小写 `ix_mistake_item_*` 或 `IX_mistake_*` 旧索引名、`IX_mistake_practice_mistake_id`、`IX_process_log_mistake_id_created_at`、`mistake_item` 上的旧列、`mistake_practice.mistake_id`/`process_log.mistake_id`。不满足时不做任何收敛，已在目标的库仍零写入。
+**进入条件**：旧表已通过上节识别并进入转换，或没有 `public.mistake`；迁移历史只含 `20260501042151_InitialCreate`、`20260503021905_RemoveImageFingerprint`、`20260514051544_InitialCreate`、`20260612030015_AddStudentIdToProcessLog`、`20260626000000_AddReanalyzeJob` 中的记录；并出现至少一个旧代码标志：0501/0503 历史、`mistake_detail`、`mistake_image_fingerprint`、`PK_mistake`/`pk_mistake_item`、小写 `fk_*` 外键、小写 `ix_mistake_item_*` 或 `IX_mistake_*` 旧索引名、`IX_mistake_practice_mistake_id`、`IX_process_log_mistake_id_created_at`、`mistake_item` 上的旧列、`mistake_practice.mistake_id`/`process_log.mistake_id`。不满足时不做任何收敛，已在目标的库仍零写入。
 
 **收敛规则**（先暂存、后改动）：
 
@@ -61,7 +83,7 @@ Host 正常启动时自动把数据库升级到当前目标结构（十一条 EF
 | 旧索引名 | 目标名缺失时把定义相同的旧名改为目标名；同列重复的旧名删除；仍缺的目标索引补建 |
 | 历史只剩 0501/0503（旧代码加外键失败、每次启动停在同一步的库） | 删除旧代码加的 `process_log.student_id`（非空值先归档）及其索引，`root_cause` 改回 `review_comment`，写入 InitialCreate 历史，再由正规迁移链重新执行这两步 |
 
-收敛后交给现有分类器：结构必须与版本 1–4 的精确结构或上面两种误盖章/旧运行时形态之一完全一致，否则整体回滚并拒绝，诊断只给对象名。实测 9 种旧形态（首次由 05-14 至 06-24 或 06-24 之后的代码启动的 05-01/05-03 库、含指纹表的 05-01 库、05-14 至 06-24 代码新建的库、05-10 至 05-13 新旧两表并存后的三种 `mistake_item` 布局、加外键失败停在同一步的库）收敛为“三条历史 + text 路径 + 小写索引”形态或版本 1，再沿迁移链升级到目标；用例见 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/LegacySchemaConvergencePostgresTests.cs`。
+收敛后交给现有分类器：结构必须与版本 1–4 的精确结构或上面两种误盖章/旧运行时形态之一完全一致，否则整体回滚并拒绝，诊断只给对象名。旧版自动维护形态（首次由 05-14 至 06-24 或 06-24 之后的代码启动的 05-01/05-03 库、含指纹表的 05-01 库、05-14 至 06-24 代码新建的库、05-10 至 05-13 新旧两表并存后的三种 `mistake_item` 布局、加外键失败停在同一步的库）收敛为“三条历史 + text 路径 + 小写索引”形态或版本 1，再沿迁移链升级到目标；用例见 `src/Tests/Ruoyu.Study.Mistake.Service.Tests/LegacySchemaConvergencePostgresTests.cs`。
 
 不在收敛规则内的对象（陌生表、列、索引、约束、函数、触发器，或旧表上附加的陌生索引/约束/触发器，或旧列上的陌生索引/约束）不自动处理，拒绝启动并原样保留数据库。已被旧代码删除的数据（旧自动升级删掉的 `date`、`image_paths`、`fingerprint` 列，05-14 代码 `DROP TABLE mistake CASCADE` 删掉的旧条目）无法找回；孤儿练习/日志行移出业务表、只在归档表。旧实例仍在写入时的滚动升级不保证。
 
@@ -74,6 +96,8 @@ Host 正常启动时自动把数据库升级到当前目标结构（十一条 EF
 | `history_row` | 被删除的历史行 | `legacy_history_removed` |
 | `row` | 被删除的整行（旧表、孤儿行） | `legacy_table_dropped`、`legacy_table_dropped_images_backfilled`、`orphan_row_removed` |
 | `column_values` | 被删列的非空值，以列名为键 | `legacy_column_dropped` |
+| `row` | 转换或被现条目替代的旧 `mistake` 整行 | `legacy_mistake_converted`、`legacy_mistake_superseded` |
+| `column_values` | 改号前旧日志的 `{"action": 原值}` | `legacy_action_renumbered` |
 | `invalid_value` | 非法 `image_paths` 原文 | `invalid_image_paths_reset` |
 
 并发启动时 advisory lock 保证只收敛和归档一次。业务代码不读归档表。
