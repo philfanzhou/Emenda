@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -12,6 +13,9 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Moq;
+using Ruoyu.Study.Mistake.StudentClient;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
@@ -29,7 +33,8 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 /// item, and callback failures must not be reported as a successful review
 /// (transport-unknown points at the read-back query, payload-conflict is
 /// explicit). Runs the real host with strict+resource auth enabled, EF Core
-/// InMemory, a recording gateway fake and an OSS fake that supports the
+/// InMemory, a recording gateway or the real Student client + Host adapter,
+/// and an OSS fake that supports the
 /// reject-flow copy/delete pair.
 /// </summary>
 public sealed class ReviewRejectCallbackTests
@@ -157,6 +162,120 @@ public sealed class ReviewRejectCallbackTests
         gateway.ReturnedRecordCalls.Should().BeEmpty();
     }
 
+    [Theory]
+    [MemberData(nameof(CreateReturnedRecordHttpClientTests.UnreadableResponses), MemberType = typeof(CreateReturnedRecordHttpClientTests))]
+    public async Task RejectUnreadableRealClientResponse_ReportsFailureAfterExistingSideEffects(HttpStatusCode status, string upstreamBody)
+    {
+        var handler = new ReturnedResponseHandler(status, upstreamBody);
+        using var factory = new RejectCallbackWebApplicationFactory(null, handler);
+        factory.SeedData();
+        handler.BeforeSend = () =>
+        {
+            Assert.Equal(("mistakes/reject-1/a.png", "uploads/reject-1/a.png"), Assert.Single(factory.Oss.Copies));
+            Assert.Equal("mistakes/reject-1/a.png", Assert.Single(factory.Oss.Deletes));
+            using var scope = factory.Services.CreateScope();
+            Assert.Empty(scope.ServiceProvider.GetRequiredService<MistakeDbContext>().MistakeItems);
+        };
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review",
+            $$"""{"reviewStatus":3,"reviewerId":"{{StaffSub}}","returnReason":"图片模糊"}""", Token(StaffSub, "teacher")));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(body);
+        Assert.True(json.RootElement.GetProperty("success").GetBoolean());
+        var data = json.RootElement.GetProperty("data");
+        Assert.False(data.GetProperty("success").GetBoolean());
+        var error = data.GetProperty("errorMessage").GetString();
+        Assert.Contains($"mistake-return:{ItemId}", error);
+        if (status == HttpStatusCode.Conflict)
+            Assert.Contains("载荷冲突", error);
+        else
+        {
+            Assert.Contains("结果未知", error);
+            Assert.Contains($"GET /api/uploads/returned/mistake-return:{ItemId}", error);
+        }
+        Assert.DoesNotContain("UPSTREAM_PRIVATE_CANARY", body);
+        Assert.DoesNotContain(factory.ClientLogger.Invocations, invocation =>
+            invocation.Arguments.Any(argument => argument?.ToString()?.Contains("UPSTREAM_PRIVATE_CANARY") == true));
+        Assert.Equal(1, handler.Sends);
+        Assert.Equal($"/api/students/{StudentId}/uploads/returned", handler.Path);
+        using var request = JsonDocument.Parse(handler.Body!);
+        Assert.Equal($"mistake-return:{ItemId}", request.RootElement.GetProperty("operationId").GetString());
+        Assert.Equal("Rejected", request.RootElement.GetProperty("comments").GetString());
+        Assert.Equal("图片模糊", request.RootElement.GetProperty("returnReason").GetString());
+        Assert.Equal("uploads/reject-1/a.png", request.RootElement.GetProperty("imageEntries")[0].GetProperty("path").GetString());
+        using var finalScope = factory.Services.CreateScope();
+        Assert.Empty(finalScope.ServiceProvider.GetRequiredService<MistakeDbContext>().MistakeItems);
+        Assert.Single(factory.Oss.Copies);
+        Assert.Single(factory.Oss.Deletes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RejectRealClientSuccess_PreservesCreationAndReplay(bool replayed)
+    {
+        var handler = new ReturnedResponseHandler(HttpStatusCode.OK,
+            JsonSerializer.Serialize(new { success = true, data = new { success = true, replayed } }));
+        using var factory = new RejectCallbackWebApplicationFactory(null, handler);
+        factory.SeedData();
+        using var client = factory.CreateClient();
+        using var response = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review",
+            $$"""{"reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(json.RootElement.GetProperty("data").GetProperty("success").GetBoolean());
+        Assert.Equal(1, handler.Sends);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RejectRealClient_DeniedOrDisabledHasNoSideEffects(bool enabled)
+    {
+        var handler = new ReturnedResponseHandler(HttpStatusCode.OK, "UPSTREAM_PRIVATE_CANARY{");
+        using var factory = new RejectCallbackWebApplicationFactory(null, handler, enabled);
+        factory.SeedData();
+        using var client = factory.CreateClient();
+        string Body(string reviewer) => $$"""{"reviewStatus":3,"reviewerId":"{{reviewer}}"}""";
+        if (enabled)
+        {
+            using var roleResponse = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review", Body(StaffSub), Token("learner-1", "student")));
+            Assert.Equal(HttpStatusCode.Forbidden, roleResponse.StatusCode);
+            using var reviewerResponse = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review", Body("someone-else"), Token(StaffSub, "teacher")));
+            Assert.Equal(HttpStatusCode.Forbidden, reviewerResponse.StatusCode);
+        }
+        else
+        {
+            using var response = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review", Body(StaffSub), Token(StaffSub, "teacher")));
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        }
+        Assert.Equal(0, handler.Sends);
+        Assert.Empty(factory.Oss.Copies);
+        Assert.Empty(factory.Oss.Deletes);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(1, Assert.Single(scope.ServiceProvider.GetRequiredService<MistakeDbContext>().MistakeItems).ReviewStatus);
+    }
+
+    private sealed class ReturnedResponseHandler(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        public int Sends { get; private set; }
+        public string? Path { get; private set; }
+        public string? Body { get; private set; }
+        public Action? BeforeSend { get; set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            BeforeSend?.Invoke();
+            Sends++;
+            Path = request.RequestUri?.PathAndQuery;
+            Body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        }
+    }
+
     // ===== Helpers =====
 
     private static RejectCallbackWebApplicationFactory NewFactory(out RecordingGateway gateway)
@@ -282,12 +401,15 @@ public sealed class ReviewRejectCallbackTests
             "IDENTITY_APP_ID_ADMIN",
         ];
 
-        private readonly RecordingGateway _gateway;
-        private readonly RejectFlowOssService _oss = new();
+        private readonly RecordingGateway? _gateway;
+        private readonly HttpMessageHandler? _handler;
+        public RejectFlowOssService Oss { get; } = new();
+        public Mock<ILogger<StudentHttpClient>> ClientLogger { get; } = new();
 
-        public RejectCallbackWebApplicationFactory(RecordingGateway gateway)
+        public RejectCallbackWebApplicationFactory(RecordingGateway? gateway, HttpMessageHandler? handler = null, bool studentEnabled = true)
         {
             _gateway = gateway;
+            _handler = handler;
             Environment.SetEnvironmentVariable("IDENTITY_APP_ID_ADMIN", null);
             Environment.SetEnvironmentVariable("Mistake__ConfigMode", "Local");
             Environment.SetEnvironmentVariable(
@@ -308,8 +430,8 @@ public sealed class ReviewRejectCallbackTests
             Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", "true");
             // The reject flow fail-closes with 503 when the Student capability
             // is disabled (IKJ8P0); enable it so the callback path is reached.
-            // The URL is never contacted — IUploadSourceGateway is faked.
-            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "true");
+            // The URL is never contacted — the gateway or HTTP transport is faked.
+            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", studentEnabled ? "true" : "false");
             Environment.SetEnvironmentVariable("Mistake__Local__Student__Url", "http://127.0.0.1:19042");
         }
 
@@ -332,10 +454,20 @@ public sealed class ReviewRejectCallbackTests
                 services.RemoveAll<DbContextOptions<MistakeDbContext>>();
                 services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
 
-                services.RemoveAll<IUploadSourceGateway>();
-                services.AddScoped<IUploadSourceGateway>(_ => _gateway);
+                if (_gateway is not null)
+                {
+                    services.RemoveAll<IUploadSourceGateway>();
+                    services.AddScoped<IUploadSourceGateway>(_ => _gateway);
+                }
+                else if (_handler is not null)
+                {
+                    // Preserve the production Host adapter registration; replace only transport.
+                    services.RemoveAll<IStudentHttpClient>();
+                    services.AddSingleton<IStudentHttpClient>(new StudentHttpClient(
+                        new HttpClient(_handler) { BaseAddress = new Uri("http://127.0.0.1:19042") }, ClientLogger.Object));
+                }
                 services.RemoveAll<IOssService>();
-                services.AddSingleton<IOssService>(_oss);
+                services.AddSingleton<IOssService>(Oss);
 
                 services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, UseStaticSigningKeys);
                 services.PostConfigure<JwtBearerOptions>(Ruoyu.Study.Common.Authentication.RuoyuAdminApiAuthorization.SchemeName, UseStaticSigningKeys);
