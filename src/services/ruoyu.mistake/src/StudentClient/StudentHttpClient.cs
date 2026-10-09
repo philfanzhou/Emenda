@@ -179,8 +179,19 @@ public class StudentHttpClient : IStudentHttpClient
             using var response = await _httpClient.PostAsJsonAsync($"/api/students/{studentId}/uploads/returned", body, JsonOptions, ct);
             if ((int)response.StatusCode == 409)
             {
-                var conflictEnvelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<object>>(JsonOptions, ct);
-                var conflictMessage = conflictEnvelope?.Message ?? "CreateReturnedRecord payload conflict";
+                const string fallbackMessage = "CreateReturnedRecord payload conflict";
+                string conflictMessage;
+                try
+                {
+                    var conflictEnvelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<object>>(JsonOptions, ct);
+                    conflictMessage = conflictEnvelope?.Message ?? fallbackMessage;
+                }
+                catch (JsonException)
+                {
+                    // HTTP 409 proves a conflict even when its explanation is unreadable.
+                    // Do not log the body or parsing exception, which may contain upstream data.
+                    conflictMessage = fallbackMessage;
+                }
                 _logger.LogWarning("CreateReturnedRecord payload conflict: {Message}, Status: {Status}", conflictMessage, response.StatusCode);
                 return new CreateReturnedRecordOutcome
                 {
@@ -210,6 +221,16 @@ public class StudentHttpClient : IStudentHttpClient
             {
                 Status = CreateReturnedRecordStatus.Unknown,
                 Message = msg
+            };
+        }
+        catch (JsonException)
+        {
+            const string message = "CreateReturnedRecord response is unreadable; whether the record was created is unknown";
+            _logger.LogWarning("{Message}", message);
+            return new CreateReturnedRecordOutcome
+            {
+                Status = CreateReturnedRecordStatus.Unknown,
+                Message = message
             };
         }
         catch (HttpRequestException ex)

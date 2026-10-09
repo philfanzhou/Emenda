@@ -1,5 +1,7 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Ruoyu.Study.Mistake.StudentClient;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
@@ -13,17 +15,19 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 /// </summary>
 public sealed class CreateReturnedRecordHttpClientTests
 {
-    [Fact]
-    public async Task SuccessResponse_ClassifiesAsSucceededAndPreservesReplayFlag()
+    [Theory]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.Created)]
+    public async Task SuccessResponse_ClassifiesAsSucceededAndPreservesReplayFlag(HttpStatusCode status)
     {
         string? requestedPath = null;
         string? requestedBody = null;
-        var client = CreateClient((request, _) =>
+        var client = CreateClient(async (request, ct) =>
         {
             requestedPath = request.RequestUri?.PathAndQuery;
-            requestedBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
-            return Task.FromResult(Json(HttpStatusCode.OK,
-                """{"success":true,"data":{"success":true,"replayed":true,"record":{"id":"r1"}}}"""));
+            requestedBody = await request.Content!.ReadAsStringAsync(ct);
+            return Json(status,
+                """{"success":true,"data":{"success":true,"replayed":true,"record":{"id":"r1"}}}""");
         });
 
         var outcome = await client.CreateReturnedRecordAsync(
@@ -35,10 +39,12 @@ public sealed class CreateReturnedRecordHttpClientTests
         Assert.True(outcome.Replayed);
     }
 
-    [Fact]
-    public async Task SuccessResponse_FreshCreationAlsoClassifiesAsSucceeded()
+    [Theory]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.Created)]
+    public async Task SuccessResponse_FreshCreationAlsoClassifiesAsSucceeded(HttpStatusCode status)
     {
-        var client = CreateClient((_, _) => Task.FromResult(Json(HttpStatusCode.OK,
+        var client = CreateClient((_, _) => Task.FromResult(Json(status,
             """{"success":true,"data":{"success":true,"replayed":false}}""")));
 
         var outcome = await client.CreateReturnedRecordAsync("student-1", [], null, null, "op");
@@ -103,6 +109,43 @@ public sealed class CreateReturnedRecordHttpClientTests
         var outcome = await client.CreateReturnedRecordAsync("student-1", [], null, null, "op");
 
         Assert.Equal(CreateReturnedRecordStatus.Unknown, outcome.Status);
+    }
+
+    public static IEnumerable<object[]> UnreadableResponses()
+    {
+        foreach (var status in new[] { HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.Conflict,
+                     HttpStatusCode.BadRequest, HttpStatusCode.InternalServerError, HttpStatusCode.ServiceUnavailable })
+        foreach (var body in new[] { "", "UPSTREAM_PRIVATE_CANARY{", "null",
+                     "{\"success\":\"UPSTREAM_PRIVATE_CANARY\"}",
+                     "{\"success\":true,\"data\":{\"success\":\"UPSTREAM_PRIVATE_CANARY\"}}",
+                     "{\"message\":{\"private\":\"UPSTREAM_PRIVATE_CANARY\"}}" })
+            yield return [status, body];
+    }
+
+    [Theory]
+    [MemberData(nameof(UnreadableResponses))]
+    public async Task UnreadableResponse_PreservesStatusWithoutRetryOrLeakingBody(HttpStatusCode status, string body)
+    {
+        var sends = 0;
+        var logger = new Mock<ILogger<StudentHttpClient>>();
+        var client = new StudentHttpClient(new HttpClient(new StubHandler((_, _) =>
+        {
+            sends++;
+            return Task.FromResult(Json(status, body));
+        })) { BaseAddress = new Uri("http://localhost:5005") }, logger.Object);
+
+        var outcome = await client.CreateReturnedRecordAsync("student-1", [], null, null, "op");
+
+        Assert.Equal(status == HttpStatusCode.Conflict
+            ? CreateReturnedRecordStatus.PayloadConflict : CreateReturnedRecordStatus.Unknown, outcome.Status);
+        Assert.False(outcome.Replayed);
+        Assert.Equal(1, sends);
+        Assert.NotEmpty(outcome.Message);
+        Assert.DoesNotContain("UPSTREAM_PRIVATE_CANARY", outcome.Message);
+        if (status == HttpStatusCode.Conflict)
+            Assert.Equal("CreateReturnedRecord payload conflict", outcome.Message);
+        Assert.DoesNotContain(logger.Invocations, invocation =>
+            invocation.Arguments.Any(argument => argument?.ToString()?.Contains("UPSTREAM_PRIVATE_CANARY") == true));
     }
 
     [Fact]
