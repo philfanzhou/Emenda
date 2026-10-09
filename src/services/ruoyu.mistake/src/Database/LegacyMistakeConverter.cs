@@ -28,15 +28,15 @@ internal static class LegacyMistakeConverter
         foreach (var (table, expected) in Columns)
         {
             var actual = await ReadAsync(connection, $"""
-                SELECT a.attname || '|' || format_type(a.atttypid,a.atttypmod) || '|' || CASE WHEN a.attnotnull THEN 'N' ELSE 'Y' END
+                SELECT a.attname || '|' || format_type(a.atttypid,a.atttypmod) || '|' || CASE WHEN a.attnotnull THEN 'N' ELSE 'Y' END || '|' || a.attidentity::text || '|' || a.attgenerated::text
                 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
                 WHERE c.oid=to_regclass('public.{table}') AND c.relkind='r' AND NOT c.relispartition AND NOT c.relrowsecurity
-                    AND a.attnum>0 AND NOT a.attisdropped AND a.attidentity='' AND a.attgenerated=''
+                    AND a.attnum>0 AND NOT a.attisdropped
                 """, cancellationToken).ConfigureAwait(false);
             if (table == "mistake_image_fingerprint" && actual.Count == 0 &&
                 (await ReadAsync(connection, "SELECT to_regclass('public.mistake_image_fingerprint')::text", cancellationToken).ConfigureAwait(false)).Count == 0)
                 continue;
-            if (!actual.SetEquals(expected)) return false;
+            if (!actual.SetEquals(expected.Select(column => column + "||"))) return false;
         }
         var attached = await ReadAsync(connection, """
             SELECT 'object' FROM pg_trigger WHERE tgrelid='public.mistake'::regclass AND NOT tgisinternal
