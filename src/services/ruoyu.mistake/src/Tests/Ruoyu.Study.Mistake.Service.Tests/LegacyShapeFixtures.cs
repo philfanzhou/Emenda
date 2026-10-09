@@ -35,6 +35,7 @@ internal static class LegacyShapeFixtures
         CREATE TABLE mistake_image_fingerprint (id uuid NOT NULL, hash character varying(64) NOT NULL, student_id character varying(36) NOT NULL, mistake_id uuid NOT NULL, image_index integer NOT NULL, oss_path text NOT NULL, created_at timestamp with time zone NOT NULL, CONSTRAINT "PK_mistake_image_fingerprint" PRIMARY KEY (id), CONSTRAINT "FK_mistake_image_fingerprint_mistake_mistake_id" FOREIGN KEY (mistake_id) REFERENCES mistake (id) ON DELETE CASCADE);
         CREATE UNIQUE INDEX "IX_mistake_image_fingerprint_hash_student_id" ON mistake_image_fingerprint (hash, student_id);
         CREATE INDEX "IX_mistake_image_fingerprint_mistake_id" ON mistake_image_fingerprint (mistake_id);
+        CREATE INDEX "IX_mistake_image_fingerprint_oss_path" ON mistake_image_fingerprint (oss_path);
         INSERT INTO mistake_image_fingerprint VALUES (gen_random_uuid(),'abc','s1','11111111-1111-1111-1111-111111111111',0,'mistakes/s1/a.jpg',now());
         """;
 

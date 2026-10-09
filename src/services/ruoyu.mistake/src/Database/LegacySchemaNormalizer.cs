@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Ruoyu.Study.Mistake.Database;
 
 /// <summary>
-/// Converges structures left by the automatic schema maintenance of 2026-05-14 to 2026-09-29 builds into one of the
+/// Converges structures left by the automatic schema maintenance of 2026-04-19 to 2026-09-29 builds into one of the
 /// shapes <see cref="DatabaseInitializer"/> already classifies. It runs inside the upgrade transaction, stages every
 /// removed or rewritten value first, and only handles the objects those builds are known to create. Anything else is
 /// left for the classifier, which rejects it and rolls the whole transaction back.
@@ -30,7 +30,7 @@ internal static class LegacySchemaNormalizer
     {
         "PK_mistake_detail", "IX_mistake_detail_mistake_id", "FK_mistake_detail_mistake_mistake_id",
         "PK_mistake_image_fingerprint", "IX_mistake_image_fingerprint_hash_student_id",
-        "IX_mistake_image_fingerprint_mistake_id", "FK_mistake_image_fingerprint_mistake_mistake_id",
+        "IX_mistake_image_fingerprint_mistake_id", "IX_mistake_image_fingerprint_oss_path", "FK_mistake_image_fingerprint_mistake_mistake_id",
     };
 
     private static readonly HashSet<string> LegacyConstraints = new(StringComparer.Ordinal)
@@ -73,8 +73,19 @@ internal static class LegacySchemaNormalizer
         var relations = await ReadAsync(connection, """
             SELECT relname FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind IN ('r','p','v','m','f','S')
             """, cancellationToken).ConfigureAwait(false);
-        // public.mistake is a different, older layout and stays rejected by the classifier.
-        if (relations.Contains("mistake") || !relations.Contains("mistake_item") || !relations.Contains("__EFMigrationsHistory"))
+        // The older table must qualify before any table lock or write. Unknown layouts stay with the classifier.
+        var converting = relations.Contains("mistake") &&
+            await LegacyMistakeConverter.IsSupportedAsync(connection, cancellationToken).ConfigureAwait(false);
+        if (relations.Contains("mistake") && !converting)
+            return steps;
+        if (converting)
+        {
+            await LegacyMistakeConverter.PrepareAsync(connection, relations, stage, cancellationToken).ConfigureAwait(false);
+            relations.Add("mistake_item");
+            relations.Add("__EFMigrationsHistory");
+            steps.Add("stage public.mistake and prepare the item table");
+        }
+        if (!relations.Contains("mistake_item") || !relations.Contains("__EFMigrationsHistory"))
             return steps;
         var history = await ReadAsync(connection, "SELECT \"MigrationId\" FROM public.\"__EFMigrationsHistory\"",
             cancellationToken).ConfigureAwait(false);
@@ -99,7 +110,7 @@ internal static class LegacySchemaNormalizer
         if (!marked)
             return steps;
 
-        var locked = new[] { "mistake_item", "mistake_practice", "process_log", "__EFMigrationsHistory" }
+        var locked = new[] { "mistake", "mistake_item", "mistake_practice", "process_log", "__EFMigrationsHistory" }
             .Concat(LegacyTables.Keys).Where(relations.Contains).Select(table => "public." + Quote(table));
         await ExecuteAsync(connection, $"LOCK TABLE {string.Join(',', locked)} IN ACCESS EXCLUSIVE MODE", cancellationToken)
             .ConfigureAwait(false);
@@ -130,26 +141,7 @@ internal static class LegacySchemaNormalizer
             }
         }
 
-        // 3. Rows whose item was dropped by the old maintenance; they block the foreign keys.
-        foreach (var table in new[] { "mistake_practice", "process_log" })
-        {
-            if (!columns.Contains($"{table}.mistake_item_id"))
-                continue;
-            var orphanFilter = $"NOT EXISTS (SELECT 1 FROM public.mistake_item i WHERE i.id=t.mistake_item_id)";
-            var orphans = await stage.AddAsync($"""
-                SELECT '{table}', t.id::text, 'row', to_jsonb(t), 'orphan_row_removed' FROM public.{table} t WHERE {orphanFilter}
-                """, cancellationToken).ConfigureAwait(false);
-            if (orphans == 0)
-                continue;
-            await ExecuteAsync(connection, $"DELETE FROM public.{table} t WHERE {orphanFilter}", cancellationToken)
-                .ConfigureAwait(false);
-            steps.Add($"archive and remove {orphans} orphan {table} rows");
-        }
-
-        // 4. Primary and foreign key names.
-        await NormalizeKeysAsync(connection, steps, cancellationToken).ConfigureAwait(false);
-
-        // 5. Item columns of the 2026-05-10 layouts.
+        // 3. Item columns of the 2026-05-10 layouts.
         var legacyItemColumns = LegacyItemColumns.Where(column => columns.Contains($"mistake_item.{column}")).ToList();
         if (!columns.Contains("mistake_item.source_regions"))
         {
@@ -193,6 +185,32 @@ internal static class LegacySchemaNormalizer
             }
         }
 
+        // Insert after stripping old item columns, before orphan detection and new foreign keys.
+        if (converting)
+        {
+            await LegacyMistakeConverter.ConvertAsync(connection, stage, cancellationToken).ConfigureAwait(false);
+            steps.Add("convert public.mistake rows and renumber legacy process actions");
+        }
+
+        // 4. Rows whose item was dropped by the old maintenance; they block the foreign keys.
+        foreach (var table in new[] { "mistake_practice", "process_log" })
+        {
+            if (!columns.Contains($"{table}.mistake_item_id"))
+                continue;
+            var orphanFilter = $"NOT EXISTS (SELECT 1 FROM public.mistake_item i WHERE i.id=t.mistake_item_id)";
+            var orphans = await stage.AddAsync($"""
+                SELECT '{table}', t.id::text, 'row', to_jsonb(t), 'orphan_row_removed' FROM public.{table} t WHERE {orphanFilter}
+                """, cancellationToken).ConfigureAwait(false);
+            if (orphans == 0)
+                continue;
+            await ExecuteAsync(connection, $"DELETE FROM public.{table} t WHERE {orphanFilter}", cancellationToken)
+                .ConfigureAwait(false);
+            steps.Add($"archive and remove {orphans} orphan {table} rows");
+        }
+
+        // 5. Primary and foreign key names.
+        await NormalizeKeysAsync(connection, steps, cancellationToken).ConfigureAwait(false);
+
         // 6. Legacy tables: images become item regions where the item still has none; everything is archived.
         foreach (var (table, tableColumns) in LegacyTables)
         {
@@ -211,6 +229,12 @@ internal static class LegacySchemaNormalizer
             steps.Add(backfilled.Count > 0
                 ? $"archive {archived} {table} rows, backfill images of {backfilled.Count} items, drop {table}"
                 : $"archive {archived} {table} rows, drop {table}");
+        }
+
+        if (converting)
+        {
+            await ExecuteAsync(connection, "DROP TABLE public.mistake", cancellationToken).ConfigureAwait(false);
+            steps.Add("drop archived public.mistake");
         }
 
         // 7. A database whose only history came from the earlier layout: its structure is InitialCreate plus the
@@ -465,11 +489,16 @@ internal static class LegacySchemaNormalizer
                 updates.Add((reader.GetGuid(0), reader.GetGuid(1), regions));
             }
         }
-        foreach (var (_, item, regions) in updates)
-            await ExecuteAsync(connection,
+        var backfilled = new List<Guid>();
+        foreach (var (detail, item, regions) in updates)
+        {
+            var affected = await ExecuteAsync(connection,
                 "UPDATE public.mistake_item SET source_regions=@regions::jsonb WHERE id=@item AND source_regions='[]'::jsonb",
                 cancellationToken, ("regions", regions), ("item", item)).ConfigureAwait(false);
-        return updates.Select(update => update.Detail).ToList();
+            if (affected == 1)
+                backfilled.Add(detail);
+        }
+        return backfilled;
     }
 
     private static string Quote(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";

@@ -141,31 +141,37 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.False(await repository.IsObjectPathReferencedByStudentsAsync("mistakes/s1/a.jpg", ["s2"]));
     }
 
-    [Fact]
-    public async Task ConcurrentStartupsConvergeOnceAndArchiveOnce()
+    [Theory]
+    [InlineData("Fs", 6)]
+    [InlineData("P2", 7)]
+    public async Task ConcurrentStartupsConvergeOnceAndArchiveOnce(string shape, int count)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
-        await BuildShapeAsync(database, "Fs");
+        await BuildShapeAsync(database, shape);
         var results = await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
         {
             await using var context = database.CreateContext();
             return await DatabaseInitializer.UpgradeToTargetAsync(context);
         }));
         var upgraded = Assert.Single(results, result => result.Upgraded);
-        Assert.Equal(6, upgraded.ArchivedRows);
+        Assert.Equal(count, upgraded.ArchivedRows);
         Assert.All(results.Where(result => !result.Upgraded), result => Assert.Equal(11, result.FromVersion));
-        Assert.Equal(6, (await database.ArchiveAsync()).Count);
+        Assert.Equal(count, (await database.ArchiveAsync()).Count);
     }
 
     [Theory]
-    [InlineData("DROP TABLE")]
-    [InlineData("ALTER TABLE")]
-    [InlineData("CREATE INDEX")]
-    [InlineData("CREATE TABLE")]
-    public async Task FailureAtAnyStageRollsBackConvergenceAndArchive(string stage)
+    [InlineData("DROP TABLE", "Fs")]
+    [InlineData("DROP TABLE", "P2")]
+    [InlineData("ALTER TABLE", "Fs")]
+    [InlineData("ALTER TABLE", "P2")]
+    [InlineData("CREATE INDEX", "Fs")]
+    [InlineData("CREATE INDEX", "P2")]
+    [InlineData("CREATE TABLE", "Fs")]
+    [InlineData("CREATE TABLE", "P2")]
+    public async Task FailureAtAnyStageRollsBackConvergenceAndArchive(string stage, string shape)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
-        await BuildShapeAsync(database, "Fs");
+        await BuildShapeAsync(database, shape);
         await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
         await database.ExecuteAsync($"CREATE FUNCTION upgrade_guard.fail_stage() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN IF TG_TAG = '{stage}' THEN RAISE EXCEPTION 'injected failure'; END IF; END $$");
         await database.ExecuteAsync("CREATE EVENT TRIGGER fail_stage ON ddl_command_end EXECUTE FUNCTION upgrade_guard.fail_stage()");
@@ -177,11 +183,13 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
-    [Fact]
-    public async Task ReadOnlyAndLimitedAccountsCannotConvergeAndLeaveDatabaseUnchanged()
+    [Theory]
+    [InlineData("A")]
+    [InlineData("P2")]
+    public async Task ReadOnlyAndLimitedAccountsCannotConvergeAndLeaveDatabaseUnchanged(string shape)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
-        await BuildShapeAsync(database, "A");
+        await BuildShapeAsync(database, shape);
         var before = await database.SnapshotAsync();
         await using (var readOnly = database.CreateContext(readOnly: true))
             Assert.Contains("SQLSTATE 25006", (await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -197,12 +205,14 @@ public sealed class LegacySchemaConvergencePostgresTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task CancellationOrConnectionLossDuringConvergenceRollsBackAndNextStartConverges(bool terminate)
+    [InlineData(false, "A", 3)]
+    [InlineData(true, "A", 3)]
+    [InlineData(false, "P2", 7)]
+    [InlineData(true, "P2", 7)]
+    public async Task CancellationOrConnectionLossDuringConvergenceRollsBackAndNextStartConverges(bool terminate, string shape, int count)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
-        await BuildShapeAsync(database, "A");
+        await BuildShapeAsync(database, shape);
         await database.PauseOnAsync("DROP TABLE", 20);
         var before = await database.SnapshotAsync();
         var applicationName = "mistake_legacy_" + Guid.NewGuid().ToString("N");
@@ -230,7 +240,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         await using var retry = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
         Assert.Equal(11, (await retry.Database.GetAppliedMigrationsAsync()).Count());
-        Assert.Equal(3, (await database.ArchiveAsync()).Count);
+        Assert.Equal(count, (await database.ArchiveAsync()).Count);
     }
 
     [Theory]
@@ -374,8 +384,140 @@ public sealed class LegacySchemaConvergencePostgresTests
         }
     }
 
+
+    [Theory]
+    [InlineData("P0", 5)]
+    [InlineData("P0f", 6)]
+    [InlineData("P1", 7)]
+    [InlineData("P1x", 6)]
+    [InlineData("P2", 7)]
+    [InlineData("P2f", 8)]
+    [InlineData("M-da", 9)]
+    [InlineData("M-05", 9)]
+    [InlineData("M-e0", 9)]
+    [InlineData("M-e0f", 10)]
+    public async Task OldTableLayoutsPreserveRowsRelationsImagesAndOriginalArchive(string shape, int count)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await BuildShapeAsync(database, shape);
+        var oldItems = await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(m))::text FROM mistake m");
+        var oldPractices = await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_id'-'image_paths')::text FROM mistake_practice p");
+        var oldLogs = await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_id'-'action')::text FROM process_log p");
+        var mixed = shape.StartsWith("M-", StringComparison.Ordinal);
+        var existing = mixed ? await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(i)-'type'-'source_image_path'-'bbox_x1'-'bbox_y1'-'bbox_x2'-'bbox_y2'-'question_number'-'question_text'-'student_answer'-'ai_confidence'-'source_regions')::text FROM mistake_item i") : null;
+        await using (var context = database.CreateContext())
+        {
+            var result = await DatabaseInitializer.UpgradeToTargetAsync(context);
+            Assert.Equal(count, result.ArchivedRows);
+            Assert.Equal(11, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        }
+        Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.mistake') IS NOT NULL"));
+        Assert.Equal(oldPractices, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'image_paths')::text FROM mistake_practice p"));
+        Assert.Equal(oldLogs, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'action'-'student_id')::text FROM process_log p"));
+        Assert.True(await database.ScalarAsync<bool>("SELECT bool_and(action=CASE details WHEN 'created' THEN 1 WHEN 'old-action-2' THEN 2 WHEN 'old-action-3' THEN 5 WHEN 'old-action-4' THEN 6 END) FROM process_log"));
+        Assert.True(await database.ScalarAsync<bool>("SELECT bool_and(to_jsonb(i)-'source_regions'-'source_upload_id'-'reviewer_id'-'reviewed_at'-'root_cause'-'review_status'=a.payload-'date'-'type'-'status' AND i.review_status=(a.payload->>'status')::integer) FROM mistake_item i JOIN legacy_archive a ON a.source_key=i.id::text WHERE a.reason='legacy_mistake_converted'"));
+        Assert.Equal(4L, await database.ScalarAsync<long>($"SELECT count(*) FROM process_log WHERE mistake_item_id='{Item2}' AND action IN (1,2,5,6)"));
+        Assert.Equal(Item1, await database.ScalarAsync<Guid>("SELECT mistake_item_id FROM mistake_practice"));
+        Assert.Equal("[\"mistakes/s1/p.jpg\"]", await database.ScalarAsync<string>("SELECT image_paths::text FROM mistake_practice"));
+        Assert.Equal(2, await database.ScalarAsync<int>($"SELECT review_status FROM mistake_item WHERE id='{Item2}'"));
+        Assert.Equal("", await database.ScalarAsync<string>($"SELECT source_upload_id FROM mistake_item WHERE id='{Item2}'"));
+        Assert.Equal(oldItems, await database.ScalarAsync<string>("SELECT jsonb_object_agg(source_key,payload)::text FROM legacy_archive WHERE source_table='mistake'"));
+        Assert.Equal(2L, await database.ScalarAsync<long>("SELECT count(*) FROM legacy_archive WHERE reason='legacy_action_renumbered' AND payload IN ('{\"action\":3}'::jsonb,'{\"action\":4}'::jsonb)"));
+        Assert.Equal(mixed ? 1L : 0L, await database.ScalarAsync<long>("SELECT count(*) FROM legacy_archive WHERE reason='legacy_mistake_superseded'"));
+        Assert.Equal(mixed ? 2L : 0L, await database.ScalarAsync<long>("SELECT count(*) FROM legacy_archive WHERE source_table='mistake_item'"));
+        if (mixed)
+            Assert.Equal(existing, await database.ScalarAsync<string>($"SELECT jsonb_object_agg(id::text,to_jsonb(i)-'root_cause'-'source_regions' || jsonb_build_object('review_comment',root_cause))::text FROM mistake_item i WHERE id IN ('{Item1}','{Item3}')"));
+        await using var read = database.CreateContext();
+        var repository = new MistakeItemRepository(read);
+        var item = await repository.GetByIdAsync(Item1);
+        Assert.NotNull(item);
+        Assert.Equal(mixed ? "mistakes/s1/c.jpg" : "mistakes/s1/a.jpg", item!.SourceRegions[0].SourceImagePath);
+        if (shape == "M-da")
+        {
+            Assert.NotNull(item.SourceRegions[0].BoundingBox);
+            var box = item.SourceRegions[0].BoundingBox!;
+            Assert.Equal((1, 2, 30, 40), (box.X1, box.Y1, box.X2, box.Y2));
+        }
+        else Assert.All(item.SourceRegions, region => Assert.Null(region.BoundingBox));
+        foreach (var region in item.SourceRegions)
+        {
+            Assert.True(await repository.IsObjectPathReferencedByStudentsAsync(region.SourceImagePath, ["s1"]));
+            Assert.False(await repository.IsObjectPathReferencedByStudentsAsync(region.SourceImagePath, ["s2"]));
+        }
+        var snapshot = await database.SnapshotAsync();
+        await using var again = database.CreateContext();
+        Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(again)).Upgraded);
+        Assert.Equal(snapshot, await database.SnapshotAsync());
+    }
+
+    [Theory]
+    [InlineData("CREATE INDEX stranger ON mistake(grade)")]
+    [InlineData("ALTER TABLE mistake ADD COLUMN stranger text")]
+    [InlineData("ALTER TABLE mistake ALTER COLUMN grade ADD GENERATED BY DEFAULT AS IDENTITY")]
+    [InlineData("CREATE FUNCTION odd_trigger() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; CREATE TRIGGER stranger BEFORE UPDATE ON mistake FOR EACH ROW EXECUTE FUNCTION odd_trigger()")]
+    [InlineData("ALTER TABLE mistake_practice ALTER COLUMN image_paths TYPE jsonb USING image_paths::jsonb")]
+    [InlineData("ALTER TABLE mistake_detail ALTER COLUMN comments SET NOT NULL")]
+    [InlineData("ALTER TABLE process_log DROP CONSTRAINT \"FK_process_log_mistake_mistake_id\"; ALTER TABLE process_log ADD CONSTRAINT stranger FOREIGN KEY(mistake_id) REFERENCES mistake(id)")]
+    public async Task UnknownOldTableLayoutIsRejectedBeforeWrites(string mutation)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await BuildShapeAsync(database, "P1");
+        await database.ExecuteAsync(mutation);
+        // A rejecting event trigger proves that even transient DDL is never attempted.
+        await database.ExecuteAsync("CREATE SCHEMA upgrade_guard; CREATE FUNCTION upgrade_guard.fail_any() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'write attempted'; END $$; CREATE EVENT TRIGGER fail_any ON ddl_command_end EXECUTE FUNCTION upgrade_guard.fail_any()");
+        var before = await database.SnapshotAsync();
+        await using var context = database.CreateContext();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
+        Assert.Contains("legacy relation public.mistake exists", error.Message);
+        Assert.Contains("Automatic upgrade does not support this structure", error.Message);
+        Assert.Equal(before, await database.SnapshotAsync());
+    }
+
+    [Fact]
+    public async Task OnlyTheDetailActuallyUsedForImagesGetsTheBackfilledReason()
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await BuildShapeAsync(database, "P2");
+        await database.ExecuteAsync("DROP INDEX \"IX_mistake_detail_mistake_id\"; CREATE INDEX \"IX_mistake_detail_mistake_id\" ON mistake_detail(mistake_id); INSERT INTO mistake_detail SELECT gen_random_uuid(),mistake_id,'[\"mistakes/s1/other.jpg\"]','second' FROM mistake_detail");
+        await using var context = database.CreateContext();
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        Assert.Equal(1L, await database.ScalarAsync<long>("SELECT count(*) FROM legacy_archive WHERE reason='legacy_table_dropped_images_backfilled'"));
+        Assert.Equal(1L, await database.ScalarAsync<long>("SELECT count(*) FROM legacy_archive WHERE source_table='mistake_detail' AND reason='legacy_table_dropped'"));
+        Assert.True(await database.ScalarAsync<bool>($"SELECT (SELECT jsonb_agg(jsonb_build_object('sourceImagePath',p,'boundingBox',null)) FROM legacy_archive a CROSS JOIN LATERAL jsonb_array_elements_text((a.payload->>'original_images')::jsonb) p WHERE reason='legacy_table_dropped_images_backfilled')=source_regions FROM mistake_item WHERE id='{Item1}'"));
+    }
+
     private static async Task BuildShapeAsync(IsolatedDatabase database, string shape)
     {
+        if (shape.StartsWith("P", StringComparison.Ordinal) || shape.StartsWith("M-", StringComparison.Ordinal))
+        {
+            var fingerprint = shape is "P0f" or "P1" or "P2f" or "M-e0f";
+            var after0503 = shape is "P2" or "P2f" || shape.StartsWith("M-", StringComparison.Ordinal);
+            if (after0503)
+            {
+                await database.ExecuteAsync(Layout0503);
+                if (fingerprint)
+                    await database.ExecuteAsync(Layout0501[Layout0501.IndexOf("CREATE TABLE mistake_image_fingerprint", StringComparison.Ordinal)..]);
+            }
+            else
+            {
+                await database.ExecuteAsync(Layout0501);
+                if (!fingerprint) await database.ExecuteAsync("DROP TABLE mistake_image_fingerprint");
+            }
+            if (shape is "P0" or "P0f") await database.ExecuteAsync("DROP TABLE \"__EFMigrationsHistory\"");
+
+            await database.ExecuteAsync("INSERT INTO process_log (id,mistake_id,action,details,created_at) SELECT gen_random_uuid(),id,a,'old-action-' || a,created_at FROM mistake CROSS JOIN (VALUES (2),(3),(4)) actions(a) WHERE status=2");
+            if (shape.StartsWith("M-", StringComparison.Ordinal))
+            {
+                var (layout, row) = shape switch
+                {
+                    "M-da" => (ItemLayoutDa97cc6d, ItemRowDa97cc6d),
+                    "M-05" => (ItemLayout05a5bf16, ItemRow05a5bf16),
+                    _ => (ItemLayoutE0e56e2b, ItemRowE0e56e2b),
+                };
+                await database.ExecuteAsync(layout, row, row.Replace(Item3.ToString(), Item1.ToString()));
+            }
+            return;
+        }
         switch (shape)
         {
             case "A":

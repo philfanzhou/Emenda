@@ -259,9 +259,9 @@
 
 ### 5.3 结构或迁移历史不匹配
 
-**症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史，结尾为 `Automatic upgrade does not support this structure; database unchanged.`。`public.mistake` 旧关系、只有部分表、额外对象以及列类型或历史不一致都会这样拒绝。
+**症状**：启动失败，错误以 `Mistake database incompatible:` 开头并指出缺少或多出的关系、列、默认值、索引、约束或迁移历史，结尾为 `Automatic upgrade does not support this structure; database unchanged.`。不符合已知形态的 `public.mistake`、只有部分表、额外对象以及列类型或历史不一致都会这样拒绝。
 
-**处理**：数据库未被修改。核对提示所指对象及 `__EFMigrationsHistory`。空库、已知 1–10 条 EF 历史和[旧版自动维护留下的已知结构](../database/migrations.md#旧版自动维护结构的收敛)会在启动时自动升级，不会出现此错误。消息末尾带 `Legacy convergence was rolled back.` 时，表示识别到旧代码标志并尝试收敛，但收敛后仍有对象对不上已知形态（例如陌生表、列或索引），收敛已整体回滚。旧表或旧列上附加了陌生索引、约束、触发器时，提示为 `Mistake legacy convergence found unexpected object <名称> ...`。旧 `public.mistake` 由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。不要删除旧表、手工改列或补写历史。
+**处理**：数据库未被修改。核对提示所指对象及 `__EFMigrationsHistory`。空库、已知 1–10 条 EF 历史和[旧版自动维护留下的已知结构](../database/migrations.md#旧版自动维护结构的收敛)会在启动时自动升级，不会出现此错误。消息末尾带 `Legacy convergence was rolled back.` 时，表示识别到旧代码标志并尝试收敛，但收敛后仍有对象对不上已知形态（例如陌生表、列或索引），收敛已整体回滚。旧表或旧列上附加了陌生索引、约束、触发器时，提示为 `Mistake legacy convergence found unexpected object <名称> ...`。04-19 至 05-13 的精确旧表自动转换；陌生列、索引或触发器会在任何写入前按 `legacy relation public.mistake exists` 拒绝，见[旧表转换](../database/migrations.md#旧表-mistake-的转换)。不要删除旧表、手工改列或补写历史。
 
 ### 5.4 自动升级失败
 
@@ -372,7 +372,7 @@
 
 ### 8.2 旧表 `mistake` 数据待升级
 
-当前启动初始化不会把 `mistake` 自动重命名为 `mistake_item`，也不会删除旧表、外键或旧列。若库中仍有旧表，服务拒绝启动且不修改；旧表升级由 [IKK6UK](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKK6UK) 处理。旧表与新表同时存在也不得直接删除任一方。
+受支持的 04-19 至 05-13 旧表在启动事务内转换为当前条目，保留 ID、关系和图片，原行归档；两表并存时现条目 ID 优先。转换失败整体回滚，可修正权限或故障后重启；陌生结构保持原状拒绝。不要手工删除任一表，完整边界见[旧表转换](../database/migrations.md#旧表-mistake-的转换)。
 
 ---
 
