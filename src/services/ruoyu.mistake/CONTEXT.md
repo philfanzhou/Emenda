@@ -33,6 +33,10 @@ _Avoid_: Error Type、Process Log
 **Source Return**:
 对一项受管错题取得的持久退回归属，以原学生提交证明与保留历史的本域退回事实共同确认完成。它不代表来源释放或当前退回图片仍未被学生消费。
 
+**Legacy Return**:
+对没有真实 Source Group 的既有待审核错题取得的独立持久退回归属，覆盖空来源和旧来源 ID。先保存原题与完整原图、固定字节和载荷，再以 Student 原历史提交证明与本域完成共同确认；不伪造来源组，不补历史缺失，不释放任何图片或历史。
+_Avoid_: Source Intake、Source Release
+
 **Source Handoff**:
 完整封口来源的所有错题组终结、目标持久且Learner已条件消费后，由原提交证明与本域永久完成事实共同确认的交接。来源历史仍保留，不授予物理对象释放。
 _Avoid_: Target Ready、Source Release

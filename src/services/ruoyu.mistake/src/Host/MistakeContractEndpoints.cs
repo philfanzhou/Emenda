@@ -7,8 +7,9 @@ namespace Ruoyu.Study.Mistake.Host;
 /// <summary>Immutable release metadata, independent of every business dependency.</summary>
 public static class MistakeContractEndpoints
 {
-    public const string Version = "mistake-http-v1";
-    private static readonly byte[] Document = ReadDocument();
+    public const string Version = "mistake-http-v2";
+    private static readonly byte[] Document = ReadDocument(Version);
+    private static readonly byte[] HistoricalDocument = ReadDocument("mistake-http-v1");
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Document)).ToLowerInvariant();
     private static readonly EntityTagHeaderValue Tag = new('"' + Sha256 + '"');
 
@@ -17,33 +18,40 @@ public static class MistakeContractEndpoints
         endpoints.MapGet("/contracts/{version}.json", async (string version, HttpContext http) =>
         {
             http.RequestAborted.ThrowIfCancellationRequested();
-            if (!string.Equals(version, Version, StringComparison.Ordinal))
+            if (version != Version && version != "mistake-http-v1")
             {
                 http.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;
             }
 
-            http.Response.GetTypedHeaders().ETag = Tag;
+            var document = version == Version ? Document : HistoricalDocument;
+            var tag = version == Version ? Tag : new EntityTagHeaderValue('"' + Convert.ToHexString(SHA256.HashData(document)).ToLowerInvariant() + '"');
+            if (version != Version)
+            {
+                http.Response.Headers["Link"] = "</contracts/" + Version + ".json>; rel=\"latest-version\"";
+                http.Response.Headers["X-Ruoyu-Contract-Status"] = "historical";
+            }
+            http.Response.GetTypedHeaders().ETag = tag;
             http.Response.Headers.CacheControl = "public, no-cache";
             // Weak comparison is correct for conditional GET. A malformed condition is ignored.
             if (EntityTagHeaderValue.TryParseList(http.Request.Headers.IfNoneMatch.Select(value => value ?? string.Empty).ToArray(), out var conditions)
-                && conditions.Any(value => value == EntityTagHeaderValue.Any || value.Compare(Tag, useStrongComparison: false)))
+                && conditions.Any(value => value == EntityTagHeaderValue.Any || value.Compare(tag, useStrongComparison: false)))
             {
                 http.Response.StatusCode = StatusCodes.Status304NotModified;
                 return;
             }
 
             http.Response.ContentType = "application/json";
-            http.Response.ContentLength = Document.Length;
-            await http.Response.Body.WriteAsync(Document, http.RequestAborted);
+            http.Response.ContentLength = document.Length;
+            await http.Response.Body.WriteAsync(document, http.RequestAborted);
         }).AllowAnonymous();
         return endpoints;
     }
 
-    private static byte[] ReadDocument()
+    private static byte[] ReadDocument(string version)
     {
-        using var stream = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream("mistake-http-v1.json")
-            ?? throw new InvalidOperationException("The release must embed mistake-http-v1.json.");
+        using var stream = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream(version + ".json")
+            ?? throw new InvalidOperationException("The release must embed every published Mistake contract.");
         using var bytes = new MemoryStream();
         stream.CopyTo(bytes);
         return bytes.ToArray();

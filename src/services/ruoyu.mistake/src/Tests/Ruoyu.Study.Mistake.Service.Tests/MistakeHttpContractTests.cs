@@ -25,7 +25,7 @@ public sealed class MistakeHttpContractTests
         ready.GetProperty("dependencies").GetString().Should()
             .Contain("strict-enabled issuer").And.Contain("exact discovery issuer").And.Contain("same-origin nonempty JWKS");
         ops.GetProperty("GET /health/live").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
-        ops.GetProperty("GET /contracts/mistake-http-v1.json").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
+        ops.GetProperty("GET /contracts/mistake-http-v2.json").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
     }
 
     [Theory]
@@ -52,7 +52,7 @@ public sealed class MistakeHttpContractTests
     {
         using var factory = new MistakeApiStrictAuthTests.MistakeStrictAuthWebApplicationFactory(strict, "test-admin-app-id-ikjeic");
         using var client = factory.CreateClient();
-        using var response = await client.GetAsync("/contracts/mistake-http-v1.json");
+        using var response = await client.GetAsync("/contracts/mistake-http-v2.json");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
         var bytes = await response.Content.ReadAsByteArrayAsync();
@@ -67,7 +67,7 @@ public sealed class MistakeHttpContractTests
                 .Select(method => method.ToLowerInvariant() + " " + Regex.Replace(endpoint.RoutePattern.RawText!, @":\w+", ""))).ToHashSet();
         var specified = MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .SelectMany(path => path.Value.EnumerateObject().Select(method => method.Name + " " + path.Name)).ToHashSet();
-        actual.Should().HaveCount(22).And.BeEquivalentTo(specified);
+        actual.Should().HaveCount(23).And.BeEquivalentTo(specified);
         foreach (var path in MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .Where(path => path.Name.StartsWith("/api/mistakes/intakes/", StringComparison.Ordinal)))
         {
@@ -88,12 +88,28 @@ public sealed class MistakeHttpContractTests
             namespaces.Should().Contain(owner => BelongsToNamespace(path, owner),
                 "every other public route must have an explicit namespace owner: {0}", path);
         }
-        using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v1.json");
+        using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v2.json");
         conditional.Headers.TryAddWithoutValidation("If-None-Match", "\"different\", W/" + response.Headers.ETag.Tag);
         using var unchanged = await client.SendAsync(conditional);
         unchanged.StatusCode.Should().Be(HttpStatusCode.NotModified);
         (await unchanged.Content.ReadAsByteArrayAsync()).Should().BeEmpty();
         (await client.GetAsync("/contracts/mistake-http-v999.json")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task PreviousPublishedBytesStayAvailableWithTheirOwnHashAndHistoricalMarkerAsync()
+    {
+        using var factory = new MistakeApiStrictAuthTests.MistakeStrictAuthWebApplicationFactory(true, "test-admin-app-id-ikjeic");
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync("/contracts/mistake-http-v1.json");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var original = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream("mistake-http-v1.json")!;
+        using var bytes = new MemoryStream(); await original.CopyToAsync(bytes);
+        (await response.Content.ReadAsByteArrayAsync()).Should().Equal(bytes.ToArray());
+        response.Headers.ETag!.Tag.Should().Be('"' + Convert.ToHexString(SHA256.HashData(bytes.ToArray())).ToLowerInvariant() + '"');
+        response.Headers.GetValues("X-Ruoyu-Contract-Status").Should().Equal("historical");
+        response.Headers.GetValues("Link").Single().Should().Contain("mistake-http-v2.json");
+        response.Headers.ETag.Tag.Should().NotBe('"' + MistakeHttpContract.Sha256 + '"');
     }
 
     [Theory]
@@ -121,8 +137,8 @@ public sealed class MistakeHttpContractTests
         app.MapMistakeContractEndpoints();
         await app.StartAsync();
         using var client = app.GetTestClient();
-        (await client.GetAsync("/contracts/mistake-http-v1.json")).StatusCode.Should().Be(HttpStatusCode.OK);
-        using var star = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v1.json");
+        (await client.GetAsync("/contracts/mistake-http-v2.json")).StatusCode.Should().Be(HttpStatusCode.OK);
+        using var star = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v2.json");
         star.Headers.TryAddWithoutValidation("If-None-Match", "*");
         (await client.SendAsync(star)).StatusCode.Should().Be(HttpStatusCode.NotModified);
         var endpoint = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().Single();

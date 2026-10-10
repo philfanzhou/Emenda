@@ -76,7 +76,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<List<MistakeItemModel>> GetBySourceUploadIdAsync(string sourceUploadId)
     {
         var entities = await _dbContext.MistakeItems
-            .Where(m => m.SourceUploadId == sourceUploadId && !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"))
+            .Where(m => m.SourceUploadId == sourceUploadId && !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"))
             .ToListAsync();
         // Sort on client side to ensure consistent ordering
         return entities.OrderBy(m => m.CreatedAt).Select(MapToModel).ToList();
@@ -96,7 +96,7 @@ public class MistakeItemRepository : IMistakeItemRepository
         if (subject > 0) query = query.Where(m => m.Subject == subject);
         if (grade > 0) query = query.Where(m => m.Grade == grade);
         if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
-        if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
+        if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
 
         var totalCount = await query.CountAsync();
         var items = await query
@@ -116,7 +116,7 @@ public class MistakeItemRepository : IMistakeItemRepository
         if (subject > 0) query = query.Where(m => m.Subject == subject);
         if (grade > 0) query = query.Where(m => m.Grade == grade);
         if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
-        if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
+        if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
 
         var totalCount = await query.CountAsync();
         var items = await query
@@ -208,7 +208,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync()
     {
         return await _dbContext.MistakeItems
-            .Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"))
+            .Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"))
             .GroupBy(m => new { m.SourceUploadId, m.StudentId })
             .Select(g => new SourceUploadSummary
             {

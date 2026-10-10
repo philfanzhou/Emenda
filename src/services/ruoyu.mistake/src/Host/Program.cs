@@ -131,6 +131,11 @@ var returnsEnabled=returnValue is null ? false : bool.TryParse(returnValue,out v
 if(returnsEnabled && (!studentEnabled || !strictApiAuth || !resourceApiAuth))
     throw new InvalidOperationException("Source returns require Student, strict API authentication and resource authorization.");
 builder.Services.AddSingleton(new SourceReturnOptions(returnsEnabled));
+var legacyReturnValue = builder.Configuration["Mistake:LegacyReturns:Enabled"];
+var legacyReturnsEnabled = legacyReturnValue is null ? false : bool.TryParse(legacyReturnValue, out var parsedLegacyReturns)
+    ? parsedLegacyReturns : throw new InvalidOperationException("Mistake:LegacyReturns:Enabled must be true or false.");
+if (legacyReturnsEnabled)
+    throw new InvalidOperationException("Legacy returns are not available in this version; Mistake:LegacyReturns:Enabled must remain false.");
 var handoffValue=builder.Configuration["Mistake:SourceHandoffs:Enabled"];
 var handoffsEnabled=handoffValue is null ? false : bool.TryParse(handoffValue,out var parsedHandoffs)
     ? parsedHandoffs : throw new InvalidOperationException("Mistake:SourceHandoffs:Enabled must be true or false.");
@@ -320,13 +325,14 @@ builder.Services.AddHttpClient<SourceReturnClient>(client =>
 {
     client.BaseAddress = new Uri(studentBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(35);
-}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+}).RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
   .AddHttpMessageHandler<StudentServiceTokenHandler>();
 builder.Services.AddHttpClient<SourceHandoffClient>(client =>
 {
     client.BaseAddress=new Uri(studentBaseUrl);client.Timeout=TimeSpan.FromSeconds(35);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler {AllowAutoRedirect=false})
   .AddHttpMessageHandler<StudentServiceTokenHandler>();
+builder.Services.AddScoped<ILegacyReturnService, DisabledLegacyReturnService>();
 builder.Services.AddScoped<SourceIntakeService>();
 builder.Services.AddScoped<ISourceIntakeService>(sp => sp.GetRequiredService<SourceIntakeService>());
 builder.Services.AddScoped<IMistakeSourceGuard>(sp => sp.GetRequiredService<SourceIntakeService>());

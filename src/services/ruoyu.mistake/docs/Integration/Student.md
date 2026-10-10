@@ -26,19 +26,13 @@ Mistake Service 只依赖自有的 `IUploadSourceGateway` 与本地模型。Host
 
 ## 退回回调幂等协议（IKJEY4）
 
-审核退回（`POST /api/mistakes/{id}/review`，`ReviewStatus=Rejected`）创建 Student 退回记录时派生确定性幂等键 `operationId = "mistake-return:{itemId}"`，不引入 Mistake 侧持久化状态。回调结果分三类：
-
-- 成功（含重放）：审核响应 `Success=true`；重放时日志记录 `replayed=true`，不视为失败。
-- 载荷冲突（HTTP 409，同 `operationId` 异载荷）：审核响应 `Success=false` 并说明冲突，需人工核查 Student 侧退回记录。
-- 结果未知（传输失败、超时或不可读响应）：审核响应 `Success=false`，错误文本含 `operationId` 与回查指引（Student `GET /api/uploads/returned/{operationId}`），先回查再以同一 `operationId` 重试。
-
-自有客户端的 `CreateReturnedRecordAsync` 不吞 `HttpRequestException`：传输失败显式归类为「结果未知」并携带原始异常消息。审核端点自身的 reject 副作用（图片迁移回 `uploads/`、删除错题条目）发生在回调之前，不因回调失败回滚；已知失败不再被报告为审核成功。
+历史 IKJEY4 路径使用同 operation 回调分类，但曾先删除本地错题，无法在重启后可靠恢复。该审核实现已移除。当前受管错题由 [SourceReturns](../modules/SourceReturns.md) 保存永久意图和固定 payload；旧错题本版只有安全历史读取和认证完成重放，新建与恢复尚未启用。Student wire 未改变，仍使用 `mistake-return:{itemId:D}` 与原返回记录幂等协议。POST 结果只是写入尝试，正常 TLS/RS256 的专用历史 receipt 完全匹配后才本域原子 Completed，错误或未知结果不假报成功。不存在第二 operation、匿名回退、先删除补偿或当前 Returned Record 合法删除后的补建。
 
 ## 当前失败语义
 
-能力开关（`Mistake:Student:Enabled=false`）是第一层失败关闭：`UploadPollingWorker:Enabled=true` 与之矛盾并在启动前报错；`POST /api/mistakes/{id}/review` 请求 `ReviewStatus=Rejected` 时在调用领域服务、OSS 或 Student 之前返回 HTTP 503 与稳定响应（`Student 集成未启用，退回审核不可用`），不产生任何部分副作用，`ReviewStatus=Confirmed` 路径不受影响。
+`Mistake:Student:Enabled=false` 禁止出站请求；`UploadPollingWorker:Enabled=true` 与之矛盾时启动报错。所有 Rejected 先验证可信身份、StaffOrAdmin 与 reviewerId=sub：匿名401，身份/绑定越权403。没有真实来源组的旧题本版使用只读禁用适配器：新操作或相同未完成操作503/errorKind=`legacy_returns_disabled`；已有 canonical 确定冲突409/errorKind=`return_payload_conflict`；只有已有 Completed 且请求精确匹配才200/data.success=true。不创建意图、不改租约、不调用OSS/Student；正常无journal Confirm保持原行为。受管退回按 SourceReturns 独立开关执行，关闭时相同已完成请求仍可认证重放。
 
-把查询故障降为空页的宽松 `GetProcessingUploadRecordsAsync` 只保留在 Portal 共享库 `MistakeBff.HttpClients` 中供 Portal 调用方使用；Mistake 自有客户端不携带该方法，worker 使用严格扫描方法。创建退回记录的回调已按「退回回调幂等协议」分类显式化（IKJEY4），传输失败不再被吞掉；移除回调已按「移除回调三态语义」分类（IKJEY6），墓碑重放幂等确认成功，无墓碑的未知记录失败且不静默重试。因此本切片不保证写回调与跨数据库、OSS 的原子性，Mistake 侧崩溃后的自动重试与补偿仍由 [迁出总览](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZXV) 的后续任务负责。先发布 Student 新端点和迁移，再发布本版 Mistake；反序部署时 Mistake 读取会显式失败，不回退到旧 offset 分页。
+把查询故障降为空页的宽松 `GetProcessingUploadRecordsAsync` 只保留在 Portal 共享库 `MistakeBff.HttpClients` 中供 Portal 调用方使用；Mistake 自有客户端不携带该方法，worker 使用严格扫描方法。创建退回记录的回调已按「退回回调幂等协议」分类显式化（IKJEY4），传输失败不再被吞掉；移除回调已按「移除回调三态语义」分类（IKJEY6），墓碑重放幂等确认成功，无墓碑的未知记录失败且不静默重试。跨数据库、OSS 没有原子事务；当前受管持久退回 worker 使用保存的同 operation/payload 自动恢复；旧题恢复引擎与生产启用留后续交付，保留全部图片和历史。先发布 Student 新端点和迁移，再发布本版 Mistake；反序部署时 Mistake 读取会显式失败，不回退到旧 offset 分页。
 
 ## 验证
 
@@ -60,7 +54,7 @@ Host 的 `StudentServiceTokenHandler` 由同一个 typed client 管线用于 Wor
 
 [SourceReturns](../modules/SourceReturns.md) 使用独立窄客户端，继承正常HTTPS与RS256。仅精确 GET `/api/integrations/mistake/returns/{合法operationId}/receipt`、无query签发uploads.return；不同方法/路径/非法operation不签发。既有returned POST的同一固定operation/payload在此协议中仅产生Student副作用，必须由[原历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)完全匹配后才本域finalize。没有旧GET/匿名fallback、用户Bearer转发、第二operation或Current Record重建。
 
-上文无Mistake持久状态的回调三态只描述未受管legacy路径。新managed reject另走SourceReturns，不DELETE实际item/原图、不调用remove/ack/release。提供方后续正常COW/消费/删除仍由Student主责，不改原receipt，不由Mistake补建。
+旧无 Mistake 持久状态的审核回调已停用。当前受管 reject 走 SourceReturns；旧题 reject 只读检查历史并拒绝新增/推进，两者均不 DELETE 实际 item/原图，不调用 remove/ack/release。提供方后续正常COW/消费/删除仍由Student主责，不改原receipt，不由Mistake补建。
 
 ## 完整来源交接消费
 

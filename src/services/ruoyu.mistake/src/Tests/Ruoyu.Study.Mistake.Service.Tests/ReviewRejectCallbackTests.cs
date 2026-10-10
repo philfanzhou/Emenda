@@ -27,16 +27,7 @@ using Xunit;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
-/// <summary>
-/// IKJEY4 acceptance tests for the review reject flow's Student callback:
-/// the request must carry the deterministic operationId derived from the
-/// item, and callback failures must not be reported as a successful review
-/// (transport-unknown points at the read-back query, payload-conflict is
-/// explicit). Runs the real host with strict+resource auth enabled, EF Core
-/// InMemory, a recording gateway or the real Student client + Host adapter,
-/// and an OSS fake that supports the
-/// reject-flow copy/delete pair.
-/// </summary>
+/// <summary>Verifies that the retired delete-first callback cannot run while durable legacy returns are disabled.</summary>
 public sealed class ReviewRejectCallbackTests
 {
     private const string Issuer = "http://localhost:5002";
@@ -49,102 +40,18 @@ public sealed class ReviewRejectCallbackTests
     private static Guid ItemId { get; } = Guid.Parse("40000000-0000-0000-0000-000000000001");
 
     [Fact]
-    public async Task RejectCallbackSucceeded_ReportsSuccessAndSendsDerivedOperationId()
+    public async Task DisabledLegacyReturnRetainsItemAndDoesNotUseOldCallback()
     {
         using var factory = NewFactory(out var gateway);
-        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
-        {
-            Status = CreateReturnedUploadRecordStatus.Succeeded,
-            Replayed = false
-        };
         using var client = factory.CreateClient();
-
-        using var response = await client.SendAsync(
-            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}","returnReason":"图片模糊"}""", Token(StaffSub, "teacher")));
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("\"success\":true");
-        body.Should().NotContain("operationId").And.NotContain("returnState").And.NotContain("confirmedRecordId").And.NotContain("errorKind");
-
-        var call = Assert.Single(gateway.ReturnedRecordCalls);
-        Assert.Equal(StudentId, call.StudentId);
-        Assert.Equal($"mistake-return:{ItemId}", call.OperationId);
-        Assert.Equal("Rejected", call.Comments);
-        Assert.Equal("图片模糊", call.ReturnReason);
-        var entry = Assert.Single(call.Entries);
-        Assert.Equal("uploads/reject-1/a.png", entry.Path);
-        Assert.Equal("mistake", entry.Type);
-
-        // The reject flow still performed its own side effects.
-        using (var scope = factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
-            db.MistakeItems.Should().BeEmpty();
-        }
-    }
-
-    [Fact]
-    public async Task RejectCallbackUnknown_ReportsFailureWithReadBackHint()
-    {
-        using var factory = NewFactory(out var gateway);
-        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
-        {
-            Status = CreateReturnedUploadRecordStatus.Unknown,
-            Message = "connection refused"
-        };
-        using var client = factory.CreateClient();
-
-        using var response = await client.SendAsync(
-            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("\"success\":false");
-        body.Should().Contain($"mistake-return:{ItemId}");
-        body.Should().Contain("结果未知");
-        body.Should().Contain($"/api/uploads/returned/mistake-return:{ItemId}");
-        Assert.Single(gateway.ReturnedRecordCalls);
-    }
-
-    [Fact]
-    public async Task RejectCallbackConflict_ReportsFailureWithConflictMessage()
-    {
-        using var factory = NewFactory(out var gateway);
-        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
-        {
-            Status = CreateReturnedUploadRecordStatus.PayloadConflict,
-            Message = "different payload"
-        };
-        using var client = factory.CreateClient();
-
-        using var response = await client.SendAsync(
-            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("\"success\":false");
-        body.Should().Contain("载荷冲突");
-        body.Should().Contain($"mistake-return:{ItemId}");
-        Assert.Single(gateway.ReturnedRecordCalls);
-    }
-
-    [Fact]
-    public async Task RejectCallbackSucceededReplay_LogsReplayWithoutFailingTheReview()
-    {
-        using var factory = NewFactory(out var gateway);
-        gateway.NextReturnedRecordResult = new CreateReturnedUploadRecordResult
-        {
-            Status = CreateReturnedUploadRecordStatus.Succeeded,
-            Replayed = true
-        };
-        using var client = factory.CreateClient();
-
-        using var response = await client.SendAsync(
-            Post($"/api/mistakes/{ItemId}/review", $$"""{"id":"{{ItemId}}","reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await response.Content.ReadAsStringAsync()).Should().Contain("\"success\":true");
+        using var response = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review",
+            $$"""{"reviewStatus":3,"reviewerId":"{{StaffSub}}","returnReason":"图片模糊"}""", Token(StaffSub, "teacher")));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Empty(gateway.ReturnedRecordCalls);
+        Assert.Empty(factory.Oss.Copies);
+        Assert.Empty(factory.Oss.Deletes);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(1, Assert.Single(scope.ServiceProvider.GetRequiredService<MistakeDbContext>().MistakeItems).ReviewStatus);
     }
 
     [Fact]
@@ -164,70 +71,20 @@ public sealed class ReviewRejectCallbackTests
 
     [Theory]
     [MemberData(nameof(CreateReturnedRecordHttpClientTests.UnreadableResponses), MemberType = typeof(CreateReturnedRecordHttpClientTests))]
-    public async Task RejectUnreadableRealClientResponse_ReportsFailureAfterExistingSideEffects(HttpStatusCode status, string upstreamBody)
+    public async Task DisabledLegacyReturnNeverContactsUnreadableOldClient(HttpStatusCode status, string upstreamBody)
     {
         var handler = new ReturnedResponseHandler(status, upstreamBody);
-        using var factory = new RejectCallbackWebApplicationFactory(null, handler);
-        factory.SeedData();
-        handler.BeforeSend = () =>
-        {
-            Assert.Equal(("mistakes/reject-1/a.png", "uploads/reject-1/a.png"), Assert.Single(factory.Oss.Copies));
-            Assert.Equal("mistakes/reject-1/a.png", Assert.Single(factory.Oss.Deletes));
-            using var scope = factory.Services.CreateScope();
-            Assert.Empty(scope.ServiceProvider.GetRequiredService<MistakeDbContext>().MistakeItems);
-        };
-        using var client = factory.CreateClient();
-
-        using var response = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review",
-            $$"""{"reviewStatus":3,"reviewerId":"{{StaffSub}}","returnReason":"图片模糊"}""", Token(StaffSub, "teacher")));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadAsStringAsync();
-        using var json = JsonDocument.Parse(body);
-        Assert.True(json.RootElement.GetProperty("success").GetBoolean());
-        var data = json.RootElement.GetProperty("data");
-        Assert.False(data.GetProperty("success").GetBoolean());
-        var error = data.GetProperty("errorMessage").GetString();
-        Assert.Contains($"mistake-return:{ItemId}", error);
-        if (status == HttpStatusCode.Conflict)
-            Assert.Contains("载荷冲突", error);
-        else
-        {
-            Assert.Contains("结果未知", error);
-            Assert.Contains($"GET /api/uploads/returned/mistake-return:{ItemId}", error);
-        }
-        Assert.DoesNotContain("UPSTREAM_PRIVATE_CANARY", body);
-        Assert.DoesNotContain(factory.ClientLogger.Invocations, invocation =>
-            invocation.Arguments.Any(argument => argument?.ToString()?.Contains("UPSTREAM_PRIVATE_CANARY") == true));
-        Assert.Equal(1, handler.Sends);
-        Assert.Equal($"/api/students/{StudentId}/uploads/returned", handler.Path);
-        using var request = JsonDocument.Parse(handler.Body!);
-        Assert.Equal($"mistake-return:{ItemId}", request.RootElement.GetProperty("operationId").GetString());
-        Assert.Equal("Rejected", request.RootElement.GetProperty("comments").GetString());
-        Assert.Equal("图片模糊", request.RootElement.GetProperty("returnReason").GetString());
-        Assert.Equal("uploads/reject-1/a.png", request.RootElement.GetProperty("imageEntries")[0].GetProperty("path").GetString());
-        using var finalScope = factory.Services.CreateScope();
-        Assert.Empty(finalScope.ServiceProvider.GetRequiredService<MistakeDbContext>().MistakeItems);
-        Assert.Single(factory.Oss.Copies);
-        Assert.Single(factory.Oss.Deletes);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RejectRealClientSuccess_PreservesCreationAndReplay(bool replayed)
-    {
-        var handler = new ReturnedResponseHandler(HttpStatusCode.OK,
-            JsonSerializer.Serialize(new { success = true, data = new { success = true, replayed } }));
         using var factory = new RejectCallbackWebApplicationFactory(null, handler);
         factory.SeedData();
         using var client = factory.CreateClient();
         using var response = await client.SendAsync(Post($"/api/mistakes/{ItemId}/review",
             $$"""{"reviewStatus":3,"reviewerId":"{{StaffSub}}"}""", Token(StaffSub, "teacher")));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.True(json.RootElement.GetProperty("data").GetProperty("success").GetBoolean());
-        Assert.Equal(1, handler.Sends);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(0, handler.Sends);
+        Assert.Empty(factory.Oss.Copies);
+        Assert.Empty(factory.Oss.Deletes);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(1, Assert.Single(scope.ServiceProvider.GetRequiredService<MistakeDbContext>().MistakeItems).ReviewStatus);
     }
 
     [Theory]
@@ -428,9 +285,9 @@ public sealed class ReviewRejectCallbackTests
             Environment.SetEnvironmentVariable("IdentityService__AdminAudience", null);
             Environment.SetEnvironmentVariable("IdentityService__MistakeApiStrictAuth", "true");
             Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", "true");
-            // The reject flow fail-closes with 503 when the Student capability
-            // is disabled (IKJ8P0); enable it so the callback path is reached.
-            // The URL is never contacted — the gateway or HTTP transport is faked.
+            // Authenticated rejection fails with 503 when Student or durable
+            // legacy returns are disabled. The retired callback must remain unused.
+            // The gateway/transport substitutes detect any accidental old callback.
             Environment.SetEnvironmentVariable("Mistake__Student__Enabled", studentEnabled ? "true" : "false");
             Environment.SetEnvironmentVariable("Mistake__Local__Student__Url", "http://127.0.0.1:19042");
         }

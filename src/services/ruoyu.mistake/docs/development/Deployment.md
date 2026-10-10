@@ -67,7 +67,7 @@ Mistake Host 在启动时为三个 worker 分别读取以下布尔配置。缺�
 
 - `Mistake:Student:Enabled=false` 与 `Mistake:Workers:UploadPollingWorker:Enabled=true` 是矛盾配置：轮询 worker 依赖 Student，启动前以两个键名报错。Platform 显式禁用同样适用。
 - Local `Enabled=true` 必须显式提供 `Mistake:Local:Student:Url`（绝对 HTTP(S) 地址，不含凭据、路径、查询或片段）。缺失、空白或无效时在任何数据库连接前报键名失败；`StudentService:Url`/`BaseUrl`/`GrpcUrl` 与仓库示例 `http://localhost:5005` 不会作为回退补齐。Platform 保持既有 `StudentService:Url` → `BaseUrl` → `GrpcUrl` → `http://localhost:5005` 地址兼容，不因本切片改动。
-- 能力禁用时：即使配置文件仍留有 Student 地址，本进程也不会向 Student 发出任何请求；`UploadPollingWorker` 不得启用；`POST /api/mistakes/{id}/review` 携带 `ReviewStatus=Rejected` 时在调用领域服务、OSS 或 Student 之前返回 HTTP 503 与稳定响应 `{"success":false,"message":"Student 集成未启用，退回审核不可用（Mistake:Student:Enabled=false）"}`，不更新审核状态、不复制/删除 OSS 对象、不删除错题条目、不创建 ReturnedRecord，重复请求结果一致。`ReviewStatus=Confirmed` 路径与既有本域读 API 不受能力关闭影响。
+- 能力禁用时：保留Student地址也不会出站，UploadPollingWorker不得启用。所有Rejected先验证可信主体和reviewer绑定，匿名401/越权403。无真实来源组的旧题新/未完成请求503/errorKind=`legacy_returns_disabled`，确定canonical冲突409，已有Completed精确同请求认证重放200；不插入日志、不更新租约、不复制/删除对象或条目，不创建ReturnedRecord。受管退回按独立SourceReturns开关执行。普通无journal Confirm与既有本域读API保持各自权限边界。
 - 禁用态仍保持 Host 正常依赖注入启动；共享 Student 客户端注册到保留的不可解析占位地址，任何意外调用都会立即网络失败而不是触达真实服务。启动诊断只记录 `Mode`、`Enabled`、地址来源（`Explicit`/`Platform`/`Disabled`），不输出凭据。
 - 开关在进程启动时固定；重新启用或改地址必须重启并重新通过上述校验。与 Local OSS 键一致，两个兼容升级命令不要求 `Mistake:Local:Student:Url`。
 
@@ -552,10 +552,18 @@ sealed Manual仅Admin首次固定，worker只恢复已有Manual并扫描完整Au
 
 ## 机器 HTTP 合同发布
 
-Host 发布资源携带固定 `mistake-http-v1`，匿名 `/contracts/mistake-http-v1.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
+Host 发布资源携带当前 `mistake-http-v2` 和原样历史 v1，匿名 `/contracts/mistake-http-v2.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
 
 ## Student-enabled 两模式受控运行
 
 [隔离部署验证](./IsolatedDeployVerification.md#显式-student-enabled-两模式运行)的 `--student-enabled-fixture` 使用同一指定 commit 的真实 Student/Mistake Release Host，开启 strict/resource、服务 RS256、intake/targets/returns/handoffs，在自有双 PG 与同一 Seaweed bucket 验证业务与恢复。每模式使用独立随机库，Platform 显式拒绝 Consul 端口并使用完整 fallback。全 cell 与原 19 格均通过才成功；任何故障、缺输入或取消保留自身现场并失败，不把 target ready 当 source completed。共享发布仍必须按既有 rollout 门禁。
 
 该运行配置显式使用 `DOTNET_SHUTDOWNTIMEOUTSECONDS=10`，为在途 HTTP drain 和取消设置 .NET Host 预算，使完整进程退出可在30秒期限内验证；不能仅用框架默认30秒 drain 推定总退出时长。配合服务自身的取消/候选保全机制，取消未正常确认的 copy 不发布历史结果，也不补偿删除候选。
+
+## 旧错题安全入口与暂不可启用
+
+`Mistake:LegacyReturns:Enabled`（`Mistake__LegacyReturns__Enabled`）默认false。本版任何true或非法bool都在DB/OSS初始化前明确拒绝启动，不会静默忽略。生产只有只读禁用适配器，没有完整恢复引擎或worker；新/未完成旧题退回503且无意图、租约或外部副作用。所有Rejected先可信认证与审核者绑定，匿名401、身份/绑定越权403；已有canonical冲突409，仅Completed精确匹配认证重放200。Admin状态GET、永久guards、全部历史和完整引用始终保留。
+
+内部完整恢复算法和生产接线在后续两个独立任务交付。本版不能重新开启旧题推进，也不能回到旧binary/匿名先删路径。备份恢复包含第12条迁移的三表、业务/practice/log/job、history、函数/trigger/FK与全部对象；非空日志拒绝Down，回退保留认识当前schema的binary。
+
+本段实测用任务自有PG15、实际Host和真实共享HTTP消费者；正常TLS/签名测试保留，不需要共享服务器浏览器登录或真实Admin账号。合同v2同步共享客户端和三个Portal发布源，历史v1精确bytes保留。恢复/S3/跨进程联合验收留后续，不把候选整体测试冒充本版能力可用。

@@ -23,7 +23,8 @@
     ],
     "context_files": [
       ".dockerignore",
-      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v1.json"
+      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v1.json",
+      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v2.json"
     ]
   },
   "export": {

@@ -6,8 +6,8 @@ namespace Ruoyu.Study.Mistake.Service.Tests;
 
 /// <summary>
 /// IKJ8P0 acceptance tests. Local Student capability disabled must fail
-/// closed: no Student probe request, no polling, reject reviews answered with
-/// a stable HTTP 503 before any domain, OSS or Student side effect; invalid
+/// closed: no Student probe request, no polling. Current rejected reviews
+/// require authentication first, even when the capability is disabled; invalid
 /// capability configurations must fail before database or external access
 /// with the offending key names; enabled modes must keep existing call paths.
 /// </summary>
@@ -48,7 +48,7 @@ public sealed class LocalStudentCapabilityPostgresTests
     }
 
     [Fact]
-    public async Task LocalDisabledStudentRejectsReviewWithStable503AndNoSideEffectAsync()
+    public async Task LocalDisabledStudentRejectsAnonymousReviewBeforeSideEffectsAsync()
     {
         var admin = DedicatedAdminConnection();
         if (admin is null)
@@ -83,12 +83,12 @@ public sealed class LocalStudentCapabilityPostgresTests
             (secondStatus, secondBody) = await PostReviewAsync(client, port, item, 3, token);
         });
 
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, firstStatus);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, secondStatus);
+        Assert.Equal(HttpStatusCode.Unauthorized, firstStatus);
+        Assert.Equal(HttpStatusCode.Unauthorized, secondStatus);
         Assert.NotNull(firstBody);
         Assert.Equal(firstBody, secondBody);
-        Assert.Contains("Student 集成未启用", firstBody);
-        Assert.Contains("退回审核不可用", firstBody);
+        Assert.DoesNotContain("Student 集成未启用", firstBody);
+        Assert.DoesNotContain("root-capability-marker", firstBody);
         // No domain, OSS or Student side effect was applied.
         Assert.Equal("1", await database.ScalarAsync($"SELECT review_status FROM mistake_item WHERE id='{item}'"));
         Assert.Equal(regionsBefore, await database.ScalarAsync($"SELECT source_regions::text FROM mistake_item WHERE id='{item}'"));

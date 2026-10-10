@@ -416,6 +416,8 @@ public sealed class MistakeApiResourceAuthorizationService : IMistakeApiResource
     {
         _logger.LogInformation(
             "Mistake resource authorization: Endpoint={Endpoint}, Subject={SubjectId}, Kind={Kind}, Resource={Resource}, Decision={Decision}",
-            endpoint, GetSubjectId(user) ?? "(missing)", kind, resource ?? "(none)", decision.Status);
+            endpoint, GetSubjectId(user) ?? "(missing)", kind,
+            endpoint.Contains("image", StringComparison.OrdinalIgnoreCase) || endpoint.Contains("presigned", StringComparison.OrdinalIgnoreCase)
+                ? "(protected-image)" : resource ?? "(none)", decision.Status);
     }
 }

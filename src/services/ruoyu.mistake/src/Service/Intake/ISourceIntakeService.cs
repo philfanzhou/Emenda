@@ -9,6 +9,7 @@ public interface ISourceIntakeService
         List<SourceRegionModel> regions, CancellationToken ct = default);
     Task<List<MistakeItemModel>> CreateAutomaticAsync(Guid sourceId, Guid revision, CancellationToken ct = default);
     Task<string?> GetManagedItemStudentAsync(Guid itemId, CancellationToken ct = default);
+    Task<bool> IsSourceManagedItemAsync(Guid itemId, CancellationToken ct = default);
     Task<List<string>> GetManagedJobReviewersAsync(IReadOnlyList<Guid> jobIds, CancellationToken ct = default);
     Task<bool> HasManagedDataAsync(string? studentId = null, string? sourceId = null, CancellationToken ct = default);
     Task<IntakeView?> GetAsync(Guid sourceId, Guid revision, CancellationToken ct = default);
