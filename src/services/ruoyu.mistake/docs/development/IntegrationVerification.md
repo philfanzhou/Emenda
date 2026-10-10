@@ -1,416 +1,124 @@
-# ruoyu.mistake 集成验证方案
-
-> 本文档为 ruoyu.mistake 服务的跨团队联调落地提供验证标准，覆盖 gRPC 接口、跨服务调用、OSS 集成、数据库初始化及配置等关键场景。
-
----
-
-## 1. 联调测试用例清单
-
-### TC-01 正常创建错题 (student → mistake)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 正常创建错题 |
-| **目的** | 验证 student 服务通过 gRPC 调用 mistake 的 SubmitMistakeUpload 接口，能成功创建错题条目 |
-| **前置条件** | 1. mistake 服务已启动且 gRPC 端口可达<br>2. student 服务已启动<br>3. 数据库连接正常 |
-| **输入** | studentId="student-001", subject=3, grade=7, imagePaths=["uploads/2026/test1.jpg"], comments="数学错题", sourceUploadId="upload-001" |
-| **操作步骤** | 1. student 服务通过 GrpcMistakeSubmitter 调用 SubmitMistakeUpload<br>2. 传入合法参数<br>3. 检查返回结果 |
-| **预期结果** | 1. 返回 success=true<br>2. created_item_ids 非空，包含至少一个有效 GUID<br>3. 数据库 mistake_item 表中新增一条记录，review_status=1(PendingReview)<br>4. process_log 表中新增一条 action=1(Created) 的日志 |
-| **失败判断** | 返回 success=false；抛出 gRPC 异常；数据库无新增记录 |
-
-### TC-02 参数非法 — 空 studentId
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 参数非法 — 空 studentId |
-| **目的** | 验证 SubmitMistakeUpload 在 studentId 为空时返回 InvalidArgument |
-| **前置条件** | mistake 服务已启动 |
-| **输入** | studentId=""（或 null/空白）, subject=3, grade=7, imagePaths=["uploads/test.jpg"], sourceUploadId="upload-001" |
-| **操作步骤** | 1. 调用 SubmitMistakeUpload 传入空 studentId<br>2. 检查返回的 gRPC 状态码和消息 |
-| **预期结果** | 抛出 RpcException，StatusCode=InvalidArgument，消息包含"缺少学生ID" |
-| **失败判断** | 未抛出异常；状态码非 InvalidArgument；错误消息不匹配 |
-
-### TC-03 参数非法 — 无效 subject
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 参数非法 — 无效 subject |
-| **目的** | 验证 SubmitMistakeUpload 在 subject 不在 1-9 范围时返回 InvalidArgument |
-| **前置条件** | mistake 服务已启动 |
-| **输入** | studentId="student-001", subject=0（或 -1、10、100）, grade=7, imagePaths=["uploads/test.jpg"], sourceUploadId="upload-001" |
-| **操作步骤** | 1. 调用 SubmitMistakeUpload 传入无效 subject<br>2. 检查返回的 gRPC 状态码和消息 |
-| **预期结果** | 抛出 RpcException，StatusCode=InvalidArgument，消息包含"学科值无效" |
-| **失败判断** | 未抛出异常；状态码非 InvalidArgument；错误消息不匹配 |
-
-### TC-04 参数非法 — 无效 grade
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 参数非法 — 无效 grade |
-| **目的** | 验证 SubmitMistakeUpload 在 grade 不在 1-12 范围时返回 InvalidArgument |
-| **前置条件** | mistake 服务已启动 |
-| **输入** | studentId="student-001", subject=3, grade=0（或 -1、13、99）, imagePaths=["uploads/test.jpg"], sourceUploadId="upload-001" |
-| **操作步骤** | 1. 调用 SubmitMistakeUpload 传入无效 grade<br>2. 检查返回的 gRPC 状态码和消息 |
-| **预期结果** | 抛出 RpcException，StatusCode=InvalidArgument，消息包含"年级值无效" |
-| **失败判断** | 未抛出异常；状态码非 InvalidArgument；错误消息不匹配 |
-
-### TC-05 参数非法 — 空 sourceUploadId
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 参数非法 — 空 sourceUploadId |
-| **目的** | 验证 SubmitMistakeUpload 在 sourceUploadId 为空时返回 InvalidArgument |
-| **前置条件** | mistake 服务已启动 |
-| **输入** | studentId="student-001", subject=3, grade=7, imagePaths=["uploads/test.jpg"], sourceUploadId="" |
-| **操作步骤** | 1. 调用 SubmitMistakeUpload 传入空 sourceUploadId<br>2. 检查返回的 gRPC 状态码和消息 |
-| **预期结果** | 抛出 RpcException，StatusCode=InvalidArgument，消息包含"缺少上传记录ID" |
-| **失败判断** | 未抛出异常；状态码非 InvalidArgument；错误消息不匹配 |
-
-### TC-06 参数非法 — 空 imagePaths
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 参数非法 — 空 imagePaths |
-| **目的** | 验证 SubmitMistakeUpload 在 imagePaths 为空列表时返回 InvalidArgument |
-| **前置条件** | mistake 服务已启动 |
-| **输入** | studentId="student-001", subject=3, grade=7, imagePaths=[], sourceUploadId="upload-001" |
-| **操作步骤** | 1. 调用 SubmitMistakeUpload 传入空 imagePaths<br>2. 检查返回的 gRPC 状态码和消息 |
-| **预期结果** | 抛出 RpcException，StatusCode=InvalidArgument，消息包含"至少需要提供一张图片" |
-| **失败判断** | 未抛出异常；状态码非 InvalidArgument；错误消息不匹配 |
-
-### TC-07 分页查询错题列表
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 分页查询错题列表 |
-| **目的** | 验证 GetMistakeItemList 分页参数的默认值和边界行为 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 数据库中存在多条错题记录 |
-| **输入** | studentId="student-001", subject=0, grade=0, reviewStatus=0, page/size 使用不同组合 |
-| **操作步骤** | 1. 传入 page=1, size=10，验证返回分页数据<br>2. 传入 page=0, size=0，验证默认值 page=1, size=10<br>3. 传入 size=200，验证被限制为 max size=100<br>4. 验证 page_meta 中 total_count、total_pages 计算正确 |
-| **预期结果** | 1. 正常分页返回数据<br>2. page≤0 时默认为 1，size≤0 时默认为 10<br>3. size>100 时被截断为 100<br>4. total_pages = ceil(total_count / size) |
-| **失败判断** | 分页参数未按预期修正；total_pages 计算错误；返回数据量与分页参数不符 |
-
-### TC-08 分页查询待审核上传记录
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 分页查询待审核上传记录 |
-| **目的** | 验证 GetPendingReviewUploads 分页和科目过滤功能 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 数据库中存在 PendingReview 状态的错题 |
-| **输入** | page=1, size=10, subjects=[3,5]（可选） |
-| **操作步骤** | 1. 不传 subjects，验证返回所有待审核上传记录<br>2. 传入 subjects=[3,5]，验证仅返回对应科目的记录<br>3. 传入 page=0, size=0，验证默认值<br>4. 传入 size=200，验证 max size=100 |
-| **预期结果** | 1. 无 subjects 过滤时返回全部待审核记录<br>2. 有 subjects 过滤时仅返回匹配科目<br>3. 分页默认值与边界行为同 TC-07<br>4. 返回的 PendingReviewUploadDto 包含 source_upload_id、pending_count、total_count 等字段 |
-| **失败判断** | 科目过滤不生效；分页参数未按预期修正；返回字段缺失 |
-
-### TC-09 审核确认单条错题
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 审核确认单条错题 |
-| **目的** | 验证 ReviewMistakeItem 确认操作，状态从 PendingReview 变为 Confirmed |
-| **前置条件** | 1. mistake 服务已启动<br>2. 存在一条 PendingReview 状态的错题 |
-| **输入** | id=有效错题ID, reviewStatus=Confirmed(2), reviewerId="teacher-001", reviewComment="确认", grade=8(修正), subject=4(修正) |
-| **操作步骤** | 1. 调用 ReviewMistakeItem 传入确认参数<br>2. 检查返回 success=true<br>3. 调用 GetMistakeItem 验证状态已更新 |
-| **预期结果** | 1. 返回 success=true<br>2. 错题 review_status 变为 Confirmed(2)<br>3. grade 和 subject 被修正为传入值<br>4. reviewer_id、reviewed_at、root_cause 已填充<br>5. process_log 新增 action=3(ReviewConfirmed) 记录 |
-| **失败判断** | 返回 success=false；状态未变更；修正字段未生效；无审核日志 |
-
-### TC-10 审核退回单条错题
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 审核退回单条错题 |
-| **目的** | 验证 ReviewMistakeItem 退回操作，以及 teacher_portal 退回后的级联处理 |
-| **前置条件** | 1. mistake 服务已启动<br>2. teacher_portal 已启动且 MistakeGrpcService:Address 配置正确<br>3. student 服务已启动<br>4. 存在一条 PendingReview 状态的错题 |
-| **输入** | id=有效错题ID, reviewStatus=Rejected(3), reviewerId="teacher-001", reviewComment="图片模糊" |
-| **操作步骤** | 1. 通过 teacher_portal POST /api/mistake/review-item 传入退回参数<br>2. 验证 mistake 服务 ReviewMistakeItem 返回 success=true<br>3. 验证 teacher_portal 自动调用 DeleteMistakeItem 删除该错题<br>4. 若该 sourceUploadId 下无其他错题，验证调用 student.MarkUploadRecordAsReturned |
-| **预期结果** | 1. ReviewMistakeItem 返回 success=true，状态变为 Rejected(3)<br>2. 错题记录被删除（DeleteMistakeItem）<br>3. 若该上传记录下无剩余错题，student 服务的上传记录被标记为已退回<br>4. process_log 新增 action=4(ReviewRejected) 记录 |
-| **失败判断** | 退回后错题未被删除；MarkUploadRecordAsReturned 未被调用（当应调用时）；状态未变更 |
-
-### TC-11 批量审核确认
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 批量审核确认 |
-| **目的** | 验证 teacher_portal BatchReview 接口批量确认多条错题，以及自动触发 CompleteUploadReview |
-| **前置条件** | 1. mistake 服务已启动<br>2. teacher_portal 已启动<br>3. student 服务已启动<br>4. 同一 sourceUploadId 下存在多条 PendingReview 错题 |
-| **输入** | items=[{id="item-1"},{id="item-2"}], reviewStatus=2(Confirmed), reviewComment="批量确认" |
-| **操作步骤** | 1. 调用 POST /api/mistake/batch-review 传入多条确认<br>2. 验证所有错题状态变为 Confirmed<br>3. 验证当同一 sourceUploadId 下无 PendingReview 条目时，自动触发 CompleteUploadReview<br>4. 验证 CompleteUploadReview 成功后调用 student.DeleteUploadRecordAfterReviewAsync |
-| **预期结果** | 1. 返回 success=true, processedCount=2, failedCount=0<br>2. 所有错题状态变为 Confirmed<br>3. 自动触发 CompleteUploadReview（OSS 迁移等）<br>4. student 服务删除上传记录 |
-| **失败判断** | 部分确认失败；CompleteUploadReview 未自动触发；student 回调未执行 |
-
-### TC-12 批量审核退回
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 批量审核退回 |
-| **目的** | 验证 teacher_portal BatchReview 接口批量退回多条错题，以及级联删除和退回处理 |
-| **前置条件** | 1. mistake 服务已启动<br>2. teacher_portal 已启动<br>3. student 服务已启动<br>4. 同一 sourceUploadId 下存在多条 PendingReview 错题 |
-| **输入** | items=[{id="item-1"},{id="item-2"}], reviewStatus=3(Rejected), reviewComment="批量退回" |
-| **操作步骤** | 1. 调用 POST /api/mistake/batch-review 传入多条退回<br>2. 验证所有错题被 ReviewMistakeItem 退回后自动 DeleteMistakeItem<br>3. 验证当该 sourceUploadId 下无剩余错题时，调用 student.MarkUploadRecordAsReturned |
-| **预期结果** | 1. 返回 success=true, processedCount=2, failedCount=0<br>2. 所有错题记录被删除<br>3. student 服务上传记录被标记为已退回 |
-| **失败判断** | 部分退回失败；错题未被删除；MarkUploadRecordAsReturned 未被调用（当应调用时） |
-
-### TC-13 完成审核 (CompleteUploadReview)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 完成审核 |
-| **目的** | 验证 CompleteUploadReview 的完整流程：前提检查、OSS 迁移、路径更新 |
-| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务可用<br>3. sourceUploadId 下所有错题均已审核（无 PendingReview）<br>4. Confirmed 错题的 sourceImagePath 以 "uploads/" 开头 |
-| **输入** | sourceUploadId="upload-001", reviewerId="teacher-001" |
-| **操作步骤** | 1. 调用 CompleteUploadReview<br>2. 验证前提：无 PendingReview 条目<br>3. 验证 Confirmed 条目：OSS copy uploads/ → mistakes/，删除 uploads/，路径更新<br>4. 验证 Rejected 条目：不迁移<br>5. 验证返回 success=true, studentId 非空 |
-| **预期结果** | 1. 返回 success=true<br>2. Confirmed 条目的 sourceImagePath 从 "uploads/xxx" 变为 "mistakes/xxx"<br>3. OSS 中 uploads/ 下原文件已删除，mistakes/ 下存在副本<br>4. Rejected 条目路径不变 |
-| **失败判断** | 返回 success=false；OSS 迁移未执行；路径未更新 |
-
-### TC-15 OSS 迁移失败 (单个图片)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | OSS 迁移失败 — 单个图片 |
-| **目的** | 验证 CompleteUploadReview 中单个图片 OSS 迁移失败时不阻塞整体流程 |
-| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务部分可用（某张图片 copy 或 delete 失败） |
-| **输入** | sourceUploadId 下有 2 张图片，其中 1 张迁移会失败 |
-| **操作步骤** | 1. 模拟某张图片的 OSS CopyObjectAsync 或 DeleteAsync 抛出异常<br>2. 调用 CompleteUploadReview<br>3. 检查返回结果和日志 |
-| **预期结果** | 1. 返回 success=true<br>2. 日志中包含 "Error migrating image {Path}"<br>3. 失败图片的路径未更新，成功图片的路径正常更新 |
-| **失败判断** | 整体流程被中断；返回 success=false；成功图片的迁移也失败 |
-
-### TC-16 OSS 完全不可用
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | OSS 完全不可用 |
-| **目的** | 验证 OSS 服务完全不可用时 CompleteUploadReview 的降级行为 |
-| **前置条件** | 1. mistake 服务已启动<br>2. OSS 服务不可达 |
-| **输入** | sourceUploadId=有效值（所有条目已审核） |
-| **操作步骤** | 1. 停止 OSS 服务或配置错误端点<br>2. 调用 CompleteUploadReview<br>3. 检查返回结果和日志 |
-| **预期结果** | 1. 返回 success=true<br>2. 所有图片迁移均失败，日志中每张图片均有 "Error migrating image" 记录<br>3. sourceImagePath 未更新（仍为 uploads/ 前缀） |
-| **失败判断** | 返回 success=false；流程被中断；抛出未捕获异常 |
-
-### TC-17 数据库启动时自动升级 (PostgreSQL)
-
-在专用 PostgreSQL 库分别验证：空库与已知 1–10 条历史（含旧运行时 `root_cause` 与两种三历史误盖章形态、含重复条目的旧库）正常启动即升级到目标，行与 ID 保留，再次启动不写入；目标结构下只读账号与无 DDL 权限账号可启动且零写入；并发启动只升级一次；DDL 失败、取消、连接中断、权限不足均整体回滚且诊断不含行内容；陌生 `public.mistake`、不受支持的新旧表并存、部分表、错误列类型、缺索引/外键、未知历史均拒绝且结构、数据、索引、约束和历史保持原状；两个兼容命令无需 `--writes-stopped`/`--backup-verified` 即退出 0，`--database` 不一致仍拒绝。受支持旧表的 P0/P0f/P1/P1x/P2/P2f 与 M-da/M-05/M-e0（含指纹变体），以及旧版自动维护结构由重放历史 DDL 生成夹具，验证启动收敛、行/ID/外键与练习路径保留、归档条数、图片可见、并发只收敛一次、失败/取消/断连/权限不足回滚、陌生对象拒绝、超过命令超时的步骤与锁等待仍完成，以及归档表只追加与非空 Down 拒绝（`LegacySchemaConvergencePostgresTests`，同用 `MISTAKE_READONLY_TEST_CONNECTION`）。自动化证据见 `ReadOnlyStartupPostgresTests`、`LegacySchemaGuardPostgresTests`，需分别设置 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION` 为专用 PostgreSQL 管理连接串。
-
-### TC-20 地址错误 (MistakeGrpcService:Address)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 地址错误 — MistakeGrpcService:Address |
-| **目的** | 验证 teacher_portal 配置的 MistakeGrpcService:Address 错误时，所有 gRPC 调用失败 |
-| **前置条件** | teacher_portal 已启动 |
-| **输入** | MistakeGrpcService:Address 配置为无效地址 |
-| **操作步骤** | 1. 配置 MistakeGrpcService:Address 为错误地址<br>2. 通过 teacher_portal 调用任何 mistake 相关接口<br>3. 检查返回结果 |
-| **预期结果** | 1. teacher_portal 返回 HTTP 502 BadGateway<br>2. 日志中包含 RpcException<br>3. 所有 mistake 相关功能不可用 |
-| **失败判断** | 返回非 502 状态码；无异常日志 |
-
-### TC-21 GetAllReferencedImagePaths 正常查询
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | GetAllReferencedImagePaths 正常查询 |
-| **目的** | 验证获取所有被引用的图片路径，包括错题条目和练习记录中的路径 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 数据库中存在错题条目和练习记录 |
-| **输入** | Empty 请求 |
-| **操作步骤** | 1. 调用 GetAllReferencedImagePaths<br>2. 验证返回的 image_paths 包含所有错题条目 source_regions 中的路径<br>3. 验证包含练习记录 image_paths 中的路径<br>4. 验证路径去重（大小写不敏感）<br>5. 验证空白路径被过滤 |
-| **预期结果** | 1. 返回所有非空图片路径的集合<br>2. 路径去重<br>3. 同时包含 mistake_item 和 mistake_practice 中的路径 |
-| **失败判断** | 路径缺失；未去重；包含空白路径 |
-
-### TC-22 手动添加错题 (AddMistakeItem)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 手动添加错题 |
-| **目的** | 验证 teacher 通过 AddMistakeItem 手动创建错题条目 |
-| **前置条件** | mistake 服务已启动 |
-| **输入** | studentId="student-001", subject=3, grade=7, sourceUploadId="manual-001", sourceRegions=[{sourceImagePath="uploads/manual.jpg", boundingBox={x1=0,y1=0,x2=100,y2=100}}] |
-| **操作步骤** | 1. 调用 AddMistakeItem 传入合法参数<br>2. 验证返回 MistakeItemDto<br>3. 验证数据库新增记录 |
-| **预期结果** | 1. 返回 MistakeItemDto，id 为有效 GUID<br>2. review_status=PendingReview(1)<br>3. source_regions 正确保存<br>4. process_log 新增 action=1(Created)，details 包含 "manually added" |
-| **失败判断** | 返回异常；source_regions 未保存；review_status 不为 PendingReview |
-
-### TC-23 更新错题 (UpdateMistakeItem)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 更新错题 |
-| **目的** | 验证 UpdateMistakeItem 更新错题字段 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 存在一条错题记录 |
-| **输入** | id=有效错题ID, subject=5, grade=10, sourceRegions=[更新后的区域] |
-| **操作步骤** | 1. 调用 UpdateMistakeItem 传入更新参数<br>2. 验证返回更新后的 MistakeItemDto<br>3. 再次 GetMistakeItem 验证持久化 |
-| **预期结果** | 1. 返回更新后的 MistakeItemDto<br>2. subject、grade、source_regions 已更新<br>3. 未传入的字段保持原值 |
-| **失败判断** | 返回 NotFound；更新字段未生效；未传入字段被清空 |
-
-### TC-24 删除错题 (DeleteMistakeItem)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 删除错题 |
-| **目的** | 验证 DeleteMistakeItem 级联删除练习记录和日志 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 存在一条错题记录，且有关联的练习记录和日志 |
-| **输入** | id=有效错题ID |
-| **操作步骤** | 1. 调用 DeleteMistakeItem<br>2. 验证返回 success=true<br>3. 验证错题记录被删除<br>4. 验证关联的 mistake_practice 记录被删除<br>5. 验证关联的 process_log 记录被删除 |
-| **预期结果** | 1. 返回 success=true<br>2. mistake_item 记录不存在<br>3. 关联的 mistake_practice 和 process_log 均被级联删除 |
-| **失败判断** | 返回 success=false；关联记录未被删除；GetMistakeItem 仍能查到 |
-
-### TC-25 添加练习记录 (AddMistakePractice)
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 添加练习记录 |
-| **目的** | 验证对已确认错题添加练习记录 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 存在一条 Confirmed 状态的错题 |
-| **输入** | mistakeItemId=有效错题ID, studentId="student-001", studentAnswer="B", isCorrect=false, comments="还需练习", imagePaths=["practice/1.jpg"] |
-| **操作步骤** | 1. 调用 AddMistakePractice<br>2. 验证返回 MistakePracticeDto<br>3. 验证数据库新增记录<br>4. 验证 process_log 新增 action=5(Practiced) |
-| **预期结果** | 1. 返回 MistakePracticeDto，id 为有效 GUID<br>2. practice_date 已填充<br>3. image_paths 已保存<br>4. process_log 新增 Practiced 记录 |
-| **失败判断** | 返回异常；对非 Confirmed 错题添加练习未报错；practice_date 为空 |
-
-> **补充验证：** 对 PendingReview 或 Rejected 状态的错题调用 AddMistakePractice，应返回 InvalidArgument "只能对已确认的错题进行练习"。
-
-### TC-27 处理日志记录与查询
-
-| 项目 | 内容 |
-|------|------|
-| **用例名称** | 处理日志记录与查询 |
-| **目的** | 验证 LogMistakeProcess 写入日志和 GetMistakeProcessHistory 查询日志 |
-| **前置条件** | 1. mistake 服务已启动<br>2. 存在一条错题记录 |
-| **输入** | mistakeItemId=有效错题ID, studentId="student-001", action=ProcessAction.Mastered(6), details="学生已掌握" |
-| **操作步骤** | 1. 调用 LogMistakeProcess 写入自定义日志<br>2. 验证返回 success=true<br>3. 调用 GetMistakeProcessHistory 查询该错题的所有日志<br>4. 验证返回列表包含刚写入的记录 |
-| **预期结果** | 1. LogMistakeProcess 返回 success=true<br>2. GetMistakeProcessHistory 返回列表中包含 action=6(Mastered) 的记录<br>3. 日志按 created_at 排序 |
-| **失败判断** | 写入返回 false；查询列表中无新增记录；action 值不正确 |
-
----
-
-## 2. 验证标准
-
-### 通过
-
-- 所有 25 个测试用例的预期结果全部满足
-- gRPC 接口在合法输入下返回正确结果
-- 参数校验在非法输入下返回 InvalidArgument 且消息匹配
-- 跨服务调用（student → mistake、teacher_portal → mistake → student）链路完整
-- OSS 迁移在正常情况下路径更新正确
-- 数据库初始化在 PostgreSQL 环境下成功
-- 容错场景（OSS 单图失败）不影响主流程返回 success=true
-
-### 部分通过
-
-- 核心流程（创建、审核、完成审核）全部通过，但存在以下情况：
-  - 非核心接口（如 GetAllReferencedImagePaths）返回结果与预期有偏差但不影响主流程
-  - 容错场景日志消息与预期不完全匹配，但功能行为正确
-  - 分页边界值（如 total_pages 计算）存在微小偏差
-  - teacher_portal 级联操作（退回后删除、确认后 CompleteUploadReview）偶发失败但可重试成功
-  - 数据库旧表迁移在特定边界情况下需手动介入
-
-### 阻塞问题
-
-出现以下任一情况视为阻塞，不可上线：
-
-- 正常创建错题（SubmitMistakeUpload）失败
-- 审核操作（ReviewMistakeItem）状态未正确变更
-- CompleteUploadReview 在所有前提满足时返回 success=false
-- 数据库初始化失败导致服务无法启动
-- PostgreSQL 连接失败
-- OSS 完全不可用时 CompleteUploadReview 抛出未捕获异常（非容错）
-- teacher_portal 无法连接 mistake 服务（MistakeGrpcService:Address 配置错误且无法修正）
-
----
-
-## 3. 异常场景处理机制
-
-### 3.1 OSS 单图迁移失败
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | 单个图片的 CopyObjectAsync 或 DeleteAsync 抛出异常 |
-| **影响范围** | 该图片路径未从 uploads/ 更新为 mistakes/，OSS 中可能存在残留 |
-| **临时绕过方式** | 无需绕过，其他图片继续迁移 |
-| **是否允许降级** | 允许。单图失败不阻塞整体流程 |
-| **需要团队介入** | 基础设施团队排查 OSS 异常；mistake 团队事后手动迁移失败图片 |
-| **是否影响上线** | 不影响。可通过手动迁移修复 |
-
-### 3.2 OSS 完全不可用
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | OSS 服务不可达或配置错误 |
-| **影响范围** | 所有图片迁移失败，sourceImagePath 保持 uploads/ 前缀 |
-| **临时绕过方式** | 使用 LocalFileOssService（设置环境变量 USE_LOCAL_OSS=1） |
-| **是否允许降级** | 允许降级为本地文件存储 |
-| **需要团队介入** | 基础设施团队恢复 OSS 服务 |
-| **是否影响上线** | 视情况。若生产环境必须使用 S3 OSS 则阻塞；若可接受本地存储则不阻塞 |
-
-### 3.3 数据库初始化失败 — PostgreSQL 连接失败
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | ConnectionStrings:Default 中的 PostgreSQL 地址/端口/凭据错误，或 PostgreSQL 服务不可达 |
-| **影响范围** | 服务无法启动 |
-| **临时绕过方式** | 无（服务固定使用 PostgreSQL） |
-| **是否允许降级** | 不允许降级 |
-| **需要团队介入** | DBA 团队排查 PostgreSQL 连接问题 |
-| **是否影响上线** | 阻塞，需修复 PostgreSQL 连接后重新部署 |
-
-### 3.4 数据库初始化失败 — 旧表或迁移历史不受支持
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | 检测到陌生 `public.mistake`、不受支持的误盖章、混合或未知结构；启动拒绝且不修改数据库 |
-| **影响范围** | 服务无法启动 |
-| **临时绕过方式** | 无；保留原库及备份，不删表、不手工写迁移历史 |
-| **是否允许降级** | 不允许自动降级；空库与已知 EF 历史链在启动时自动升级，不会进入此分支 |
-| **需要团队介入** | 旧版自动维护留下的已知结构在启动时自动收敛（见[迁移历史](../database/migrations.md#旧版自动维护结构的收敛)），其余陌生对象按诊断核对；受支持旧表自动转换，核验旧条目、亲子 ID、日志动作 3/4→5/6、图片本人引用授权、同 ID 现表优先、原值归档与重复零写入，见[旧表转换](../database/migrations.md#旧表-mistake-的转换) |
-| **是否影响上线** | 阻塞，取得受支持的升级或映射证据后再部署 |
-
-### 3.5 MistakeGrpcService:Address 配置错误
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | teacher_portal 配置的 MistakeGrpcService:Address 指向错误地址 |
-| **影响范围** | teacher_portal 所有 mistake 相关功能不可用，返回 502 |
-| **临时绕过方式** | 修正配置并重启 teacher_portal |
-| **是否允许降级** | 不允许降级 |
-| **需要团队介入** | 运维团队修正配置 |
-| **是否影响上线** | 阻塞 teacher_portal 的错题管理功能 |
-
-### 3.6 ConnectionStrings:Default 缺失
-
-| 项目 | 说明 |
-|------|------|
-| **触发条件** | appsettings 中未配置 ConnectionStrings:Default 且 Consul 未注入 PostgreSql:* |
-| **影响范围** | 服务无法启动 |
-| **临时绕过方式** | 配置 PostgreSQL 连接串 |
-| **是否允许降级** | 不允许降级 |
-| **需要团队介入** | 运维团队配置 Consul 或 appsettings |
-| **是否影响上线** | 阻塞，需配置 PostgreSQL 连接串 |
-
----
-
-## 附录：服务间调用关系
-
-```
-student ──(SubmitMistakeUpload)──→ mistake
-mistake ──(CompleteUploadReview)──→ OSS
-
-teacher_portal ──(所有 MistakeGrpcService RPC)──→ mistake
-teacher_portal ──(MarkUploadRecordAsReturned)──→ student
-teacher_portal ──(DeleteUploadRecordAfterReview)──→ student
+# ruoyu.mistake 集成验证入口
+
+本文说明怎样判断一次联调是否完成，以及到哪里运行对应检查。字段、权限、状态和迁移规则分别由下列权威文档定义；这里不维护第二套接口规格。实际测试结果应保存在对应 Issue 或验证输出中，不能把本文当作“已经全部通过”的报告。
+
+## 1. 开始前确认
+
+- 固定本次 Study commit，并记录命令、用时、结果和输出路径。只记录本次检查实际参与的服务版本和配置；跨服务验收使用同一组合，不能拼接不同版本的绿色结果。没有参与检查的外部 Admin 或身份服务无需准备。
+- Mistake 与 Student、三个 Portal 之间使用 HTTP。Mistake 的业务入口以 `/api/mistakes` 为前缀；Portal 调用地址为 `MistakeService:Url`。路由、JSON 字段、枚举、认证和错误条件以[版本化机器 HTTP 合同](../Integration/MachineHttpContract.md)及其发布的 JSON 为准。
+- 按检查内容准备输入。文档、构建、可独立运行的逻辑和 HTTP 合同检查不需要外部登录或共享服务器。数据库专项只准备它实际使用的任务自有 PostgreSQL 15；对象存储专项再准备所需 S3 桶。服务间 TLS、签名和权限测试使用可重复的隔离证书、服务身份与请求输入，不以人工登录外部 Admin 为前置。不要在共享业务库注入故障，也不要停止共享身份服务来测试恢复。
+- 实际启动服务时，开关和服务凭据按[部署说明](./Deployment.md)配置。`Local` 是独立配置模式，正常运行仍使用 S3；Mistake Host 没有文件系统存储回退，不能用 `USE_LOCAL_OSS` 绕过 OSS 故障。
+- 在运行受管来源流程的环境中，先停会删除原图的旧 Worker、旧聚合审核迁移和外部破坏性清理。关闭新处理开关不会解除已有来源、候选和历史的保护。
+
+“受管”指已经保存不可变来源及其题目关联的数据，见[来源入库](../modules/SourceIntake.md)。尚未建立这些关联的旧条目另按第 4 节核对，不能用旧行为解释受管数据。
+
+## 2. 沿业务步骤检查
+
+### 身份、输入和真实消费者
+
+读取发布的 `GET /contracts/mistake-http-v1.json`，核对内容 hash、条件 GET 与运行时路由清单。业务请求既检查 HTTP 状态，也检查合同规定的响应结构：普通响应外层 `success=true` 可能仍包含内层 `data.success=false`；空体、坏 JSON、未知响应和传输故障不能猜成成功。
+
+受管创建、读取、图片访问、审核和重分析的可信主体与归属检查不随开关关闭而失效；审核人的 `reviewerId` 必须与可信主体匹配。intake 管理查询、目标恢复、handoff 和对账始终要求认证的 Admin。Mistake 调用 Student 使用[服务身份](../../../ruoyu.student/docs/Integration/Mistake/ServiceIdentity.md)，不转发用户令牌；快照、退回回执、完整交接各有对应权限。认证失败不匿名重发。
+
+非法学生、来源、学科、年级、图片或区域输入按当前 operation 的 HTTP/业务错误断言。创建要求 subject 1–9、grade 1–12；审核只接收 Confirmed 或 Rejected，有效的可选年级/学科才修正原值。分页、过滤、缺失条目和绑定错误也按合同逐项检查，不以旧 RPC 状态或精确异常文本作标准。
+
+实际共享 HttpClient 与三个 Portal 必须保留未完成和失败：受管 review 的 202 是“处理中”，内层 false；界面不显示“已退回”，不提前关闭。下游业务失败、权限拒绝、未知响应和取消均应按[共享调用边界](../../../../ruoyu.common/docs/bff-shared/MistakeBff.HttpClients.md)处理；失败不能变成成功空列表，前一步失败后不能继续 Student 写入。
+
+### 采集与创建
+
+Mistake 的 `UploadPollingWorker` 主动扫描 Student 的 Processing 记录；Student 不通过 RPC 推送错题。启用[来源入库](../modules/SourceIntake.md)时，Worker 与现有 `POST /api/mistakes/upload`、`POST /api/mistakes` 共用不可变快照和入库结果。手动请求按规格提交 `expectedContentRevision` 与 `requestKey`，不把扫描得到的路径当成可信完整来源。
+
+成功证明是已提交的题目、Created 日志、来源分组关联和请求结果。相同请求重放得到原 ID，不增加题目、不重跑分析；异载荷或冲突分组明确失败。自动多图分组必须整体提交，字节核验或分析失败不能留下部分成功。创建阶段保留原图和快照，不删除 Student 来源、不执行完成交接。
+
+### 图片目标与读取
+
+[目标物化](../modules/SourceTargets.md)先保存复制尝试，再复制实际引用的原图并核验长度和摘要。多区域共享原图不重复产生业务目标；未引用图片不冒充目标。复制响应丢失、取消、进程停止或旧处理者迟到时，恢复沿原持久关联推进，不覆盖选定目标、不删除候选补偿。
+
+`POST /api/mistakes/intakes/{sourceId}/{revision}/targets` 与对应 GET 用来核对目标状态。`targetReady=true` 只证明当前已提交组的图片齐备，后续合法组可使它再次变为 false；它不能证明 `handoffCompleted=true`。
+
+`POST /api/mistakes/presigned-url` 读取受管原图或选定目标时，核对真实 item/student 关联、精确对象键及字节。来源原图与目标只允许 `size=full`；练习图按自身既有大小规则处理。错误大小写、跨学生、未选定候选或篡改字节均失败，不签发可用地址。测试输出不保存活的签名 URL。
+
+### 审核、练习与重分析
+
+审核入口为 `POST /api/mistakes/{id}/review`。确认更新审核状态、元数据和 ReviewConfirmed 日志，不搬图、不移除 Student 来源，也不证明完整来源交接已完成。
+
+[受管退回](../modules/SourceReturns.md)先保存意图和原审核内容，再准备全部原图副本，以同一操作向 Student 发起退回。只有可信 Student 原历史回执匹配，并且 Mistake 同时提交 Completed、Rejected 和唯一最终日志，才是成功。POST 响应或当前某条 Returned 记录不足以证明完成。多图部分复制失败、结果未知或回执查询故障都保持未完成；恢复使用同一操作，不重建已被学生合法编辑、消费或删除的当前记录。
+
+受管退回成功保留 item、练习、日志、来源、创建结果和全部图片引用。默认列表可能排除已完成退回条目，但授权详情和显式 Rejected 查询仍可读取历史；“默认列表为空”不等于数据库已物理删除。已有退回意图阻止同条目的确认、编辑、练习、日志和重分析写入，不能通过旧 SQL 或旧 EF 写方绕过。
+
+练习写入验证 Confirmed 前置、学生绑定、持久练习与 Practiced 日志；处理日志的合法动作取[当前领域枚举](../../src/Domain/Models/MistakeEnums.cs)，不能直接套用旧表动作编号。重分析验证 Pending/Running/完成或失败状态、输入变化、两个实例竞争、租约接管、取消和原子结果，不能以排队成功当作分析完成。详细入口见[审核说明](../modules/MistakeReview/ReviewMistakeItem.md)和[重分析文档](../modules/MistakeReview/ReanalyzeMistakeItem/README.md)。
+
+### 完整来源交接
+
+[来源交接](../modules/SourceHandoffs.md)核对来源的全部图片与全部真实分组：所有条目已确认，或已有完整退回成功证明；目标齐备。手动来源必须由可信 Admin 显式封口，不用第一批图片就封死后续合法分组。
+
+`POST /api/mistakes/intakes/{sourceId}/{revision}/handoff` 保存固定操作并请求 Student 条件消费同一快照。只有可信[原交接回执](../../../ruoyu.student/docs/Integration/Mistake/SourceHandoff.md)匹配且本域 durable Completed，才返回 200、内层 true；202、内层 false 表示尚未完成。状态查询中的 `SourceRetained` 与 `handoffCompleted` 可以同时为 true。
+
+Student 当前记录可能因完整消费而被移除，或保留其他分类图片；其结果必须与原历史回执一致。已取得的快照、原图和 Mistake 全部历史永久保留。因此不要要求“来源原图必须不存在”，也不要以当前 Student 记录是否存在代替历史完成证明。
+
+### 完整引用与只读对账
+
+[StorageReferences v1](../../../../../docs/integrations/StorageReferences.md)从 Student、Mistake、Homework 各自捕获完整持久引用快照并分页返回。验证涵盖所有状态的条目、练习、来源快照、候选、退回和交接引用；对象键精确区分大小写和 Unicode。任一来源不可达、页缺失、解析失败、摘要或完整性不符，都不能返回部分快照或成功空集。
+
+实际 Admin 消费方收齐并验证三方全部页后才能进行对象列举。结果只能表示“未观察到引用”；`deletionAuthorized=false` 恒成立，完整快照也不授权删除或复制。引用审计不是普通条目分页拼接，也没有旧 `GetAllReferencedImagePaths` RPC 可调用。
+
+`GET /api/mistakes/reconciliation` 的[对账报告](../modules/SourceReconciliation.md)只报告缺失/冲突/待恢复/未受管引用及修复预览。读取失败不输出部分报告；报告前后业务数据和对象字节不变。没有可信旧来源时标为未知，不据此补建记录、搬图或删图。
+
+## 3. 故障与恢复检查的位置
+
+以下是现有自动测试入口；测试文件存在不表示本次运行已经通过。提供方测试目录为 [Ruoyu.Study.Mistake.Provider.Tests](../../../../../tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests)，服务测试目录为 [Mistake.Service.Tests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests)。每项只准备其实际使用的依赖，真实依赖与替身测试的结果分开记录；某项必需输入缺失或测试跳过，只保留该项未完成，不阻塞其他独立检查。
+
+| 检查内容 | 对应既有测试与权威说明 |
+|---|---|
+| HTTP 发布、路由、字段、错误、实际消费者 | `MistakeHttpContractTests`、`MistakeHttpContractWireTests`、`MistakeConsumerHostModesTests`；[合同可执行检查](../Integration/MachineHttpContract.md#可执行检查)及其中的实际共享 HttpClient/三 Portal 测试 |
+| 来源同请求重放、异载荷、多图整体创建、两实例竞争、提交响应丢失与取消 | `SourceIntakePostgresTests`、`SourceIntakeSecurityTests`；[来源入库验证](../modules/SourceIntake.md#验证入口) |
+| 真实复制、核验失败、部分目标、重启恢复、晚到处理者与关闭开关后的保护 | `SourceTargetPostgresTests`、`SourceTargetS3Tests`；[目标物化](../modules/SourceTargets.md) |
+| 多图退回、各提交阶段故障、回执丢失、取消/晚到 Copy、并发写入、恢复与备份 | `SourceReturnPostgresTests`、`SourceReturnRecoveryPostgresTests`、`SourceReturnS3Tests`、`SourceReturnStartupTests`；[退回验证](../modules/SourceReturns.md#验证入口)及其中的真实 BFF/ReviewDetail 检查 |
+| 完整封口、混合确认/退回、条件消费、两个实例/新 revision、取消/重启与关闭开关 | `SourceHandoffPostgresTests`、`SourceHandoffRecoveryPostgresTests`、`SourceHandoffS3Tests`、`SourceHandoffStartupTests`；[交接验证](../modules/SourceHandoffs.md#验证策略) |
+| 全部引用、坏持久数据/部分页、取消和禁止物理清理 | [公共引用合同测试](../../../../ruoyu.common/test/Ruoyu.Study.Common.Tests/StorageReferenceContractTests.cs)、[Student 引用 PG 测试](../../../ruoyu.student/src/Tests/StorageReferencePostgresTests.cs)；[三方提供者与实际 Admin 的联合验证要求](../../../../../docs/integrations/StorageReferences.md) |
+| 对账异常、读取失败、截断计数与零写入 | `SourceReconciliationPostgresTests`；[对账验证](../modules/SourceReconciliation.md#验证策略) |
+| 重分析提交未知、输入变化、独立 worker、取消与旧租约失效 | [ReanalyzeLeasePostgresTests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests/ReanalyzeLeasePostgresTests.cs)、[ReanalyzeJobServiceTests](../../src/Tests/Ruoyu.Study.Mistake.Domain.Tests/ReanalyzeJobServiceTests.cs) |
+| 开关缺失/矛盾、错误身份/地址、正常 TLS 与能力关闭 | `SourceIntakeStartupTests`、`SourceReturnStartupTests`、`SourceHandoffStartupTests`；[隔离运行](./IsolatedDeployVerification.md)与[部署](./Deployment.md) |
+
+OSS 单图或全部不可用时，受管操作不报完成，保留日志、状态和对象，恢复后沿原操作推进。关闭相应处理能力停止新增/推进，但历史读取、完成重放和保护仍有效。Student 能力关闭时，旧退回在任何副作用之前 503；新退回按其能力开关与持久状态处理。错误凭据、未知回执、取消或提交确认丢失不能通过重试新操作、关闭认证或手工删历史绕过。
+
+Portal 地址错误按实际 `MistakeService:Url` 排查。共享客户端对网络故障和未知下游响应产生安全失败，Portal 不能宣告审核或后续操作成功。健康检查的 live 成功只说明进程存活，ready 成功也不能代替业务完成或完整跨服务验收。
+
+### TC-17：数据库启动自动升级与拒绝未知结构
+
+保留原 TC-17 的升级、回滚和只读要求，具体支持版本与 catalog 由[迁移历史](../database/migrations.md)定义，不在本入口固定目标迁移数量。
+
+- 空库、受支持的历史结构、旧运行时改名/误盖章形态和旧自动维护结构，正常启动自动升级；原行、ID、亲子关系及图片路径按迁移规则保留，需转换的原值进入受保护归档。重复旧条目不能为满足新唯一规则而丢弃。
+- 已是目标的库以只读或无 DDL 权限账号启动且零写入；重复启动不写历史，并发启动只升级/归档一次。升级步骤与锁等待超过连接串命令超时仍能完成，宿主停止或取消仍中断并回滚。
+- DDL 失败、核验失败、取消、断连或权限不足时整体回滚，原结构、数据、索引、约束与历史保持；诊断不包含行内容、连接串或密码。陌生旧表、未知/矛盾对象、错误类型、缺少保护或额外对象拒绝启动，不手工盖迁移章凑通过。
+- 两个兼容升级命令复用正常启动流程；不要求 `--writes-stopped`/`--backup-verified`，显式 `--database` 与实际库不符仍拒绝。受保护归档或操作非空时按其规则拒绝 Down；备份恢复核对完整业务、来源、候选、操作、回执和 guards 后再续原操作，不只导出条目表。
+
+实际测试为 [ReadOnlyStartupPostgresTests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests/ReadOnlyStartupPostgresTests.cs)、[LegacySchemaGuardPostgresTests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests/LegacySchemaGuardPostgresTests.cs)、[LegacySchemaConvergencePostgresTests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests/LegacySchemaConvergencePostgresTests.cs)，以及上表各操作的升级/恢复测试。前两类分别读取 `MISTAKE_READONLY_TEST_CONNECTION`、`MISTAKE_LEGACY_GUARD_TEST_CONNECTION`；旧结构收敛同用前者，均必须指向任务自有 PG 管理连接。备份命令与完整核对见[备份恢复演练](./BackupRestoreDrill.md)。
+
+### 隔离启动与平台端到端
+
+[07 隔离运行脚本](../../../../../script/build-script/07-mistake.isolated-deploy-verification.sh)与[运行说明](./IsolatedDeployVerification.md)涵盖基础 19 步、显式严格身份阶段和 Student-enabled 两模式。基础阶段自行准备临时 PG/S3，不需要 Admin 登录。只有显式运行后两个阶段时，现有脚本才读取仓库外的受限 JSON：普通文件、非软链接、0600，正常 HTTPS、精确回调、CA 与真实身份提供者；Student-enabled 还需固定镜像和任务自有 provider 控制信息。这些是相应脚本阶段当前实际使用的输入，不是其他代码修改的前置。缺少输入不能把该阶段报告为通过；不妨碍先完成基础阶段和其他独立测试。基础 ready 探测不证明真实 Student 业务调用成功。
+
+真实浏览器托管登录属于单独的环境专项；验收该项才需要对应登录入口和会话，不能据此要求普通代码、数据库或接口修改等待外部 HTTPS 登录环境。[现有 E2E 入口](../../../../../tests/e2e/README.md)目前经已部署 Admin 调用业务，因此该脚本仍读取实际托管会话与普通 CSRF；这是现有工具的使用条件，不是所有业务验收必须经过它。独立业务检查按上表运行，会话与传输检查也有本地自动测试。实际运行登录专项或该脚本时，会话文件只含该 origin 的最小 Cookie，不导出下游 token，保留正常 TLS 与精确来源校验。下节所述旧断言尚待修订，运行前须核对本次代码与案例是否一致。
+
+## 4. 旧路径的实际限制与验收边界
+
+未建立受管来源的旧创建、旧 Worker、旧 `complete-review` 和旧退回仍有兼容路径。旧 Worker/聚合审核可搬移图片并移除当前来源；旧退回先改审核、复制部分图片并删原 item/关联历史，再调用 Student。它使用固定 `mistake-return:{itemId}`，回调冲突或未知明确返回内层 false，但图片复制异常会被记录后继续，回调之前的删除不回滚；无成功副本时还可能跳过 Student 回调。旧聚合审核也可能在复制失败后返回业务成功。这些是当前限制，不能把它们列为正确的容错标准或认为重试已经可靠。
+
+旧条目今后退回也须保存可恢复操作、失败可重试且不重复建 Student 记录，实施归 [IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3)。在对应实现与验证交付前，不能把受管退回的保证套用于旧条目。已经缺失的历史记录不补建，不做物理清理；只读对账不会修复已丢载荷。
+
+现有平台 E2E 01–03 的搬图、删当前记录、查询任意 Returned 记录和清理旧条目的断言，与受管永久保留/原操作回执之间仍有差额，修订及完整同版本联验归 [IKIZY6](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY6)。不得删除断言、放松 guards、恢复删原图或跳过故障场景来报告通过。此入口修订没有改变代码，也不表示这些端到端用例已经通过。
+
+## 5. 执行与判定
+
+先按修改范围选择检查；普通代码修改无需等外部登录环境。从仓库根运行快速验证：
+
+```bash
+./tests/integration/scripts/pre-commit.sh --skip-docker --skip-e2e --skip-integration
+python3 tests/documentation/check_docs.py
+git diff --check
 ```
 
-## 附录：ReviewStatus 枚举值
+受影响后端另运行对应 solution 的 Release build/test；改前端时运行目标项目实际构建。数据库、对象存储和服务间身份专项分别按各能力文档准备所需 PG、S3 或隔离 TLS/签名输入，不捆绑外部 Admin 登录。文档修改运行文档检查与差异检查即可。完整平台 E2E、隔离运行、故障/取消/并发/恢复和实际消费者证据各自记录，快速检查不代替它们；没有运行的专项也不阻塞已经满足自身验收条件的独立修改。
 
-| 名称 | 值 | 说明 |
-|------|-----|------|
-| REVIEW_STATUS_UNSPECIFIED | 0 | 未指定 |
-| REVIEW_STATUS_PENDING_REVIEW | 1 | 待审核 |
-| REVIEW_STATUS_CONFIRMED | 2 | 已确认 |
-| REVIEW_STATUS_REJECTED | 3 | 已退回 |
-
-## 附录：ProcessAction 枚举值
-
-| 名称 | 值 | 说明 |
-|------|-----|------|
-| PROCESS_ACTION_UNSPECIFIED | 0 | 未指定 |
-| PROCESS_ACTION_CREATED | 1 | 创建 |
-| PROCESS_ACTION_ANALYZED | 2 | 分析 |
-| PROCESS_ACTION_REVIEW_CONFIRMED | 3 | 审核确认 |
-| PROCESS_ACTION_REVIEW_REJECTED | 4 | 审核退回 |
-| PROCESS_ACTION_PRACTICED | 5 | 练习 |
-| PROCESS_ACTION_MASTERED | 6 | 掌握 |
+通过必须对应具体提交和每项成功证明；未运行、跳过、失败及结果未知都逐项保留。部分图片/引用缺失、错误授权、历史被删、未完成被显示为成功，均不接受为“部分通过”。按故障定位配置、依赖或实现，修复后重跑受影响场景；保留安全认证、原操作身份和永久数据保护。
