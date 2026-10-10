@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "name": "mistake-minimal-source-package",
   "description": "Mistake 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外预演与未来迁出按清单复制使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
-  "source_commit": "e7b0da8898db131cb9b6d918c9f8ba624b9d22f7",
+  "source_commit": "056b61d3a38d2161a594104efa30547f9b220dc2",
   "source_commit_note": "portable core/provider 测试归属与直接依赖核验基线；Portal consumer 模式测试及其 alias 引用归现有 provider，独立 provider 不进入最小闭包。后续显式 --commit 漂移仍须记录实际源与同 head 产物，不以旧基线结果替代。",
   "service_identity_note": "Host 本地 RS256 signer/config 随递归成员导出，无 Student 编译依赖。portable Service.Tests 不含 Student 或 Portal BFF 引用；真实跨域 provider 测试由 integration 独立项目执行，不属于导出闭包。secret 只进入任务自有外部受限环境，不导出或 COPY。",
   "solution": "src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln",
@@ -24,7 +24,8 @@
     "context_files": [
       ".dockerignore",
       "src/services/ruoyu.mistake/docs/Integration/mistake-http-v1.json",
-      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v2.json"
+      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v2.json",
+      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v3.json"
     ]
   },
   "export": {

@@ -552,7 +552,7 @@ sealed Manual仅Admin首次固定，worker只恢复已有Manual并扫描完整Au
 
 ## 机器 HTTP 合同发布
 
-Host 发布资源携带当前 `mistake-http-v2` 和原样历史 v1，匿名 `/contracts/mistake-http-v2.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
+Host 发布资源携带当前 `mistake-http-v3` 和原样历史 v1/v2，匿名 `/contracts/mistake-http-v3.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
 
 ## Student-enabled 两模式受控运行
 
@@ -560,10 +560,12 @@ Host 发布资源携带当前 `mistake-http-v2` 和原样历史 v1，匿名 `/co
 
 该运行配置显式使用 `DOTNET_SHUTDOWNTIMEOUTSECONDS=10`，为在途 HTTP drain 和取消设置 .NET Host 预算，使完整进程退出可在30秒期限内验证；不能仅用框架默认30秒 drain 推定总退出时长。配合服务自身的取消/候选保全机制，取消未正常确认的 copy 不发布历史结果，也不补偿删除候选。
 
-## 旧错题安全入口与暂不可启用
+## 旧错题恢复启用与安全停用
 
-`Mistake:LegacyReturns:Enabled`（`Mistake__LegacyReturns__Enabled`）默认false。本版任何true或非法bool都在DB/OSS初始化前明确拒绝启动，不会静默忽略。生产只有只读禁用适配器，没有完整恢复引擎或worker；新/未完成旧题退回503且无意图、租约或外部副作用。所有Rejected先可信认证与审核者绑定，匿名401、身份/绑定越权403；已有canonical冲突409，仅Completed精确匹配认证重放200。Admin状态GET、永久guards、全部历史和完整引用始终保留。
+`Mistake:LegacyReturns:Enabled`（`Mistake__LegacyReturns__Enabled`）默认 false，只接受 bool。true 在 DB/OSS 初始化和两个升级命令之前要求 Student enabled、strict API/resource auth、完整受信 issuer/audience、有效 RS256 服务签发和正常 HTTPS Student 基地址。不需要同时开启 intake/targets/SourceReturns；与服务身份有关的 secret 挂载、CA bundle 及轮换沿上方既有配置。
 
-内部完整恢复算法和生产接线在后续两个独立任务交付。本版不能重新开启旧题推进，也不能回到旧binary/匿名先删路径。备份恢复包含第12条迁移的三表、业务/practice/log/job、history、函数/trigger/FK与全部对象；非空日志拒绝Down，回退保留认识当前schema的binary。
+false 仅注册只读禁用适配器，无 LegacyReturnWorker；新/未完成旧题退回503且无意图、租约或外部副作用。合法 true 注册当前已验证恢复引擎与 worker，启动及每20秒扫描 Capturing/Prepared/Sending，Conflict 不自动重建。所有 Rejected 先可信认证与审核者绑定；匿名401、越权403，canonical 冲突409，只有 durable Completed 才200/data.success=true，其余已接受返回202/data.success=false。Admin 状态 GET、永久 guards、全部历史和完整引用始终保留。
 
-本段实测用任务自有PG15、实际Host和真实共享HTTP消费者；正常TLS/签名测试保留，不需要共享服务器浏览器登录或真实Admin账号。合同v2同步共享客户端和三个Portal发布源，历史v1精确bytes保留。恢复/S3/跨进程联合验收留后续，不把候选整体测试冒充本版能力可用。
+关闭所有自身实例并用 false 重启可停止后续推进，已持久意图和候选不撤销；外部非取消 IO 可能晚到。重新 true 启动按原 operation、原固定 payload 和有效 DB-clock lease/fence 恢复，不重新创建 Student 逻辑记录。备份恢复包含第12条迁移三表、业务/practice/log/job、history、函数/trigger/FK与全部对象；非空日志拒绝 Down，回退保留认识当前 schema 的 binary，不能回到匿名/先删路径。
+
+验证入口见 [SourceReturns](../modules/SourceReturns.md#验证入口)。三个持久阶段由真实生产 Host 进入后分别终止原进程，关闭观察21秒，再以两个实例恢复；正常 TLS/RS256、同真实 PG/S3/Student 及真实共享客户端/BFF/编译 ReviewDetail 均由任务自有 fixture 验证，不需要共享浏览器登录或真实 Admin 账号。当前合同 v3 同步共享客户端和三个 Portal 发布源，历史 v1/v2 精确 bytes 保留。

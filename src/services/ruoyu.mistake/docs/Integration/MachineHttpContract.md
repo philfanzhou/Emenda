@@ -1,23 +1,23 @@
 # Mistake 版本化 HTTP 合同
 
-[mistake-http-v2.json](./mistake-http-v2.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 由已实现的 [StorageReferences v1](../../../../../docs/integrations/StorageReferences.md) 主责，快照/pages、机器身份与恒 false 删除许可仍按其独立不可变合同。本业务合同只登记该 namespace 的归属，不并入其 wire，也不授予物理 GC。
+[mistake-http-v3.json](./mistake-http-v3.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 由已实现的 [StorageReferences v1](../../../../../docs/integrations/StorageReferences.md) 主责，快照/pages、机器身份与恒 false 删除许可仍按其独立不可变合同。本业务合同只登记该 namespace 的归属，不并入其 wire，也不授予物理 GC。
 
 ## 取得发布版本
 
-匿名 `GET /contracts/mistake-http-v2.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置，不提供带凭据或真实对象的示例。
+匿名 `GET /contracts/mistake-http-v3.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置，不提供带凭据或真实对象的示例。
 
 规格嵌入 `Mistake.Service` 发布程序集；Host 从该资源返回内容，Dockerfile 显式带入源 artifact。运行时无需 checkout、文档目录或特定工作目录。共享客户端也嵌入同一源 artifact，并仅 source-link 不依赖 Domain/Database 的纯 schema 校验器；它不引用服务 DTO 或服务项目。
 
 ```bash
 # 使用部署者已信任的正常 CA；不要关闭 TLS 校验。
 curl --cacert '<CA-file>' --dump-header headers.txt \
-  'https://<owned-host>/contracts/mistake-http-v2.json' -o contract.json
+  'https://<owned-host>/contracts/mistake-http-v3.json' -o contract.json
 sha256sum contract.json
 ```
 
 `x-ruoyu.ops` 将健康探针与业务路由分开：live 无依赖；ready 按固定启动快照检查 DB、OSS、已启用 Student、已配置 VL；strict 启用时还要求 issuer Discovery 与精确配置匹配、同源 JWKS 非空。任一必需组件失败返回503，spec取得仍独立可用。
 
-hash 是发布身份，不是业务权限。回滚规格发布不改变原 schema、开关默认值、认证、历史 guards 或来源 pins。破坏性改动使用新版本并原样保留历史发布 artifact，不能用同名 v1 覆盖旧消费者所需字段。v2 根据用户批准取消旧匿名/先删除退回，统一可信审核身份与持久完成语义，新增 Admin 六字段状态 GET 和 Capturing 状态。原 `/contracts/mistake-http-v1.json` 精确 bytes/hash 保留，响应 `X-Ruoyu-Contract-Status: historical` 与 latest-version Link；它只供历史核对，不表示危险旧写入仍可执行。发布 v2 的共享客户端与三个 Portal 同步消费当前合同；这里不要求先部署共享环境或人工登录。
+hash 是发布身份，不是业务权限。回滚规格发布不改变原 schema、开关默认值、认证、历史 guards 或来源 pins。破坏性改动使用新版本并原样保留历史发布 artifact，不能用同名 v1 覆盖旧消费者所需字段。v2 根据用户批准取消旧匿名/先删除退回，统一可信审核身份与持久完成语义，新增 Admin 六字段状态 GET 和 Capturing 状态。原 `/contracts/mistake-http-v1.json` 精确 bytes/hash 保留，响应 `X-Ruoyu-Contract-Status: historical` 与 latest-version Link；它只供历史核对，不表示危险旧写入仍可执行。当前 v3 的共享客户端与三个 Portal 同步消费当前合同；这里不要求先部署共享环境或人工登录。
 
 ## 按真实结果消费
 
@@ -36,7 +36,9 @@ hash 是发布身份，不是业务权限。回滚规格发布不改变原 schem
 
 异常/InnerException、响应与日志不得保留远端 body/message、原异常、URI、token/Cookie 或 signed URL。调用方 CancellationToken / RequestAborted 在预取消、发送与读取阶段透传，停止后续 I/O；未知响应不证明未提交，取消不承诺回滚。真实 wire 对不安全方法验证最多一次发送；DELETE 保持零字节 payload 并避免 bodyless 请求的底层 EOF 重发。所有实际 Portal Mistake action 消费同一分类；聚合页取数失败立即终止完整成功页，后续 Student 写入受前置 Mistake 成功约束。
 
-v2 的受管 Rejected 继续持久恢复；本阶段旧题只有只读禁用适配器，任何LegacyReturns=true启动拒绝，新/未完成503、确定canonical冲突409，已有Completed精确匹配才认证200重放；没有 journal 的普通 Confirm 沿既有行为。旧共享客户端回退会恢复旧错误报告，不能宣称仍通过新负向断言，也不得为回退放松 producer guards。停止新退回应关闭相应开关并保留新 binary/schema/永久 pins，不能恢复匿名或先删除路径。
+v3 只启用现有 review 的旧题恢复可用性：合法 LegacyReturns=true 可持久接受 Capturing/Prepared/Sending，202/data.success=false；只有 durable Completed 才200/data.success=true。false 仍只读禁用，新/未完成503、确定 canonical 冲突409、Completed 精确请求认证重放200。输入、schema、路由/方法、状态 enum、资源权限和 Student wire 与 v2 精确相同。检查器对 v2→v3 重构唯一允许的文档并逐成员相等比较，仅豁免 review 的两个精确 semantics 值和发布版本 metadata，不能用整个 operation 的 changedLocations 掩盖其它漂移；原 v1→v2规则保留。
+
+历史 [v1](./mistake-http-v1.json) 和 [v2](./mistake-http-v2.json) 的原 bytes/hash/ETag/304 与历史标记继续发布，latest-version Link 指向 v3；历史合同用于核对当时行为。共享客户端与三个 Portal 嵌入当前 v3，14 方法的原 DTO/wire 不变。停止新退回应关闭相应开关并保留当前 binary/schema/永久 pins；不得恢复匿名、先删除或放松 producer guards。
 
 ## 可执行检查
 

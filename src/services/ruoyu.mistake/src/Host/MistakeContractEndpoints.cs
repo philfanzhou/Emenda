@@ -7,9 +7,13 @@ namespace Ruoyu.Study.Mistake.Host;
 /// <summary>Immutable release metadata, independent of every business dependency.</summary>
 public static class MistakeContractEndpoints
 {
-    public const string Version = "mistake-http-v2";
+    public const string Version = "mistake-http-v3";
     private static readonly byte[] Document = ReadDocument(Version);
-    private static readonly byte[] HistoricalDocument = ReadDocument("mistake-http-v1");
+    private static readonly IReadOnlyDictionary<string, byte[]> HistoricalDocuments = new Dictionary<string, byte[]>
+    {
+        ["mistake-http-v1"] = ReadDocument("mistake-http-v1"),
+        ["mistake-http-v2"] = ReadDocument("mistake-http-v2")
+    };
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Document)).ToLowerInvariant();
     private static readonly EntityTagHeaderValue Tag = new('"' + Sha256 + '"');
 
@@ -18,13 +22,13 @@ public static class MistakeContractEndpoints
         endpoints.MapGet("/contracts/{version}.json", async (string version, HttpContext http) =>
         {
             http.RequestAborted.ThrowIfCancellationRequested();
-            if (version != Version && version != "mistake-http-v1")
+            if (version != Version && !HistoricalDocuments.ContainsKey(version))
             {
                 http.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;
             }
 
-            var document = version == Version ? Document : HistoricalDocument;
+            var document = version == Version ? Document : HistoricalDocuments[version];
             var tag = version == Version ? Tag : new EntityTagHeaderValue('"' + Convert.ToHexString(SHA256.HashData(document)).ToLowerInvariant() + '"');
             if (version != Version)
             {
