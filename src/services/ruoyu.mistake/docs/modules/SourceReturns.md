@@ -2,7 +2,7 @@
 
 [SourceIntake](./SourceIntake.md) 的实际 group→item→source 是唯一输入，使用本组已经 [Verified 的目标](./SourceTargets.md)。一个 PendingReview item 对应一个永久操作 `mistake-return:{itemId:D}`；成功同时需要 Student 原载荷的[可信历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)和本域原子 Completed/Rejected/最终日志。来源、创建重放、group、item、practice、所有日志和 source/target pins 保留；SourceRetained不变；handoffCompleted由独立[完整来源交接](./SourceHandoffs.md)的durable结果决定，单个退回不证明整来源完成。[ADR-0017](../../../../../docs/adr/0017-managed-mistake-durable-return.md)说明主责与取舍。
 
-旧条目使用独立[旧错题退回日志](../database/tables/legacy_return.md)，不伪造来源外键。当前阶段永久移除危险旧 reject，生产只有 `DisabledLegacyReturnService`：读取已有日志及精确 Completed 认证重放，不新增、不领取租约、不复制、不回调Student。新/未完成旧题退回503，确定请求冲突409；完整 `LegacyReturnService` 内部引擎已随源码提供，但生产DI没有注册它，也没有任何公开入口接到它；没有 LegacyReturnWorker。任务自有测试仅直接实例化完整引擎验证恢复算法，正式启用仍待独立交付。没有实际来源组的旧来源ID与空来源均按此边界处理；历史缺失仍不补建。以下操作/图片/跨域恢复章节描述已经可启用的受管 SourceReturns，不代表旧题本版可推进。
+旧条目使用独立[旧错题退回日志](../database/tables/legacy_return.md)，不伪造来源外键。`LegacyReturns` 默认关闭；关闭时只注册 `DisabledLegacyReturnService`，读取已有日志及精确 Completed 认证重放，不新增、不领取租约、不复制、不回调 Student。合法开启后生产接入已有 `LegacyReturnService` 与 `LegacyReturnWorker`，覆盖空来源和没有实际来源组的旧来源 ID；历史缺失仍不补建。旧题先提交 Capturing 完整意图并固定原图字节身份，再进入 Prepared；之后候选复制、固定 Sending payload、历史 receipt 与原子完成遵循下列相同保证，不重写受管来源模型。
 
 ## 操作与图片
 
@@ -28,7 +28,7 @@ receipt 必须来自正常 TLS 和 RS256 uploads.return 服务身份，核对 op
 
 ## HTTP 与观察合同
 
-沿既有 `POST /api/mistakes/{id}/review` 的 Rejected 分支，受管数据始终执行可信 JWT、StaffOrAdmin、reviewerId=sub 和实际归属。旧错题的 Rejected 分支也始终执行同样的可信身份和审核者绑定，并按真实 item 决定 student；本版首次调用在任何写入或外部IO前503；已有journal可读取Capturing等阶段但不推进。没有退回日志的普通 Confirm 沿原行为；有日志后 Confirm 与其它同题写入返回409。旧匿名/先删除的 reject 已移除，行为升级由 [HTTP v2](../Integration/MachineHttpContract.md) 明确登记。
+沿既有 `POST /api/mistakes/{id}/review` 的 Rejected 分支，受管数据始终执行可信 JWT、StaffOrAdmin、reviewerId=sub 和实际归属。旧错题的 Rejected 分支也始终执行同样的可信身份和审核者绑定，并按真实 item 决定 student；关闭时首次/未完成调用在任何写入或外部 IO 前503；开启后同操作可恢复 Capturing/Prepared/Sending。没有退回日志的普通 Confirm 沿原行为；有日志后 Confirm 与其它同题写入返回409。旧匿名/先删除的 reject 已移除，安全权限由历史 v2 登记，恢复可用性由当前 [HTTP v3](../Integration/MachineHttpContract.md) 明确登记。
 
 - durable Completed：200，旧 envelope 内 data.success=true，附可忽略 operationId/returnState/confirmedRecordId；removedImagePaths 为空。
 - 已接受且尚在推进：202，data.success=false，errorKind=return_pending，errorMessage=`退回处理中，请稍后重试`。
@@ -42,21 +42,20 @@ receipt 必须来自正常 TLS 和 RS256 uploads.return 服务身份，核对 op
 
 `Mistake:SourceReturns:Enabled` 默认 false，只接受 bool。true 要求 Student、strict API、resource auth、有效 RS256 签发与 HTTPS，在 DB/S3 初始化前失败关闭。无需同时启用新的 intake/targets 领取，只使用已有 Verified 事实。数据库结构、完整备份与 known1–7 升级见[来源表](../database/tables/source_intake.md)与[部署](../development/Deployment.md#受管持久退回启用与恢复)。
 
-`Mistake:LegacyReturns:Enabled` 默认 false，非法bool或任何true在DB/OSS初始化前明确拒绝启动，本版不能启用旧题恢复。false保留授权读取、永久guards/完整引用和已有Completed精确同请求重放。未完成同请求503且状态不变，canonical冲突409；不默默忽略true、不恢复先删除分支。内部引擎只供直接验证；正式启用独立验收后才调整该阶段限制。
+`Mistake:LegacyReturns:Enabled` 默认 false，只接受 bool。true 要求 Student、strict API、resource auth、有效 RS256 签发与正常 HTTPS，在 DB/OSS 初始化和升级命令前校验；无需同时开启 intake、targets 或 SourceReturns。false 保留授权读取、永久 guards/完整引用和已有 Completed 精确同请求重放，未完成同请求503且状态不变、canonical 冲突409。合法 true 注册既有引擎与 worker，启动时及每20秒扫描 Capturing/Prepared/Sending，同 operation 继续；Conflict 不自动重建。
 
 没有跨 PG/S3 原子提交、即时停止非取消 IO、历史缺失记录修复或 GC 保证。退回图是 Student 可编辑正常 uploads，后续合法 COW/删除/再分类可以发生，历史选定关联不授权重写或回收。完整 Storage Audit 合同前必须隔离旧 movers 和外部破坏性 GC；独立 DB/OSS 管理凭据不在应用保证内。
 
 ## 验证入口
 
-本阶段 `LegacyReturnPostgresTests` 使用真实PG合法journal API seed，仅验证安全只读/禁用/精确重放、各阶段六字段、权限与竞争写入；seed的Completed是数据库保护测试材料，不声称Student真实回执交付已发生。`LegacyReturnStartupTests` 用实际Host验证默认/false与启用拒绝，并通过实际生产DI、真实PG和HTTP请求证明完整引擎不可达；观察完整扫描间隔时已持久journal、item、practice及日志均不推进，OSS探针零请求。`LegacyReturnEnginePostgresTests` 直接实例化完整引擎，以真实PG/正常TLS及RS256 Student路由验证持久意图、全部提交边界、未知回执、并发租约接管与永久历史；故障复制使用明确的文件替身。`LegacyReturnS3Tests` 的normal/partial/late三种场景直接使用实际Seaweed S3 Copy/Get与Student合法COW，验证未知或迟到候选不公开、原选定图字节不变。没有把测试fixture的HTTP注册切换为完整引擎，真实生产启用/worker/重启/Portal联合链路仍未交付；原完整候选及日志保留，不冒充本版已启用。原受管路径的实际 PG、正常 CA/SAN HTTPS/RS256 Student 与独立 Mistake HTTP、提交前故障/真实提交后响应丢失、取消/晚到 Copy、SQL/授权/恢复见 `SourceReturnPostgresTests`。真实 S3 Copy/Get 与同提供方联合链路见 `SourceReturnS3Tests`。提供任务自有随机 PG/S3，不能使用共享业务库；跳过不代表通过。
-
+`LegacyReturnPostgresTests`、`LegacyReturnEnginePostgresTests`、`LegacyReturnLeasePostgresTests` 保留实际 PG、正常 TLS Student、原 owner/fence、失败/取消/late copy、SQL guards 与永久权限回归；`LegacyReturnStartupTests` 和 `LegacyReturnActivationTests` 验证实际 Program 默认/false 21秒零推进、真实 DI、合法 true 与初始化前拒绝矩阵。`LegacyReturnProductionTests` 从生产 Host 公共 review 实际进入三个阶段，各自终止原进程、以 false 观察21秒，再由两个新生产 Host 的 worker/重复请求从同 PG/S3/Student 恢复；不 seed 中间状态。S3 代理只控制请求时机，实际字节来自任务自有 Seaweed；Student 为实际生产 route/domain/repository、正常 CA/SAN HTTPS 与 RS256。Sending 场景在原记录合法编辑/部分消费/删除后仍只使用历史 receipt，不再 POST。每阶段保存真实 provider/BFF JSON，用实际编译 ReviewDetail 验证 pending/Completed 提示和事件。提供任务自有随机 PG/S3，不能使用共享业务库；跳过不代表通过。
 ```bash
 # Run from the repository root; provider and portable suites are both required.
 dotnet build tests/integration/Ruoyu.Study.IntegrationTests.sln --configuration Release
-dotnet test src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln --configuration Release --filter 'FullyQualifiedName~SourceReturn'
+dotnet test src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln --configuration Release --filter 'FullyQualifiedName~SourceReturn|FullyQualifiedName~LegacyReturn'
 dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study.Mistake.Provider.Tests.csproj --configuration Release --filter 'FullyQualifiedName~SourceReturn|FullyQualifiedName~LegacyReturn'
 ```
 
 共享消费回归：`MANAGED_RETURN_BFF_EVIDENCE=<evidence-dir> dotnet test src/ruoyu.common/test/Ruoyu.Study.MistakeReviewBff.Shared.Tests/Ruoyu.Study.MistakeReviewBff.Shared.Tests.csproj -c Release --filter FullyQualifiedName~ActualHttpClientPreservesManagedPending` 通过实际 HttpClient 与共享 Controller 保存 pending/Completed BFF JSON。随后 `node tests/integration/scripts/test-managed-return-ui.cjs <evidence-dir> [frontend-dependency-dir]` 用已有 Vue/TypeScript 依赖编译并执行实际 ReviewDetail 的提交方法，断言中文提示与 reviewed/close 事件；无新 UI 或依赖。
 
-本段复验既有实际 HttpClient/Controller 的受管 pending/Completed 输出与实际 ReviewDetail；不新增UI，不伪称旧题恢复入口已经启用。
+旧题联合证据：设置 `LEGACY_RETURN_UI_EVIDENCE`、`LEGACY_RETURN_PROCESS_EVIDENCE` 外部受限目录运行 `LegacyReturnProductionTests`，再对 UI 目录下 Capturing/Prepared/Sending 各自执行上述 node 命令。进程日志与阶段结果、provider/BFF JSON 分别保存；无新 UI 或依赖。
