@@ -18,8 +18,11 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
 
     public ReanalyzeJobRepository(MistakeDbContext db) => _db = db;
 
-    public async Task AddAsync(ReanalyzeJobModel model, CancellationToken ct = default) =>
+    public async Task AddAsync(ReanalyzeJobModel model, CancellationToken ct = default)
+    {
+        await LegacyReturnWriteGuard.EnsureAsync(_db, model.ItemId, ct);
         await _db.ReanalyzeJobs.AddAsync(ToEntity(model), ct);
+    }
 
     public async Task<ReanalyzeJobModel?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         (await _db.ReanalyzeJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct)) is { } job
@@ -53,6 +56,7 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
             var jobs = await _db.ReanalyzeJobs.FromSqlRaw("""
                 SELECT j.* FROM reanalyze_job j
                 WHERE (j.status=1 OR (j.status=2 AND (j.lease_until IS NULL OR j.lease_until<=clock_timestamp())))
+                  AND NOT EXISTS (SELECT 1 FROM legacy_return lr WHERE lr.item_id=j.item_id)
                   AND NOT EXISTS (
                     SELECT 1 FROM reanalyze_job earlier
                     WHERE earlier.item_id=j.item_id AND earlier.status IN (1,2)
@@ -147,7 +151,7 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
 
     public Task<int> DeleteExpiredAsync(DateTimeOffset cutoff, CancellationToken ct = default) =>
         _db.ReanalyzeJobs.Where(j => (j.Status == 3 || j.Status == 4) &&
-            j.CompletedAt != null && j.CompletedAt < cutoff).ExecuteDeleteAsync(ct);
+            j.CompletedAt != null && j.CompletedAt < cutoff && !_db.LegacyReturns.Any(o => o.ItemId == j.ItemId)).ExecuteDeleteAsync(ct);
 
     private async Task<ReanalyzeJobEntity?> LockedJobAsync(Guid id, CancellationToken ct) =>
         (await _db.ReanalyzeJobs.FromSqlInterpolated(

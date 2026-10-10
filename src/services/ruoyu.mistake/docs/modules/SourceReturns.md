@@ -2,6 +2,8 @@
 
 [SourceIntake](./SourceIntake.md) 的实际 group→item→source 是唯一输入，使用本组已经 [Verified 的目标](./SourceTargets.md)。一个 PendingReview item 对应一个永久操作 `mistake-return:{itemId:D}`；成功同时需要 Student 原载荷的[可信历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)和本域原子 Completed/Rejected/最终日志。来源、创建重放、group、item、practice、所有日志和 source/target pins 保留；SourceRetained不变；handoffCompleted由独立[完整来源交接](./SourceHandoffs.md)的durable结果决定，单个退回不证明整来源完成。[ADR-0017](../../../../../docs/adr/0017-managed-mistake-durable-return.md)说明主责与取舍。
 
+旧条目未来退回使用独立[旧错题退回日志](../database/tables/legacy_return.md)，不伪造来源外键。本次只提供持久数据与保护，审核和自动恢复尚未接入。
+
 ## 操作与图片
 
 先在来源 advisory lock 和现有 60 秒 lease/20 秒 heartbeat/递增 fence 下持久 Prepared 意图。冻结实际 item/group/source/revision/snapshot/student、可信审核主体、归一请求、原元数据和有序 full 原图集合。相同 item/canonical 重放同操作；不同 actor/reason/rootCause/有效 grade 或 subject 返回409 return_payload_conflict。reason null 与空串等价，rootCause null 与空串不同；有效范围外的 grade/subject 按既有审核规则忽略。body id 不覆盖路由 id。active Pending/Running reanalysis（含过期 Running）、非待审核 item、缺少 Verified targets、来源 busy 都在新意图和 IO 前拒绝。

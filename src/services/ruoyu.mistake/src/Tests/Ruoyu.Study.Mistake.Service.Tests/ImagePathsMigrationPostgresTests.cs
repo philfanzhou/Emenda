@@ -18,7 +18,7 @@ public class ImagePathsMigrationPostgresTests
         await using var context = database.CreateContext();
 
         await context.Database.MigrateAsync();
-        Assert.Equal(11, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(12, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(4, await database.ScalarAsync<int>(
             "SELECT count(*)::integer FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('mistake_item','mistake_practice','process_log','reanalyze_job')"));
         Assert.Equal("jsonb", await database.ScalarAsync<string>(
@@ -26,7 +26,7 @@ public class ImagePathsMigrationPostgresTests
         Assert.Equal(1, await database.ScalarAsync<int>(
             "SELECT count(*)::integer FROM information_schema.columns WHERE table_schema='public' AND table_name='mistake_item' AND column_name='root_cause'"));
         await context.Database.MigrateAsync();
-        Assert.Equal(11, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(12, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]

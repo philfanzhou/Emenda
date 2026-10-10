@@ -11,6 +11,7 @@
 | `process_log` | 处理日志，记录错题生命周期 | [tables/process_log.md](./tables/process_log.md) |
 | `reanalyze_job` | 错题再分析任务 | [tables/reanalyze_job.md](./tables/reanalyze_job.md) |
 | `source_handoff` | 完整来源交接固定意图与原回执 | [tables/source_handoff.md](./tables/source_handoff.md) |
+| `legacy_return` / `legacy_return_object` / `legacy_return_attempt` | 旧条目未来退回的持久日志与全部图片保护 | [tables/legacy_return.md](./tables/legacy_return.md) |
 | `legacy_archive` | 旧结构收敛时被移除或改写数据的只追加归档 | [tables/legacy_archive.md](./tables/legacy_archive.md) |
 
 ## 实体关系
