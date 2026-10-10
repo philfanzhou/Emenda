@@ -16,7 +16,7 @@
 
 ### 身份、输入和真实消费者
 
-读取发布的 `GET /contracts/mistake-http-v1.json`，核对内容 hash、条件 GET 与运行时路由清单。业务请求既检查 HTTP 状态，也检查合同规定的响应结构：普通响应外层 `success=true` 可能仍包含内层 `data.success=false`；空体、坏 JSON、未知响应和传输故障不能猜成成功。
+读取发布的当前 `GET /contracts/mistake-http-v3.json`，核对内容 hash、条件 GET 与运行时路由清单；历史 v1/v2 仍可取得，只用于核对各自版本，不作为当前行为标准。业务请求既检查 HTTP 状态，也检查合同规定的响应结构：普通响应外层 `success=true` 可能仍包含内层 `data.success=false`；空体、坏 JSON、未知响应和传输故障不能猜成成功。
 
 受管创建、读取、图片访问、审核和重分析的可信主体与归属检查不随开关关闭而失效；审核人的 `reviewerId` 必须与可信主体匹配。intake 管理查询、目标恢复、handoff 和对账始终要求认证的 Admin。Mistake 调用 Student 使用[服务身份](../../../ruoyu.student/docs/Integration/Mistake/ServiceIdentity.md)，不转发用户令牌；快照、退回回执、完整交接各有对应权限。认证失败不匿名重发。
 
@@ -74,6 +74,7 @@ Student 当前记录可能因完整消费而被移除，或保留其他分类图
 | 来源同请求重放、异载荷、多图整体创建、两实例竞争、提交响应丢失与取消 | `SourceIntakePostgresTests`、`SourceIntakeSecurityTests`；[来源入库验证](../modules/SourceIntake.md#验证入口) |
 | 真实复制、核验失败、部分目标、重启恢复、晚到处理者与关闭开关后的保护 | `SourceTargetPostgresTests`、`SourceTargetS3Tests`；[目标物化](../modules/SourceTargets.md) |
 | 多图退回、各提交阶段故障、回执丢失、取消/晚到 Copy、并发写入、恢复与备份 | `SourceReturnPostgresTests`、`SourceReturnRecoveryPostgresTests`、`SourceReturnS3Tests`、`SourceReturnStartupTests`；[退回验证](../modules/SourceReturns.md#验证入口)及其中的真实 BFF/ReviewDetail 检查 |
+| 旧题完整意图、固定字节/载荷、并发租约、取消/晚到 Copy、生产进程重启、关闭零推进与永久保护 | `LegacyReturnPostgresTests`、`LegacyReturnEnginePostgresTests`、`LegacyReturnLeasePostgresTests`、`LegacyReturnStartupTests`、`LegacyReturnActivationTests`、`LegacyReturnProductionTests`；[同一退回验证入口](../modules/SourceReturns.md#验证入口)及其中的实际 BFF/ReviewDetail 检查 |
 | 完整封口、混合确认/退回、条件消费、两个实例/新 revision、取消/重启与关闭开关 | `SourceHandoffPostgresTests`、`SourceHandoffRecoveryPostgresTests`、`SourceHandoffS3Tests`、`SourceHandoffStartupTests`；[交接验证](../modules/SourceHandoffs.md#验证策略) |
 | 全部引用、坏持久数据/部分页、取消和禁止物理清理 | [公共引用合同测试](../../../../ruoyu.common/test/Ruoyu.Study.Common.Tests/StorageReferenceContractTests.cs)、[Student 引用 PG 测试](../../../ruoyu.student/src/Tests/StorageReferencePostgresTests.cs)；[三方提供者与实际 Admin 的联合验证要求](../../../../../docs/integrations/StorageReferences.md) |
 | 对账异常、读取失败、截断计数与零写入 | `SourceReconciliationPostgresTests`；[对账验证](../modules/SourceReconciliation.md#验证策略) |
@@ -99,15 +100,17 @@ Portal 地址错误按实际 `MistakeService:Url` 排查。共享客户端对网
 
 [07 隔离运行脚本](../../../../../script/build-script/07-mistake.isolated-deploy-verification.sh)与[运行说明](./IsolatedDeployVerification.md)涵盖基础 19 步、显式严格身份阶段和 Student-enabled 两模式。基础阶段自行准备临时 PG/S3，不需要 Admin 登录。只有显式运行后两个阶段时，现有脚本才读取仓库外的受限 JSON：普通文件、非软链接、0600，正常 HTTPS、精确回调、CA 与真实身份提供者；Student-enabled 还需固定镜像和任务自有 provider 控制信息。这些是相应脚本阶段当前实际使用的输入，不是其他代码修改的前置。缺少输入不能把该阶段报告为通过；不妨碍先完成基础阶段和其他独立测试。基础 ready 探测不证明真实 Student 业务调用成功。
 
-真实浏览器托管登录属于单独的环境专项；验收该项才需要对应登录入口和会话，不能据此要求普通代码、数据库或接口修改等待外部 HTTPS 登录环境。[现有 E2E 入口](../../../../../tests/e2e/README.md)目前经已部署 Admin 调用业务，因此该脚本仍读取实际托管会话与普通 CSRF；这是现有工具的使用条件，不是所有业务验收必须经过它。独立业务检查按上表运行，会话与传输检查也有本地自动测试。实际运行登录专项或该脚本时，会话文件只含该 origin 的最小 Cookie，不导出下游 token，保留正常 TLS 与精确来源校验。下节所述旧断言尚待修订，运行前须核对本次代码与案例是否一致。
+[现有 E2E 入口](../../../../../tests/e2e/README.md)默认运行 Worker case01–03，使用调用程序准备的受控签名身份、学生/教师关系和任务自有实例，无需共享 HTTPS 登录环境或外部 Admin。具体受限身份文件、正常 TLS 与服务权限要求沿该入口，不能关闭校验来运行。仅主动选择可选 case04 外部 Admin 部署抽查时才准备其托管会话与普通 CSRF；真实浏览器登录专项及这项抽查均不作为普通代码、数据库或接口修改的前置。运行前核对本次提交、配置与案例；脚本已修订不等于共享浏览器或部署抽查已通过。
 
 ## 4. 旧路径的实际限制与验收边界
 
-未建立受管来源的旧创建、旧 Worker、旧 `complete-review` 和旧退回仍有兼容路径。旧 Worker/聚合审核可搬移图片并移除当前来源；旧退回先改审核、复制部分图片并删原 item/关联历史，再调用 Student。它使用固定 `mistake-return:{itemId}`，回调冲突或未知明确返回内层 false，但图片复制异常会被记录后继续，回调之前的删除不回滚；无成功副本时还可能跳过 Student 回调。旧聚合审核也可能在复制失败后返回业务成功。这些是当前限制，不能把它们列为正确的容错标准或认为重试已经可靠。
+没有真实来源组的旧条目（包括空白来源和仅有旧来源 ID 的记录）按[同一持久退回能力](../modules/SourceReturns.md)的 LegacyReturns 路径验证。它先保存原题与完整原图意图，固定字节身份，再复制并核验全部副本、保存固定载荷；只有可信 [Student 原历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)匹配，且本域原子提交 Completed、Rejected 和唯一最终日志才证明成功。item、练习、原日志、原图和全部候选永久保留；部分复制失败、未知结果或取消不能报完成，也不能另造操作或补建已被 Student 合法编辑、消费或删除的当前记录。具体信任与调用边界见[Student 集成](../Integration/Student.md)。
 
-旧条目今后退回也须保存可恢复操作、失败可重试且不重复建 Student 记录，实施归 [IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3)。在对应实现与验证交付前，不能把受管退回的保证套用于旧条目。已经缺失的历史记录不补建，不做物理清理；只读对账不会修复已丢载荷。
+默认/false 不新增或推进旧退回：新请求及相同未完成请求在任何写入或 OSS/Student 调用前503；已完成精确同请求仍须认证后200重放。合法开启后同一操作可恢复 Capturing/Prepared/Sending，已接受但未完成返回202、内层 false；只有 durable Completed 返回200、内层 true。确定 Conflict 返回409并停止自动推进；关闭保留授权状态查询和永久 guards，重新开启继续原操作。配置和状态规则以[SourceReturns](../modules/SourceReturns.md)为准，当前可用性沿 HTTP v3，历史 v1/v2 的发布内容保持。
 
-现有平台 E2E 01–03 的搬图、删当前记录、查询任意 Returned 记录和清理旧条目的断言，与受管永久保留/原操作回执之间仍有差额，修订及完整同版本联验归 [IKIZY6](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY6)。不得删除断言、放松 guards、恢复删原图或跳过故障场景来报告通过。此入口修订没有改变代码，也不表示这些端到端用例已经通过。
+旧退回的设计与实施证据见原 [IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3)及其已交付实现；生产启停与三阶段真实进程恢复对应上表 LegacyReturn 测试，不能继续列为等待实施。已经缺失的历史记录不补建，不做物理清理；只读对账不会修复已丢载荷。未建立受管来源的普通旧 upload/Add、旧 Worker 和旧 `complete-review` 仍有独立兼容限制：创建不具备持久来源分组幂等，旧 Worker/聚合审核仍可搬图并移除当前来源，旧聚合审核仍可能在复制失败后返回业务成功。不能把旧退回的新保证套用于这些流程，也不能把这些限制当作正确的容错标准。
+
+Worker case01–03 的旧断言已由原 [IKKM0C](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKKM0C)修订，验证说明仍归 [IKIZY6](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY6)。当前按精确自有来源/item/operation、完整字节、原历史 receipt 和本域持久结果判断；保留原图、返回记录与全部历史，成功或失败均不做破坏性清理。脚本本地回归位于 `tests/e2e/test_worker.py`；它证明响应处理与断言，不代替真实 PG/S3/Student 联合运行，更不证明未执行的共享浏览器或外部 Admin 部署抽查。不得放松 guards、恢复删原图或跳过故障场景来报告通过。此入口修订没有改变代码，也不宣称本次运行了这些端到端用例。
 
 ## 5. 执行与判定
 
