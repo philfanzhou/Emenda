@@ -98,9 +98,11 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
         catch (SourceIntakeException) { throw; }
         catch (Exception) { throw new SourceIntakeException("return_commit_unknown", 503); }
 
+        // Stage reads may refresh progress, never the ownership acquired by this call.
+        var lease = (op.OwnerId, op.Fence);
         using var processing = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var stop = new CancellationTokenSource();
-        var heartbeat = HeartbeatAsync(op, processing, stop.Token);
+        var heartbeat = HeartbeatAsync(itemId, lease, processing, stop.Token);
         var token = processing.Token;
         try
         {
@@ -112,15 +114,16 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
                     var bytes = await BytesAsync(obj.SourcePath, token);
                     if (obj.ExpectedLength.HasValue && (obj.ExpectedLength != bytes.Length || obj.ExpectedSha256 != bytes.Hash))
                         throw new SourceIntakeException("return_source_changed", 503);
-                    await journal.CaptureAsync(itemId, op.OwnerId, op.Fence, obj.Position, bytes.Length, bytes.Hash, token);
+                    await journal.CaptureAsync(itemId, lease.OwnerId, lease.Fence, obj.Position, bytes.Length, bytes.Hash, token);
                 }
-                await journal.PrepareAsync(itemId, op.OwnerId, op.Fence, token);
+                await journal.PrepareAsync(itemId, lease.OwnerId, lease.Fence, token);
                 objects = await ObjectsAsync(itemId, token);
             }
-            op = await journal.GetAsync(itemId, token) ?? throw new SourceIntakeException("return_not_found", 404);
+            op = await RefreshAsync(itemId, lease, token);
+            if (op.Phase == "Completed") return View(op);
             if (op.Phase == "Prepared")
             {
-                foreach (var obj in objects) await CopyAsync(op, obj, token);
+                foreach (var obj in objects) await CopyAsync(op, obj, lease, token);
                 objects = await ObjectsAsync(itemId, token);
                 var candidates = await AttemptsAsync(itemId, token);
                 if (objects.Any(o => !o.SelectedAttemptId.HasValue)) throw new SourceIntakeException("return_objects_pending", 503);
@@ -129,11 +132,12 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
                     OperationId = op.OperationId, Comments = "Rejected", ReturnReason = op.ReturnReason,
                     ImageEntries = objects.Select(o => new ImageEntryDto { Path = candidates.Single(a => a.AttemptId == o.SelectedAttemptId).ObjectKey, Type = "mistake" }).ToList()
                 };
-                await journal.SendAsync(itemId, op.OwnerId, op.Fence, JsonSerializer.Serialize(payload, IntakeCanonical.Json),
+                await journal.SendAsync(itemId, lease.OwnerId, lease.Fence, JsonSerializer.Serialize(payload, IntakeCanonical.Json),
                     SourceReturnClient.Digest(op.StudentId, payload), token);
-                op = await journal.GetAsync(itemId, token) ?? throw new SourceIntakeException("return_not_found", 404);
+                op = await RefreshAsync(itemId, lease, token);
+                if (op.Phase == "Completed") return View(op);
             }
-            await EnsureLeaseAsync(op, token);
+            await EnsureLeaseAsync(itemId, lease, token);
             var receipt = await client.ReadAsync(op.OperationId, token);
             if (receipt is null)
             {
@@ -147,12 +151,12 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
                     if (selected.Phase != "Verified" || selected.CopySettledAt is null || !await MatchesAsync(selected.ObjectKey, obj, token))
                         throw new SourceIntakeException("return_selected_bytes_unavailable", 503);
                 }
-                await EnsureLeaseAsync(op, token);
+                await EnsureLeaseAsync(itemId, lease, token);
                 await client.PostAsync(op.StudentId, payload, token);
                 receipt = await client.ReadAsync(op.OperationId, token);
                 if (receipt is null)
                 {
-                    await journal.ErrorAsync(itemId, op.OwnerId, op.Fence, "return_receipt_pending", ct: token);
+                    await journal.ErrorAsync(itemId, lease.OwnerId, lease.Fence, "return_receipt_pending", ct: token);
                     return View(await journal.GetAsync(itemId, token) ?? op);
                 }
             }
@@ -161,7 +165,7 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
                 || !DateTimeOffset.TryParse(receipt.CreatedAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var time)
                 || time.Offset != TimeSpan.Zero || time.Year < 1970)
                 throw new SourceIntakeException("return_receipt_conflict", 409);
-            await journal.CompleteAsync(itemId, op.OwnerId, op.Fence, receipt.OperationId, receipt.StudentId,
+            await journal.CompleteAsync(itemId, lease.OwnerId, lease.Fence, receipt.OperationId, receipt.StudentId,
                 receipt.UploadRecordId, time, receipt.DigestVersion, receipt.PayloadDigest, token);
             return View(await journal.GetAsync(itemId, token) ?? throw new SourceIntakeException("return_commit_unknown", 503));
         }
@@ -169,7 +173,7 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
         catch (OperationCanceledException) { throw new SourceIntakeException("lease_lost", 409); }
         catch (SourceIntakeException error)
         {
-            try { await journal.ErrorAsync(itemId, op.OwnerId, op.Fence, error.ErrorKind,
+            try { await journal.ErrorAsync(itemId, lease.OwnerId, lease.Fence, error.ErrorKind,
                 error.ErrorKind is "return_receipt_conflict" or "return_payload_conflict", CancellationToken.None); }
             catch (Exception) { }
             throw;
@@ -184,25 +188,36 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
         finally
         {
             stop.Cancel(); await heartbeat;
-            try { await journal.ReleaseAsync(itemId, op.OwnerId, op.Fence, CancellationToken.None); } catch (Exception) { }
+            try { await journal.ReleaseAsync(itemId, lease.OwnerId, lease.Fence, CancellationToken.None); } catch (Exception) { }
         }
     }
 
-    private async Task HeartbeatAsync(LegacyReturnEntity op, CancellationTokenSource processing, CancellationToken stop)
+    private async Task<LegacyReturnEntity> RefreshAsync(Guid itemId, (Guid OwnerId, long Fence) lease, CancellationToken ct)
+    {
+        var saved = await Journal().GetAsync(itemId, ct) ?? throw new SourceIntakeException("return_not_found", 404);
+        if (saved.Phase == "Completed") return saved;
+        if (saved.OwnerId != lease.OwnerId || saved.Fence != lease.Fence || saved.LeaseUntil is null)
+            throw new SourceIntakeException("lease_lost", 409);
+        await using var db = Open();
+        var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT clock_timestamp() AS \"Value\"").SingleAsync(ct);
+        if (saved.LeaseUntil <= now) throw new SourceIntakeException("lease_lost", 409);
+        return saved;
+    }
+    private async Task HeartbeatAsync(Guid itemId, (Guid OwnerId, long Fence) lease, CancellationTokenSource processing, CancellationToken stop)
     {
         try
         {
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
             while (await timer.WaitForNextTickAsync(stop))
-                if (!options.Enabled || !await Journal().RenewAsync(op.ItemId, op.OwnerId, op.Fence, stop)) { processing.Cancel(); return; }
+                if (!options.Enabled || !await Journal().RenewAsync(itemId, lease.OwnerId, lease.Fence, stop)) { processing.Cancel(); return; }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
         catch (Exception) { processing.Cancel(); }
     }
-    private async Task EnsureLeaseAsync(LegacyReturnEntity op, CancellationToken ct)
+    private async Task EnsureLeaseAsync(Guid itemId, (Guid OwnerId, long Fence) lease, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (!options.Enabled || !await Journal().RenewAsync(op.ItemId, op.OwnerId, op.Fence, ct))
+        if (!options.Enabled || !await Journal().RenewAsync(itemId, lease.OwnerId, lease.Fence, ct))
             throw new SourceIntakeException("lease_lost", 409);
     }
     private async Task<List<LegacyReturnObjectEntity>> ObjectsAsync(Guid item, CancellationToken ct)
@@ -246,7 +261,7 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
         var bytes = await BytesAsync(path, ct);
         return bytes.Length == obj.ExpectedLength && bytes.Hash == obj.ExpectedSha256;
     }
-    private async Task CopyAsync(LegacyReturnEntity op, LegacyReturnObjectEntity obj, CancellationToken ct)
+    private async Task CopyAsync(LegacyReturnEntity op, LegacyReturnObjectEntity obj, (Guid OwnerId, long Fence) lease, CancellationToken ct)
     {
         if (obj.SelectedAttemptId.HasValue) return;
         var journal = Journal();
@@ -256,21 +271,21 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
             try { matches = await MatchesAsync(candidate.ObjectKey, obj, ct); }
             catch (SourceIntakeException error) when (error.ErrorKind == "return_bytes_unavailable") { matches = false; }
             if (matches)
-            { await journal.SelectAsync(op.ItemId, op.OwnerId, op.Fence, candidate.AttemptId, obj.ExpectedLength!.Value, obj.ExpectedSha256!, ct); return; }
+            { await journal.SelectAsync(op.ItemId, lease.OwnerId, lease.Fence, candidate.AttemptId, obj.ExpectedLength!.Value, obj.ExpectedSha256!, ct); return; }
         }
         if (!await MatchesAsync(obj.SourcePath, obj, ct)) throw new SourceIntakeException("return_source_changed", 503);
-        await EnsureLeaseAsync(op, ct);
-        var attempt = await journal.ReserveAsync(op.ItemId, op.OwnerId, op.Fence, obj.Position, ct);
-        await EnsureLeaseAsync(op, ct);
+        await EnsureLeaseAsync(op.ItemId, lease, ct);
+        var attempt = await journal.ReserveAsync(op.ItemId, lease.OwnerId, lease.Fence, obj.Position, ct);
+        await EnsureLeaseAsync(op.ItemId, lease, ct);
         try { await oss.CopyObjectAsync(obj.SourcePath, attempt.ObjectKey).WaitAsync(ct); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception)
         {
-            try { await journal.UnknownAsync(op.ItemId, op.OwnerId, op.Fence, attempt.AttemptId, CancellationToken.None); } catch (Exception) { }
+            try { await journal.UnknownAsync(op.ItemId, lease.OwnerId, lease.Fence, attempt.AttemptId, CancellationToken.None); } catch (Exception) { }
             throw new SourceIntakeException("return_copy_unknown", 503);
         }
         ct.ThrowIfCancellationRequested();
-        try { await journal.SettleAsync(op.ItemId, op.OwnerId, op.Fence, attempt.AttemptId, ct); }
+        try { await journal.SettleAsync(op.ItemId, lease.OwnerId, lease.Fence, attempt.AttemptId, ct); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (InvalidOperationException error) when (KnownError(error.Message)) { throw Translate(error.Message); }
         catch (Exception)
@@ -279,7 +294,7 @@ public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> datab
             if (marker.Phase != "CopySettled" || marker.CopySettledAt is null) throw new SourceIntakeException("return_copy_settle_unknown", 503);
         }
         if (!await MatchesAsync(attempt.ObjectKey, obj, ct)) throw new SourceIntakeException("return_copy_bytes_unavailable", 503);
-        await journal.SelectAsync(op.ItemId, op.OwnerId, op.Fence, attempt.AttemptId, obj.ExpectedLength!.Value, obj.ExpectedSha256!, ct);
+        await journal.SelectAsync(op.ItemId, lease.OwnerId, lease.Fence, attempt.AttemptId, obj.ExpectedLength!.Value, obj.ExpectedSha256!, ct);
     }
     private static bool KnownError(string value) => value is "item_not_found" or "return_not_pending" or "reanalysis_active" or "invalid_return_source"
         or "return_payload_conflict" or "lease_lost" or "invalid_request" or "return_source_changed";
