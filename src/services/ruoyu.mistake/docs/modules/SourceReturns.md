@@ -1,8 +1,8 @@
-# 受管错题持久退回
+# 错题持久退回
 
 [SourceIntake](./SourceIntake.md) 的实际 group→item→source 是唯一输入，使用本组已经 [Verified 的目标](./SourceTargets.md)。一个 PendingReview item 对应一个永久操作 `mistake-return:{itemId:D}`；成功同时需要 Student 原载荷的[可信历史回执](../../../ruoyu.student/docs/Integration/Mistake/ReturnedReceipt.md)和本域原子 Completed/Rejected/最终日志。来源、创建重放、group、item、practice、所有日志和 source/target pins 保留；SourceRetained不变；handoffCompleted由独立[完整来源交接](./SourceHandoffs.md)的durable结果决定，单个退回不证明整来源完成。[ADR-0017](../../../../../docs/adr/0017-managed-mistake-durable-return.md)说明主责与取舍。
 
-旧条目未来退回使用独立[旧错题退回日志](../database/tables/legacy_return.md)，不伪造来源外键。本次只提供持久数据与保护，审核和自动恢复尚未接入。
+旧条目未来退回使用独立[旧错题退回日志](../database/tables/legacy_return.md)，不伪造来源外键。审核 Rejected 分支已经接入持久日志；`LegacyReturnWorker` 在启动及每20秒扫描 Capturing/Prepared/Sending。没有实际来源组的旧来源 ID 与空来源走此流程，不伪造受管来源。历史已经缺失的退回仍不补建。
 
 ## 操作与图片
 
@@ -28,13 +28,13 @@ receipt 必须来自正常 TLS 和 RS256 uploads.return 服务身份，核对 op
 
 ## HTTP 与观察合同
 
-沿既有 `POST /api/mistakes/{id}/review` 的 Rejected 分支，受管数据始终执行可信 JWT、StaffOrAdmin、reviewerId=sub 和实际归属。legacy 未受管流程及 Confirm 兼容。受管数据不进入先删除的 legacy reject。
+沿既有 `POST /api/mistakes/{id}/review` 的 Rejected 分支，受管数据始终执行可信 JWT、StaffOrAdmin、reviewerId=sub 和实际归属。旧错题的 Rejected 分支也始终执行同样的可信身份和审核者绑定，并按真实 item 决定 student；其首次调用在任何 IO 前先保存 Capturing 意图、原条目和精确去重的完整原图，再逐图冻结长度/SHA256。没有退回日志的普通 Confirm 沿原行为；有日志后 Confirm 与其它同题写入返回409。旧匿名/先删除的 reject 已移除，行为升级由 [HTTP v2](../Integration/MachineHttpContract.md) 明确登记。
 
 - durable Completed：200，旧 envelope 内 data.success=true，附可忽略 operationId/returnState/confirmedRecordId；removedImagePaths 为空。
 - 已接受且尚在推进：202，data.success=false，errorKind=return_pending，errorMessage=`退回处理中，请稍后重试`。
 - 输入400、未找到404、认证401/403、确定冲突409、依赖/未知结果503，均不能以成功 HTTP 状态代替业务成功。
 
-共享 MistakeHttpClient 读取 data.Success；共享 MistakeReviewController false 时传播中文 ErrorMessage。Teacher/Assistant 共用 ReviewDetail 仅 result.success=true 才显示“已退回”及 emit reviewed/close。intake 管理查询附安全 return summary，只有 itemId/operationId/state/confirmedRecordId/completedAt/errorKind，没有 payload、reason、digest、候选键。
+共享 MistakeHttpClient 读取 data.Success；共享 MistakeReviewController false 时传播中文 ErrorMessage。Teacher/Assistant 共用 ReviewDetail 仅 result.success=true 才显示“已退回”及 emit reviewed/close。Admin `GET /api/mistakes/returns/{itemId:guid}` 在任何开关组合只返回六字段安全 summary；intake 管理查询也附安全 return summary，只有 itemId/operationId/state/confirmedRecordId/completedAt/errorKind，没有 payload、reason、digest、候选键。
 
 默认业务 list/by-upload/pending counts 排除 Completed tombstone；授权 item GET 与显式 Rejected list 保留历史。create replay 永久返回原创建事实。return 意图阻止同 item 的 Confirm、metadata、practice、任意 log 和 reanalysis enqueue/claim/complete；普通 SQL/旧 EF 的最后门禁拒绝绕过、删除或复活。其它 item 和合法后续 group 不被冻结。
 
@@ -42,11 +42,13 @@ receipt 必须来自正常 TLS 和 RS256 uploads.return 服务身份，核对 op
 
 `Mistake:SourceReturns:Enabled` 默认 false，只接受 bool。true 要求 Student、strict API、resource auth、有效 RS256 签发与 HTTPS，在 DB/S3 初始化前失败关闭。无需同时启用新的 intake/targets 领取，只使用已有 Verified 事实。数据库结构、完整备份与 known1–7 升级见[来源表](../database/tables/source_intake.md)与[部署](../development/Deployment.md#受管持久退回启用与恢复)。
 
-没有跨 PG/S3 原子提交、即时停止非取消 IO、legacy 异常修复、完整 forward/ack/remove/release、fullrefs 或 GC 保证。退回图是 Student 可编辑正常 uploads，后续合法 COW/删除/再分类可以发生，历史选定关联不授权重写或回收。完整 Storage Audit 合同前必须隔离旧 movers 和外部破坏性 GC；独立 DB/OSS 管理凭据不在应用保证内。
+`Mistake:LegacyReturns:Enabled` 默认 false，true 与 SourceReturns 一样要求 Student、strict/resource、正常 HTTPS 和 RS256，在 DB/OSS 初始化前校验。false 时新旧题 reject 在 IO 前503，未完成意图保留，已完成同请求认证重放仍200；重新启用同 operation 恢复。Capturing 的原字节已绑定后不可修改；所有候选永久保留。
+
+没有跨 PG/S3 原子提交、即时停止非取消 IO、历史缺失记录修复或 GC 保证。退回图是 Student 可编辑正常 uploads，后续合法 COW/删除/再分类可以发生，历史选定关联不授权重写或回收。完整 Storage Audit 合同前必须隔离旧 movers 和外部破坏性 GC；独立 DB/OSS 管理凭据不在应用保证内。
 
 ## 验证入口
 
-实际 PG、正常 CA/SAN HTTPS/RS256 Student 与独立 Mistake HTTP、提交前故障/真实提交后响应丢失、取消/晚到 Copy、SQL/授权/恢复见 `SourceReturnPostgresTests`。真实 S3 Copy/Get 与同提供方联合链路见 `SourceReturnS3Tests`。提供任务自有随机 PG/S3，不能使用共享业务库；跳过不代表通过。
+旧题端到端由 `LegacyReturnPostgresTests`、`LegacyReturnS3Tests`、`LegacyReturnStartupTests`、`LegacyReturnBffPostgresTests` 覆盖，其中真实 Host 独立进程重启使用进程私有 CA bundle 和默认 TLS 校验；不安装系统 CA，不需要人工登录环境。原受管路径的实际 PG、正常 CA/SAN HTTPS/RS256 Student 与独立 Mistake HTTP、提交前故障/真实提交后响应丢失、取消/晚到 Copy、SQL/授权/恢复见 `SourceReturnPostgresTests`。真实 S3 Copy/Get 与同提供方联合链路见 `SourceReturnS3Tests`。提供任务自有随机 PG/S3，不能使用共享业务库；跳过不代表通过。
 
 ```bash
 # Run from the repository root; provider and portable suites are both required.
@@ -56,3 +58,5 @@ dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study
 ```
 
 共享消费回归：`MANAGED_RETURN_BFF_EVIDENCE=<evidence-dir> dotnet test src/ruoyu.common/test/Ruoyu.Study.MistakeReviewBff.Shared.Tests/Ruoyu.Study.MistakeReviewBff.Shared.Tests.csproj -c Release --filter FullyQualifiedName~ActualHttpClientPreservesManagedPending` 通过实际 HttpClient 与共享 Controller 保存 pending/Completed BFF JSON。随后 `node tests/integration/scripts/test-managed-return-ui.cjs <evidence-dir> [frontend-dependency-dir]` 用已有 Vue/TypeScript 依赖编译并执行实际 ReviewDetail 的提交方法，断言中文提示与 reviewed/close 事件；无新 UI 或依赖。
+
+旧题实际 BFF 输出设置 `LEGACY_RETURN_UI_EVIDENCE=<evidence-dir>`，用同一个 `test-managed-return-ui.cjs` 执行现有 ReviewDetail；不新增 UI。

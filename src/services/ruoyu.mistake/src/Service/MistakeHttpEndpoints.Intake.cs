@@ -15,13 +15,23 @@ public static partial class MistakeHttpEndpoints
     private static IResult IntakeError(string kind,int status) => Results.Json(new {success=false,errorKind=kind},statusCode:status);
     // Managed Admin namespaces that always authenticate through the configured schemes.
     private static bool IsManagedNamespace(PathString path) =>
-        path.StartsWithSegments("/api/mistakes/intakes") || path.StartsWithSegments("/api/mistakes/reconciliation");
+        path.StartsWithSegments("/api/mistakes/returns") || path.StartsWithSegments("/api/mistakes/intakes") || path.StartsWithSegments("/api/mistakes/reconciliation");
     private static IResult? IntakeRole(ClaimsPrincipal user,IMistakeApiResourceAuthorizationService authorization,MistakeResourceAccessGate gate)
     {
         if (user.Identity?.IsAuthenticated!=true || string.IsNullOrWhiteSpace(authorization.GetSubjectId(user)))
             return IntakeError("authentication_required",401);
         var decision=authorization.DecideRoleGate("source intake",user,gate);
         return decision.Allowed ? null : decision.ToHttpResponse();
+    }
+    private static async Task<IResult> GetLegacyReturnAsync(Guid itemId, ClaimsPrincipal user,
+        IMistakeApiResourceAuthorizationService authorization, HttpContext http, CancellationToken ct)
+    {
+        var error = IntakeRole(user, authorization, MistakeResourceAccessGate.AdminOnly);
+        if (error is not null) return error;
+        var legacy = http.RequestServices.GetService<ILegacyReturnService>();
+        if (legacy is null) return IntakeError("legacy_returns_disabled", 503);
+        var result = await legacy.GetAsync(itemId, ct);
+        return result is null ? IntakeError("return_not_found", 404) : Results.Ok(new { result.ItemId, result.OperationId, result.State, result.ConfirmedRecordId, result.CompletedAt, result.ErrorKind });
     }
     private static async Task<IResult> GetSourceIntakeAsync(Guid sourceId,Guid revision,ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService authorization,ISourceIntakeService intake,CancellationToken ct)
@@ -118,11 +128,22 @@ public static partial class MistakeHttpEndpoints
                         { var binding=authorization.DecideOwnedWriteBinding(path,user,id.ToString(),owner,student); if(!binding.Allowed) return binding.ToHttpResponse();
                           if(argument is ReanalyzeMistakeItemRequest reanalyze) reanalyze.StudentId=student; }
                     }
+                    // Reject competing writes before domain validation or external effects.
+                    // The original reject is the only permitted same-operation replay.
+                    if (!HttpMethods.IsGet(context.HttpContext.Request.Method)
+                        && !context.Arguments.OfType<ReviewMistakeItemRequest>().Any(r => r.ReviewStatus == Ruoyu.Study.Mistake.Domain.Models.ReviewStatus.Rejected)
+                        && context.HttpContext.RequestServices.GetService<ILegacyReturnService>() is { } legacy
+                        && await legacy.GetAsync(id, context.HttpContext.RequestAborted) is not null)
+                        return IntakeError("return_in_progress", 409);
                 }
             }
             return await next(context);
         }
         catch (SourceIntakeException ex) { return Results.Json(new {success=false,errorKind=ex.ErrorKind,conflictingItemIds=ex.ConflictingItemIds},statusCode:ex.StatusCode); }
+        catch (InvalidOperationException ex) when (ex.Message == "return_in_progress")
+        {
+            return IntakeError("return_in_progress", 409);
+        }
         catch (Exception ex) when (FindDatabaseError(ex)!=null)
         {
             var database=FindDatabaseError(ex)!;
@@ -134,7 +155,7 @@ public static partial class MistakeHttpEndpoints
     private static async Task<bool> NeedsManagedAuthenticationAsync(EndpointFilterInvocationContext context,ISourceIntakeService intake)
     {
         var http=context.HttpContext;var ct=http.RequestAborted;var path=http.Request.Path.Value ?? "";
-        if(IsManagedNamespace(http.Request.Path)) return true;
+        if(IsManagedNamespace(http.Request.Path) || context.Arguments.OfType<ReviewMistakeItemRequest>().Any(r => r.ReviewStatus == Ruoyu.Study.Mistake.Domain.Models.ReviewStatus.Rejected)) return true;
         var id=context.Arguments.OfType<Guid>().FirstOrDefault();
         if(id!=Guid.Empty && await intake.GetManagedItemStudentAsync(id,ct)!=null) return true;
         foreach(var argument in context.Arguments)

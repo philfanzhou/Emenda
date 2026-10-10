@@ -552,10 +552,18 @@ sealed Manual仅Admin首次固定，worker只恢复已有Manual并扫描完整Au
 
 ## 机器 HTTP 合同发布
 
-Host 发布资源携带固定 `mistake-http-v1`，匿名 `/contracts/mistake-http-v1.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
+Host 发布资源携带当前 `mistake-http-v2` 和原样历史 v1，匿名 `/contracts/mistake-http-v2.json` 与业务授权独立；正常 TLS、bytes/hash/ETag、版本兼容与验证命令见[机器合同](../Integration/MachineHttpContract.md)。Docker 发布必须包含该 artifact，不依赖运行目录下的 checkout；无新业务开关、密钥或数据库迁移。
 
 ## Student-enabled 两模式受控运行
 
 [隔离部署验证](./IsolatedDeployVerification.md#显式-student-enabled-两模式运行)的 `--student-enabled-fixture` 使用同一指定 commit 的真实 Student/Mistake Release Host，开启 strict/resource、服务 RS256、intake/targets/returns/handoffs，在自有双 PG 与同一 Seaweed bucket 验证业务与恢复。每模式使用独立随机库，Platform 显式拒绝 Consul 端口并使用完整 fallback。全 cell 与原 19 格均通过才成功；任何故障、缺输入或取消保留自身现场并失败，不把 target ready 当 source completed。共享发布仍必须按既有 rollout 门禁。
 
 该运行配置显式使用 `DOTNET_SHUTDOWNTIMEOUTSECONDS=10`，为在途 HTTP drain 和取消设置 .NET Host 预算，使完整进程退出可在30秒期限内验证；不能仅用框架默认30秒 drain 推定总退出时长。配合服务自身的取消/候选保全机制，取消未正常确认的 copy 不发布历史结果，也不补偿删除候选。
+
+## 旧错题持久退回启用与恢复
+
+`Mistake:LegacyReturns:Enabled`（`Mistake__LegacyReturns__Enabled`）默认 false，非法 bool 或缺 Student/strict/resource/正常 HTTPS/RS256 在 DB/OSS 初始化前失败。没有受管来源组的旧题 Rejected 不再使用先删除路径；关闭时新 reject 503 且无副作用，Completed 同请求认证重放 200，状态 Admin 可读。已有意图/guards/完整引用永久保留。
+
+开启后 LegacyReturnWorker 在启动及每20秒恢复 Capturing/Prepared/Sending，同 item 独立60秒数据库租约/20秒续期和递增 fence。关闭/停机不承诺取消已发的非取消复制；唯一 reservation 键让迟到写入只能落在旧未公开候选。重新启用继续同 operation，不清表、不删图、不换载荷、不补历史缺失。
+
+备份恢复包含第12条迁移的完整三表、业务/practice/log/job、history、函数/trigger/FK 与全部对象；非空日志拒绝 Down。回退停处理并保留认识当前 schema 的 binary。真实验证仅需任务自有 PG15、Seaweed4.47、真实 Student 应用及程序生成的受限证书/密钥；不需要共享服务器浏览器登录或真实 Admin 账号。合同 v2 同步更新共享客户端和三个 Portal 发布源，历史 v1 metadata 保留，不恢复危险匿名写入。

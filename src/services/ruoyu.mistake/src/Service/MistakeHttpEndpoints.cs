@@ -48,6 +48,7 @@ public static partial class MistakeHttpEndpoints
         group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/targets", ResumeSourceTargetsAsync);
         group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/handoff", HandoffSourceAsync);
         group.MapGet("/mistakes/reconciliation", GetReconciliationAsync);
+        group.MapGet("/mistakes/returns/{itemId:guid}", GetLegacyReturnAsync);
 
         if (requireAuthenticatedApi)
             group.RequireAuthorization(MistakeApiAuthorization.PolicyName);
@@ -399,27 +400,31 @@ public static partial class MistakeHttpEndpoints
             return MistakeHttpResponse.BadRequest("审核结果只能是确认或退回");
 
         var intake=http.RequestServices.GetService<ISourceIntakeService>();
-        if(request.ReviewStatus==ReviewStatus.Rejected && intake!=null && await intake.GetManagedItemStudentAsync(id,http.RequestAborted)!=null)
+        if (request.ReviewStatus == ReviewStatus.Rejected)
         {
-            var reverse=http.RequestServices.GetService<ISourceReturnService>();
-            if(reverse==null) return IntakeError("returns_disabled",503);
-            var result=await reverse.ReturnAsync(id,resourceAuthz.GetSubjectId(user)!,request.ReturnReason,request.RootCause,request.Grade,request.Subject,http.RequestAborted);
+            var role = IntakeRole(user, resourceAuthz, MistakeResourceAccessGate.StaffOrAdmin);
+            if (role is not null) return role;
+            var binding = resourceAuthz.DecideReviewerBinding("review return", user, request.ReviewerId);
+            if (!binding.Allowed) return binding.ToHttpResponse();
+            var legacy = http.RequestServices.GetService<ILegacyReturnService>();
+            var sourceManaged = intake is not null && await intake.IsSourceManagedItemAsync(id, http.RequestAborted);
+            SourceReturnView result;
+            if (sourceManaged)
+            {
+                var reverse = http.RequestServices.GetService<ISourceReturnService>();
+                if (reverse is null) return IntakeError("returns_disabled", 503);
+                result = await reverse.ReturnAsync(id, resourceAuthz.GetSubjectId(user)!, request.ReturnReason, request.RootCause, request.Grade, request.Subject, http.RequestAborted);
+            }
+            else
+            {
+                if (legacy is null) return IntakeError("legacy_returns_disabled", 503);
+                result = await legacy.ReturnAsync(id, resourceAuthz.GetSubjectId(user)!, request.ReturnReason, request.RootCause, request.Grade, request.Subject, http.RequestAborted);
+            }
             var retainedItem=await mistakeService.GetMistakeItemAsync(id) ?? throw new SourceIntakeException("return_binding",409);
             var response=new ReviewMistakeItemResponse { SourceUploadId=retainedItem.SourceUploadId,StudentId=retainedItem.StudentId,Success=result.Success,OperationId=result.OperationId,ReturnState=result.State,
                 ConfirmedRecordId=result.ConfirmedRecordId,ErrorKind=result.Success ? "" : "return_pending",
                 ErrorMessage=result.Success ? "" : "退回处理中，请稍后重试" };
             return Results.Json(new { success=true,data=response },statusCode:result.Success ? 200 : 202);
-        }
-
-        // Fail closed before any domain, OSS or Student change: the reject flow
-        // migrates images, deletes the item and creates a Student returned
-        // record, none of which is safe when the Student capability is off.
-        if (!studentCapability.Enabled && request.ReviewStatus == ReviewStatus.Rejected)
-        {
-            logger.LogWarning(
-                "ReviewMistakeItem: rejected review for item {ItemId} rejected before any side effect because the Student capability is disabled",
-                id);
-            return MistakeHttpResponse.ServiceUnavailable("Student 集成未启用，退回审核不可用（Mistake:Student:Enabled=false）");
         }
 
         var beforeReview=await mistakeService.GetMistakeItemAsync(id);
@@ -445,94 +450,6 @@ public static partial class MistakeHttpEndpoints
                 // Confirm flow: images are already in mistakes/ from the polling worker.
                 // No migration or Student record update needed here.
                 logger.LogInformation("ReviewMistakeItem: Confirmed MistakeItem {ItemId}", item.Id);
-            }
-            else if (request.ReviewStatus == ReviewStatus.Rejected)
-            {
-                // Reject flow: migrate images back from mistakes/ to uploads/ and create a returned record
-                var rejectedImagePaths = item.SourceRegions
-                    .Where(r => !string.IsNullOrWhiteSpace(r.SourceImagePath))
-                    .Select(r => r.SourceImagePath)
-                    .ToList();
-
-                // Migrate images back: mistakes/ -> uploads/
-                var migratedBackPaths = new List<string>();
-                foreach (var mistakePath in rejectedImagePaths)
-                {
-                    try
-                    {
-                        if (mistakePath.StartsWith("mistakes/", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var uploadPath = "uploads/" + mistakePath.Substring("mistakes/".Length);
-                            ReservedSourceTargetPath.EnsureLegacy(mistakePath);ReservedSourceTargetPath.EnsureLegacy(uploadPath);
-                            await ossService.CopyObjectAsync(mistakePath, uploadPath).ConfigureAwait(false);
-                            await ossService.DeleteAsync(mistakePath).ConfigureAwait(false);
-                            migratedBackPaths.Add(uploadPath);
-                            logger.LogDebug("ReviewMistakeItem: Migrated rejected image back {MistakePath} -> {UploadPath}",
-                                mistakePath, uploadPath);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "ReviewMistakeItem: Failed to migrate rejected image back {Path}", mistakePath);
-                    }
-                }
-
-                // Delete MistakeItem (cascades to practice and process_log)
-                await mistakeService.DeleteMistakeItemAsync(item.Id);
-                logger.LogInformation("ReviewMistakeItem: Rejected and deleted MistakeItem {ItemId}", item.Id);
-
-                // Create a returned upload record in Student so the student can re-upload.
-                // return_reason is passed through to student service and written to
-                // image_upload_record.return_reason (NOT concatenated into comments, to avoid
-                // confusing the mistake root_cause with the teacher's return reason).
-                if (migratedBackPaths.Count > 0 && !string.IsNullOrWhiteSpace(item.StudentId))
-                {
-                    // Deterministic idempotency key derived from the item: a lost
-                    // response or a retry of the same reject replays the same
-                    // returned record instead of creating a second one (IKJEY4).
-                    var operationId = $"mistake-return:{item.Id}";
-                    var imageEntries = migratedBackPaths.Select(p => new UploadImageEntry
-                    {
-                        Path = p,
-                        Type = "mistake"
-                    }).ToList();
-                    var returnedRecord = await studentClient.CreateReturnedRecordAsync(
-                        item.StudentId,
-                        imageEntries,
-                        "Rejected",
-                        request.ReturnReason ?? string.Empty,
-                        operationId,
-                        CancellationToken.None).ConfigureAwait(false);
-
-                    if (returnedRecord.Status == CreateReturnedUploadRecordStatus.Succeeded)
-                    {
-                        logger.LogInformation(
-                            "ReviewMistakeItem: Created returned record for student {StudentId} with {Count} images (operationId={OperationId}, replayed={Replayed})",
-                            item.StudentId, migratedBackPaths.Count, operationId, returnedRecord.Replayed);
-                    }
-                    else
-                    {
-                        // The reject side effects (item deleted, images migrated)
-                        // already happened; the callback outcome must not be
-                        // reported as a successful review. Both remaining
-                        // classifications are recoverable through the
-                        // operationId: read it back on Student, then retry with
-                        // the same key.
-                        logger.LogError(
-                            "ReviewMistakeItem: Returned record callback for student {StudentId} failed with status {Status} (operationId={OperationId}): {Message}",
-                            item.StudentId, returnedRecord.Status, operationId, returnedRecord.Message);
-                        var errorMessage = returnedRecord.Status == CreateReturnedUploadRecordStatus.PayloadConflict
-                            ? $"退回记录载荷冲突：operationId={operationId} 已以不同载荷提交，需人工核查 Student 侧退回记录后处理"
-                            : $"退回记录结果未知（operationId={operationId}）：可通过 GET /api/uploads/returned/{operationId} 回查，并以同一 operationId 重试";
-                        return MistakeHttpResponse.Ok(new ReviewMistakeItemResponse
-                        {
-                            Success = false,
-                            ErrorMessage = errorMessage,
-                            SourceUploadId = item.SourceUploadId ?? string.Empty,
-                            StudentId = item.StudentId ?? string.Empty
-                        });
-                    }
-                }
             }
 
             var response = new ReviewMistakeItemResponse
@@ -1224,7 +1141,7 @@ public static partial class MistakeHttpEndpoints
             if (user.Identity?.IsAuthenticated != true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user)))
                 return IntakeError("authentication_required", 401);
             if (managed != null && !string.IsNullOrWhiteSpace(request.Size) && request.Size != "full") return IntakeError("managed_full_only", 400);
-            var permission = ReservedSourceTargetPath.IsReserved(request.ObjectPath) && managed!=null
+            var permission = (ReservedSourceTargetPath.IsReserved(request.ObjectPath) || request.ObjectPath.StartsWith("uploads/mistake-returns/", StringComparison.Ordinal)) && managed!=null
                 ? await resourceAuthz.DecideItemOwnershipAsync("source target image read",user,request.ObjectPath,managed,ct)
                 : await resourceAuthz.DecidePresignedAccessAsync("source intake image read", user, request.ObjectPath, ct);
             if (!permission.Allowed) return permission.ToHttpResponse();
@@ -1232,7 +1149,10 @@ public static partial class MistakeHttpEndpoints
             {
                 await intake.VerifyManagedObjectAsync(request.ObjectPath, ct);
                 var seconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
-                var url = await ossService.GetPresignedUrlAsync(request.ObjectPath, seconds);
+                string url;
+                try { url = await ossService.GetPresignedUrlAsync(request.ObjectPath, seconds).WaitAsync(ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception) { return IntakeError("return_image_unavailable", 503); }
                 return MistakeHttpResponse.Ok(new PresignedUrlResponse {Url=url,ExpirySeconds=seconds});
             }
         }
@@ -1268,11 +1188,13 @@ public static partial class MistakeHttpEndpoints
 
             // 缩略图请求：使用 ThumbnailHelper
             var (thumbnailUrl, expiry) = await ThumbnailHelper.GetOrGenerateThumbnailAsync(
-                request.ObjectPath, size, ossService, expirySeconds, logger).ConfigureAwait(false);
+                request.ObjectPath, size, ossService, expirySeconds,
+                managedPractice ? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance : logger).ConfigureAwait(false);
             return MistakeHttpResponse.Ok(new PresignedUrlResponse { Url = thumbnailUrl, ExpirySeconds = expiry });
         }
         catch (Exception ex)
         {
+            if (managedPractice) return IntakeError("return_image_unavailable", 503);
             logger.LogError(ex, "GetPresignedUrl: failed for path {Path}", request.ObjectPath);
             return MistakeHttpResponse.Internal($"Failed to generate presigned URL: {ex.Message}");
         }

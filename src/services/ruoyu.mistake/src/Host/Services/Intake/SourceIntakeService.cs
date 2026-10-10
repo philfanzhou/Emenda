@@ -344,26 +344,34 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
         await using var db=Open();
         return await (from result in db.SourceIntakeGroups join source in db.SourceIntakes
             on new {result.SourceUploadId,result.ContentRevision} equals new {source.SourceUploadId,source.ContentRevision}
-            where result.ItemId==itemId select source.StudentId).SingleOrDefaultAsync(ct);
+            where result.ItemId==itemId select source.StudentId).SingleOrDefaultAsync(ct)
+            ?? await db.LegacyReturns.AsNoTracking().Where(o => o.ItemId == itemId).Select(o => o.StudentId).SingleOrDefaultAsync(ct);
+    }
+    public async Task<bool> IsSourceManagedItemAsync(Guid itemId,CancellationToken ct=default)
+    {
+        await using var db=Open();
+        return await db.SourceIntakeGroups.AnyAsync(g=>g.ItemId==itemId,ct);
     }
     public async Task<List<string>> GetManagedJobReviewersAsync(IReadOnlyList<Guid> jobIds,CancellationToken ct=default)
     {
         await using var db=Open();
-        return await (from job in db.ReanalyzeJobs.AsNoTracking()
-            join result in db.SourceIntakeGroups on job.ItemId equals result.ItemId
-            where jobIds.Contains(job.Id) select job.ReviewerId).Distinct().ToListAsync(ct);
+        return await db.ReanalyzeJobs.AsNoTracking().Where(job => jobIds.Contains(job.Id)
+            && (db.SourceIntakeGroups.Any(g => g.ItemId == job.ItemId) || db.LegacyReturns.Any(o => o.ItemId == job.ItemId)))
+            .Select(job => job.ReviewerId).Distinct().ToListAsync(ct);
     }
     public async Task<bool> HasManagedDataAsync(string? studentId=null,string? sourceId=null,CancellationToken ct=default)
     {
         await using var db=Open();
-        var query=db.SourceIntakes.AsNoTracking();
-        if (!string.IsNullOrEmpty(studentId)) query=query.Where(s=>s.StudentId==studentId);
+        var legacy = db.MistakeItems.AsNoTracking().Where(i => db.LegacyReturns.Any(o => o.ItemId == i.Id));
+        var query = db.SourceIntakes.AsNoTracking();
+        if (!string.IsNullOrEmpty(studentId)) { query = query.Where(s => s.StudentId == studentId); legacy = legacy.Where(i => i.StudentId == studentId); }
         if (!string.IsNullOrEmpty(sourceId))
         {
-            if (!Guid.TryParse(sourceId,out var id)) return false;
-            query=query.Where(s=>s.SourceUploadId==id);
+            legacy = legacy.Where(i => i.SourceUploadId == sourceId);
+            if (!Guid.TryParse(sourceId, out var id)) return await legacy.AnyAsync(ct);
+            query = query.Where(s => s.SourceUploadId == id);
         }
-        return await query.AnyAsync(ct);
+        return await query.AnyAsync(ct) || await legacy.AnyAsync(ct);
     }
     public async Task<IntakeView?> GetAsync(Guid sourceId,Guid revision,CancellationToken ct=default)
     {
@@ -378,6 +386,8 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
     public async Task<string?> GetManagedObjectStudentAsync(string path,CancellationToken ct=default)
     {
         await using var db=Open();
+        var legacy = await LegacyObjectAsync(db, path, ct);
+        if (legacy is not null) return legacy.Value.Student;
         if(ReservedSourceTargetPath.IsReserved(path)) return (await SelectedTargetAsync(db,path,ct)).StudentId;
         var groups=await db.SourceIntakeGroups.AsNoTracking().ToListAsync(ct);
         var match=groups.FirstOrDefault(g=>JsonSerializer.Deserialize<List<SourceRegionEntry>>(g.Regions,IntakeCanonical.Json)!.Any(r=>r.SourceImagePath==path));
@@ -395,9 +405,8 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
     public async Task<bool> IsManagedPracticeObjectAsync(string path,CancellationToken ct=default)
     {
         await using var db=Open();
-        var practices=await (from practice in db.MistakePractices.AsNoTracking()
-            join result in db.SourceIntakeGroups on practice.MistakeItemId equals result.ItemId
-            select practice.ImagePaths).ToListAsync(ct);
+        var practices = await db.MistakePractices.AsNoTracking().Where(p => db.SourceIntakeGroups.Any(g => g.ItemId == p.MistakeItemId)
+            || db.LegacyReturns.Any(o => o.ItemId == p.MistakeItemId)).Select(p => p.ImagePaths).ToListAsync(ct);
         if(practices.Any(paths=>paths.Contains(path,StringComparer.Ordinal))) return true;
         if(practices.Any(paths=>paths.Contains(path,StringComparer.OrdinalIgnoreCase)))
             throw new SourceIntakeException("object_not_managed",403);
@@ -411,6 +420,14 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
     public async Task VerifyManagedObjectAsync(string path,CancellationToken ct=default)
     {
         await using var db=Open();
+        var legacy = await LegacyObjectAsync(db, path, ct);
+        if (legacy is not null)
+        {
+            var obj = legacy.Value.Object;
+            if (!obj.ExpectedLength.HasValue || !await TryVerifyCandidateAsync(path, new ManifestImage { Length = obj.ExpectedLength.Value, Sha256 = obj.ExpectedSha256! }, ct))
+                throw new SourceIntakeException("return_bytes_unavailable", 503);
+            return;
+        }
         if(ReservedSourceTargetPath.IsReserved(path))
         {
             var selected=await SelectedTargetAsync(db,path,ct);
@@ -433,11 +450,13 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
     public async Task EnsureDestructiveItemAsync(Guid itemId,CancellationToken ct=default)
     {
         await using var db=Open();
+        if (await db.LegacyReturns.AnyAsync(o => o.ItemId == itemId, ct)) throw new SourceIntakeException("return_in_progress", 409);
         if (await db.SourceIntakeGroups.AnyAsync(g=>g.ItemId==itemId,ct)) throw new SourceIntakeException("handoff_pending");
     }
     public async Task EnsureIdentityAsync(MistakeItemModel item,CancellationToken ct=default)
     {
         await using var db=Open();
+        if (await db.LegacyReturns.AnyAsync(o => o.ItemId == item.Id, ct)) throw new SourceIntakeException("return_in_progress", 409);
         var group=await db.SourceIntakeGroups.AsNoTracking().SingleOrDefaultAsync(g=>g.ItemId==item.Id,ct);
         if (group==null) { await EnsureLegacySourceAsync(item.SourceUploadId,ct); return; }
         var original=DeserializeResult(group);
@@ -445,4 +464,28 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
             || JsonSerializer.Serialize(item.SourceRegions,IntakeCanonical.Json)!=JsonSerializer.Serialize(original.SourceRegions,IntakeCanonical.Json))
             throw new SourceIntakeException("source_managed");
     }
+    private static async Task<(string Student, LegacyReturnObjectEntity Object)?> LegacyObjectAsync(MistakeDbContext db, string path, CancellationToken ct)
+    {
+        var objects = await db.LegacyReturnObjects.AsNoTracking().ToListAsync(ct);
+        var attempts = await db.LegacyReturnAttempts.AsNoTracking().ToListAsync(ct);
+        var source = objects.FirstOrDefault(o => o.SourcePath == path);
+        var candidate = attempts.FirstOrDefault(a => a.ObjectKey == path);
+        if (source is null && candidate is not null)
+        {
+            source = objects.Single(o => o.ItemId == candidate.ItemId && o.Position == candidate.Position);
+            if (source.SelectedAttemptId != candidate.AttemptId || candidate.Phase != "Verified" || candidate.CopySettledAt is null)
+                throw new SourceIntakeException("object_not_managed", 403);
+        }
+        if (source is null)
+        {
+            if (path.StartsWith("uploads/mistake-returns/", StringComparison.OrdinalIgnoreCase)
+                || objects.Any(o => string.Equals(o.SourcePath, path, StringComparison.OrdinalIgnoreCase))
+                || attempts.Any(a => string.Equals(a.ObjectKey, path, StringComparison.OrdinalIgnoreCase)))
+                throw new SourceIntakeException("object_not_managed", 403);
+            return null;
+        }
+        var owner = await db.LegacyReturns.AsNoTracking().Where(o => o.ItemId == source.ItemId).Select(o => o.StudentId).SingleAsync(ct);
+        return (owner, source);
+    }
+
 }
