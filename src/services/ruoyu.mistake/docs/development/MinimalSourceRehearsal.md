@@ -9,7 +9,7 @@ Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定
 | manifest | `src/services/ruoyu.mistake/manifest/mistake-minimal-source-package.json` | 固定源 commit、闭包成员路径（7 个 Mistake 项目 + 3 个共享项目 + sln + .dockerignore）、NuGet 直接依赖 id/版本/许可证表达式、导出排除规则 |
 | 预演脚本 | `script/build-script/06-mistake.minimal-source-rehearsal.sh` | 从指定 commit 按 manifest 导出到仓库外空目录，依次执行 restore、Release build、Domain 测试、Service 测试、docker 镜像构建 |
 
-最小闭包成员：Database、Domain、Service、Host、StudentClient、Domain.Tests、Service.Tests（Mistake 7 项）+ ruoyu.common/backend 下 Common、Ai.Shared、Consul.Shared（共享 3 项）+ sln + 仓库根 `.dockerignore` + 权威 `docs/Integration/mistake-http-v1.json` 发布资源。不含 4 个 Portal BFF 共享库、common frontend/docs/test、其他服务与 Portal 源码。
+最小闭包成员：Database、Domain、Service、Host、StudentClient、Domain.Tests、Service.Tests（Mistake 7 项）+ ruoyu.common/backend 下 Common、Ai.Shared、Consul.Shared（共享 3 项）+ sln + 仓库根 `.dockerignore` + 历史 `docs/Integration/mistake-http-v1.json` 与当前 `mistake-http-v2.json` 发布资源。不含 4 个 Portal BFF 共享库、common frontend/docs/test、其他服务与 Portal 源码。
 
 Service.Tests 只保留 portable 核心/宿主测试，不引用 Student 项目或源码。需要真实 Student provider 的来源入库、目标、退回与交接测试由 `tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests` 主责；该项目不进入最小包。仓库常规回归必须执行两套，不能以最小包成功替代 provider 正常 TLS/PG/S3 验证。
 
@@ -79,3 +79,5 @@ dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study
 ```
 
 pre-commit 的原常规 UNIT 阶段同时执行 core 与 provider；--skip-integration 仅省略可选 Portal integration 集，不省略原 Mistake provider 覆盖。环境沿 SourceIntake/Targets/Returns/Handoffs 的专用 PG15/S3与正常 TLS要求；没有环境时原动态门控如实记录，不能称全量通过。调整源码归属时保持原测试并集/断言不变，manifest 禁止 Student 内容的保证不变。
+
+当前导出闭包同时包含历史 v1 与当前 v2 合同资源；Service/Host 从导出副本嵌入发布，不能只带 v1。旧题安全适配器随 Host 递归成员导出，不包含尚未启用的完整恢复引擎或 worker。

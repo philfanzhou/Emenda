@@ -17,8 +17,7 @@ public sealed class LegacyReturnJournal(DbContextOptions<MistakeDbContext> optio
     }
 
     public async Task<LegacyReturnEntity> CreateAsync(Guid itemId, string actor, string? reason, string? cause,
-        int grade, int subject, CancellationToken ct = default, Guid? ownerId = null,
-        Func<MistakeItemEntity, bool>? validateItem = null)
+        int grade, int subject, CancellationToken ct = default)
     {
         if (itemId == Guid.Empty || string.IsNullOrWhiteSpace(actor)) throw new InvalidOperationException("invalid_request");
         await using var db = Open();
@@ -36,7 +35,6 @@ public sealed class LegacyReturnJournal(DbContextOptions<MistakeDbContext> optio
         }
         if (item.ReviewStatus != 1 || await db.SourceIntakeGroups.AnyAsync(g => g.ItemId == itemId, ct))
             throw new InvalidOperationException("return_not_pending");
-        if (validateItem is not null && !validateItem(item)) throw new InvalidOperationException("invalid_return_source");
         if (await db.ReanalyzeJobs.AnyAsync(j => j.ItemId == itemId && (j.Status == 1 || j.Status == 2), ct))
             throw new InvalidOperationException("reanalysis_active");
         var paths = item.SourceRegions.Select(r => r.SourceImagePath).Distinct(StringComparer.Ordinal).ToArray();
@@ -46,7 +44,7 @@ public sealed class LegacyReturnJournal(DbContextOptions<MistakeDbContext> optio
             ItemId = itemId, OperationId = $"mistake-return:{itemId:D}", StudentId = item.StudentId,
             Actor = actor, Canonical = canonical, OriginalItem = await OriginalAsync(db, itemId, ct),
             ReturnReason = reason ?? "", RootCause = cause, Grade = effectiveGrade, Subject = effectiveSubject,
-            OwnerId = ownerId ?? Guid.NewGuid(), Fence = 1, CreatedAt = now, LeaseUntil = now.AddSeconds(60)
+            OwnerId = Guid.NewGuid(), Fence = 1, CreatedAt = now, LeaseUntil = now.AddSeconds(60)
         };
         db.LegacyReturns.Add(op);
         await db.SaveChangesAsync(ct);

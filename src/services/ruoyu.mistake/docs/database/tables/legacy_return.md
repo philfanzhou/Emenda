@@ -26,7 +26,7 @@
 
 `20261010000001_AddLegacyReturns` 是第12条迁移。启动从空库、精确已知1–11版本及既有支持旧形态，在原 advisory lock 和整库事务内升级；未知/部分表、坏函数/trigger/FK/history 拒绝且无写，目标重复启动不写。新三表初始为空，不改原业务行、ID或归档事实。
 
-审核、对象复制和 Student 原历史 receipt 确认已通过 [SourceReturns](../../modules/SourceReturns.md) 接入；默认关闭 LegacyReturns 新领取和 worker 推进。关闭时须保留日志、guards和完整图片引用，不回到先删除的旧路径。有任一新操作时 Down 拒绝；回退保留认识当前 schema 的 binary 并停止推进。恢复使用整个数据库 pg_dump/restore，包含三表、业务、旧归档、迁移 history、所有函数/触发器和永久 pins；不能只导出载荷或图片路径。
+数据库日志/guards已可用；公开入口目前只有 [SourceReturns](../../modules/SourceReturns.md) 所述安全读取和Completed精确重放。旧题内部恢复与worker尚未启用，任何LegacyReturns=true拒绝启动。关闭时须保留日志、guards和完整图片引用，不回到先删除的旧路径。有任一新操作时 Down 拒绝；回退保留认识当前 schema 的 binary 并停止推进。恢复使用整个数据库 pg_dump/restore，包含三表、业务、旧归档、迁移 history、所有函数/触发器和永久 pins；不能只导出载荷或图片路径。
 
 [StorageReferences v1](../../../../../../docs/integrations/StorageReferences.md) 的既有 return/return-object/return-attempt coverage 同时覆盖新操作原图、固定 payload、全部 object 和全部 attempt，包括 Unknown/未选/Completed。wire版本、固定coverage、摘要算法和 deletionAuthorized=false 不变；缺表、坏行或数据库故障不得发布部分快照。
 

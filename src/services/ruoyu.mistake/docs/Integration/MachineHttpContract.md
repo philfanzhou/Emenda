@@ -36,7 +36,7 @@ hash 是发布身份，不是业务权限。回滚规格发布不改变原 schem
 
 异常/InnerException、响应与日志不得保留远端 body/message、原异常、URI、token/Cookie 或 signed URL。调用方 CancellationToken / RequestAborted 在预取消、发送与读取阶段透传，停止后续 I/O；未知响应不证明未提交，取消不承诺回滚。真实 wire 对不安全方法验证最多一次发送；DELETE 保持零字节 payload 并避免 bodyless 请求的底层 EOF 重发。所有实际 Portal Mistake action 消费同一分类；聚合页取数失败立即终止完整成功页，后续 Student 写入受前置 Mistake 成功约束。
 
-v2 当前 Rejected 分支统一先持久意图和原图，再复制、固定 Student 载荷与历史 receipt，最后原子完成；没有 journal 的普通 Confirm 沿既有行为。旧共享客户端回退会恢复旧错误报告，不能宣称仍通过新负向断言，也不得为回退放松 producer guards。停止新退回应关闭相应开关并保留新 binary/schema/永久 pins，不能恢复匿名或先删除路径。
+v2 的受管 Rejected 继续持久恢复；本阶段旧题只有只读禁用适配器，任何LegacyReturns=true启动拒绝，新/未完成503、确定canonical冲突409，已有Completed精确匹配才认证200重放；没有 journal 的普通 Confirm 沿既有行为。旧共享客户端回退会恢复旧错误报告，不能宣称仍通过新负向断言，也不得为回退放松 producer guards。停止新退回应关闭相应开关并保留新 binary/schema/永久 pins，不能恢复匿名或先删除路径。
 
 ## 可执行检查
 

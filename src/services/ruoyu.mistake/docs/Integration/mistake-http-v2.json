@@ -1767,8 +1767,8 @@
           },
           "semantics": {
             "validation": "reviewStatus only Confirmed2/Rejected3, reviewer bound under resource or managed",
-            "completion": "all Rejected202 innerfalse return_pending fixed message, operationId/returnState tracked; only durableCompleted200 innertrue",
-            "disabled": "SourceReturns or LegacyReturns off503 before new effects; completed history same-request replay remains authenticated",
+            "completion": "managed accepted Rejected202 innerfalse return_pending; only durableCompleted200 innertrue; legacy current read-only stage new/pending503, exact existingCompleted authenticated replay200, canonical conflict409",
+            "disabled": "SourceReturns off503 before new effects; LegacyReturns current version cannot enable (true startup rejected before DB/OSS), new/pending503 without intent/lease/OSS/Student writes; completed exact history replay remains authenticated",
             "history": "managed and legacy return retains item/log/receipt, all source/candidate bytes and frozen payload; reserved target protected409"
           }
         },
@@ -7292,7 +7292,7 @@
         "SourceReturnView.state",
         "ReviewMistakeItemResponse.returnState"
       ],
-      "reason": "旧退回改为始终校验操作权限并先保存可恢复意图；禁止先删图及删条目。IKKLEP及IKIZY3已批准模型要求这次行为变化，旧版本文件仅保留为历史比较，业务执行当前版本。"
+      "reason": "旧退回改为始终校验操作权限并永久移除先删除分支；本版仅安全读取和已有Completed精确重放，新/未完成503且启用true拒绝。原IKKLEP八条要求按IKKNMI→IKKNMJ→IKKNMK分段交付，旧版本文件仅供历史比较。"
     }
   }
 }

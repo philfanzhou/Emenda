@@ -6,7 +6,7 @@ Mistake 直连 `IOssService`；生产/Local 使用共享 `S3OssService`，显式
 
 [SourceIntake](../../modules/SourceIntake.md) 保留原 manifest、SourceRegions 与来源对象，不执行旧迁移或 Student 移除。[SourceTargets](../../modules/SourceTargets.md) 只按已提交 group 的实际引用保留来源并复制到每尝试独立键，实际 Download 校验长度/SHA256后发布一次不可变 Verified 目标。所有 pending/unknown/verified 候选与选定目标持续保留；本服务没有候选清理、SourceReleased 或完整 handoff。
 
-旧未受管 `UploadPollingWorker` 与 `CompleteReview` 仍直连 OSS 执行 `uploads/`→`mistakes/` 的前缀转换、Copy→Delete→业务路径更新；旧 reject 先删除路径已移除；当前 [SourceReturns](../../modules/SourceReturns.md) 为受管和旧题保存意图、每次独立复制候选、验证完整原图和原历史 receipt，再原子完成，原题和全部图片永久保留。它们没有跨 DB/S3 原子性或持久恢复保证，不通过已移除的 Student gRPC。已受管来源在副作用前拒绝旧 mover。
+旧未受管 `UploadPollingWorker` 与 `CompleteReview` 仍直连 OSS 执行 `uploads/`→`mistakes/` 的前缀转换、Copy→Delete→业务路径更新；旧 reject 先删除路径已移除；当前 [SourceReturns](../../modules/SourceReturns.md) 为受管错题持久恢复；旧题本版只读历史/认证完成重放，新退回503且不访问OSS/Student，完整恢复留后续。原题和全部图片永久保留。它们没有跨 DB/S3 原子性或持久恢复保证，不通过已移除的 Student gRPC。已受管来源在副作用前拒绝旧 mover。
 
 `mistakes/source-targets/` 与对应前缀换算输入 `uploads/source-targets/` 永久 reserved，三个旧 mover 的源及计算目标、item/practice/source 写边界均拒绝。不能以另一个 legacy item 或 practice 引用候选/目标，绕过来源关系后再移动、覆盖或删除它。
 
