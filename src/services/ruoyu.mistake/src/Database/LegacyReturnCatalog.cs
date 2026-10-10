@@ -1,0 +1,72 @@
+namespace Ruoyu.Study.Mistake.Database;
+
+internal static class LegacyReturnCatalog
+{
+    internal static readonly string[] Tables = [
+        "legacy_return",
+        "legacy_return_object",
+        "legacy_return_attempt"];
+    internal static readonly string[] Columns = [
+        "legacy_return|item_id|uuid|N",
+        "legacy_return|operation_id|text|N",
+        "legacy_return|student_id|text|N",
+        "legacy_return|actor|text|N",
+        "legacy_return|canonical|text|N",
+        "legacy_return|original_item|text|N",
+        "legacy_return|return_reason|text|N",
+        "legacy_return|root_cause|text|Y",
+        "legacy_return|grade|integer|Y",
+        "legacy_return|subject|integer|Y",
+        "legacy_return|owner_id|uuid|N",
+        "legacy_return|fence|bigint|N",
+        "legacy_return|created_at|timestamp with time zone|N",
+        "legacy_return|lease_until|timestamp with time zone|Y",
+        "legacy_return|phase|text|N",
+        "legacy_return|payload|text|Y",
+        "legacy_return|payload_digest|text|Y",
+        "legacy_return|error_kind|text|Y",
+        "legacy_return|confirmed_record_id|uuid|Y",
+        "legacy_return|receipt_created_at|timestamp with time zone|Y",
+        "legacy_return|completed_at|timestamp with time zone|Y",
+        "legacy_return|final_log_id|uuid|Y",
+        "legacy_return_object|item_id|uuid|N",
+        "legacy_return_object|position|integer|N",
+        "legacy_return_object|source_path|text|N",
+        "legacy_return_object|expected_length|bigint|Y",
+        "legacy_return_object|expected_sha256|text|Y",
+        "legacy_return_object|selected_attempt_id|uuid|Y",
+        "legacy_return_attempt|attempt_id|uuid|N",
+        "legacy_return_attempt|item_id|uuid|N",
+        "legacy_return_attempt|position|integer|N",
+        "legacy_return_attempt|object_key|text|N",
+        "legacy_return_attempt|owner_id|uuid|N",
+        "legacy_return_attempt|fence|bigint|N",
+        "legacy_return_attempt|phase|text|N",
+        "legacy_return_attempt|copy_settled_at|timestamp with time zone|Y",
+        "legacy_return_attempt|verified_length|bigint|Y",
+        "legacy_return_attempt|verified_sha256|text|Y"];
+    internal static readonly string[] Indexes = [
+        "PK_legacy_return|legacy_return|item_id|U",
+        "IX_legacy_return_operation|legacy_return|operation_id|U",
+        "IX_legacy_return_phase|legacy_return|phase|N",
+        "IX_legacy_return_FinalLogId|legacy_return|final_log_id|N",
+        "PK_legacy_return_object|legacy_return_object|item_id,position|U",
+        "IX_legacy_return_object_SelectedAttemptId|legacy_return_object|selected_attempt_id|N",
+        "PK_legacy_return_attempt|legacy_return_attempt|attempt_id|U",
+        "IX_legacy_return_attempt_key|legacy_return_attempt|object_key|U",
+        "IX_legacy_return_attempt_object|legacy_return_attempt|item_id,position|N"];
+    internal static readonly string[] Constraints = [
+        "PK_legacy_return|p|item_id|-|-|-|V",
+        "PK_legacy_return_object|p|item_id,position|-|-|-|V",
+        "PK_legacy_return_attempt|p|attempt_id|-|-|-|V",
+        "FK_legacy_return_item|f|item_id|mistake_item|id|r|V",
+        "FK_legacy_return_log|f|final_log_id|process_log|id|r|V",
+        "FK_legacy_return_object_return|f|item_id|legacy_return|item_id|r|V",
+        "FK_legacy_return_object_selected|f|selected_attempt_id|legacy_return_attempt|attempt_id|r|V",
+        "FK_legacy_return_attempt_object|f|item_id,position|legacy_return_object|item_id,position|r|V",
+        "trg_legacy_return_integrity_operation|t||-|-|-|V",
+        "trg_legacy_return_integrity_object|t||-|-|-|V",
+        "trg_legacy_return_integrity_item|t||-|-|-|V",
+        "trg_legacy_return_integrity_log|t||-|-|-|V",
+        "trg_legacy_return_integrity_attempt|t||-|-|-|V"];
+}

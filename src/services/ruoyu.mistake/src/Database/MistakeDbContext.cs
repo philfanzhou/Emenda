@@ -29,6 +29,10 @@ public class MistakeDbContext : DbContext
     public DbSet<SourceReturnObjectEntity> SourceReturnObjects => Set<SourceReturnObjectEntity>();
     public DbSet<SourceReturnAttemptEntity> SourceReturnAttempts => Set<SourceReturnAttemptEntity>();
 
+    public DbSet<LegacyReturnEntity> LegacyReturns => Set<LegacyReturnEntity>();
+    public DbSet<LegacyReturnObjectEntity> LegacyReturnObjects => Set<LegacyReturnObjectEntity>();
+    public DbSet<LegacyReturnAttemptEntity> LegacyReturnAttempts => Set<LegacyReturnAttemptEntity>();
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -41,6 +45,7 @@ public class MistakeDbContext : DbContext
         SourceIntakeModel.Configure(modelBuilder);
         SourceTargetModel.Configure(modelBuilder);
         SourceReturnModel.Configure(modelBuilder);
+            LegacyReturnModel.Configure(modelBuilder);
             SourceHandoffModel.Configure(modelBuilder);
 
         var sourceRegionComparer = new ValueComparer<List<SourceRegionEntry>>(

@@ -20,6 +20,7 @@ public class MistakePracticeRepository : IMistakePracticeRepository
 
     public async Task AddAsync(MistakePracticeModel model)
     {
+        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, model.MistakeItemId);
         var entity = new MistakePracticeEntity
         {
             Id = model.Id,
@@ -55,6 +56,7 @@ public class MistakePracticeRepository : IMistakePracticeRepository
 
     public async Task RemoveByMistakeItemIdAsync(Guid mistakeItemId)
     {
+        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, mistakeItemId);
         var entities = await _dbContext.MistakePractices
             .Where(p => p.MistakeItemId == mistakeItemId)
             .ToListAsync();

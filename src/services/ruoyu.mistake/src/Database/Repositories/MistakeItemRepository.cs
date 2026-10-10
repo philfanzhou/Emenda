@@ -33,6 +33,7 @@ public class MistakeItemRepository : IMistakeItemRepository
 
     public async Task<bool> UpdateAsync(MistakeItemModel model, CancellationToken ct = default)
     {
+        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, model.Id, ct);
         var entity = await _dbContext.MistakeItems.FindAsync(model.Id);
         if (entity == null) return false;
 
@@ -54,6 +55,7 @@ public class MistakeItemRepository : IMistakeItemRepository
 
     public async Task SetRootCauseDeferredAsync(Guid itemId, string newRootCause, DateTimeOffset updatedAt, CancellationToken ct = default)
     {
+        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, itemId, ct);
         var entity = await _dbContext.MistakeItems.FindAsync(new object?[] { itemId }, ct);
         if (entity == null) return;
         entity.RootCause = newRootCause;
@@ -63,6 +65,7 @@ public class MistakeItemRepository : IMistakeItemRepository
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {
+        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, id, ct);
         var entity = await _dbContext.MistakeItems.FindAsync(id);
         if (entity == null) return false;
 
