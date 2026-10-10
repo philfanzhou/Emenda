@@ -4,11 +4,11 @@
 
 ## 1. 开始前确认
 
-- 固定本次 Study commit、Student/Mistake 配置、外部 Admin 与身份服务的实际版本，并记录命令、用时、结果和输出路径。跨服务验收使用同一组合，不能拼接不同版本的绿色结果。
+- 固定本次 Study commit，并记录命令、用时、结果和输出路径。只记录本次检查实际参与的服务版本和配置；跨服务验收使用同一组合，不能拼接不同版本的绿色结果。没有参与检查的外部 Admin 或身份服务无需准备。
 - Mistake 与 Student、三个 Portal 之间使用 HTTP。Mistake 的业务入口以 `/api/mistakes` 为前缀；Portal 调用地址为 `MistakeService:Url`。路由、JSON 字段、枚举、认证和错误条件以[版本化机器 HTTP 合同](../Integration/MachineHttpContract.md)及其发布的 JSON 为准。
-- 使用任务自有 PostgreSQL 15 数据库、S3 桶、账号与正常 CA/SAN HTTPS。不要在共享业务库注入故障，也不要停止共享身份服务来测试恢复。
-- 开关和服务凭据按[部署说明](./Deployment.md)配置。`Local` 是独立配置模式，正常运行仍使用 S3；Mistake Host 没有文件系统存储回退，不能用 `USE_LOCAL_OSS` 绕过 OSS 故障。
-- 先停会删除原图的旧 Worker、旧聚合审核迁移和外部破坏性清理，再验证受管来源流程。关闭新处理开关不会解除已有来源、候选和历史的保护。
+- 按检查内容准备输入。文档、构建、可独立运行的逻辑和 HTTP 合同检查不需要外部登录或共享服务器。数据库专项只准备它实际使用的任务自有 PostgreSQL 15；对象存储专项再准备所需 S3 桶。服务间 TLS、签名和权限测试使用可重复的隔离证书、服务身份与请求输入，不以人工登录外部 Admin 为前置。不要在共享业务库注入故障，也不要停止共享身份服务来测试恢复。
+- 实际启动服务时，开关和服务凭据按[部署说明](./Deployment.md)配置。`Local` 是独立配置模式，正常运行仍使用 S3；Mistake Host 没有文件系统存储回退，不能用 `USE_LOCAL_OSS` 绕过 OSS 故障。
+- 在运行受管来源流程的环境中，先停会删除原图的旧 Worker、旧聚合审核迁移和外部破坏性清理。关闭新处理开关不会解除已有来源、候选和历史的保护。
 
 “受管”指已经保存不可变来源及其题目关联的数据，见[来源入库](../modules/SourceIntake.md)。尚未建立这些关联的旧条目另按第 4 节核对，不能用旧行为解释受管数据。
 
@@ -66,7 +66,7 @@ Student 当前记录可能因完整消费而被移除，或保留其他分类图
 
 ## 3. 故障与恢复检查的位置
 
-以下是现有自动测试入口；测试文件存在不表示本次运行已经通过。提供方测试目录为 [Ruoyu.Study.Mistake.Provider.Tests](../../../../../tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests)，服务测试目录为 [Mistake.Service.Tests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests)。真实 PG/S3/HTTPS 与替身测试的结果分开记录；必需输入缺失或测试跳过均保留未完成。
+以下是现有自动测试入口；测试文件存在不表示本次运行已经通过。提供方测试目录为 [Ruoyu.Study.Mistake.Provider.Tests](../../../../../tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests)，服务测试目录为 [Mistake.Service.Tests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests)。每项只准备其实际使用的依赖，真实依赖与替身测试的结果分开记录；某项必需输入缺失或测试跳过，只保留该项未完成，不阻塞其他独立检查。
 
 | 检查内容 | 对应既有测试与权威说明 |
 |---|---|
@@ -97,9 +97,9 @@ Portal 地址错误按实际 `MistakeService:Url` 排查。共享客户端对网
 
 ### 隔离启动与平台端到端
 
-[07 隔离运行脚本](../../../../../script/build-script/07-mistake.isolated-deploy-verification.sh)与[运行说明](./IsolatedDeployVerification.md)涵盖基础 19 步、显式严格身份阶段和 Student-enabled 两模式。严格身份与 Student-enabled 阶段需要仓库外的受限 JSON：普通文件、非软链接、0600，正常 HTTPS、精确回调、CA 与真实身份提供者；Student-enabled 还需固定镜像和任务自有 provider 控制信息。缺少输入不能跳过相应阶段却报告整体通过。基础 ready 探测不证明真实 Student 业务调用成功。
+[07 隔离运行脚本](../../../../../script/build-script/07-mistake.isolated-deploy-verification.sh)与[运行说明](./IsolatedDeployVerification.md)涵盖基础 19 步、显式严格身份阶段和 Student-enabled 两模式。基础阶段自行准备临时 PG/S3，不需要 Admin 登录。只有显式运行后两个阶段时，现有脚本才读取仓库外的受限 JSON：普通文件、非软链接、0600，正常 HTTPS、精确回调、CA 与真实身份提供者；Student-enabled 还需固定镜像和任务自有 provider 控制信息。这些是相应脚本阶段当前实际使用的输入，不是其他代码修改的前置。缺少输入不能把该阶段报告为通过；不妨碍先完成基础阶段和其他独立测试。基础 ready 探测不证明真实 Student 业务调用成功。
 
-平台端到端另从[现有 E2E 入口](../../../../../tests/e2e/README.md)运行，需要实际 Admin 托管会话与普通 CSRF。会话文件只含该 origin 的最小 Cookie，不导出下游 token。正常 TLS 与精确来源校验不能被关闭来凑通过。下节所述旧断言尚待修订，运行前须核对本次代码与案例是否一致。
+真实浏览器托管登录属于单独的环境专项；验收该项才需要对应登录入口和会话，不能据此要求普通代码、数据库或接口修改等待外部 HTTPS 登录环境。[现有 E2E 入口](../../../../../tests/e2e/README.md)目前经已部署 Admin 调用业务，因此该脚本仍读取实际托管会话与普通 CSRF；这是现有工具的使用条件，不是所有业务验收必须经过它。独立业务检查按上表运行，会话与传输检查也有本地自动测试。实际运行登录专项或该脚本时，会话文件只含该 origin 的最小 Cookie，不导出下游 token，保留正常 TLS 与精确来源校验。下节所述旧断言尚待修订，运行前须核对本次代码与案例是否一致。
 
 ## 4. 旧路径的实际限制与验收边界
 
@@ -111,7 +111,7 @@ Portal 地址错误按实际 `MistakeService:Url` 排查。共享客户端对网
 
 ## 5. 执行与判定
 
-按上述权威文档提供环境输入并执行对应专项；从仓库根运行快速验证：
+先按修改范围选择检查；普通代码修改无需等外部登录环境。从仓库根运行快速验证：
 
 ```bash
 ./tests/integration/scripts/pre-commit.sh --skip-docker --skip-e2e --skip-integration
@@ -119,6 +119,6 @@ python3 tests/documentation/check_docs.py
 git diff --check
 ```
 
-受影响后端另运行对应 solution 的 Release build/test；真实提供方检查按各能力文档提供自有 PG/S3/HTTPS 输入。改前端时运行目标项目实际构建。完整平台 E2E、隔离运行、故障/取消/并发/恢复和实际消费者证据各自记录，快速检查不代替它们。
+受影响后端另运行对应 solution 的 Release build/test；改前端时运行目标项目实际构建。数据库、对象存储和服务间身份专项分别按各能力文档准备所需 PG、S3 或隔离 TLS/签名输入，不捆绑外部 Admin 登录。文档修改运行文档检查与差异检查即可。完整平台 E2E、隔离运行、故障/取消/并发/恢复和实际消费者证据各自记录，快速检查不代替它们；没有运行的专项也不阻塞已经满足自身验收条件的独立修改。
 
 通过必须对应具体提交和每项成功证明；未运行、跳过、失败及结果未知都逐项保留。部分图片/引用缺失、错误授权、历史被删、未完成被显示为成功，均不接受为“部分通过”。按故障定位配置、依赖或实现，修复后重跑受影响场景；保留安全认证、原操作身份和永久数据保护。
