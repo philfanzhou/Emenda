@@ -80,4 +80,4 @@ dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study
 
 pre-commit 的原常规 UNIT 阶段同时执行 core 与 provider；--skip-integration 仅省略可选 Portal integration 集，不省略原 Mistake provider 覆盖。环境沿 SourceIntake/Targets/Returns/Handoffs 的专用 PG15/S3与正常 TLS要求；没有环境时原动态门控如实记录，不能称全量通过。调整源码归属时保持原测试并集/断言不变，manifest 禁止 Student 内容的保证不变。
 
-当前导出闭包同时包含历史 v1 与当前 v2 合同资源；Service/Host 从导出副本嵌入发布，不能只带 v1。旧题安全适配器随 Host 递归成员导出，不包含尚未启用的完整恢复引擎或 worker。
+当前导出闭包同时包含历史 v1 与当前 v2 合同资源；Service/Host 从导出副本嵌入发布，不能只带 v1。旧题安全适配器和完整内部恢复引擎随 Host 递归成员导出；生产只注册安全禁用适配器，完整引擎不可从公开入口触发，LegacyReturns=true仍拒绝启动，也没有旧题worker。源码包含引擎不代表本版已经启用新退回。
