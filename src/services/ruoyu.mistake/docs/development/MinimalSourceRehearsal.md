@@ -11,7 +11,7 @@ Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定
 
 最小闭包成员：Database、Domain、Service、Host、StudentClient、Domain.Tests、Service.Tests（Mistake 7 项）+ ruoyu.common/backend 下 Common、Ai.Shared、Consul.Shared（共享 3 项）+ sln + 仓库根 `.dockerignore` + 历史 `docs/Integration/mistake-http-v1.json` 与当前 `mistake-http-v2.json` 发布资源。不含 4 个 Portal BFF 共享库、common frontend/docs/test、其他服务与 Portal 源码。
 
-Service.Tests 只保留 portable 核心/宿主测试，不引用 Student 项目或源码。需要真实 Student provider 的来源入库、目标、退回与交接测试由 `tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests` 主责；该项目不进入最小包。仓库常规回归必须执行两套，不能以最小包成功替代 provider 正常 TLS/PG/S3 验证。
+Service.Tests 只保留 portable 核心/宿主测试，不引用 Student 或 Portal BFF 项目或源码。需要真实 Student provider 的来源入库、目标、退回与交接测试由 `tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests` 主责；原 `MistakeConsumerHostModesTests` 的三个 strict/resource 组合也由该项目执行，原 alias 引用随测试移动，并复用 Service.Tests 的内部真实 Host fixture；该项目不进入最小包。仓库常规回归必须执行两套，不能以最小包成功替代 provider 正常 TLS/PG/S3 验证。
 
 ## 命令
 

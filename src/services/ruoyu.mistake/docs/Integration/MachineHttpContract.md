@@ -51,7 +51,7 @@ dotnet test src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tes
 dotnet test src/ruoyu.common/test/Ruoyu.Study.MistakeBff.HttpClients.Tests/Ruoyu.Study.MistakeBff.HttpClients.Tests.csproj --configuration Release
 dotnet test src/ruoyu.common/test/Ruoyu.Study.MistakeReviewBff.Shared.Tests/Ruoyu.Study.MistakeReviewBff.Shared.Tests.csproj --configuration Release
 # 实际 producer 模式与已注册 Portal 的 DI/HTTP、RequestAborted 边界。
-dotnet test src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj \
+dotnet test tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests/Ruoyu.Study.Mistake.Provider.Tests.csproj \
   --configuration Release --filter FullyQualifiedName~MistakeConsumerHostModes
 dotnet test src/user_portal/backend/Tests/WebApi.Tests.csproj --configuration Release --filter FullyQualifiedName~MistakePortalBoundary
 dotnet test src/teacher_portal/backend/Tests/TeacherWebApi.Tests.csproj --configuration Release --filter FullyQualifiedName~MistakePortalBoundary
