@@ -5,8 +5,6 @@ using Ruoyu.Study.Common.Ai;
 using Ruoyu.Study.Common.Constants;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Service.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
 
 namespace Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 
@@ -125,18 +123,8 @@ public class VlUploadAnalyzer : IVlAnalyzer
     {
         using var image = GuardedImageDecoder.Load(imageData);
 
-        if (image.Width > MaxImageLongSide || image.Height > MaxImageLongSide)
-        {
-            image.Mutate(x => x.Resize(new ResizeOptions
-            {
-                Size = new Size(MaxImageLongSide, MaxImageLongSide),
-                Mode = ResizeMode.Max
-            }));
-        }
-
-        using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
-        return ms.ToArray();
+        image.ResizeMax(MaxImageLongSide, enlarge: false);
+        return image.ToJpeg(85);
     }
 
     private static string BuildReanalyzePrompt(int totalImageCount, string existingRootCause, string? teacherDescription)
