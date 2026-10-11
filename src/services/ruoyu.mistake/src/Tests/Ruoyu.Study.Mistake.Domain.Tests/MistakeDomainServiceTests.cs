@@ -37,6 +37,20 @@ public class MistakeDomainServiceTests
             _mockLogger.Object);
     }
 
+    private Task<CompleteUploadReviewResult> CompleteLegacyUploadReviewAsync(
+        string sourceUploadId, string? reviewerId)
+    {
+        // Exercise the retained legacy contract without removing its production deprecation warning.
+        var method = typeof(MistakeDomainService).GetMethod(
+            nameof(MistakeDomainService.CompleteUploadReviewAsync),
+            new[] { typeof(string), typeof(string) })
+            ?? throw new InvalidOperationException("The legacy completion method is missing.");
+        Assert.False(method.IsStatic);
+        Assert.True(method.IsDefined(typeof(ObsoleteAttribute), inherit: false));
+        var completeReview = method.CreateDelegate<Func<string, string?, Task<CompleteUploadReviewResult>>>(_service);
+        return completeReview(sourceUploadId, reviewerId);
+    }
+
     [Fact]
     public async Task SubmitMistakeUploadAsync_ShouldCreateItemWithSourceRegions()
     {
@@ -164,7 +178,7 @@ public class MistakeDomainServiceTests
     {
         _mockItemRepo.Setup(x => x.CountPendingBySourceUploadIdAsync("upload-1")).ReturnsAsync(2);
 
-        var result = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
+        var result = await CompleteLegacyUploadReviewAsync("upload-1", "teacher-1");
 
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("2 条错题待审核");
@@ -181,7 +195,7 @@ public class MistakeDomainServiceTests
                 new() { Id = Guid.NewGuid(), SourceUploadId = "upload-1", StudentId = "student-1" }
             });
 
-        var result = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
+        var result = await CompleteLegacyUploadReviewAsync("upload-1", "teacher-1");
 
         result.Success.Should().BeTrue();
         result.ErrorMessage.Should().BeNull();
@@ -296,7 +310,7 @@ public class MistakeDomainServiceTests
         _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1"))
             .ReturnsAsync(new List<MistakeItemModel>());
 
-        var result = await _service.CompleteUploadReviewAsync("upload-1", "teacher-1");
+        var result = await CompleteLegacyUploadReviewAsync("upload-1", "teacher-1");
 
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("未找到该上传记录的错题");
