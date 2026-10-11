@@ -52,6 +52,18 @@ intake 保存完整 manifest、mode、owner/fence/lease、canonical group→稳�
 启用只在自有隔离实例验证。实际共享capture/rollout必须先停止所有旧Mistake版本direct movers/manualCompleteReview和外部破坏性StorageAudit；本服务不能阻止外部持S3权限的进程。后继正向handoff、条件ack/全引用/反向Saga完成且固定consumer升级以后才能阶段性取代旧流程；本能力不做该激活。
 
 
+## 图片解码边界
+
+`VlUploadAnalyzer` 的普通分析、重分析和已核验来源分析共用 `CompressImage`，通过[共享图片解码入口](../../../../ruoyu.common/docs/shared-services.md#guardedimagedecoder)检查 BigTIFF 完整主目录链再自动解码。畸形目录在 JPEG 编码和 VL HTTP 请求前拒绝；普通 OSS 加载保持 `InvalidOperationException` 包装，已核验字节入口传播固定 `InvalidDataException`。来源长度/摘要校验和持久状态边界保持原规则，结构检查不代替来源核验。
+
+合法 JPEG、PNG、普通 TIFF、大小端单帧及多帧 BigTIFF 保持原解码与压缩行为（长边最多 768、JPEG quality 85）；没有新增文件扩展名或 MIME 白名单。调用者须在一次处理期间不并发修改输入字节。该检查不代表其它图像漏洞或依赖安全公告已解决。
+
+`VlUploadAnalyzerTests` 验证三个分析入口零请求拒绝及正常 JPEG 请求内容；恶意输入回归使用进程超时：
+
+```bash
+timeout --kill-after=5s 120s dotnet test src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj --configuration Release --filter FullyQualifiedName~VlUploadAnalyzerTests
+```
+
 ## HTTP 与失败契约
 
 两个旧入口增加 `expectedContentRevision`、`requestKey` UUID；开启时必填且非零，body 的 studentId 必须与 manifest 完全相同。upload 仍要求 AdminOnly，Add 仍要求 StaffOrAdmin，actor 始终取已验证 sub。两个端点使用同一个 `create` 请求 action，JSON 属性顺序、端点名称和 full 图片排序不改变请求语义；null rootCause 与空字符串为同一创建值。upload 返回原 createdItemIds；Add 返回原创建 item DTO。

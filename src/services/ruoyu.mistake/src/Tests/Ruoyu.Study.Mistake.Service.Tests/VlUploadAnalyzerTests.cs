@@ -18,6 +18,8 @@ using Ruoyu.Study.Mistake.Service.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
+using Ruoyu.Study.TestFixtures;
+using SixLabors.ImageSharp.Processing;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
@@ -74,6 +76,79 @@ public class VlUploadAnalyzerTests
             aiClient,
             Options.Create(_options),
             _logger.Object);
+    }
+
+    public static IEnumerable<object[]> MalformedBigTiff() => BigTiffFixture.Malformed();
+    public static IEnumerable<object[]> Pictures() => BigTiffFixture.Pictures();
+
+    private VlUploadAnalyzer CreateCapturingAnalyzer(CapturingHttpMessageHandler handler) => new(
+        _ossService.Object,
+        new OpenAiCompatibleClient(new HttpClient(handler), _options, _aiClientLogger.Object),
+        Options.Create(_options), _logger.Object);
+
+    [Theory]
+    [MemberData(nameof(MalformedBigTiff))]
+    public async Task MalformedBigTiff_AllAnalysisPathsFailBeforeAiRequest(byte[] bytes)
+    {
+        _ossService.Setup(x => x.DownloadAsync(It.IsAny<string>())).ReturnsAsync(() => new MemoryStream(bytes));
+        var handler = new CapturingHttpMessageHandler();
+        var analyzer = CreateCapturingAnalyzer(handler);
+        var paths = new List<string> { "uploads/disguised.jpg" };
+        var analysis = await Assert.ThrowsAsync<InvalidOperationException>(() => analyzer.AnalyzeAsync("student-1", paths));
+        Assert.IsType<InvalidDataException>(analysis.InnerException);
+        var reanalysis = await Assert.ThrowsAsync<InvalidOperationException>(() => analyzer.ReAnalyzeAsync("student-1", paths, "reason", null));
+        Assert.IsType<InvalidDataException>(reanalysis.InnerException);
+        await Assert.ThrowsAsync<InvalidDataException>(() => analyzer.AnalyzeVerifiedAsync("student-1", paths, new[] { bytes }));
+        Assert.Null(handler.CapturedRequestBody);
+        Assert.Equal(0, handler.Requests);
+        _ossService.Verify(x => x.DownloadAsync(It.IsAny<string>()), Times.Exactly(2));
+    }
+
+    [Theory]
+    [MemberData(nameof(Pictures))]
+    public async Task SupportedPictures_AllAnalysisPathsSendUnchangedJpeg(byte[] bytes)
+    {
+        _ossService.Setup(x => x.DownloadAsync(It.IsAny<string>())).ReturnsAsync(() => new MemoryStream(bytes));
+        var handler = new CapturingHttpMessageHandler();
+        var analyzer = CreateCapturingAnalyzer(handler);
+        using var expected = Image.Load(bytes);
+        if (expected.Width > 768 || expected.Height > 768)
+            expected.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(768, 768), Mode = ResizeMode.Max }));
+        using var jpeg = new MemoryStream();
+        expected.SaveAsJpeg(jpeg, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
+        var expectedUri = "data:image/jpeg;base64," + Convert.ToBase64String(jpeg.ToArray());
+        var paths = new List<string> { "uploads/image.jpg" };
+        await analyzer.AnalyzeAsync("student-1", paths);
+        AssertImageUri(handler, expectedUri);
+        await analyzer.ReAnalyzeAsync("student-1", paths, "reason", null);
+        AssertImageUri(handler, expectedUri);
+        await analyzer.AnalyzeVerifiedAsync("student-1", paths, new[] { bytes });
+        AssertImageUri(handler, expectedUri);
+        Assert.Equal(3, handler.Requests);
+        _ossService.Verify(x => x.DownloadAsync(It.IsAny<string>()), Times.Exactly(2));
+    }
+
+    private static void AssertImageUri(CapturingHttpMessageHandler handler, string expected)
+    {
+        using var json = JsonDocument.Parse(handler.CapturedRequestBody!);
+        var content = json.RootElement.GetProperty("messages")[0].GetProperty("content");
+        Assert.Equal(2, content.GetArrayLength());
+        Assert.Equal("image_url", content[1].GetProperty("type").GetString());
+        Assert.Equal(expected, content[1].GetProperty("image_url").GetProperty("url").GetString());
+        Assert.False(json.RootElement.TryGetProperty("max_tokens", out _));
+    }
+
+    [Fact]
+    public async Task CancelledOssAnalysis_PropagatesCancellationBeforeAnyRequest()
+    {
+        var handler = new CapturingHttpMessageHandler();
+        var analyzer = CreateCapturingAnalyzer(handler);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => analyzer.AnalyzeAsync("student-1", new() { "image.jpg" }, cancellation.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => analyzer.ReAnalyzeAsync("student-1", new() { "image.jpg" }, "reason", null, cancellation.Token));
+        Assert.Equal(0, handler.Requests);
+        _ossService.Verify(x => x.DownloadAsync(It.IsAny<string>()), Times.Never);
     }
 
     #region AnalyzeAsync - Normal Response
@@ -450,10 +525,12 @@ public class VlUploadAnalyzerTests
     private class CapturingHttpMessageHandler : HttpMessageHandler
     {
         public string? CapturedRequestBody { get; private set; }
+        public int Requests { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            Requests++;
             if (request.Content != null)
             {
                 CapturedRequestBody = await request.Content.ReadAsStringAsync(cancellationToken);

@@ -123,7 +123,7 @@ public class VlUploadAnalyzer : IVlAnalyzer
 
     private static byte[] CompressImage(byte[] imageData)
     {
-        using var image = Image.Load(imageData);
+        using var image = GuardedImageDecoder.Load(imageData);
 
         if (image.Width > MaxImageLongSide || image.Height > MaxImageLongSide)
         {

@@ -14,6 +14,8 @@
 
 提交时错题不存在返回 NotFound；状态不为 PendingReview/Confirmed 或无 SourceRegions 时拒绝创建 Job。批查询缺少 ID、超过 100 个或无 reviewerId 时返回失败响应。JobId 为随机 Guid；状态查询 DTO 包含 `jobId`、`itemId`、`studentId`、`status`、`newRootCause`、`errorMessage`、创建/开始/完成时间及 VL 耗时。重分析不修改 subject、grade、source_regions、review_status，也不调用 Student 服务。浏览器路由及身份策略由 Portal 主责；本切片不开放管理或匿名恢复入口。
 
+图片加载与 VL 压缩沿[共同图片解码边界](../../SourceIntake.md#图片解码边界)处理；畸形 BigTIFF 在 VL 请求前失败，沿原 Job 失败路径保留 Item 根因，不改变领取、续租或终态事务。
+
 ## 状态与顺序
 
 | 事件 | Job | Item 与日志 |
