@@ -1,8 +1,10 @@
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+ARG ASPNET_IMAGE=mcr.microsoft.com/dotnet/aspnet:8.0
+ARG SDK_IMAGE=mcr.microsoft.com/dotnet/sdk:8.0
+FROM ${ASPNET_IMAGE} AS base
 WORKDIR /app
 EXPOSE 5007
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM ${SDK_IMAGE} AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 

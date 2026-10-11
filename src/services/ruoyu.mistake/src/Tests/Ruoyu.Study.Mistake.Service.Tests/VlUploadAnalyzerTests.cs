@@ -1,3 +1,4 @@
+using ImageMagick;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,11 +16,8 @@ using Ruoyu.Study.Common.Ai;
 using Ruoyu.Study.Common.Oss;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Service.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
 using Ruoyu.Study.TestFixtures;
-using SixLabors.ImageSharp.Processing;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
@@ -54,9 +52,9 @@ public class VlUploadAnalyzerTests
         _ossService.Setup(x => x.DownloadAsync(It.IsAny<string>()))
             .ReturnsAsync(() =>
             {
-                using var image = new Image<Rgba32>(100, 100);
+                using var image = RasterFixture.Create(100, 100);
                 var ms = new MemoryStream();
-                image.SaveAsJpeg(ms);
+                image.Write(ms, MagickFormat.Jpeg);
                 ms.Position = 0;
                 return (Stream)ms;
             });
@@ -106,26 +104,37 @@ public class VlUploadAnalyzerTests
 
     [Theory]
     [MemberData(nameof(Pictures))]
-    public async Task SupportedPictures_AllAnalysisPathsSendUnchangedJpeg(byte[] bytes)
+    public async Task SupportedPictures_AllAnalysisPathsSendCompatibleAndConsistentJpeg(byte[] bytes)
     {
         _ossService.Setup(x => x.DownloadAsync(It.IsAny<string>())).ReturnsAsync(() => new MemoryStream(bytes));
         var handler = new CapturingHttpMessageHandler();
         var analyzer = CreateCapturingAnalyzer(handler);
-        using var expected = Image.Load(bytes);
+        using var expected = RasterFixture.Read(bytes);
         if (expected.Width > 768 || expected.Height > 768)
-            expected.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(768, 768), Mode = ResizeMode.Max }));
+            expected.Resize(768, 768);
         using var jpeg = new MemoryStream();
-        expected.SaveAsJpeg(jpeg, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 85 });
+        expected.Quality = 85;
+        expected.Write(jpeg, MagickFormat.Jpeg);
         var expectedUri = "data:image/jpeg;base64," + Convert.ToBase64String(jpeg.ToArray());
         var paths = new List<string> { "uploads/image.jpg" };
         await analyzer.AnalyzeAsync("student-1", paths);
         AssertImageUri(handler, expectedUri);
+        var firstImageUri = ImageUri(handler);
         await analyzer.ReAnalyzeAsync("student-1", paths, "reason", null);
         AssertImageUri(handler, expectedUri);
+        Assert.Equal(firstImageUri, ImageUri(handler));
         await analyzer.AnalyzeVerifiedAsync("student-1", paths, new[] { bytes });
         AssertImageUri(handler, expectedUri);
+        Assert.Equal(firstImageUri, ImageUri(handler));
         Assert.Equal(3, handler.Requests);
         _ossService.Verify(x => x.DownloadAsync(It.IsAny<string>()), Times.Exactly(2));
+    }
+
+    private static string ImageUri(CapturingHttpMessageHandler handler)
+    {
+        using var json = JsonDocument.Parse(handler.CapturedRequestBody!);
+        return json.RootElement.GetProperty("messages")[0].GetProperty("content")[1]
+            .GetProperty("image_url").GetProperty("url").GetString()!;
     }
 
     private static void AssertImageUri(CapturingHttpMessageHandler handler, string expected)
@@ -134,7 +143,9 @@ public class VlUploadAnalyzerTests
         var content = json.RootElement.GetProperty("messages")[0].GetProperty("content");
         Assert.Equal(2, content.GetArrayLength());
         Assert.Equal("image_url", content[1].GetProperty("type").GetString());
-        Assert.Equal(expected, content[1].GetProperty("image_url").GetProperty("url").GetString());
+        var actual = content[1].GetProperty("image_url").GetProperty("url").GetString()!;
+        Assert.StartsWith("data:image/jpeg;base64,", actual);
+        RasterFixture.AssertJpeg(Convert.FromBase64String(actual.Split(',')[1]), Convert.FromBase64String(expected.Split(',')[1]));
         Assert.False(json.RootElement.TryGetProperty("max_tokens", out _));
     }
 

@@ -1,5 +1,5 @@
 using System;
-using SixLabors.ImageSharp;
+using ImageMagick;
 using System.Collections.Generic;
 
 namespace Ruoyu.Study.TestFixtures;
@@ -35,21 +35,11 @@ internal static class BigTiffFixture
 
     public static IEnumerable<object[]> Pictures()
     {
-        using var image = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgb24>(13, 7);
-        for (var y = 0; y < image.Height; y++)
-            for (var x = 0; x < image.Width; x++) image[x, y] = new((byte)(x * 17), (byte)(y * 31), 85);
-        foreach (var encoder in new SixLabors.ImageSharp.Formats.IImageEncoder[]
-        {
-            new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder(),
-            new SixLabors.ImageSharp.Formats.Png.PngEncoder(),
-            new SixLabors.ImageSharp.Formats.Tiff.TiffEncoder
-            { Compression = SixLabors.ImageSharp.Formats.Tiff.Constants.TiffCompression.None }
-        })
-        {
-            using var stream = new System.IO.MemoryStream();
-            image.Save(stream, encoder);
-            yield return new object[] { stream.ToArray() };
-        }
+        using var image = RasterFixture.Create(13, 7);
+        foreach (var format in new[] { MagickFormat.Jpeg, MagickFormat.Png, MagickFormat.Tiff,
+            MagickFormat.Gif, MagickFormat.Bmp, MagickFormat.Pbm, MagickFormat.Pgm,
+            MagickFormat.Ppm, MagickFormat.Tga, MagickFormat.WebP, MagickFormat.Qoi })
+            yield return new object[] { image.ToByteArray(format) };
         foreach (var little in new[] { true, false })
             foreach (var frames in new[] { 1, 2 }) yield return new object[] { Valid(little, frames) };
     }
