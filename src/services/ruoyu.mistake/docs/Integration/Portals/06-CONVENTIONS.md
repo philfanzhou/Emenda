@@ -124,7 +124,7 @@ HTTP 200 + 业务字段 `Success=false`，或 HTTP 502（gRPC 不可用）。
 
 1. **查询**：`ReviewStatus` 固定为 `Confirmed`，学生只能看到已确认的错题
 2. **删除**：先查询状态，`Confirmed` 状态不允许删除
-3. **studentId**：必填参数，由前端传入，Portal 层不做 studentId 归属校验（信任前端）
+3. **studentId**：必填参数，由前端传入；user_portal 校验其属于当前账户，get / delete 校验错题所属学生，否则返回 403（见 [User Portal 学生归属校验](../../../../../user_portal/docs/api.md#学生归属校验)）
 
 ### 认证约定
 
