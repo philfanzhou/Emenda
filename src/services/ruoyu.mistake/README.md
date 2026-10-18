@@ -13,9 +13,9 @@
 
 ## 3. 技术栈
 
-- **框架**: .NET 8 + gRPC
+- **框架**: .NET 10 + ASP.NET Core HTTP
 - **数据库**: PostgreSQL (ruoyu_study_mistake)
-- **ORM**: Entity Framework Core 8.0 + Npgsql
+- **ORM**: Entity Framework Core 10.0 + Npgsql 10
 - **对象存储**: MinIO / SeaweedFS / LocalFile (S3 兼容接口)
 - **架构**: 清晰分层架构（Contract → Domain → Database → Service → Host）
 

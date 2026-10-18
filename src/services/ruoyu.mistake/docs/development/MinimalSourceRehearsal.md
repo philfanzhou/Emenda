@@ -84,4 +84,4 @@ pre-commit 的原常规 UNIT 阶段同时执行 core 与 provider；--skip-integ
 
 图片处理闭包由 Common 递归成员提供：固定 Magick.NET-Q8-AnyCPU 15.0.0、内置只读栅格策略与 Magick.NET.Notice.txt 随导出一起发布。部署为 .NET 10/Linux glibc，需核对运行时版本和实际 RID 的 native 资产并运行代表性图片 smoke；发布目录不应含旧图片库。无 SixLabors key 或全局 ImageMagick 前置。依赖迁移不会改历史对象或来源状态，回退旧二进制会恢复旧包风险。
 
-后端 Dockerfile 支持 `ASPNET_IMAGE` 与 `SDK_IMAGE` 构建参数，默认仍为官方 `:10.0`。预演脚本同名环境变量会传入构建，用于固定已核验的官方 .NET 10/glibc 镜像（例如具体版本或 digest）；不得将本机缓存中其它 .NET 版本的同名标签当成 .NET 8 验收。参数只选择基础镜像，不改变目标框架或关闭依赖审计。脚本也透传标准 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 构建参数；代理地址只来自执行环境，不写入镜像配置或仓库。
+后端 Dockerfile 支持 `ASPNET_IMAGE` 与 `SDK_IMAGE` 构建参数，默认仍为官方 `:10.0`。预演脚本同名环境变量会传入构建，用于固定已核验的官方 .NET 10/glibc 镜像（例如具体版本或 digest）；不得将本机缓存中其它 .NET 版本的同名标签当成 .NET 10 验收。参数只选择基础镜像，不改变目标框架或关闭依赖审计。脚本也透传标准 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 构建参数；代理地址只来自执行环境，不写入镜像配置或仓库。
