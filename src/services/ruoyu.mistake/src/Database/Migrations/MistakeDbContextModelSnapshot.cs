@@ -15,17 +15,272 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
     {
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
-            SourceIntakeModel.Configure(modelBuilder);
-            SourceTargetModel.Configure(modelBuilder);
-            SourceReturnModel.Configure(modelBuilder);
-            LegacyReturnModel.Configure(modelBuilder);
-            SourceHandoffModel.Configure(modelBuilder);
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Ruoyu.Study.Common.StorageReferences.StorageReferenceSnapshot", b =>
+                {
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<string>("Coverage")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("coverage");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("EntryCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("entry_count");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Keys")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("keys");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("Requester")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("requester");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("sha256");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("version");
+
+                    b.HasKey("SnapshotId")
+                        .HasName("PK_storage_reference_snapshot");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_storage_reference_snapshot_expiry");
+
+                    b.ToTable("storage_reference_snapshot", (string)null);
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", b =>
+                {
+                    b.Property<Guid>("AttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<DateTimeOffset?>("CopySettledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("copy_settled_at");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("object_key");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phase");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<long?>("VerifiedLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("verified_length");
+
+                    b.Property<string>("VerifiedSha256")
+                        .HasColumnType("text")
+                        .HasColumnName("verified_sha256");
+
+                    b.HasKey("AttemptId");
+
+                    b.HasIndex("ObjectKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_legacy_return_attempt_key");
+
+                    b.HasIndex("ItemId", "Position")
+                        .HasDatabaseName("IX_legacy_return_attempt_object");
+
+                    b.ToTable("legacy_return_attempt");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnEntity", b =>
+                {
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("actor");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("canonical");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<Guid?>("ConfirmedRecordId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_record_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ErrorKind")
+                        .HasColumnType("text")
+                        .HasColumnName("error_kind");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<Guid?>("FinalLogId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("final_log_id");
+
+                    b.Property<int?>("Grade")
+                        .HasColumnType("integer")
+                        .HasColumnName("grade");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("OriginalItem")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("original_item");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text")
+                        .HasColumnName("payload");
+
+                    b.Property<string>("PayloadDigest")
+                        .HasColumnType("text")
+                        .HasColumnName("payload_digest");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phase");
+
+                    b.Property<DateTimeOffset?>("ReceiptCreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("receipt_created_at");
+
+                    b.Property<string>("ReturnReason")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("return_reason");
+
+                    b.Property<string>("RootCause")
+                        .HasColumnType("text")
+                        .HasColumnName("root_cause");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("student_id");
+
+                    b.Property<int?>("Subject")
+                        .HasColumnType("integer")
+                        .HasColumnName("subject");
+
+                    b.HasKey("ItemId");
+
+                    b.HasIndex("FinalLogId")
+                        .HasDatabaseName("IX_legacy_return_FinalLogId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_legacy_return_operation");
+
+                    b.HasIndex("Phase")
+                        .HasDatabaseName("IX_legacy_return_phase");
+
+                    b.ToTable("legacy_return");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnObjectEntity", b =>
+                {
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<long?>("ExpectedLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expected_length");
+
+                    b.Property<string>("ExpectedSha256")
+                        .HasColumnType("text")
+                        .HasColumnName("expected_sha256");
+
+                    b.Property<Guid?>("SelectedAttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_attempt_id");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_path");
+
+                    b.HasKey("ItemId", "Position");
+
+                    b.HasIndex("SelectedAttemptId")
+                        .HasDatabaseName("IX_legacy_return_object_SelectedAttemptId");
+
+                    b.ToTable("legacy_return_object");
+                });
 
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", b =>
                 {
@@ -46,10 +301,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnType("character varying(36)")
                         .HasColumnName("question_id");
 
-                    b.Property<string>("RootCause")
-                        .HasColumnType("text")
-                        .HasColumnName("root_cause");
-
                     b.Property<int>("ReviewStatus")
                         .HasColumnType("integer")
                         .HasColumnName("review_status");
@@ -62,6 +313,10 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasMaxLength(36)
                         .HasColumnType("character varying(36)")
                         .HasColumnName("reviewer_id");
+
+                    b.Property<string>("RootCause")
+                        .HasColumnType("text")
+                        .HasColumnName("root_cause");
 
                     b.Property<string>("SourceRegions")
                         .IsRequired()
@@ -190,52 +445,15 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("process_log");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
-                {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
-                        .WithMany()
-                        .HasForeignKey("MistakeItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("MistakeItem");
-                });
-
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
-                {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
-                        .WithMany()
-                        .HasForeignKey("MistakeItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("MistakeItem");
-                });
-
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ReanalyzeJobEntity", b =>
                 {
-                    b.Property<int>("Attempt")
-                        .HasColumnType("integer")
-                        .HasColumnName("attempt")
-                        .HasDefaultValue(0);
-
-                    b.Property<string>("ExecutionInputDigest")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("execution_input_digest");
-
-                    b.Property<string>("ExecutionRootCause")
-                        .HasColumnType("text")
-                        .HasColumnName("execution_root_cause");
-
-                    b.Property<long>("FencingVersion")
-                        .HasColumnType("bigint")
-                        .HasColumnName("fencing_version")
-                        .HasDefaultValue(0L);
-
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
@@ -248,6 +466,19 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("text")
                         .HasColumnName("error_message");
+
+                    b.Property<string>("ExecutionInputDigest")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("execution_input_digest");
+
+                    b.Property<string>("ExecutionRootCause")
+                        .HasColumnType("text")
+                        .HasColumnName("execution_root_cause");
+
+                    b.Property<long>("FencingVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fencing_version");
 
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid")
@@ -270,10 +501,10 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasColumnName("previous_root_cause");
 
                     b.Property<string>("ReviewerId")
+                        .IsRequired()
                         .HasMaxLength(36)
                         .HasColumnType("character varying(36)")
-                        .HasColumnName("reviewer_id")
-                        .IsRequired();
+                        .HasColumnName("reviewer_id");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
@@ -281,14 +512,13 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
-                        .HasColumnName("status")
-                        .HasDefaultValue(1);
+                        .HasColumnName("status");
 
                     b.Property<string>("StudentId")
+                        .IsRequired()
                         .HasMaxLength(36)
                         .HasColumnType("character varying(36)")
-                        .HasColumnName("student_id")
-                        .IsRequired();
+                        .HasColumnName("student_id");
 
                     b.Property<string>("TeacherDescription")
                         .HasColumnType("text")
@@ -308,7 +538,754 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
                     b.ToTable("reanalyze_job");
                 });
-Ruoyu.Study.Common.StorageReferences.StorageReferenceSchema.Configure(modelBuilder);
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceHandoffEntity", b =>
+                {
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("actor");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("ErrorKind")
+                        .HasColumnType("text")
+                        .HasColumnName("error_kind");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<string>("GroupsCanonical")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("groups_canonical");
+
+                    b.Property<string>("GroupsDigest")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("groups_digest");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("operation_id");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("PayloadCanonical")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("payload_canonical");
+
+                    b.Property<string>("PayloadDigest")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("payload_digest");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phase");
+
+                    b.Property<string>("Receipt")
+                        .HasColumnType("text")
+                        .HasColumnName("receipt");
+
+                    b.Property<DateTimeOffset>("SealedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sealed_at");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("Targets")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("targets");
+
+                    b.HasKey("SourceUploadId", "ContentRevision");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_source_handoff_operation");
+
+                    b.HasIndex("SnapshotId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_source_handoff_snapshot");
+
+                    b.ToTable("source_handoff");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", b =>
+                {
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<string>("Manifest")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("manifest");
+
+                    b.Property<bool>("Materialized")
+                        .HasColumnType("boolean")
+                        .HasColumnName("materialized");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("mode");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("student_id");
+
+                    b.HasKey("SourceUploadId", "ContentRevision");
+
+                    b.ToTable("source_intake");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeGroupEntity", b =>
+                {
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.PrimitiveCollection<string[]>("Atoms")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("atoms");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("canonical");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<Guid>("CreatedLogId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_log_id");
+
+                    b.Property<string>("GroupHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("group_hash");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("payload");
+
+                    b.Property<string>("Regions")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("regions");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("result");
+
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.HasKey("ItemId");
+
+                    b.HasIndex("CreatedLogId")
+                        .HasDatabaseName("IX_source_intake_group_created_log_id");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision", "GroupHash")
+                        .HasDatabaseName("IX_source_intake_group_source_hash");
+
+                    b.ToTable("source_intake_group");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeRequestEntity", b =>
+                {
+                    b.Property<string>("Actor")
+                        .HasColumnType("text")
+                        .HasColumnName("actor");
+
+                    b.Property<string>("Action")
+                        .HasColumnType("text")
+                        .HasColumnName("action");
+
+                    b.Property<Guid>("RequestKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_key");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("canonical");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.PrimitiveCollection<Guid[]>("ItemIds")
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("item_ids");
+
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.HasKey("Actor", "Action", "RequestKey");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision")
+                        .HasDatabaseName("IX_source_intake_request_source_revision");
+
+                    b.ToTable("source_intake_request");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnAttemptEntity", b =>
+                {
+                    b.Property<Guid>("AttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<DateTimeOffset?>("CopySettledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("copy_settled_at");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("object_key");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phase");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<long?>("VerifiedLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("verified_length");
+
+                    b.Property<string>("VerifiedSha256")
+                        .HasColumnType("text")
+                        .HasColumnName("verified_sha256");
+
+                    b.HasKey("AttemptId");
+
+                    b.HasIndex("ObjectKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_source_return_attempt_key");
+
+                    b.HasIndex("ItemId", "Position")
+                        .HasDatabaseName("IX_source_return_attempt_object");
+
+                    b.ToTable("source_return_attempt");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnEntity", b =>
+                {
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("actor");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("canonical");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<Guid?>("ConfirmedRecordId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_record_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<string>("ErrorKind")
+                        .HasColumnType("text")
+                        .HasColumnName("error_kind");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<Guid?>("FinalLogId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("final_log_id");
+
+                    b.Property<int?>("Grade")
+                        .HasColumnType("integer")
+                        .HasColumnName("grade");
+
+                    b.Property<string>("OperationId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("operation_id");
+
+                    b.Property<string>("OriginalItem")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("original_item");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text")
+                        .HasColumnName("payload");
+
+                    b.Property<string>("PayloadDigest")
+                        .HasColumnType("text")
+                        .HasColumnName("payload_digest");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phase");
+
+                    b.Property<DateTimeOffset?>("ReceiptCreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("receipt_created_at");
+
+                    b.Property<string>("ReturnReason")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("return_reason");
+
+                    b.Property<string>("RootCause")
+                        .HasColumnType("text")
+                        .HasColumnName("root_cause");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("student_id");
+
+                    b.Property<int?>("Subject")
+                        .HasColumnType("integer")
+                        .HasColumnName("subject");
+
+                    b.HasKey("ItemId");
+
+                    b.HasIndex("FinalLogId")
+                        .HasDatabaseName("IX_source_return_FinalLogId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_source_return_operation");
+
+                    b.HasIndex("Phase")
+                        .HasDatabaseName("IX_source_return_phase");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision")
+                        .HasDatabaseName("IX_source_return_SourceUploadId_ContentRevision");
+
+                    b.ToTable("source_return");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnObjectEntity", b =>
+                {
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<long>("ExpectedLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expected_length");
+
+                    b.Property<string>("ExpectedSha256")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("expected_sha256");
+
+                    b.Property<Guid?>("SelectedAttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_attempt_id");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_path");
+
+                    b.Property<string>("TargetKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("target_key");
+
+                    b.HasKey("ItemId", "Position");
+
+                    b.HasIndex("SelectedAttemptId")
+                        .HasDatabaseName("IX_source_return_object_SelectedAttemptId");
+
+                    b.ToTable("source_return_object");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetAttemptEntity", b =>
+                {
+                    b.Property<Guid>("AttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("attempt_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phase");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_path");
+
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<string>("TargetKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("target_key");
+
+                    b.Property<long?>("VerifiedLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("verified_length");
+
+                    b.Property<string>("VerifiedSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("verified_sha256");
+
+                    b.HasKey("AttemptId");
+
+                    b.HasIndex("TargetKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_source_target_attempt_key");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision", "SourcePath")
+                        .HasDatabaseName("IX_source_target_attempt_object");
+
+                    b.ToTable("source_target_attempt");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetObjectEntity", b =>
+                {
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<string>("SourcePath")
+                        .HasColumnType("text")
+                        .HasColumnName("source_path");
+
+                    b.Property<long>("ExpectedLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expected_length");
+
+                    b.Property<string>("ExpectedSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("expected_sha256");
+
+                    b.Property<Guid?>("SelectedAttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_attempt_id");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("student_id");
+
+                    b.HasKey("SourceUploadId", "ContentRevision", "SourcePath");
+
+                    b.HasIndex("SelectedAttemptId");
+
+                    b.ToTable("source_target_object");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnObjectEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId", "Position")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_legacy_return_attempt_object");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", null)
+                        .WithMany()
+                        .HasForeignKey("FinalLogId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_legacy_return_log");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_legacy_return_item");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnObjectEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_legacy_return_object_return");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SelectedAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_legacy_return_object_selected");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
+                        .WithMany()
+                        .HasForeignKey("MistakeItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MistakeItem");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
+                        .WithMany()
+                        .HasForeignKey("MistakeItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MistakeItem");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceHandoffEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUploadId", "ContentRevision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_handoff_intake");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeGroupEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedLogId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_intake_group_created_log");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_intake_group_item");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUploadId", "ContentRevision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_intake_group_source_intake");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeRequestEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUploadId", "ContentRevision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_intake_request_source_intake");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnAttemptEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceReturnObjectEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId", "Position")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_return_attempt_object");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", null)
+                        .WithMany()
+                        .HasForeignKey("FinalLogId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_source_return_log");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeGroupEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_return_group");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUploadId", "ContentRevision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_return_intake");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnObjectEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceReturnEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_return_object_return");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceReturnAttemptEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SelectedAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_source_return_object_selected");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetAttemptEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceTargetObjectEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUploadId", "ContentRevision", "SourcePath")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_target_attempt_object");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetObjectEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceTargetAttemptEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SelectedAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_source_target_object_selected");
+
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUploadId", "ContentRevision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_source_target_object_intake");
+                });
 #pragma warning restore 612, 618
         }
     }

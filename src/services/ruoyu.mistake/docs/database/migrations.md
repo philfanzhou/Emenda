@@ -26,6 +26,8 @@ Host 正常启动时自动把数据库升级到当前目标结构（十二条 EF
 
 空库或已知旧版本升级需要相应的 DDL 与迁移历史写入权限；旧结构收敛还需要其数据写入权限。11 条历史的库仍须新增旧错题退回表及保护函数、触发器，并写入第十二条历史，不能以只读账号完成启动。只有历史和完整结构均精确符合版本 12 时，启动才保持零写入。
 
+For the recognized twelve-migration chain, `ProductVersion` accepts the original `8.0.11` stamp and the current EF Core `10.0.13` stamp, including a mixture after upgrading an existing database. Existing stamps are preserved; only newly applied migrations receive the current EF version. Other versions remain unsupported, and the complete schema checks still apply. The EF 10 model snapshots introduce no new migration or database schema change. The provider-defined history table is created inside the existing advisory-lock transaction before EF 10 probes applied migrations; rollback and final catalog verification still cover the whole upgrade.
+
 升级事务内的命令（含等待 advisory lock）不受连接串 `Command Timeout`（Npgsql 默认 30 秒）限制，大库首次升级不会因命令超时回滚；宿主停止或取消仍会中断并回滚。没有新增配置项。
 
 升级失败、取消、连接中断或权限不足时整个事务回滚，数据库保持升级前状态，启动失败；诊断只给出版本、本服务自身的核验结论或 SQLSTATE，不输出连接串、密码或业务行内容。下次启动重新分类再试；COMMIT 确认丢失时，下次启动看到已提交的目标结构直接启动。多个实例同时启动时共用同一把锁：一个升级，其余等锁后看到目标结构直接启动，不重复写历史。日志记录升级前版本、执行步骤和目标版本。
@@ -40,7 +42,7 @@ Host 正常启动时自动把数据库升级到当前目标结构（十二条 EF
 
 旧库中同一学生、同一来源、相同区域的重复条目照常升级，所有行保留；现行设计不对旧行加唯一约束，对该来源的新受管入库仍返回 `legacy_source_conflict`。
 
-自动升级只支持上述形态。不受支持的旧表、历史表独存、部分对象、额外对象、其他误盖章、`ProductVersion` 不一致或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。旧表转换的精确边界见下节。
+自动升级只支持上述形态。不受支持的旧表、历史表独存、部分对象、额外对象、其他误盖章、不受支持的 `ProductVersion` 或历史/结构矛盾一律拒绝，不能仅以 `student_id` 列存在推断第二条迁移已完成。旧表转换的精确边界见下节。
 
 ### 旧表 `mistake` 的转换
 
@@ -53,7 +55,7 @@ Host 正常启动时自动把数据库升级到当前目标结构（十二条 EF
 | P2 / P2f | 0501、0503 历史；0503 无指纹表 / 仍含指纹表 | 转换并升级 |
 | M-da / M-05 / M-e0 | P2 或 P2f 加 05-10 至 05-13 三种 `mistake_item` 布局，两表并存 | 先去除现表旧列，再转换；现表已有 ID 优先 |
 
-0501 指纹表包含 `IX_mistake_image_fingerprint_oss_path`。旧历史的 `ProductVersion` 为 `8.0.4`，正规目标历史仍为 `8.0.11`。
+0501 指纹表包含 `IX_mistake_image_fingerprint_oss_path`。旧历史的 `ProductVersion` 为 `8.0.4`；收敛后的正规历史按上文保留 `8.0.11` 或由当前 EF 写入 `10.0.13`。
 
 没有 `mistake_item` 时按 InitialCreate 建立十三列。只移除四种已知的旧外键，把旧列处理提前到插入旧条目之前，再在孤儿判定和新外键之前写入旧条目：ID、学生、学科、年级、题目 ID、创建/更新时间保留，`status → review_status`，`source_upload_id=''`、`source_regions=[]`，其他审核字段为空。同 ID 已存在时保留现条目，旧整行按 `legacy_mistake_superseded` 归档；新增条目的旧整行按 `legacy_mistake_converted` 归档。转换合成的值不归档。旧练习和日志 ID、父子关系保留；旧日志动作 1/2 保留，3/4 分别改为 5/6，改前原值按 `legacy_action_renumbered` 归档。
 

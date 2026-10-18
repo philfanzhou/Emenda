@@ -19,6 +19,29 @@ public sealed class ReadOnlyStartupPostgresTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task Net8AndMixedNet10HistoryUpgradesWithoutRewritingExistingStampsAsync(bool mixed)
+    {
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await context.GetService<IMigrator>().MigrateAsync(Reanalyze);
+        await database.ExecuteAsync("UPDATE \"__EFMigrationsHistory\" SET \"ProductVersion\"='8.0.11'");
+        if (mixed)
+            await database.ExecuteAsync($"UPDATE \"__EFMigrationsHistory\" SET \"ProductVersion\"='10.0.13' WHERE \"MigrationId\"='{Reanalyze}'");
+
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+
+        Assert.Equal(12, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        var snapshot = await database.SnapshotAsync();
+        Assert.Contains(Initial + ":8.0.11", snapshot);
+        Assert.Contains(ProcessLog + ":8.0.11", snapshot);
+        Assert.Contains(Reanalyze + (mixed ? ":10.0.13" : ":8.0.11"), snapshot);
+        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        Assert.Equal(snapshot, await database.SnapshotAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task LeaseUpgradeFailsOnlyOwnerlessRunningAndPreservesOtherJobs(bool lowercaseIndex)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
@@ -282,6 +305,7 @@ public sealed class ReadOnlyStartupPostgresTests
     [InlineData("ALTER TABLE mistake_item ADD COLUMN unknown text")]
     [InlineData("CREATE TABLE public.mistake(id integer)")]
     [InlineData("UPDATE \"__EFMigrationsHistory\" SET \"ProductVersion\"='8.0.10'")]
+    [InlineData("UPDATE \"__EFMigrationsHistory\" SET \"ProductVersion\"='10.0.14'")]
     public async Task LowercaseVariantRejectsAnyCatalogDeviationWithoutWritesAsync(string mutation)
     {
         await using var database = await IsolatedDatabase.CreateAsync();

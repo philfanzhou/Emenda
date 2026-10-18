@@ -201,6 +201,12 @@ public static class DatabaseInitializer
                 steps.Add($"archive and reset {resetPaths} invalid mistake_practice.image_paths values");
             if (before.Kind == SchemaKind.Empty)
             {
+                // Npgsql 10 probes a missing history table by querying it. Create
+                // the canonical table inside our transaction first so that probe
+                // cannot abort the transaction; rollback still covers all DDL.
+                await context.Database.ExecuteSqlRawAsync(
+                    context.GetService<IHistoryRepository>().GetCreateIfNotExistsScript(), cancellationToken)
+                    .ConfigureAwait(false);
                 await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
                 steps.Add("apply all migrations");
             }
@@ -327,7 +333,13 @@ public static class DatabaseInitializer
         if (!relations.Contains("__EFMigrationsHistory"))
             return Invalid("missing relation __EFMigrationsHistory.");
         var history = await ReadSetAsync(connection,
-            "SELECT \"MigrationId\" || '|' || \"ProductVersion\" FROM public.\"__EFMigrationsHistory\" ORDER BY \"MigrationId\"",
+            // EF 10 stamps newly applied migrations with its own version. Compare
+            // that supported stamp with the legacy chain without rewriting rows.
+            """
+            SELECT "MigrationId" || '|' || CASE "ProductVersion"
+                WHEN '10.0.13' THEN '8.0.11' ELSE "ProductVersion" END
+            FROM public."__EFMigrationsHistory" ORDER BY "MigrationId"
+            """,
             cancellationToken).ConfigureAwait(false);
         var initialHistory = Set($"{Initial}|8.0.11");
         var processHistory = new HashSet<string>(initialHistory, StringComparer.Ordinal) { $"{ProcessLog}|8.0.11" };
