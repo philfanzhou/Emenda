@@ -34,7 +34,7 @@ bash script/build-script/06-mistake.minimal-source-rehearsal.sh --docker-only --
 ## 前提
 
 - 源仓库 git 对象完整（脚本用 `git archive` 导出，只导出被跟踪文件，宿主 bin/obj 天然不会进入导出树）。
-- dotnet 8 SDK 与 docker 可用。
+- dotnet 10 SDK 与 docker 可用。
 - 可选：设置 `MISTAKE_MIGRATION_TEST_CONNECTION` 为专用 PostgreSQL admin 连接串后 Service 测试全量运行；该变量只传入测试进程，脚本不打印、不落盘。未设置时 PG 依赖用例按 `$XunitDynamicSkip$` 门控跳过（表现为失败计数与门控计数相等的"门控跳过"），非 PG 用例必须全部通过。
 
 ## 预期输出
@@ -82,6 +82,6 @@ pre-commit 的原常规 UNIT 阶段同时执行 core 与 provider；--skip-integ
 
 当前导出闭包同时包含历史 v1/v2 与当前 v3 合同资源；Service/Host 从导出副本嵌入发布，不能只带 v1。旧题安全适配器、恢复引擎与 worker 随 Host 递归成员导出。LegacyReturns 默认 false，仅注册禁用适配器；显式 true 且通过 Student、身份与正常 HTTPS 前置校验时，注册原恢复引擎与 worker。导出构建不能替代仓库内真实生产 Host 的三阶段进程重启验证。
 
-图片处理闭包由 Common 递归成员提供：固定 Magick.NET-Q8-AnyCPU 15.0.0、内置只读栅格策略与 Magick.NET.Notice.txt 随导出一起发布。部署为 .NET 8/Linux glibc，需核对运行时版本和实际 RID 的 native 资产并运行代表性图片 smoke；发布目录不应含旧图片库。无 SixLabors key 或全局 ImageMagick 前置。依赖迁移不会改历史对象或来源状态，回退旧二进制会恢复旧包风险。
+图片处理闭包由 Common 递归成员提供：固定 Magick.NET-Q8-AnyCPU 15.0.0、内置只读栅格策略与 Magick.NET.Notice.txt 随导出一起发布。部署为 .NET 10/Linux glibc，需核对运行时版本和实际 RID 的 native 资产并运行代表性图片 smoke；发布目录不应含旧图片库。无 SixLabors key 或全局 ImageMagick 前置。依赖迁移不会改历史对象或来源状态，回退旧二进制会恢复旧包风险。
 
-后端 Dockerfile 支持 `ASPNET_IMAGE` 与 `SDK_IMAGE` 构建参数，默认仍为官方 `:8.0`。预演脚本同名环境变量会传入构建，用于固定已核验的官方 .NET 8/glibc 镜像（例如具体版本或 digest）；不得将本机缓存中其它 .NET 版本的同名标签当成 .NET 8 验收。参数只选择基础镜像，不改变目标框架或关闭依赖审计。脚本也透传标准 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 构建参数；代理地址只来自执行环境，不写入镜像配置或仓库。
+后端 Dockerfile 支持 `ASPNET_IMAGE` 与 `SDK_IMAGE` 构建参数，默认仍为官方 `:10.0`。预演脚本同名环境变量会传入构建，用于固定已核验的官方 .NET 10/glibc 镜像（例如具体版本或 digest）；不得将本机缓存中其它 .NET 版本的同名标签当成 .NET 8 验收。参数只选择基础镜像，不改变目标框架或关闭依赖审计。脚本也透传标准 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` 构建参数；代理地址只来自执行环境，不写入镜像配置或仓库。

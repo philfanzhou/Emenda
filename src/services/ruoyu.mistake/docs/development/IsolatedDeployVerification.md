@@ -22,7 +22,7 @@ bash script/build-script/07-mistake.isolated-deploy-verification.sh --target /tm
 
 ## 前提
 
-- dotnet 8 SDK、docker（守护进程可达）、python3、curl、git。
+- dotnet 10 SDK、docker（守护进程可达）、python3、curl、git。
 - 目标目录必须为空或不存在，且位于源仓库之外。
 - PG/MinIO 兼容镜像可拉取。默认 `postgres:15` 与 `pgsty/minio` / `pgsty/mc`：MinIO 已于 2025-09 从 Docker Hub 下架全部官方镜像（其后 Quay 同样受限），`minio/minio` / `minio/mc` 不再可拉取，默认指向承载同一 server/mc 二进制的社区镜像；部署者可用参数固定到自己镜像仓库中的副本。
 - 不依赖原平台网络、Consul、Loki、真实 Student 或 VL Provider；本机 5432 被占用不影响（全部端口为 20000–44999 的随机空闲高位端口）。
@@ -93,7 +93,7 @@ caller复用真实登录cookie/CSRF、Code/S256与真实RS256/JWKS验证；接�
 
 ## 显式 Student-enabled 两模式运行
 
-`--student-enabled-fixture /absolute/path/fixture.json --seaweed-image <image@sha256:digest> --transport-image <python-3.11@sha256:digest>` 在原19格及可选 strict 阶段之后，串行启动同 commit 的真实 Student/Mistake Release Host。fixture 沿上述真实 provider 字段，并增加 `runtime_image`（固定 .NET 8 ASP.NET 镜像 digest）和 `issuer_control`（`container`、`label`、`owner`，只能控制部署者授权的 owned provider 容器）。文件0600、父目录0700、不得 symlink；缺输入或所有权不匹配直接失败。Seaweed 使用 `volume.max=32`、800MiB 上限，等待未认证 S3 root 返回403后建随机桶；无需预装 MinIO Server。MC 仍由显式镜像提供建桶/seed工具。
+`--student-enabled-fixture /absolute/path/fixture.json --seaweed-image <image@sha256:digest> --transport-image <python-3.11@sha256:digest>` 在原19格及可选 strict 阶段之后，串行启动同 commit 的真实 Student/Mistake Release Host。fixture 沿上述真实 provider 字段，并增加 `runtime_image`（固定 .NET 10 ASP.NET 镜像 digest）和 `issuer_control`（`container`、`label`、`owner`，只能控制部署者授权的 owned provider 容器）。文件0600、父目录0700、不得 symlink；缺输入或所有权不匹配直接失败。Seaweed 使用 `volume.max=32`、800MiB 上限，等待未认证 S3 root 返回403后建随机桶；无需预装 MinIO Server。MC 仍由显式镜像提供建桶/seed工具。
 
 ```bash
 bash script/build-script/07-mistake.isolated-deploy-verification.sh \

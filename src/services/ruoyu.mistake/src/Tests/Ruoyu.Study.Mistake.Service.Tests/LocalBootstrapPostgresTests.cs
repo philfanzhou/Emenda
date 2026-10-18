@@ -683,7 +683,7 @@ public sealed class LocalBootstrapPostgresTests
     {
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
         var sourceRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var hostDirectory = Path.Combine(sourceRoot, "Host", "bin", configuration, "net8.0");
+        var hostDirectory = Path.Combine(sourceRoot, "Host", "bin", configuration, "net10.0");
         var start = new ProcessStartInfo("dotnet")
         {
             WorkingDirectory = hostDirectory,

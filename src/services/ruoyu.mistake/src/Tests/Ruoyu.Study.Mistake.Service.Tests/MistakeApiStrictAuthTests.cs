@@ -18,6 +18,7 @@ using Microsoft.IdentityModel.Tokens;
 using Ruoyu.Study.Common.Authentication;
 using Ruoyu.Study.Mistake.Database;
 using Xunit;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 // The JWT pipeline factories below mutate process-wide environment variables
 // that Program.cs reads during host build (and the subprocess tests inherit
@@ -354,6 +355,7 @@ public sealed class MistakeApiStrictAuthTests
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<DbContextOptions<MistakeDbContext>>();
+                services.RemoveAll<IDbContextOptionsConfiguration<MistakeDbContext>>();
                 services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
 
                 services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, UseStaticSigningKeys);

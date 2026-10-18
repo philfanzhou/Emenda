@@ -22,6 +22,7 @@ using Ruoyu.Study.Mistake.Database.Entities;
 using Ruoyu.Study.Mistake.Service.StudentIntegration;
 using Ruoyu.Study.Common.Oss;
 using Xunit;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Ruoyu.Study.Mistake.Service.Tests;
 
@@ -901,6 +902,7 @@ public sealed class MistakeApiResourceAuthTests
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<DbContextOptions<MistakeDbContext>>();
+                services.RemoveAll<IDbContextOptionsConfiguration<MistakeDbContext>>();
                 services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
 
                 if (_gatewayOverride is not null)

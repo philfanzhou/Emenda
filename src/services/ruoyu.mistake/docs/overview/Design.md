@@ -32,9 +32,9 @@
 
 | 组件 | 技术 | 版本/说明 |
 |------|------|-----------|
-| 运行时 | .NET | 8.0 |
+| 运行时 | .NET | 10.0 |
 | 通信协议 | gRPC | ASP.NET Core gRPC, HTTP/2 |
-| ORM | Entity Framework Core | 8.0, Npgsql provider |
+| ORM | Entity Framework Core | 10.0, Npgsql provider |
 | 数据库 | PostgreSQL | 单库 ruoyu_study_mistake |
 | 对象存储 | MinIO / SeaweedFS | S3 兼容接口, IOssService 抽象 |
 | 测试 | xUnit + Moq + FluentAssertions | 单元测试 + Mock |
