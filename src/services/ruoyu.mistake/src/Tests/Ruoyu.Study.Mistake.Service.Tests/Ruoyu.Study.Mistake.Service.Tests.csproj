@@ -25,6 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="Fixtures\structadoc-layout-v0.1.13-openapi.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\Service\Ruoyu.Study.Mistake.Service.csproj" />
     <ProjectReference Include="..\..\Host\Ruoyu.Study.Mistake.Host.csproj" />
   </ItemGroup>

@@ -14,6 +14,7 @@ using Ruoyu.Study.Mistake.Domain.Repositories;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Host.Services;
 using Ruoyu.Study.Mistake.Host.Services.Intake;
+using Ruoyu.Study.Mistake.Host.Services.Layout;
 using Ruoyu.Study.Mistake.Service.Intake;
 using Ruoyu.Study.Mistake.Host.Services.Health;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
@@ -142,6 +143,17 @@ var handoffsEnabled=handoffValue is null ? false : bool.TryParse(handoffValue,ou
 if(handoffsEnabled && (!studentEnabled || !strictApiAuth || !resourceApiAuth))
     throw new InvalidOperationException("Source handoffs require Student, strict API authentication and resource authorization.");
 builder.Services.AddSingleton(new SourceHandoffOptions(handoffsEnabled));
+
+// StructaDoc layout capability switch (IKQA2N): same startup-snapshot family as the
+// switches above. Default off; disabled configuration makes zero layout requests
+// and existing processing is unchanged. The value is fixed for this process lifetime.
+const string layoutEnabledKey = "Mistake:Layout:Enabled";
+var layoutValue = builder.Configuration[layoutEnabledKey];
+var layoutEnabled = layoutValue is null ? false : bool.TryParse(layoutValue, out var parsedLayout)
+    ? parsedLayout : throw new InvalidOperationException($"{layoutEnabledKey} must be true or false.");
+builder.Services.AddSingleton(new LayoutCapabilityOptions(layoutEnabled));
+var structaDocLayoutOptions = builder.Configuration.GetSection(StructaDocLayoutOptions.SectionName)
+    .Get<StructaDocLayoutOptions>() ?? new StructaDocLayoutOptions();
 
 
 var identityTrustOptions = builder.Configuration
@@ -305,6 +317,57 @@ builder.Services.AddSingleton<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer, 
 // Polling worker: polls Student service for Processing records and processes them
 if (uploadPollingEnabled) builder.Services.AddHostedService<UploadPollingWorker>();
 
+// StructaDoc layout detection client (IKQA2N). The capability state is fixed for this
+// process lifetime. Disabled keeps the typed client registered but points it at a
+// never-resolving placeholder, and the client itself fails closed before any HTTP
+// exchange, so a disabled host cannot send any layout request. Enabled requires the
+// administrator-configured base URL and the scoped deployment credential, resolved
+// before any database access or hosted service can start.
+string layoutBaseUrl;
+if (!layoutEnabled)
+{
+    layoutBaseUrl = StructaDocLayoutClient.DisabledPlaceholderBaseUrl;
+}
+else
+{
+    if (string.IsNullOrWhiteSpace(structaDocLayoutOptions.BaseUrl))
+        throw new InvalidOperationException(
+            $"{StructaDocLayoutOptions.SectionName}:BaseUrl is required when {layoutEnabledKey}=true.");
+    if (string.IsNullOrWhiteSpace(structaDocLayoutOptions.ApiKey))
+        throw new InvalidOperationException(
+            $"{StructaDocLayoutOptions.SectionName}:ApiKey is required when {layoutEnabledKey}=true.");
+    if (!Uri.TryCreate(structaDocLayoutOptions.BaseUrl, UriKind.Absolute, out var layoutUri) ||
+        (layoutUri.Scheme != Uri.UriSchemeHttp && layoutUri.Scheme != Uri.UriSchemeHttps) ||
+        layoutUri.Host.Length == 0 || layoutUri.UserInfo.Length != 0 ||
+        layoutUri.AbsolutePath != "/" ||
+        layoutUri.Query.Length != 0 || layoutUri.Fragment.Length != 0 ||
+        structaDocLayoutOptions.BaseUrl.Any(char.IsWhiteSpace))
+        throw new InvalidOperationException(
+            $"{StructaDocLayoutOptions.SectionName}:BaseUrl must be an absolute HTTP(S) base URL without credentials, path, query or fragment.");
+    var layoutValidationErrors = structaDocLayoutOptions.Validate();
+    if (layoutValidationErrors.Count > 0)
+        throw new InvalidOperationException(string.Join(" ", layoutValidationErrors));
+    layoutBaseUrl = structaDocLayoutOptions.BaseUrl;
+}
+builder.Services.AddHttpClient(StructaDocLayoutClient.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri(layoutBaseUrl);
+    // The configurable per-image budget (default 180 s) governs each exchange. The
+    // HttpClient timeout is infinite so the framework's 100-second default can never
+    // cut a cloud exchange whose own deadline is 120 seconds after its execution slot.
+    client.Timeout = Timeout.InfiniteTimeSpan;
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton(sp =>
+{
+    var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient(StructaDocLayoutClient.HttpClientName);
+    return new StructaDocLayoutClient(
+        httpClient,
+        sp.GetRequiredService<LayoutCapabilityOptions>(),
+        structaDocLayoutOptions,
+        sp.GetRequiredService<ILogger<StructaDocLayoutClient>>());
+});
+builder.Services.AddSingleton<ILayoutDetectionClient>(sp => sp.GetRequiredService<StructaDocLayoutClient>());
+
 // Reanalyze job workers: process AI re-analysis jobs asynchronously.
 // MaxConcurrency is hardcoded to 2 inside the service (do not externalize).
 if (reanalyzeJobEnabled) builder.Services.AddHostedService<ReanalyzeJobHostedService>();
@@ -361,7 +424,8 @@ builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 // switch and address is resolved so the snapshot reflects the wired process.
 builder.Services.AddSingleton(new MistakeReadinessSnapshot(
     studentEnabled, studentBaseUrl, vlAnalyzerOptions.IsConfigured, vlAnalyzerOptions.BaseUrl,
-    strictApiAuth, identityTrustOptions.Authority, identityTrustOptions.Issuer));
+    strictApiAuth, identityTrustOptions.Authority, identityTrustOptions.Issuer,
+    layoutEnabled, layoutEnabled ? layoutBaseUrl : string.Empty));
 builder.Services.AddHttpClient(MistakeReadinessProbe.HttpClientName)
     .ConfigureHttpClient(client => client.Timeout = MistakeReadinessProbe.ProbeTimeout);
 builder.Services.AddHttpClient(MistakeReadinessProbe.IdentityHttpClientName)
@@ -416,6 +480,25 @@ app.Logger.LogInformation(
     "Student capability: Enabled={Enabled}, Mode={Mode}, AddressSource={AddressSource}, BaseUrl={BaseUrl}",
     studentEnabled, localMode ? "Local" : "Platform", studentAddressSource,
     studentEnabled ? studentBaseUrl : "(capability disabled)");
+
+app.Logger.LogInformation(
+    "Layout detection: Enabled={Enabled}, BaseUrl={BaseUrl}, ApiKey={ApiKeyStatus}",
+    layoutEnabled,
+    layoutEnabled ? layoutBaseUrl : StructaDocLayoutClient.DisabledPlaceholderBaseUrl,
+    layoutEnabled ? SensitiveDataMasker.MaskApiKey(structaDocLayoutOptions.ApiKey) : "(capability disabled)");
+if (layoutEnabled)
+{
+    // Read back the actually registered client so the evidence is the wired timeout, not
+    // the intended one. Creating a client sends no request.
+    using var layoutHttpClient = app.Services.GetRequiredService<IHttpClientFactory>()
+        .CreateClient(StructaDocLayoutClient.HttpClientName);
+    app.Logger.LogInformation(
+        "Layout HTTP budget: PerImageBudgetSeconds={Budget}, MaxConcurrentExchanges={Concurrency}, MaxResponseBytes={MaxResponseBytes}, HttpClientTimeout={Timeout}",
+        structaDocLayoutOptions.PerImageBudgetSeconds,
+        structaDocLayoutOptions.MaxConcurrentExchanges,
+        structaDocLayoutOptions.MaxResponseBytes,
+        layoutHttpClient.Timeout == Timeout.InfiniteTimeSpan ? "Infinite" : layoutHttpClient.Timeout.ToString());
+}
 
 app.Logger.LogInformation(
     "Inbound API auth: Strict={Strict}, ResourceAuth={ResourceAuth}, TrustConfigured={TrustConfigured}, Authority={Authority}, Audience={Audience}, AdminAudienceConfigured={AdminAudienceConfigured}",

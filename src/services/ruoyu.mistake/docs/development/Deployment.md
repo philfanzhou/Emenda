@@ -407,6 +407,7 @@ curl http://<host>:5007/               # 兼容保留："Mistake WebAPI host is 
 | `student` | 仅 `Mistake:Student:Enabled=true` | 对已解析 BaseUrl 的短超时 HTTP 探测，任意 HTTP 响应视为可达 |
 | `vl` | 仅 `VlAnalyzer` 已配置（ApiKey 非空） | 对已配置 BaseUrl 的短超时 HTTP 探测，任意 HTTP 响应视为可达 |
 | `issuer` | 仅 strict API 认证启用 | 正常 CA/SAN 的 HTTPS discovery 与同 origin JWKS；精确 issuer、非空 keys，拒绝 redirect；共同 3 秒上限 |
+| `structadoc` | 仅 `Mistake:Layout:Enabled=true` | 对已配置 StructaDoc BaseUrl 的短超时 HTTP 探测，任意 HTTP 响应视为可达 |
 
 规则与边界：
 
@@ -569,3 +570,9 @@ false 仅注册只读禁用适配器，无 LegacyReturnWorker；新/未完成旧
 关闭所有自身实例并用 false 重启可停止后续推进，已持久意图和候选不撤销；外部非取消 IO 可能晚到。重新 true 启动按原 operation、原固定 payload 和有效 DB-clock lease/fence 恢复，不重新创建 Student 逻辑记录。备份恢复包含第12条迁移三表、业务/practice/log/job、history、函数/trigger/FK与全部对象；非空日志拒绝 Down，回退保留认识当前 schema 的 binary，不能回到匿名/先删路径。
 
 验证入口见 [SourceReturns](../modules/SourceReturns.md#验证入口)。三个持久阶段由真实生产 Host 进入后分别终止原进程，关闭观察21秒，再以两个实例恢复；正常 TLS/RS256、同真实 PG/S3/Student 及真实共享客户端/BFF/编译 ReviewDetail 均由任务自有 fixture 验证，不需要共享浏览器登录或真实 Admin 账号。当前合同 v3 同步共享客户端和三个 Portal 发布源，历史 v1/v2 精确 bytes 保留。
+
+## 版面检测启用与回退
+
+`Mistake:Layout:Enabled`（环境键 `Mistake__Layout__Enabled`）默认 false，只接受 bool，启动快照固定。启用前须在 StructaDoc `/admin` 创建专用 API 客户端 `ruoyu-study-layout`（仅 `layout:detect` scope，选定 `Layout:Backend=mineru-cloud`），Key 只经部署密钥配置注入。true 时在任何数据库连接前要求 `Mistake:Layout:BaseUrl`（服务根绝对 HTTP(S) 地址，不含凭据、路径、查询或片段）与非空 `Mistake:Layout:ApiKey`；可选 `Mistake:Layout:PerImageBudgetSeconds`（默认 180，1–3600，须覆盖云交换 120 秒执行期截止）、`Mistake:Layout:MaxConcurrentExchanges`（默认 4，1–16）、`Mistake:Layout:MaxResponseBytes`（默认 4194304，4096–67108864）。日志只出现掩码 Key（`SensitiveDataMasker`）、预算、并发与 `HttpClientTimeout=Infinite` 证据；启动（无论开关）零 layout 请求。
+
+false 或缺省时零 layout 请求：客户端指向保留占位地址 `http://structadoc-layout-disabled.invalid`，应用接口立即报告版面阶段失败，既有处理完全不变。回退只需关闭开关重启；无数据库迁移、无对外契约变化。本阶段无作业或持久结果（持久化与管理入口由后续任务交付）；契约、失败分类与验证入口见 [StructaDoc](../Integration/StructaDoc.md)。
