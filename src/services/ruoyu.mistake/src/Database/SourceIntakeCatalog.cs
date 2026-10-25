@@ -30,7 +30,7 @@ internal static class SourceIntakeCatalog
         "FK_source_intake_group_created_log|f|created_log_id|process_log|id|r|V",
         "PK_source_intake_request|p|actor,action,request_key|-|-|-|V",
         "FK_source_intake_request_source_intake|f|source_upload_id,content_revision|source_intake|source_upload_id,content_revision|r|V"];
-    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false)
+    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false)
     {
         await using var command=connection.CreateCommand();
         command.CommandTimeout=0;
@@ -46,6 +46,7 @@ internal static class SourceIntakeCatalog
         if(references) bodies.Add("guard_storage_reference_snapshot",StorageReferenceSchema.GuardBody);
         if(archive) bodies.Add("guard_legacy_archive",LegacyArchiveSchema.GuardBody);
         if(legacyReturns) foreach(var pair in LegacyReturnSchema.Bodies) bodies.Add(pair.Key,pair.Value);
+        if(layout) foreach(var pair in LayoutJobSchema.Bodies) bodies.Add(pair.Key,pair.Value);
         var found=new HashSet<string>(StringComparer.Ordinal);
         while(await reader.ReadAsync(ct))
         {
@@ -57,7 +58,7 @@ internal static class SourceIntakeCatalog
         }
         return found.SetEquals(bodies.Keys) ? null : "missing source intake routine.";
     }
-    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false)
+    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false)
     {
         var expected=new HashSet<string>(StringComparer.Ordinal)
         {
@@ -81,6 +82,7 @@ internal static class SourceIntakeCatalog
         if(references) expected.UnionWith(StorageReferenceSchema.Triggers);
         if(archive) expected.UnionWith(LegacyArchiveSchema.Triggers);
         if(legacyReturns) expected.UnionWith(LegacyReturnSchema.Triggers);
+        if(layout) expected.UnionWith(LayoutJobSchema.Triggers);
         await using var command=connection.CreateCommand();
         command.CommandTimeout=0;
         command.CommandText="""

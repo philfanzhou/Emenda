@@ -36,11 +36,11 @@ public sealed class LocalBootstrapPostgresTests
         Assert.Contains("after automatic upgrade from version 0", first.Output);
         Assert.Contains("Endpoint: HTTP=5007", first.Output);
         Assert.DoesNotContain("Consul KV load", first.Output);
-        Assert.Equal("12", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        Assert.Equal("13", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
         var catalog = await database.ScalarAsync(CatalogSql);
 
         var normal = await RunHostAsync([], settings, waitForStartup: true);
-        Assert.Contains("Mistake database schema verified at target version 12; no upgrade needed", normal.Output);
+        Assert.Contains("Mistake database schema verified at target version 13; no upgrade needed", normal.Output);
         Assert.Equal(catalog, await database.ScalarAsync(CatalogSql));
 
         // The old commands stay usable for existing scripts; the safety flags are optional.
@@ -56,7 +56,7 @@ public sealed class LocalBootstrapPostgresTests
         {
             var known = await RunHostAsync(arguments, settings);
             Assert.Equal(0, known.ExitCode);
-            Assert.Contains("already at target version 12", known.Output);
+            Assert.Contains("already at target version 13", known.Output);
             Assert.Contains("known database upgrade verified", known.Output);
         }
         var wrong = await RunHostAsync(["--upgrade-known-db", "--database", database.Name + "_other",
@@ -106,13 +106,13 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("Source=Environment", result.Output);
             Assert.Equal("0", await fileDatabase.ScalarAsync("SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relname='mistake_item'"));
-            Assert.Equal("12", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("13", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings.Remove("ConnectionStrings__MistakeLocal");
             var fromFile = await RunHostAsync(["--upgrade-empty-db"], settings);
             Assert.Equal(0, fromFile.ExitCode);
             Assert.Contains("Source=File", fromFile.Output);
-            Assert.Equal("12", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("13", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
                 { Database = environmentDatabase.Name, Password = "wrong-password-marker" }.ConnectionString;
@@ -165,14 +165,14 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Contains("Mode=Platform", fallback.Output);
             Assert.Contains("Source=Cache", fallback.Output);
             Assert.True(consul.RequestCount > 0);
-            Assert.Equal("12", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("13", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment["Mistake__ConfigMode"] = "Platform";
             environment["Database__Name"] = environmentDatabase.Name;
             var overrideResult = await RunHostAsync(["--upgrade-empty-db"], environment);
             Assert.Equal(0, overrideResult.ExitCode);
             Assert.Contains("Mode=Platform", overrideResult.Output);
-            Assert.Equal("12", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("13", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment.Remove("Mistake__Http__Port");
             var invalidCachedPort = await RunHostAsync(["--upgrade-empty-db"], environment);
@@ -353,7 +353,7 @@ public sealed class LocalBootstrapPostgresTests
                     while (student.RequestCount == 0) await Task.Delay(100, token);
                 else await Task.Delay(1000, token);
             });
-        Assert.Contains("Mistake database schema verified at target version 12; no upgrade needed", runningHost.Output);
+        Assert.Contains("Mistake database schema verified at target version 13; no upgrade needed", runningHost.Output);
         Assert.Contains("Endpoint: HTTP=5007", runningHost.Output);
         Assert.Contains($"UploadPollingWorker: Enabled={polling}", runningHost.Output);
         Assert.Contains($"ReanalyzeJobHostedService: Enabled={reanalyze}", runningHost.Output);

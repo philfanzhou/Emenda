@@ -74,7 +74,7 @@ public class LegacySchemaGuardPostgresTests
         await using var context = database.CreateContextWithConnection(database.ConnectionString);
 
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        Assert.Equal(12, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(13, (await context.Database.GetAppliedMigrationsAsync()).Count());
         if (sameNameInOtherSchema)
             Assert.Equal("alternate.mistake", await database.ScalarAsync<string>("SELECT to_regclass('alternate.mistake')::text"));
     }

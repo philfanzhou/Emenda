@@ -22,6 +22,355 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", b =>
+                {
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("actor");
+
+                    b.Property<int>("ResultRevision")
+                        .HasColumnType("integer")
+                        .HasColumnName("result_revision");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Manifest")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("manifest");
+
+                    b.Property<string>("Config")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("config");
+
+                    b.Property<string>("CredentialRef")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("credential_ref");
+
+                    b.Property<string>("ImageRotations")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("image_rotations");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<long>("Fence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("fence");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt");
+
+                    b.Property<string>("ErrorKind")
+                        .HasColumnType("text")
+                        .HasColumnName("error_kind");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.HasKey("JobId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_layout_job_status");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision", "ResultRevision")
+                        .IsUnique()
+                        .HasDatabaseName("IX_layout_job_revision");
+
+                    b.ToTable("layout_job");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobImageEntity", b =>
+                {
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<string>("ImagePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("image_path");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<long>("ExpectedLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("expected_length");
+
+                    b.Property<string>("ExpectedSha256")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("expected_sha256");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("RetryNotBefore")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("retry_not_before");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("JobId", "ImagePath");
+
+                    b.HasIndex("JobId", "Position")
+                        .HasDatabaseName("IX_layout_job_image_position");
+
+                    b.ToTable("layout_job_image");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultEntity", b =>
+                {
+                    b.Property<Guid>("ResultId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_id");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<int>("ResultRevision")
+                        .HasColumnType("integer")
+                        .HasColumnName("result_revision");
+
+                    b.Property<string>("ImagePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("image_path");
+
+                    b.Property<int>("ImagePosition")
+                        .HasColumnType("integer")
+                        .HasColumnName("image_position");
+
+                    b.Property<long>("BytesLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("bytes_length");
+
+                    b.Property<string>("BytesSha256")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("bytes_sha256");
+
+                    b.Property<int?>("SourceRotation")
+                        .HasColumnType("integer")
+                        .HasColumnName("source_rotation");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt");
+
+                    b.Property<string>("UpstreamRequestId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("upstream_request_id");
+
+                    b.Property<string>("ContractId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("CoordinateFrame")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("coordinate_frame");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<int?>("Orientation")
+                        .HasColumnType("integer")
+                        .HasColumnName("orientation");
+
+                    b.Property<string>("Engine")
+                        .HasColumnType("text")
+                        .HasColumnName("engine");
+
+                    b.Property<string>("Model")
+                        .HasColumnType("text")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Version")
+                        .HasColumnType("text")
+                        .HasColumnName("version");
+
+                    b.Property<string>("Diagnostics")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("diagnostics");
+
+                    b.Property<string>("Config")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("config");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("ResultId");
+
+                    b.HasIndex("JobId", "ImagePath")
+                        .IsUnique()
+                        .HasDatabaseName("IX_layout_result_job_image");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision", "ResultRevision")
+                        .HasDatabaseName("IX_layout_result_revision");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision", "ResultRevision", "ImagePath")
+                        .IsUnique()
+                        .HasDatabaseName("IX_layout_result_revision_image");
+
+                    b.ToTable("layout_result");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultRegionEntity", b =>
+                {
+                    b.Property<Guid>("ResultId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_id");
+
+                    b.Property<int>("RegionId")
+                        .HasColumnType("integer")
+                        .HasColumnName("region_id");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("label");
+
+                    b.Property<double>("X0")
+                        .HasColumnType("double precision")
+                        .HasColumnName("x0");
+
+                    b.Property<double>("Y0")
+                        .HasColumnType("double precision")
+                        .HasColumnName("y0");
+
+                    b.Property<double>("X1")
+                        .HasColumnType("double precision")
+                        .HasColumnName("x1");
+
+                    b.Property<double>("Y1")
+                        .HasColumnType("double precision")
+                        .HasColumnName("y1");
+
+                    b.HasKey("ResultId", "RegionId");
+
+                    b.ToTable("layout_result_region");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutRequestEntity", b =>
+                {
+                    b.Property<string>("Actor")
+                        .HasColumnType("text")
+                        .HasColumnName("actor");
+
+                    b.Property<string>("Action")
+                        .HasColumnType("text")
+                        .HasColumnName("action");
+
+                    b.Property<Guid>("RequestKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_key");
+
+                    b.Property<Guid>("SourceUploadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_upload_id");
+
+                    b.Property<Guid>("ContentRevision")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_revision");
+
+                    b.Property<string>("Canonical")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("canonical");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.HasKey("Actor", "Action", "RequestKey");
+
+                    b.HasIndex("JobId")
+                        .HasDatabaseName("IX_layout_request_job");
+
+                    b.HasIndex("SourceUploadId", "ContentRevision")
+                        .HasDatabaseName("IX_layout_request_source_revision");
+
+                    b.ToTable("layout_request");
+                });
+
             modelBuilder.Entity("Ruoyu.Study.Common.StorageReferences.StorageReferenceSnapshot", b =>
                 {
                     b.Property<Guid>("SnapshotId")
@@ -1102,6 +1451,56 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.HasIndex("SelectedAttemptId");
 
                     b.ToTable("source_target_object");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUploadId", "ContentRevision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_layout_job_source_intake");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobImageEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_layout_job_image_layout_job");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_layout_result_layout_job");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultRegionEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutResultEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ResultId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_layout_result_region_layout_result");
+                });
+
+            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutRequestEntity", b =>
+                {
+                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_layout_request_layout_job");
                 });
 
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", b =>

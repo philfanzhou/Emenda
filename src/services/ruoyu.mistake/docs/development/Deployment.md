@@ -575,4 +575,10 @@ false 仅注册只读禁用适配器，无 LegacyReturnWorker；新/未完成旧
 
 `Mistake:Layout:Enabled`（环境键 `Mistake__Layout__Enabled`）默认 false，只接受 bool，启动快照固定。启用前须在 StructaDoc `/admin` 创建专用 API 客户端 `ruoyu-study-layout`（仅 `layout:detect` scope，选定 `Layout:Backend=mineru-cloud`），Key 只经部署密钥配置注入。true 时在任何数据库连接前要求 `Mistake:Layout:BaseUrl`（服务根绝对 HTTP(S) 地址，不含凭据、路径、查询或片段）与非空 `Mistake:Layout:ApiKey`；可选 `Mistake:Layout:PerImageBudgetSeconds`（默认 180，1–3600，须覆盖云交换 120 秒执行期截止）、`Mistake:Layout:MaxConcurrentExchanges`（默认 4，1–16）、`Mistake:Layout:MaxResponseBytes`（默认 4194304，4096–67108864）。日志只出现掩码 Key（`SensitiveDataMasker`）、预算、并发与 `HttpClientTimeout=Infinite` 证据；启动（无论开关）零 layout 请求。
 
-false 或缺省时零 layout 请求：客户端指向保留占位地址 `http://structadoc-layout-disabled.invalid`，应用接口立即报告版面阶段失败，既有处理完全不变。回退只需关闭开关重启；无数据库迁移、无对外契约变化。本阶段无作业或持久结果（持久化与管理入口由后续任务交付）；契约、失败分类与验证入口见 [StructaDoc](../Integration/StructaDoc.md)。
+false 或缺省时零 layout 请求：客户端指向保留占位地址 `http://structadoc-layout-disabled.invalid`，应用接口立即报告版面阶段失败，既有处理完全不变。回退只需关闭开关重启；无对外契约变化。作业与持久结果由第十三号数据库迁移承载（启用与停用语义见下节）；契约、失败分类与验证入口见 [StructaDoc](../Integration/StructaDoc.md)。
+
+## 版面检测作业持久化与安全停用
+
+版面作业沿用同一 `Mistake:Layout:Enabled` 启动快照（第十三号迁移新增[五张表](../database/tables/layout_job.md)）。true 时注册 enqueue 命令与 LayoutJobHostedService（并发 2，与再分析 worker 同模式）：领取按 DB `clock_timestamp()` 90 秒租约 + 20 秒心跳 + owner/fence 栅栏；每次推理在数据库事务外，先按保留 length/SHA-256 重验字节（缺失或不匹配只失败该图、上游调用为零），本地拒绝非 JPEG/PNG（零请求），瞬态失败按有界退避重试（每图上限 5 次，尊重上游 `Retry-After`）；作业只存 credential 引用（配置键名），永不存 Key。数据语义与重放/栅栏保证见数据库文档。
+
+**关闭（安全停用）**：以 `false` 重启后——新作业请求返回 `layout_disabled`（503），worker 不再领取；已排队（Queued）与退避中的作业原样保留，运行中的作业在租约到期后回到可领取状态；已有作业、接受结果与重放记录永久保留并可读取。**恢复（安全重启用）**：以 `true` 重启后，Queued/到期 Running 作业自动重新领取，已 Succeeded 的图不再推理（保持可见），只重试仍有预算的失败/待处理图；同一请求键重放返回原作业与原捕获配置，换新键产生独立 result revision，先前成功结果不被替换。**回退边界**：任意 layout 表非空禁止 Down 与旧 binary 回退；空 layout 集可 Down 干净移除。灾难恢复走真实备份恢复流程，备份必须包含五张 layout 表、全部来源相关表、函数/trigger/FK 与迁移历史。
