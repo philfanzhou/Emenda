@@ -33,6 +33,12 @@ public class MistakeDbContext : DbContext
     public DbSet<LegacyReturnObjectEntity> LegacyReturnObjects => Set<LegacyReturnObjectEntity>();
     public DbSet<LegacyReturnAttemptEntity> LegacyReturnAttempts => Set<LegacyReturnAttemptEntity>();
 
+    public DbSet<LayoutJobEntity> LayoutJobs => Set<LayoutJobEntity>();
+    public DbSet<LayoutJobImageEntity> LayoutJobImages => Set<LayoutJobImageEntity>();
+    public DbSet<LayoutResultEntity> LayoutResults => Set<LayoutResultEntity>();
+    public DbSet<LayoutResultRegionEntity> LayoutResultRegions => Set<LayoutResultRegionEntity>();
+    public DbSet<LayoutRequestEntity> LayoutRequests => Set<LayoutRequestEntity>();
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -47,6 +53,7 @@ public class MistakeDbContext : DbContext
         SourceReturnModel.Configure(modelBuilder);
             LegacyReturnModel.Configure(modelBuilder);
             SourceHandoffModel.Configure(modelBuilder);
+            LayoutJobModel.Configure(modelBuilder);
 
         var sourceRegionComparer = new ValueComparer<List<SourceRegionEntry>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),

@@ -367,6 +367,17 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<ILogger<StructaDocLayoutClient>>());
 });
 builder.Services.AddSingleton<ILayoutDetectionClient>(sp => sp.GetRequiredService<StructaDocLayoutClient>());
+builder.Services.AddSingleton(structaDocLayoutOptions);
+
+// Layout jobs (IKQA2O): the enqueue command (request-key replay over an existing managed
+// source) and the durable execution worker. The worker follows the capability switch —
+// registered only when layout detection is enabled, so turning it off (a restart with
+// Mistake:Layout:Enabled=false) refuses new work and stops processing while jobs,
+// accepted results and read access are retained; queued and parked jobs resume when
+// work is accepted again.
+builder.Services.AddScoped<LayoutJobService>();
+builder.Services.AddScoped<ILayoutJobService>(sp => sp.GetRequiredService<LayoutJobService>());
+if (layoutEnabled) builder.Services.AddHostedService<LayoutJobHostedService>();
 
 // Reanalyze job workers: process AI re-analysis jobs asynchronously.
 // MaxConcurrency is hardcoded to 2 inside the service (do not externalize).
@@ -511,6 +522,7 @@ app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=m
     ossConfig.InternalEndpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
 app.Logger.LogInformation("UploadPollingWorker: Enabled={Enabled}, PollInterval=60s", uploadPollingEnabled);
 app.Logger.LogInformation("ReanalyzeJobHostedService: Enabled={Enabled}, MaxConcurrency=2 (hardcoded)", reanalyzeJobEnabled);
+app.Logger.LogInformation("LayoutJobHostedService: Enabled={Enabled}, MaxConcurrency=2 (hardcoded)", layoutEnabled);
 app.Logger.LogInformation("ReanalyzeJobCleanupService: Enabled={Enabled}, RetentionDays=30 (hardcoded)", reanalyzeCleanupEnabled);
 
 using (var scope = app.Services.CreateScope())

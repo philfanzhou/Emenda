@@ -13,20 +13,20 @@
 
 ### 启动时自动升级
 
-Host 正常启动时自动把数据库升级到当前目标结构（十二条 EF 历史，最后一条为 `20261010000001_AddLegacyReturns`），不需要人工命令、停写确认或备份前置。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。
+Host 正常启动时自动把数据库升级到当前目标结构（十三条 EF 历史，最后一条为 `20261025000000_AddLayoutJobs`），不需要人工命令、停写确认或备份前置。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。
 
 | 启动时数据库状态 | 结果 |
 |---|---|
 | 空库（public 下无对象） | 应用全部迁移并核验，继续启动 |
-| 已知 1–11 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源相关表的行与 ID 保留，继续启动 |
+| 已知 1–12 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源相关表的行与 ID 保留，继续启动 |
 | 2026-05-14 至 2026-09-29 版本自动维护留下的旧结构（见[旧版自动维护结构的收敛](#旧版自动维护结构的收敛)） | 同一事务内先收敛到已知形态，被移除或改写的旧数据写入 `legacy_archive`，再升级到目标，继续启动 |
-| 已是精确目标（12 条历史及完整结构） | 不写入，继续启动；只读账号也可启动 |
+| 已是精确目标（13 条历史及完整结构） | 不写入，继续启动；只读账号也可启动 |
 | 2026-04-19 至 2026-05-13 版本留下的精确 `public.mistake`（见[旧表转换](#旧表-mistake-的转换)） | 保留旧条目与关系，同事务转换、归档并升级，继续启动 |
 | 其他未知或矛盾结构 | 拒绝启动，数据库原样保留 |
 
-空库或已知旧版本升级需要相应的 DDL 与迁移历史写入权限；旧结构收敛还需要其数据写入权限。11 条历史的库仍须新增旧错题退回表及保护函数、触发器，并写入第十二条历史，不能以只读账号完成启动。只有历史和完整结构均精确符合版本 12 时，启动才保持零写入。
+空库或已知旧版本升级需要相应的 DDL 与迁移历史写入权限；旧结构收敛还需要其数据写入权限。12 条历史的库仍须新增版面检测作业五表及保护函数、触发器，并写入第十三条历史，不能以只读账号完成启动。只有历史和完整结构均精确符合版本 13 时，启动才保持零写入。
 
-For the recognized twelve-migration chain, `ProductVersion` accepts the original `8.0.11` stamp and the current EF Core `10.0.13` stamp, including a mixture after upgrading an existing database. Existing stamps are preserved; only newly applied migrations receive the current EF version. Other versions remain unsupported, and the complete schema checks still apply. The EF 10 model snapshots introduce no new migration or database schema change. The provider-defined history table is created inside the existing advisory-lock transaction before EF 10 probes applied migrations; rollback and final catalog verification still cover the whole upgrade.
+For the recognized thirteen-migration chain, `ProductVersion` accepts the original `8.0.11` stamp and the current EF Core `10.0.13` stamp, including a mixture after upgrading an existing database. Existing stamps are preserved; only newly applied migrations receive the current EF version. Other versions remain unsupported, and the complete schema checks still apply. The EF 10 model snapshots introduce no new migration or database schema change. The provider-defined history table is created inside the existing advisory-lock transaction before EF 10 probes applied migrations; rollback and final catalog verification still cover the whole upgrade.
 
 升级事务内的命令（含等待 advisory lock）不受连接串 `Command Timeout`（Npgsql 默认 30 秒）限制，大库首次升级不会因命令超时回滚；宿主停止或取消仍会中断并回滚。没有新增配置项。
 
@@ -200,3 +200,9 @@ For the recognized twelve-migration chain, `ProductVersion` accepts the original
 ## 20261010000001_AddLegacyReturns
 
 第十二条迁移完整增加[旧错题退回日志](./tables/legacy_return.md)、条件租约和同条目最后写入/延期完成保护。原来源真实外键和原业务数据不放宽、不迁改；新表不回填旧操作。完整引用快照覆盖新原图与全部候选，保持 v1 合同。空库和精确已知1–11版本同锁同事务升级，坏或部分结构拒绝；已有操作时 Down 拒绝，使用当前 binary/schema 停止推进。整库备份恢复须包含全部新状态、历史和 guards。
+
+## 20261025000000_AddLayoutJobs
+
+第十三条迁移完整增加[版面检测作业数据](./tables/layout_job.md)：`layout_job`（租约/fence/attempt、retained manifest、非秘密处理配置与 credential 引用）、`layout_job_image`（保留字节身份与每图有界进度）、`layout_result`/`layout_result_region`（每代每图唯一接受结果，自包含绑定来源/版本/快照/字节身份/相关旋转/attempt/配置）与 `layout_request`（请求键重放）。结果、区域与重放记录由 `guard_layout_immutable`/`guard_layout_truncate` 触发器保护为只插入事实。数据语义、安全停用与恢复见该表文档与[部署说明](../development/Deployment.md#版面检测作业持久化与安全停用)。
+
+空库和精确已知 1–12 版本同锁同事务升级并核验完整 catalog（含新表/列/索引/RESTRICT FK/函数体/触发器条件）；未知结构拒绝不修。任意 layout 表非空时 Down 拒绝；空 layout 集可 Down 干净移除全部五表与两个保护函数。回退保留认识当前 schema 的 binary 或按完整备份恢复流程处理。
