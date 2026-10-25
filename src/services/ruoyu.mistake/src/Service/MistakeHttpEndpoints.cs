@@ -47,6 +47,8 @@ public static partial class MistakeHttpEndpoints
         group.MapGet("/mistakes/intakes/{sourceId:guid}/{revision:guid}", GetSourceIntakeAsync);
         group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/targets", ResumeSourceTargetsAsync);
         group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/handoff", HandoffSourceAsync);
+        group.MapPost("/mistakes/intakes/{sourceId:guid}/{revision:guid}/layout", StartLayoutJobAsync);
+        group.MapGet("/mistakes/intakes/{sourceId:guid}/{revision:guid}/layout", GetLayoutJobsAsync);
         group.MapGet("/mistakes/reconciliation", GetReconciliationAsync);
         group.MapGet("/mistakes/returns/{itemId:guid}", GetLegacyReturnAsync);
 

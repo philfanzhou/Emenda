@@ -65,6 +65,11 @@ public class MistakeItemDto
 
 // ===== Request DTOs =====
 
+public class StartLayoutJobRequest
+{
+    public Guid? RequestKey { get; set; }
+}
+
 public class SubmitMistakeUploadRequest
 {
     public Guid? ExpectedContentRevision { get; set; }

@@ -582,3 +582,7 @@ false 或缺省时零 layout 请求：客户端指向保留占位地址 `http://
 版面作业沿用同一 `Mistake:Layout:Enabled` 启动快照（第十三号迁移新增[五张表](../database/tables/layout_job.md)）。true 时注册 enqueue 命令与 LayoutJobHostedService（并发 2，与再分析 worker 同模式）：领取按 DB `clock_timestamp()` 90 秒租约 + 20 秒心跳 + owner/fence 栅栏；每次推理在数据库事务外，先按保留 length/SHA-256 重验字节（缺失或不匹配只失败该图、上游调用为零），本地拒绝非 JPEG/PNG（零请求），瞬态失败按有界退避重试（每图上限 5 次，尊重上游 `Retry-After`）；作业只存 credential 引用（配置键名），永不存 Key。数据语义与重放/栅栏保证见数据库文档。
 
 **关闭（安全停用）**：以 `false` 重启后——新作业请求返回 `layout_disabled`（503），worker 不再领取；已排队（Queued）与退避中的作业原样保留，运行中的作业在租约到期后回到可领取状态；已有作业、接受结果与重放记录永久保留并可读取。**恢复（安全重启用）**：以 `true` 重启后，Queued/到期 Running 作业自动重新领取，已 Succeeded 的图不再推理（保持可见），只重试仍有预算的失败/待处理图；同一请求键重放返回原作业与原捕获配置，换新键产生独立 result revision，先前成功结果不被替换。**回退边界**：任意 layout 表非空禁止 Down 与旧 binary 回退；空 layout 集可 Down 干净移除。灾难恢复走真实备份恢复流程，备份必须包含五张 layout 表、全部来源相关表、函数/trigger/FK 与迁移历史。
+
+## 版面检测受管操作
+
+作业的受管 start/status 操作（[LayoutJobs](../modules/LayoutJobs.md)）additive 登记于机器合同 v3：`POST/GET /api/mistakes/intakes/{sourceId}/{revision}/layout`，始终要求已认证 Admin subject（strict/resource/兼容模式一致），无匿名窗口，无新增部署开关或密钥。停用状态下 start 拒绝新工作（503 `layout_disabled`）而同键精确重放与 status 读取保持可用（上节"关闭"语义的请求侧半边）。操作仅供集成与受控使用；已部署 StructaDoc 端点的可复现冒烟（活云检查，需部署密钥中的 scoped Key）见 [StructaDoc](../Integration/StructaDoc.md#已部署端点冒烟)。

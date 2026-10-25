@@ -54,6 +54,28 @@ multipart/form-data，恰好一个名为 `file` 的文件节、无其他表单�
 
 验证：`LayoutGeometryTests`（几何已知坐标、EXIF 全 8 向、往返、快照旋转元数据、校验规则）、`StructaDocLayoutClientTests`（请求形状、分类表、零请求本地校验、Retry-After、取消）、`StructaDocLayoutContractServerTests`（loopback Kestrel 临时端口的真实 HTTP：multipart 实交换、预算治理、并发上限、流式超限拒绝）、`StructaDocLayoutContractFixtureTests`（fixture 钉住与分类交叉验证）、`LayoutCapabilityStartupTests`（启动快照：默认关闭、非法 bool、启用配置门禁、掩码凭钥、预算与无限客户端超时证据、启动零请求）。在 `src/services/ruoyu.mistake/src` 运行 `dotnet build Ruoyu.Study.Mistake.sln --configuration Release` 与 `dotnet test Ruoyu.Study.Mistake.sln --configuration Release`；无需 PostgreSQL。
 
+## 已部署端点冒烟
+
+以下程序针对**已部署的** StructaDoc 公共 layout 端点（测试基址与 scoped `ruoyu-study-layout` Key，部署密钥配置；基址记录于 tracker IKQ6S3），验证消费路径与 StructaDoc 无归档副作用。它是**活云检查**，与受控合同测试（fixture 钉住 v0.1.13、loopback 假服务器、provider PG wire 套件）性质不同：不进入任何自动化套件，需操作员显式执行；不构成题目拆分准确性主张；上游推理输出不承诺可复现。不部署本地 worker。
+
+前置：能访问部署基址的管理员；部署密钥中的 scoped Key（仅 `layout:detect`）；一张非敏感测试照片（仓库 `tests/integration/fixtures/` 下的现有测试图片或自制 PNG/JPEG，不得含学生个人信息）。
+
+```bash
+# 1) 直接调用部署端点：multipart 单文件节 file，验证 200、requestId、坐标帧与区域
+#    形状（响应契约见上文），Authorization: ApiKey <layout-scoped-key>
+curl --cacert '<CA-file>' -H "Authorization: ApiKey <layout-scoped-key>" \
+  -F "file=@<non-sensitive-fixture.png>" \
+  https://<structadoc-test-base-url>/api/v1/layout/detect
+
+# 2) 通过 Mistake 受管操作走完整消费路径（Admin subject；基址与凭据在部署配置中）：
+#    POST /api/mistakes/intakes/{sourceId}/{revision}/layout  {"requestKey":"<uuid>"}
+#    轮询 GET 同路径，直到出现接受结果（validated regions、upstream requestId）
+# 3) 在 StructaDoc 管理端核对：无新 Document、无新 Parse Run（该路由不归档）；
+#    scoped Key 权限只有 layout:detect，无文档库权限
+```
+
+第 2 步要求既有受管来源修订（`Mistake:Layout:Enabled` 开启并配置完成后由受管 intake 产生）；执行后核对响应与持久结果一致。任何一步失败即如实记录，不得改用商业 API 或 Document/Parse Run 兜底。
+
 ## 边界
 
-不调用 StructaDoc Document/Parse Run 端点、不需要文档库权限、不静默切换商业 API；所选 MinerU Cloud 后端内部的完整抽取是允许且预期的。作业/结果持久化、管理端点与已部署端点的冒烟由后续任务交付（见 tracker #IKQ6S3 家族）；本集成在 Mistake 进程内，不新建服务，不部署本地 layout worker，不持有重复 MinerU 凭据。
+不调用 StructaDoc Document/Parse Run 端点、不需要文档库权限、不静默切换商业 API；所选 MinerU Cloud 后端内部的完整抽取是允许且预期的。作业/结果持久化（迁移 13）与受管 start/status 操作（[LayoutJobs](../modules/LayoutJobs.md)，additive 登记于[版本化机器合同](./MachineHttpContract.md)）已交付；本集成在 Mistake 进程内，不新建服务，不部署本地 layout worker，不持有重复 MinerU 凭据。
