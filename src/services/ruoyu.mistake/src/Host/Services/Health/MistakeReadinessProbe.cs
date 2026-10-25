@@ -18,7 +18,9 @@ public sealed record MistakeReadinessSnapshot(
     string VlBaseUrl,
     bool IdentityRequired = false,
     string IdentityAuthority = "",
-    string IdentityIssuer = "");
+    string IdentityIssuer = "",
+    bool LayoutEnabled = false,
+    string LayoutBaseUrl = "");
 
 /// <summary>
 /// One readiness component outcome. <see cref="Reason"/> uses a fixed short
@@ -84,6 +86,12 @@ public sealed class MistakeReadinessProbe
         if (_snapshot.IdentityRequired)
         {
             components.Add(await ProbeIdentityAsync(cancellationToken).ConfigureAwait(false));
+        }
+
+        if (_snapshot.LayoutEnabled)
+        {
+            components.Add(await ProbeHttpEndpointAsync(
+                "structadoc", _snapshot.LayoutBaseUrl, cancellationToken).ConfigureAwait(false));
         }
 
         return components;

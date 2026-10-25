@@ -1,0 +1,323 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StructaDoc API",
+    "version": "v1",
+    "description": "Pinned consumer fixture for the dedicated non-archiving layout-detection operation. Reconstructed from the StructaDoc v0.1.13 tagged contract sources; see x-ruoyu-pin."
+  },
+  "x-ruoyu-pin": {
+    "purpose": "Consumer-side contract pin for the Ruoyu.Study Mistake layout client (IKQA2N). The contract tests validate request shape, response schema and the status-plus-code failure classification against this document.",
+    "upstream": "StructaDoc",
+    "tag": "v0.1.13",
+    "commit": "6ec800ca729307fd3ac1ccfa8776e6877aef3140",
+    "sources": [
+      "src/StructaDoc.Host/Layout/LayoutDetectEndpoints.cs",
+      "src/StructaDoc.Contracts/Layout/LayoutDetectResponse.cs",
+      "src/StructaDoc.Application/Providers/LayoutDetectionRequest.cs",
+      "src/StructaDoc.Host/Layout/LayoutImageInspection.cs"
+    ],
+    "note": "The deployed runtime-generated /api/v1/openapi.json (private test network) was not reachable from the implementing sandbox, so this fixture was reconstructed from the tagged sources above. When the deployment is reachable, refresh by fetching the deployed document and comparing the /api/v1/layout/detect operation against this pin."
+  },
+  "paths": {
+    "/api/v1/layout/detect": {
+      "post": {
+        "operationId": "DetectLayout",
+        "summary": "Non-archiving layout detection for one page image",
+        "description": "Requires the `layout:detect` API client scope. A browser session is not admitted to this endpoint.",
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Exactly one JPEG or PNG image section; at most 32 MiB of image bytes, 32000 pixels per dimension and 100000000 total pixels; a declared content type must match the byte signature. No other form field is accepted."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The accepted layout answer. An explicitly empty regions array is a legitimate answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutDetectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not multipart/form-data with exactly one 'file' section.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutProblem"
+                },
+                "x-ruoyu-codes": [
+                  "layout-request-invalid"
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "The API client credential is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "description": "The authenticated API client does not hold the required scope."
+          },
+          "413": {
+            "description": "The image exceeds the byte or pixel bounds.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutProblem"
+                },
+                "x-ruoyu-codes": [
+                  "layout-input-too-large"
+                ]
+              }
+            }
+          },
+          "415": {
+            "description": "The image is not a JPEG or PNG, or the declared content type contradicts the signature.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutProblem"
+                },
+                "x-ruoyu-codes": [
+                  "layout-media-type-unsupported"
+                ]
+              }
+            }
+          },
+          "429": {
+            "description": "Too many layout detection requests are in flight; retry after the suggested delay.",
+            "headers": {
+              "Retry-After": {
+                "description": "The honored retry hint (delay-seconds or HTTP-date).",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutProblem"
+                },
+                "x-ruoyu-codes": [
+                  "layout-overloaded"
+                ]
+              }
+            }
+          },
+          "502": {
+            "description": "The upstream runtime produced invalid output, is unavailable, or rejected the exchange.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutProblem"
+                },
+                "x-ruoyu-codes": [
+                  "layout-output-invalid",
+                  "layout-runtime-unavailable",
+                  "layout-runtime-rejected"
+                ]
+              }
+            }
+          },
+          "503": {
+            "description": "The selected backend does not support the layout capability, or the runtime is unavailable (including configuration failures).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutProblem"
+                },
+                "x-ruoyu-codes": [
+                  "layout-capability-unsupported",
+                  "layout-runtime-unavailable"
+                ]
+              }
+            }
+          },
+          "504": {
+            "description": "The upstream deadline expired.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutProblem"
+                },
+                "x-ruoyu-codes": [
+                  "layout-timeout"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "An API client credential, presented with its scheme: `ApiKey <credential>`."
+      }
+    },
+    "schemas": {
+      "LayoutProblem": {
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "const": "Layout detection failed"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "The stable problem code. Consumers classify the HTTP status together with this code."
+          }
+        }
+      },
+      "LayoutDetectResponse": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "width",
+          "height",
+          "coordinateFrame",
+          "regions"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "description": "Correlation identifier of this one exchange; not a retrievable job or result resource."
+          },
+          "width": {
+            "type": "integer",
+            "description": "The source image width in pixels, in the stored pixel frame."
+          },
+          "height": {
+            "type": "integer",
+            "description": "The source image height in pixels, in the stored pixel frame."
+          },
+          "coordinateFrame": {
+            "type": "string",
+            "const": "top-left-origin-normalized"
+          },
+          "regions": {
+            "type": "array",
+            "description": "The detected regions in detection sequence; the sequence is not a guaranteed reading order. May be empty.",
+            "items": {
+              "$ref": "#/components/schemas/LayoutDetectRegion"
+            }
+          },
+          "orientation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 8,
+            "description": "The EXIF orientation value (1-8) derived from the submitted image, or null when the image carried no tag."
+          },
+          "engine": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The inference version the runtime reports; there is no wire schemaVersion field."
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bounded recoverable notes from the execution."
+          }
+        }
+      },
+      "LayoutDetectRegion": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "x0",
+          "y0",
+          "x1",
+          "y1"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "This response's own region number (the array index); response-local, not a persisted resource ID."
+          },
+          "label": {
+            "type": "string",
+            "description": "The generic detected category, such as text or table; never recognized body content."
+          },
+          "x0": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y0": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "x1": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y1": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    }
+  }
+}
