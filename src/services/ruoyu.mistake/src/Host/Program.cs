@@ -377,6 +377,11 @@ builder.Services.AddSingleton(structaDocLayoutOptions);
 // work is accepted again.
 builder.Services.AddScoped<LayoutJobService>();
 builder.Services.AddScoped<ILayoutJobService>(sp => sp.GetRequiredService<LayoutJobService>());
+// Administrative layout operations (IKQA2P): the HTTP surface consumes the service-side
+// adapter over the enqueue command and durable read views; it is registered regardless
+// of the switch (replay and reads stay available, new work is refused while disabled).
+builder.Services.AddScoped<LayoutJobAdminService>();
+builder.Services.AddScoped<ILayoutJobAdminService>(sp => sp.GetRequiredService<LayoutJobAdminService>());
 if (layoutEnabled) builder.Services.AddHostedService<LayoutJobHostedService>();
 
 // Reanalyze job workers: process AI re-analysis jobs asynchronously.

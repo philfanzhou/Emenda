@@ -13,6 +13,7 @@
 
 - [不可变来源幂等入库](./SourceIntake.md)
 
+- [LayoutJobs](./LayoutJobs.md) — 版面检测作业受管 start/status 操作（受管 Admin 身份，additive 机器合同登记）。
 - [SourceTargets](./SourceTargets.md) — 保留来源、持久候选与核验目标恢复性物化。
 
 - [受管持久退回](./SourceReturns.md)

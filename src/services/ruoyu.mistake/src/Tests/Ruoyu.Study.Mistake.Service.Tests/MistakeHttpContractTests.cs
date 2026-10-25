@@ -67,7 +67,7 @@ public sealed class MistakeHttpContractTests
                 .Select(method => method.ToLowerInvariant() + " " + Regex.Replace(endpoint.RoutePattern.RawText!, @":\w+", ""))).ToHashSet();
         var specified = MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .SelectMany(path => path.Value.EnumerateObject().Select(method => method.Name + " " + path.Name)).ToHashSet();
-        actual.Should().HaveCount(23).And.BeEquivalentTo(specified);
+        actual.Should().HaveCount(25).And.BeEquivalentTo(specified);
         foreach (var path in MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .Where(path => path.Name.StartsWith("/api/mistakes/intakes/", StringComparison.Ordinal)))
         {
