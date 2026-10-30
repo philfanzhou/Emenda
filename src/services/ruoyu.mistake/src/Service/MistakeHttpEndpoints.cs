@@ -345,7 +345,7 @@ public static partial class MistakeHttpEndpoints
             if (subjectList.Count == 0) subjectList = null;
         }
 
-        var (uploads, totalCount) = await mistakeService.GetPendingReviewUploadsAsync(normalizedPage, normalizedSize, subjectList);
+        var (uploads, totalCount) = await mistakeService.GetPendingReviewUploadsAsync(normalizedPage, normalizedSize, subjectList, ct);
 
         var result = new PendingReviewUploadListResponse
         {

@@ -119,13 +119,13 @@ public class MistakeDomainService : IMistakeDomainService
         return _mistakeItemRepository.IsObjectPathReferencedByStudentsAsync(objectPath, studentIds, ct);
     }
 
-    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null)
+    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
     {
         if (page <= 0) page = 1;
         if (size <= 0) size = 10;
         if (size > 100) size = 100;
 
-        return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size, subjects);
+        return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size, subjects, ct);
     }
 
     public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null)

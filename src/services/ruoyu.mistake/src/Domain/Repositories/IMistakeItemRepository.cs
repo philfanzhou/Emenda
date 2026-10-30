@@ -43,7 +43,7 @@ public interface IMistakeItemRepository
     Task<bool> IsObjectPathReferencedByStudentsAsync(
         string objectPath, IReadOnlyCollection<string> studentIds, CancellationToken ct = default);
 
-    Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null);
+    Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default);
     Task<int> CountPendingBySourceUploadIdAsync(string sourceUploadId);
     Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync();
     Task<List<MistakeItemModel>> GetAllAsync();

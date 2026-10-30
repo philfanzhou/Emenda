@@ -27,7 +27,7 @@ public interface IMistakeDomainService
     /// </summary>
     Task<bool> IsObjectPathOwnedByStudentsAsync(string objectPath, IReadOnlyCollection<string> studentIds, CancellationToken ct = default);
 
-    Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null);
+    Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default);
     Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null);
     Task<MistakeReanalysisResult> ReanalyzeMistakeItemAsync(Guid id, string? reviewerId, string? teacherDescription, CancellationToken ct = default);
     Task PersistReanalyzedRootCauseAsync(MistakeItemModel item, string previousRootCause, string? reviewerId, string? teacherDescription, string newRootCause, CancellationToken ct = default);
