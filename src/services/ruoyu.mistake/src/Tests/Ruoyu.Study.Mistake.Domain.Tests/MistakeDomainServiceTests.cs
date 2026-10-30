@@ -341,7 +341,7 @@ public class MistakeDomainServiceTests
             new() { StudentId = "student-1", SourceUploadId = "upload-1" }
         };
 
-        _mockItemRepo.Setup(x => x.GetPendingReviewUploadsAsync(1, 10, null))
+        _mockItemRepo.Setup(x => x.GetPendingReviewUploadsAsync(1, 10, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((expectedUploads, 1));
 
         var result = await _service.GetPendingReviewUploadsAsync(1, 10);

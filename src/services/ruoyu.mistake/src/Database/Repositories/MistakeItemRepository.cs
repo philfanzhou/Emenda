@@ -152,7 +152,7 @@ public class MistakeItemRepository : IMistakeItemRepository
             string.Equals(path, objectPath, StringComparison.Ordinal)));
     }
 
-    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null)
+    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
     {
         var query = _dbContext.MistakeItems
             .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview);
@@ -162,38 +162,25 @@ public class MistakeItemRepository : IMistakeItemRepository
             query = query.Where(m => subjects.Contains(m.Subject));
         }
 
-        // Load all data for client-side grouping and aggregation
-        var items = await query.ToListAsync();
-        
-        var grouped = items
+        var grouped = query.AsNoTracking()
             .GroupBy(m => new { m.SourceUploadId, m.StudentId, m.Subject, m.Grade })
-            .Select(g => new
-            {
-                g.Key.SourceUploadId,
-                g.Key.StudentId,
-                g.Key.Subject,
-                g.Key.Grade,
-                PendingCount = g.Count(),
-                EarliestCreatedAt = g.Min(x => x.CreatedAt)
-            })
-            .OrderBy(x => x.EarliestCreatedAt)
-            .ToList();
-
-        var totalCount = grouped.Count;
-        var paged = grouped
-            .Skip((page - 1) * size)
-            .Take(size)
             .Select(g => new PendingReviewUploadModel
             {
-                SourceUploadId = g.SourceUploadId,
-                StudentId = g.StudentId,
-                Subject = g.Subject,
-                Grade = g.Grade,
-                PendingCount = g.PendingCount,
-                TotalCount = g.PendingCount,
-                EarliestCreatedAt = g.EarliestCreatedAt
-            })
-            .ToList();
+                SourceUploadId = g.Key.SourceUploadId,
+                StudentId = g.Key.StudentId,
+                Subject = g.Key.Subject,
+                Grade = g.Key.Grade,
+                PendingCount = g.Count(),
+                TotalCount = g.Count(),
+                EarliestCreatedAt = g.Min(x => x.CreatedAt),
+            });
+        var totalCount = await grouped.CountAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        var offset = ((long)page - 1) * size;
+        if (offset >= totalCount) return ([], totalCount);
+        var paged = await grouped.OrderBy(g => g.EarliestCreatedAt).ThenBy(g => g.SourceUploadId)
+            .ThenBy(g => g.StudentId).ThenBy(g => g.Subject).ThenBy(g => g.Grade)
+            .Skip((int)offset).Take(size).ToListAsync(ct);
 
         return (paged, totalCount);
     }
