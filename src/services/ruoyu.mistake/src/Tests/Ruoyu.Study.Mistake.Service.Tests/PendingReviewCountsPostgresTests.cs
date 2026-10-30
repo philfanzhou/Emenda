@@ -45,6 +45,12 @@ public sealed class PendingReviewCountsPostgresTests
             var filtered = await repository.GetPendingReviewUploadsAsync(1, 1, [2]);
             Assert.Equal(1, filtered.TotalCount);
             Assert.Equal(20, Assert.Single(filtered.Uploads).PendingCount);
+            var beyond = await repository.GetPendingReviewUploadsAsync(int.MaxValue, 50, [1, 2]);
+            Assert.Equal(2, beyond.TotalCount);
+            Assert.Empty(beyond.Uploads);
+            var empty = await repository.GetPendingReviewUploadsAsync(int.MaxValue, 50, [99]);
+            Assert.Equal(0, empty.TotalCount);
+            Assert.Empty(empty.Uploads);
             using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => repository.GetPendingReviewUploadsAsync(1, 1, [1], cancellation.Token));
         }

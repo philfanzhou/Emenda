@@ -175,9 +175,12 @@ public class MistakeItemRepository : IMistakeItemRepository
                 EarliestCreatedAt = g.Min(x => x.CreatedAt),
             });
         var totalCount = await grouped.CountAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        var offset = ((long)page - 1) * size;
+        if (offset >= totalCount) return ([], totalCount);
         var paged = await grouped.OrderBy(g => g.EarliestCreatedAt).ThenBy(g => g.SourceUploadId)
             .ThenBy(g => g.StudentId).ThenBy(g => g.Subject).ThenBy(g => g.Grade)
-            .Skip((page - 1) * size).Take(size).ToListAsync(ct);
+            .Skip((int)offset).Take(size).ToListAsync(ct);
 
         return (paged, totalCount);
     }
