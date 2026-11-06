@@ -524,7 +524,7 @@ app.Logger.LogInformation(
     strictApiAuth, resourceApiAuth, identityTrustConfigured,
     identityTrustConfigured ? identityTrustOptions.Authority : "(not configured)",
     identityTrustConfigured ? identityTrustOptions.Audience : "(not configured)",
-    identityTrustOptions.GetAdminAudience() is not null);
+    identityTrustOptions.GetAdminAudiences().Count > 0);
 
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
     ossConfig.InternalEndpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
