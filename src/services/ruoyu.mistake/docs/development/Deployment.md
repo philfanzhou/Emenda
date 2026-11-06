@@ -81,7 +81,7 @@ Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 
 |---|---|---|
 | `IdentityService:MistakeApiStrictAuth` | `IdentityService__MistakeApiStrictAuth` | 收紧开关（默认 `false`，启动快照）：`true` 时 `/api/*` 要求已认证主体（共享受众或 Admin AppId 受众令牌），匿名与无效令牌一律 401 |
 | `IdentityService:Authority` / `Issuer` / `Audience` | `IdentityService__Authority` 等 | 信任快照；strict=true 时三项必填，缺失在数据库访问前以键名显式启动失败 |
-| `IdentityService:AdminAudience` | `IdentityService__AdminAudience` | 可选 Admin AppId 受众，可列出多个应用 id（逗号、分号或空白分隔）：Ruoyu.Admin 的 `ADMIN` 应用和 Portal 管理端应用（ADR-0030；User Portal 管理端以管理员令牌调用 `POST /api/mistakes/upload`）。`start.sh` 从 `MISTAKE_ADMIN_AUDIENCES` 传入，`rebuild-and-test.sh` 用 `IDENTITY_APP_ID_ADMIN`、`IDENTITY_APP_ID_USER_CONSOLE` 与 `IDENTITY_APP_ID_TEACHER_CONSOLE` 组成；容器环境变量在 Consul 之后重新应用，因此 `start.sh` 传入的值覆盖 Consul KV 中的同名键。未配置时该受众失败关闭，共享受众路径不受影响 |
+| `IdentityService:AdminAudience` | `IdentityService__AdminAudience` | 可选 Admin AppId 受众，可列出多个应用 id（逗号、分号或空白分隔）：Ruoyu.Admin 的 `ADMIN` 应用和 Portal 管理端应用（ADR-0030；User Portal 管理端以管理员令牌调用 `POST /api/mistakes/upload`，Teacher Portal 管理端调用 `GET /api/mistakes`、`GET /api/mistakes/{id}` 与仅管理员的 `PUT /api/mistakes/{id}`）。`start.sh` 从 `MISTAKE_ADMIN_AUDIENCES` 传入，`rebuild-and-test.sh` 用 `IDENTITY_APP_ID_ADMIN`、`IDENTITY_APP_ID_USER_CONSOLE` 与 `IDENTITY_APP_ID_TEACHER_CONSOLE` 组成；容器环境变量在 Consul 之后重新应用，因此 `start.sh` 传入的值覆盖 Consul KV 中的同名键。未配置时该受众失败关闭，共享受众路径不受影响 |
 
 规则与边界：
 
