@@ -66,7 +66,6 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
             if(!expectations.TryGetValue(key,out var set)) expectations[key]=set=new HashSet<(long,string)>();
             set.Add((length,sha));
         }
-        static string[] Parse(string format,string value)=>ReferencePaths.Parse(format,value);
         long? Age(DateTimeOffset? since)=>since.HasValue ? (long)(generated-since.Value).TotalSeconds : null;
 
         var items=new List<ItemRow>();
@@ -74,7 +73,7 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
             " WHERE intake_source_key(source_upload_id)=@source::text",scope,ct,reader =>
         {
             var id=reader.GetGuid(0);var text=reader.GetString(1);
-            var keys=Parse("regions",reader.GetString(2));
+            var keys=ReferencePaths.Parse("regions",reader.GetString(2));
             items.Add(new(id,Guid.TryParse(text,out var parsed)?parsed:Guid.Empty,text,keys));
             Reference("mistake_item",id.ToString("D"),"source_regions",keys);
         });
@@ -83,7 +82,7 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
             " WHERE intake_source_key(i.source_upload_id)=@source::text",scope,ct,reader =>
         {
             var id=reader.GetGuid(0);var text=reader.GetString(2);
-            var keys=Parse("paths",reader.GetString(3));
+            var keys=ReferencePaths.Parse("paths",reader.GetString(3));
             practices.Add(new(id,reader.GetGuid(1),Guid.TryParse(text,out var parsed)?parsed:Guid.Empty,text,keys));
             Reference("mistake_practice",id.ToString("D"),"image_paths",keys);
         });
@@ -93,7 +92,7 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
             " WHERE source_upload_id=@source",scope,ct,reader =>
         {
             var source=reader.GetGuid(0);var revision=reader.GetGuid(1);var manifest=reader.GetString(2);
-            Reference("source_intake",$"{source:D}/{revision:D}","manifest",Parse("manifest",manifest));
+            Reference("source_intake",$"{source:D}/{revision:D}","manifest",ReferencePaths.Parse("manifest",manifest));
             var images=(JsonSerializer.Deserialize<SourceManifest>(manifest,IntakeCanonical.Json) ?? throw new SourceIntakeException("reconciliation_unavailable",503)).Images;
             foreach(var image in images) Expect(image.Path,image.Length,image.Sha256);
             intakes[(source,revision)]=new(source,revision,reader.GetBoolean(3),new HashSet<string>(images.Select(image=>image.Path),StringComparer.Ordinal));
@@ -132,7 +131,7 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
             " WHERE source_upload_id=@source",scope,ct,reader =>
         {
             var source=reader.GetGuid(0);var revision=reader.GetGuid(1);
-            Reference("source_handoff",$"{source:D}/{revision:D}","targets",Parse("targets",reader.GetString(6)));
+            Reference("source_handoff",$"{source:D}/{revision:D}","targets",ReferencePaths.Parse("targets",reader.GetString(6)));
             foreach(var target in JsonSerializer.Deserialize<SourceHandoffTarget[]>(reader.GetString(6),IntakeCanonical.Json) ?? throw new SourceIntakeException("reconciliation_unavailable",503))
             { Expect(target.SourcePath,target.Length,target.Sha256); Expect(target.TargetKey,target.Length,target.Sha256); }
             var phase=reader.GetString(3);var sealedAt=new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(5),DateTimeKind.Utc));
@@ -143,8 +142,8 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
             " WHERE source_upload_id=@source",scope,ct,reader =>
         {
             var item=reader.GetGuid(0);var source=reader.GetGuid(2);var revision=reader.GetGuid(3);
-            Reference("source_return",item.ToString("D"),"original_item",Parse("original",reader.GetString(6)));
-            if(!reader.IsDBNull(7)) Reference("source_return",item.ToString("D"),"payload",Parse("returned",reader.GetString(7)));
+            Reference("source_return",item.ToString("D"),"original_item",ReferencePaths.Parse("original",reader.GetString(6)));
+            if(!reader.IsDBNull(7)) Reference("source_return",item.ToString("D"),"payload",ReferencePaths.Parse("returned",reader.GetString(7)));
             var phase=reader.GetString(4);
             if(phase=="Conflict") conflicts.Add(new("return",source,revision,item,reader.GetString(1),reader.IsDBNull(5)?null:reader.GetString(5),null));
             else if(phase is "Prepared" or "Sending") pending.Add(new("return_"+phase.ToLowerInvariant(),source,revision,item,phase,null,null));

@@ -209,4 +209,4 @@ For the recognized fourteen-migration chain, `ProductVersion` accepts the origin
 
 ## 20261107000001_DropStorageReferenceSnapshots
 
-第十四条迁移随 [ADR-0030](../../../../../docs/adr/0030-portal-hosted-administration.md) 第 4 步删除 StorageReferences v1：删除 `storage_reference_snapshot` 表与 `guard_storage_reference_snapshot` 函数。快照会过期、不是业务数据，表非空也直接删除。版本 10–13 的精确 schema 检查仍要求该表，版本 14 要求它不存在（`StorageReferenceRemovalSchema.Present`）。Down 重建空表与保护函数；回退到不认识第十四条历史的旧 binary 前须先执行 Down，否则旧版本因历史不匹配拒绝启动。`LegacySchemaConvergencePostgresTests.VersionThirteenDropsTheRetiredReferenceTableAndDowngradeRecreatesIt` 覆盖升级与 Down。
+第十四条迁移随 [ADR-0030](../../../../../docs/adr/0030-portal-hosted-administration.md) 第 4 步删除 StorageReferences v1：删除 `storage_reference_snapshot` 表与 `guard_storage_reference_snapshot` 函数。快照会过期、不是业务数据，表非空也直接删除。版本 10–13 的精确 schema 检查仍要求该表，版本 14 要求它不存在（`StorageReferenceRemovalSchema.Present`）。Down 重建空表与保护函数。部署镜像不带 `dotnet ef`，Host 也没有降级命令，所以与前几条迁移相同：回退时保留认识当前 schema 的 binary，或按完整备份恢复流程处理；不认识第十四条历史的旧 binary 会因历史不匹配拒绝启动。`LegacySchemaConvergencePostgresTests.VersionThirteenDropsTheRetiredReferenceTableAndDowngradeRecreatesIt` 覆盖升级与 Down。

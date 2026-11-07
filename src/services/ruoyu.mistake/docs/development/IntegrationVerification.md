@@ -60,7 +60,7 @@ Student 当前记录可能因完整消费而被移除，或保留其他分类图
 
 StorageReferences v1 引用快照已按 ADR-0030 第 4 步删除，不再有跨服务引用快照验证。
 
-实际 Admin 消费方收齐并验证三方全部页后才能进行对象列举。结果只能表示“未观察到引用”；`deletionAuthorized=false` 恒成立，完整快照也不授权删除或复制。引用审计不是普通条目分页拼接，也没有旧 `GetAllReferencedImagePaths` RPC 可调用。
+没有旧 `GetAllReferencedImagePaths` RPC；不得仅凭业务列表推断全部引用，也不得据此删除对象。
 
 `GET /api/mistakes/reconciliation` 的[对账报告](../modules/SourceReconciliation.md)只报告缺失/冲突/待恢复/未受管引用及修复预览。读取失败不输出部分报告；报告前后业务数据和对象字节不变。没有可信旧来源时标为未知，不据此补建记录、搬图或删图。
 

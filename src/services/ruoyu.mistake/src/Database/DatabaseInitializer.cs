@@ -362,6 +362,10 @@ public static class DatabaseInitializer
             history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
+        // Name the leftover directly instead of reporting it as a routine or relation mismatch.
+        if (version >= 10 && !StorageReferenceRemovalSchema.Present(version) &&
+            (relations.Contains(RetiredStorageReferenceSchema.Table) || routines.Contains("guard_storage_reference_snapshot")))
+            return Invalid("retired relation storage_reference_snapshot or function guard_storage_reference_snapshot still exists after its drop migration.");
 
         if (version >= 6)
         {

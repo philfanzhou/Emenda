@@ -589,6 +589,32 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(before, await database.SnapshotAsync());
     }
 
+    [Theory]
+    [InlineData(14, "table")]
+    [InlineData(14, "function")]
+    [InlineData(13, "dropped")]
+    public async Task RetiredReferenceTableMustMatchItsVersionWithoutMutation(int version, string mutation)
+    {
+        // ADR-0030 step 4: version 14 must not carry the snapshot table or its guard; 10–13 must.
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        if (version == 14) await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        else await context.GetService<IMigrator>().MigrateAsync(LayoutJobSchema.Migration);
+        await database.ExecuteAsync(mutation switch
+        {
+            "table" => Ruoyu.Study.Common.Database.RetiredStorageReferenceSchema.Sql,
+            "function" => "CREATE FUNCTION guard_storage_reference_snapshot() RETURNS trigger LANGUAGE plpgsql AS $body$"
+                + Ruoyu.Study.Common.Database.RetiredStorageReferenceSchema.GuardBody + "$body$",
+            _ => "DROP TABLE storage_reference_snapshot",
+        });
+        var before = await database.SnapshotAsync();
+
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance));
+
+        if (version == 14) Assert.Contains("storage_reference_snapshot", error.Message);
+        Assert.Equal(before, await database.SnapshotAsync());
+    }
+
     [Fact]
     public async Task EmptyDatabaseUpgradesOnStartupThenStartsWithoutWrites()
     {
