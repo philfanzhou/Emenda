@@ -256,7 +256,6 @@ public sealed class ReviewRejectCallbackTests
             "IdentityService__MistakeApiResourceAuth",
             "Mistake__Student__Enabled",
             "Mistake__Local__Student__Url",
-            "IDENTITY_APP_ID_ADMIN",
         ];
 
         private readonly RecordingGateway? _gateway;
@@ -268,7 +267,6 @@ public sealed class ReviewRejectCallbackTests
         {
             _gateway = gateway;
             _handler = handler;
-            Environment.SetEnvironmentVariable("IDENTITY_APP_ID_ADMIN", null);
             Environment.SetEnvironmentVariable("Mistake__ConfigMode", "Local");
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__MistakeLocal",

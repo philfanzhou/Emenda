@@ -23,7 +23,6 @@ public sealed class MistakeApiResourceAuthStartupTests
             ["IdentityService__AdminAudience"] = null,
             ["IdentityService__MistakeApiStrictAuth"] = null,
             ["IdentityService__MistakeApiResourceAuth"] = null,
-            ["IDENTITY_APP_ID_ADMIN"] = null,
         };
     }
 

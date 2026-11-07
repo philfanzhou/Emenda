@@ -855,7 +855,6 @@ public sealed class MistakeApiResourceAuthTests
             "IdentityService__AdminAudience",
             "IdentityService__MistakeApiStrictAuth",
             "IdentityService__MistakeApiResourceAuth",
-            "IDENTITY_APP_ID_ADMIN",
         ];
 
         private readonly ResourceAuthGateway? _gatewayOverride;
@@ -864,7 +863,6 @@ public sealed class MistakeApiResourceAuthTests
             bool strict, bool resource, ResourceAuthGateway? gatewayOverride = null)
         {
             _gatewayOverride = gatewayOverride;
-            Environment.SetEnvironmentVariable("IDENTITY_APP_ID_ADMIN", null);
             Environment.SetEnvironmentVariable("Mistake__ConfigMode", "Local");
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__MistakeLocal",
