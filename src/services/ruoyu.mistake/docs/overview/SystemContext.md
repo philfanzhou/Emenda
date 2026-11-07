@@ -2,6 +2,8 @@
 
 ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责错题记录的全生命周期管理——轮询采集学生上传的错题图片、VL 视觉语言分析、自动创建待审核错题、教师逐条审核确认/退回、审核完成后触发 OSS 图片迁移，到错题练习追踪与类型分析。本服务是错题业务域的唯一数据权威，通过轮询 ruoyu.student 获取已分类的上传记录，并通过 gRPC 对外暴露能力。
 
+> **停用说明（2026-11-07）**：下图与下文中的 Ruoyu.Admin 已按 [ADR-0030](../../../../../docs/adr/0030-portal-hosted-administration.md) 停用。管理员对 Mistake 的调用改由 User Portal 管理端（上传分配）与 Teacher Portal 管理端（错题查看与修改）发出，均携带管理员自己的访问令牌。
+
 ## 系统上下文图
 
 ```

@@ -34,8 +34,8 @@ if [ -n "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE:-}" ]; then
     SERVICE_AUTH_ARGS+=(--mount "type=bind,source=${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE},target=/run/ruoyu/student-ca-bundle.pem,readonly" -e SSL_CERT_FILE=/run/ruoyu/student-ca-bundle.pem)
 fi
 
-# Administrator audiences (ADR-0030): Ruoyu.Admin's ADMIN application and the Portal console
-# applications whose administrators create or edit mistake items. Space- or comma-separated
+# Administrator audiences (ADR-0030): the Portal console applications whose administrators
+# create or edit mistake items. Space- or comma-separated
 # application ids; empty keeps the admin-audience path closed.
 ADMIN_AUDIENCE_ARGS=()
 if [ -n "${MISTAKE_ADMIN_AUDIENCES:-}" ]; then

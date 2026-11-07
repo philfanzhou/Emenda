@@ -26,7 +26,6 @@ public sealed class MistakeApiStrictAuthStartupTests
             ["IdentityService__Audience"] = null,
             ["IdentityService__AdminAudience"] = null,
             ["IdentityService__MistakeApiStrictAuth"] = null,
-            ["IDENTITY_APP_ID_ADMIN"] = null,
         };
     }
 

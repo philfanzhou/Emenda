@@ -304,7 +304,6 @@ public sealed class MistakeApiStrictAuthTests
             "IdentityService__RequireHttpsMetadata",
             "IdentityService__AdminAudience",
             "IdentityService__MistakeApiStrictAuth",
-            "IDENTITY_APP_ID_ADMIN",
         ];
 
         public MistakeStrictAuthWebApplicationFactory(
@@ -312,9 +311,6 @@ public sealed class MistakeApiStrictAuthTests
         {
             // Program.cs captures configuration during host build; environment
             // variables have the highest priority and tests run sequentially.
-            // The deploy-test fallback key must never satisfy AdminAudience
-            // in these tests, so it is removed explicitly.
-            Environment.SetEnvironmentVariable("IDENTITY_APP_ID_ADMIN", null);
             Environment.SetEnvironmentVariable("Mistake__ConfigMode", "Local");
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__MistakeLocal",

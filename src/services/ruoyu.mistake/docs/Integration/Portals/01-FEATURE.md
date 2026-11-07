@@ -1,6 +1,6 @@
 # Mistake 与 Portals 集成 — 功能概述
 
-> **消费方迁出说明（2026-09-24）**：本文中的 `Ruoyu.Admin`（原 `admin_portal` / Admin Portal）已于 [ADR-0010](../../../../../../docs/adr/0010-extract-ruoyu-admin.md) 迁出为独立开源仓库 [Ruoyu.Admin](https://github.com/philfanzhou/Ruoyu.Admin)。**本文件描述的端点契约仍由本仓库该服务主责**，消费方改为外部仓库；契约变更不会在该仓库产生编译错误（它持有手写镜像 DTO），因此变更时必须把 Ruoyu.Admin 视为受影响方并同步通知。
+> **消费方迁出说明（2026-09-24）**：本文中的 `Ruoyu.Admin`（原 `admin_portal` / Admin Portal）已于 [ADR-0010](../../../../../../docs/adr/0010-extract-ruoyu-admin.md) 迁出为独立开源仓库 [Ruoyu.Admin](https://github.com/philfanzhou/Ruoyu.Admin)。**本文件描述的端点契约仍由本仓库该服务主责**，消费方改为外部仓库；契约变更不会在该仓库产生编译错误（它持有手写镜像 DTO），因此变更时必须把 Ruoyu.Admin 视为受影响方并同步通知。 **停用说明（2026-11-07）**：Ruoyu.Admin 已按 [ADR-0030](../../../../../../docs/adr/0030-portal-hosted-administration.md) 停用。本文中由它发起的管理调用改由 Portal 管理端发出（User Portal 管理端：学生档案、Account Mapping、开放学科、上传记录；Teacher Portal 管理端：错题查看与修改；Assistant Portal 管理端：助教），其余调用（如存储审计引用快照）已无调用方。
 >
 > **协议描述已过期**：本文中以 gRPC 描述的交互在实际实现中已改为 HTTP/JSON，gRPC 已整体移除。这是迁出前就已存在的文档漂移，尚未逐条重新核对；当前实现事实以本服务的 `Controllers/` 与路由配置为准。
 

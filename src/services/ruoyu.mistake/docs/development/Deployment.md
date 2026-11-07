@@ -81,7 +81,7 @@ Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 
 |---|---|---|
 | `IdentityService:MistakeApiStrictAuth` | `IdentityService__MistakeApiStrictAuth` | 收紧开关（默认 `false`，启动快照）：`true` 时 `/api/*` 要求已认证主体（共享受众或 Admin AppId 受众令牌），匿名与无效令牌一律 401 |
 | `IdentityService:Authority` / `Issuer` / `Audience` | `IdentityService__Authority` 等 | 信任快照；strict=true 时三项必填，缺失在数据库访问前以键名显式启动失败 |
-| `IdentityService:AdminAudience` | `IdentityService__AdminAudience` | 可选 Admin AppId 受众，可列出多个应用 id（逗号、分号或空白分隔）：Ruoyu.Admin 的 `ADMIN` 应用和 Portal 管理端应用（ADR-0030；User Portal 管理端以管理员令牌调用 `POST /api/mistakes/upload`，Teacher Portal 管理端调用 `GET /api/mistakes`、`GET /api/mistakes/{id}` 与仅管理员的 `PUT /api/mistakes/{id}`）。`start.sh` 从 `MISTAKE_ADMIN_AUDIENCES` 传入，`rebuild-and-test.sh` 用 `IDENTITY_APP_ID_ADMIN`、`IDENTITY_APP_ID_USER_CONSOLE` 与 `IDENTITY_APP_ID_TEACHER_CONSOLE` 组成；容器环境变量在 Consul 之后重新应用，因此 `start.sh` 传入的值覆盖 Consul KV 中的同名键。未配置时该受众失败关闭，共享受众路径不受影响 |
+| `IdentityService:AdminAudience` | `IdentityService__AdminAudience` | 可选管理员受众，可列出多个应用 id（逗号、分号或空白分隔）：调用 Mistake 的 Portal 管理端应用（ADR-0030；User Portal 管理端以管理员令牌调用 `POST /api/mistakes/upload`，Teacher Portal 管理端调用 `GET /api/mistakes`、`GET /api/mistakes/{id}` 与仅管理员的 `PUT /api/mistakes/{id}`）。`start.sh` 从 `MISTAKE_ADMIN_AUDIENCES` 传入，`rebuild-and-test.sh` 用 `IDENTITY_APP_ID_USER_CONSOLE` 与 `IDENTITY_APP_ID_TEACHER_CONSOLE` 组成（Ruoyu.Admin 的 `ADMIN` 应用已随其停用移出）；容器环境变量在 Consul 之后重新应用，因此 `start.sh` 传入的值覆盖 Consul KV 中的同名键。未配置时该受众失败关闭，共享受众路径不受影响 |
 
 规则与边界：
 
@@ -89,7 +89,7 @@ Mistake Host 通过共享 `Ruoyu.Study.Common.Authentication` 接入 JWT Bearer 
 - strict=false（默认）时有效令牌仍会解析进 `HttpContext.User`（供后续逐资源授权切片使用），令牌验证失败视为匿名，不拒绝请求；不启用全局 fallback policy，根端点与后续健康端点保持匿名。
 - 开关与信任配置都是启动快照：变更后必须重启进程。回滚 = 置 `false`（或移除键）重启，即恢复匿名窗口；无数据库、schema 或数据迁移。strict=true 的实际启用时点由父项 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 在消费者升级与联测后决定，当前部署不应启用。
 - 非法开关值（非 `true`/`false`）在数据库访问前报 `IdentityService:MistakeApiStrictAuth must be true or false.` 并拒绝启动。
-- 调用方令牌透传：三个 Portal 经共享 `MistakeBff.HttpClients` 调用 Mistake 时自动透传当前请求的 Bearer（无令牌则不附加头），Portal 无需配置；Ruoyu.Admin 直连 Mistake 时需自行携带有效令牌。令牌只经内存请求管线，日志与诊断输出不包含令牌、签名 URL 或密钥。
+- 调用方令牌透传：三个 Portal 经共享 `MistakeBff.HttpClients` 调用 Mistake 时自动透传当前请求的 Bearer（无令牌则不附加头），Portal 无需配置；Portal 管理端转发管理员自己的访问令牌（受众为管理端应用，须列入 `AdminAudience`）。令牌只经内存请求管线，日志与诊断输出不包含令牌、签名 URL 或密钥。
 - 本窗口只建立「调用方可信身份」，不做逐资源归属/角色授权（见下节）。
 
 ### 逐资源授权矩阵（IKJEPZ，默认关闭）
@@ -161,14 +161,14 @@ resource=false（默认）时 legacy 未受管端点与基线 `91fb253e` 行为�
 **启用时点与当前限制（截至 2026-10-08，如实记录）**：
 
 - 当前部署**不应启用** strict。
-- 消费者升级：Ruoyu.Admin 官方版本 `0.1.2`（2026-10-08 发布于 GHCR）已包含「服务端会话令牌作 Bearer 调用 Mistake」（`MistakeSessionHandler` 白名单转发）；此前的 `0.1.2-rc.2` 对 Mistake 不携带任何 Authorization，登录仍为密码授权。
+- 消费者升级（历史；Ruoyu.Admin 已按 ADR-0030 停用，此项作废）：Ruoyu.Admin 官方版本 `0.1.2`（2026-10-08 发布于 GHCR）已包含「服务端会话令牌作 Bearer 调用 Mistake」（`MistakeSessionHandler` 白名单转发）；此前的 `0.1.2-rc.2` 对 Mistake 不携带任何 Authorization，登录仍为密码授权。
 - 真实环境：192.168.55.10 当前运行的 Ruoyu.Study 服务镜像 `20261008` 构建自 master `90e6334c`，已包含两开关代码（`/health/live`、`/health/ready` 返回 200）；Ruoyu.Admin 仍为 `0.1.2-rc.2`。Ruoyu.Study 自有镜像不受 55.10「GitHub 项目只用官方版本」规则约束，由本仓库自行构建部署。
-- 演练前置（部署动作）：55.10 升级到 Ruoyu.Admin 官方 `0.1.2`、SignaCore `ADMIN` 应用 PerApplication 收敛。启用顺序、联测与回滚演练属 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；本节不宣称已启用或已演练。
+- 演练前置（部署动作）：原「升级 Ruoyu.Admin、`ADMIN` 应用 PerApplication 收敛」两项已随 Ruoyu.Admin 停用作废；管理员调用改由 Portal 管理端发出。启用顺序、联测与回滚演练属 [IKIZY0](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY0) 切片③；本节不宣称已启用或已演练。
 
 **独立部署者责任**：
 
 - 匿名业务 API（`/api/*`）**不得暴露公网**；窗口期间的访问控制完全依赖网络边界。
-- 启用 strict 前须为每个调用方备妥：受信 `IdentityService:Issuer`（及可选 `AdditionalValidIssuers`）、共忍受众 `Audience`、Admin 直连调用方的 `AdminAudience`（=其 AppId），以及经 `Authority` 的 JWKS 发现（HTTPS，或隔离 HTTP 环境显式 `RequireHttpsMetadata=false`）；issuer/受众/JWKS 与凭据的保管责任在部署者。
+- 启用 strict 前须为每个调用方备妥：受信 `IdentityService:Issuer`（及可选 `AdditionalValidIssuers`）、共忍受众 `Audience`、Portal 管理端调用方的 `AdminAudience`（=各管理端 AppId），以及经 `Authority` 的 JWKS 发现（HTTPS，或隔离 HTTP 环境显式 `RequireHttpsMetadata=false`）；issuer/受众/JWKS 与凭据的保管责任在部署者。
 - strict 启用后，未携带有效令牌的调用方（含旧脚本与自定义集成）将收到 401——先完成调用方升级与跨服务联测再启用。
 
 共享 Consul 配置承载：
@@ -345,7 +345,6 @@ Mistake Host 无条件注册 `S3OssService`（直连 S3 兼容存储），不存
 
 | Portal | 配置键 | 仓库部署示例 |
 |--------|--------|--------------|
-| Ruoyu.Admin | `MistakeService:Url` | `http://192.168.100.10:5007` |
 | teacher_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
 | user_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
 | assistant_portal | `MistakeService:Url` | `http://192.168.100.10:5007` |
@@ -444,7 +443,6 @@ curl http://<host>:5007/               # 兼容保留："Mistake WebAPI host is 
 | 1 | student → mistake 连通 | student 端触发上传，观察 mistake 日志是否收到 `SubmitMistakeUpload` | 检查 student 的 mistake 地址配置、HTTP 端口是否正确 |
 | 2 | portal → mistake 连通 | 通过 portal 页面查询错题列表，观察是否返回数据 | 检查 portal 的 mistake 地址配置 |
 | 3 | mistake → OSS 操作 | 执行 `CompleteUploadReview`，确认图片从 `uploads/` 迁移到 `mistakes/` | 检查 OSS 配置和桶权限 |
-| 4 | Ruoyu.Admin OSS 审计 | 触发 `GetAllReferencedImagePaths`，确认返回图片路径列表 | 检查 Ruoyu.Admin 的 mistake 地址配置 |
 
 ### 推荐联调顺序
 
@@ -454,8 +452,6 @@ student → mistake（SubmitMistakeUpload）
 teacher_portal → mistake（GetPendingReviewUploads → ReviewMistakeItem）
     ↓
 teacher_portal → mistake → OSS（CompleteUploadReview）
-    ↓
-Ruoyu.Admin → mistake（GetMistakeItemList、GetAllReferencedImagePaths）
     ↓
 user_portal → mistake（GetMistakeItemList、DeleteMistakeItem）
 ```
