@@ -14,9 +14,9 @@ Mistake 直连 `IOssService`；生产/Local 使用共享 `S3OssService`，显式
 
 legacy 未受管路径沿现有 `mistakes/`、size 与缩略图规则；是否启用兼容窗口由部署身份配置控制。受管原图及 Verified 选定目标始终要求 JWT 身份与真实 item 的 student 归属/Staff审核/Admin授权，只读 full，签名前 Download 核验原长度/SHA256。关闭 source/target/strict/resource 开关不能使受管 namespace 匿名；未知、候选、失配或伪造引用不签名。learner 归属依赖不可用返回 503。
 
-## Storage Audit 边界
+## 对象清理边界
 
-当前完整引用使用 [StorageReferences v1](../../../../../../docs/integrations/StorageReferences.md)，覆盖 legacy return 的原图、固定 payload、所有对象与所有候选；deletionAuthorized 始终 false。不得把旧 `GetAllReferencedImagePaths` 名称当作 API，或仅凭业务列表推断全部引用；不授权物理删除 source-targets、return candidates 或来源 pins。部署者负责阻止独立外部 writer/GC 触碰它们；本服务凭据边界不能限制其他凭据持有者。
+平台不再提供引用快照或存储审计（ADR-0030 第 4 步删除 StorageReferences v1）。不得把旧 `GetAllReferencedImagePaths` 名称当作 API，或仅凭业务列表推断全部引用；不授权物理删除 source-targets、return candidates 或来源 pins。部署者负责阻止独立外部 writer/GC 触碰它们；本服务凭据边界不能限制其他凭据持有者。
 
 专项验证见 [SourceTargets](../../modules/SourceTargets.md#配置数据库与验证)。legacy 路径规则测试与实际三 mover 无副作用拒绝测试在 Mistake Service/Domain 测试项目；它们不把旧 Copy→Delete 顺序称为数据安全或跨资源幂等保证。
 

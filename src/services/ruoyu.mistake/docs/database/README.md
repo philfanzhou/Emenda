@@ -64,4 +64,4 @@ PostgreSQL（Npgsql 提供程序）。
 
 - [来源入库数据](./tables/source_intake.md)
 
-[StorageReferences v1](../../../../../docs/integrations/StorageReferences.md)包含本域引用全集、shared snapshot schema/迁移、配置与验证门禁。
+StorageReferences v1 已按 [ADR-0030](../../../../../docs/adr/0030-portal-hosted-administration.md) 第 4 步删除：迁移 `20261107000001_DropStorageReferenceSnapshots` 删除 `storage_reference_snapshot` 表与 `guard_storage_reference_snapshot` 函数（快照会过期、不是业务数据，非空也直接删除；Down 重建空表），它是 schema 版本 14；版本 10–13 的精确 schema 检查仍要求该表。

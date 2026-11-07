@@ -1,4 +1,4 @@
-using Ruoyu.Study.Common.StorageReferences;
+using Ruoyu.Study.Common.Database;
 using System.Data.Common;
 namespace Ruoyu.Study.Mistake.Database;
 
@@ -43,7 +43,7 @@ internal static class SourceIntakeCatalog
         if(targets) foreach(var pair in SourceTargetSchema.Bodies) bodies.Add(pair.Key,pair.Value);
         if(returns) { bodies["guard_managed_item"]=SourceReturnSchema.ManagedItemBody; foreach(var pair in SourceReturnSchema.Bodies) bodies.Add(pair.Key,pair.Value); }
         if(handoffs) foreach(var pair in SourceHandoffSchema.Bodies) bodies[pair.Key]=pair.Value;
-        if(references) bodies.Add("guard_storage_reference_snapshot",StorageReferenceSchema.GuardBody);
+        if(references) bodies.Add("guard_storage_reference_snapshot",RetiredStorageReferenceSchema.GuardBody);
         if(archive) bodies.Add("guard_legacy_archive",LegacyArchiveSchema.GuardBody);
         if(legacyReturns) foreach(var pair in LegacyReturnSchema.Bodies) bodies.Add(pair.Key,pair.Value);
         if(layout) foreach(var pair in LayoutJobSchema.Bodies) bodies.Add(pair.Key,pair.Value);
@@ -79,7 +79,7 @@ internal static class SourceIntakeCatalog
         if(targets) expected.UnionWith(SourceTargetSchema.Triggers);
         if(returns) expected.UnionWith(SourceReturnSchema.Triggers);
         if(handoffs) expected.UnionWith(SourceHandoffCatalog.Triggers);
-        if(references) expected.UnionWith(StorageReferenceSchema.Triggers);
+        if(references) expected.UnionWith(RetiredStorageReferenceSchema.Triggers);
         if(archive) expected.UnionWith(LegacyArchiveSchema.Triggers);
         if(legacyReturns) expected.UnionWith(LegacyReturnSchema.Triggers);
         if(layout) expected.UnionWith(LayoutJobSchema.Triggers);

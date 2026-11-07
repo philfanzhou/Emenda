@@ -371,63 +371,6 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("layout_request");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Common.StorageReferences.StorageReferenceSnapshot", b =>
-                {
-                    b.Property<Guid>("SnapshotId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("snapshot_id");
-
-                    b.Property<string>("Coverage")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("coverage");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<int>("EntryCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("entry_count");
-
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
-                    b.Property<string>("Keys")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("keys");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("provider");
-
-                    b.Property<string>("Requester")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("requester");
-
-                    b.Property<string>("Sha256")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("sha256");
-
-                    b.Property<string>("Version")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("version");
-
-                    b.HasKey("SnapshotId")
-                        .HasName("PK_storage_reference_snapshot");
-
-                    b.HasIndex("ExpiresAt")
-                        .HasDatabaseName("IX_storage_reference_snapshot_expiry");
-
-                    b.ToTable("storage_reference_snapshot", (string)null);
-                });
-
             modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", b =>
                 {
                     b.Property<Guid>("AttemptId")

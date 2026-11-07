@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
-using Ruoyu.Study.Common.StorageReferences;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Database.Repositories;
 using static Ruoyu.Study.Mistake.Service.Tests.LegacyShapeFixtures;
@@ -50,7 +49,7 @@ public sealed class LegacySchemaConvergencePostgresTests
             await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
 
         await using var check = database.CreateContext();
-        Assert.Equal(13, (await check.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(14, (await check.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(before.Items.Order(), (await check.MistakeItems.Select(row => row.Id).ToListAsync()).Order());
         var orphanPractices = before.Practices.Where(p => !before.Items.Contains(p.Parent)).Select(p => p.Id).ToHashSet();
         var orphanLogs = before.Logs.Where(l => !before.Items.Contains(l.Parent)).Select(l => l.Id).ToHashSet();
@@ -155,7 +154,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         }));
         var upgraded = Assert.Single(results, result => result.Upgraded);
         Assert.Equal(count, upgraded.ArchivedRows);
-        Assert.All(results.Where(result => !result.Upgraded), result => Assert.Equal(13, result.FromVersion));
+        Assert.All(results.Where(result => !result.Upgraded), result => Assert.Equal(14, result.FromVersion));
         Assert.Equal(count, (await database.ArchiveAsync()).Count);
     }
 
@@ -239,7 +238,7 @@ public sealed class LegacySchemaConvergencePostgresTests
 
         await using var retry = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
-        Assert.Equal(13, (await retry.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(14, (await retry.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(count, (await database.ArchiveAsync()).Count);
     }
 
@@ -275,7 +274,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         await using var context = database.CreateContext(commandTimeout: 1);
         var configuredTimeout = context.Database.GetCommandTimeout();
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        Assert.Equal(13, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(configuredTimeout, context.Database.GetCommandTimeout());
     }
 
@@ -296,7 +295,7 @@ public sealed class LegacySchemaConvergencePostgresTests
             await command.ExecuteNonQueryAsync();
         var result = await upgrade;
         Assert.Equal(3, result.FromVersion);
-        Assert.Equal(13, result.ToVersion);
+        Assert.Equal(14, result.ToVersion);
         Assert.Equal(1, result.ResetImagePaths);
     }
 
@@ -350,7 +349,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         // Test the archive migration's own atomic downgrade; EF commits separate migrations independently.
         await context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration);
         var before = await database.SnapshotAsync();
-        await Assert.ThrowsAnyAsync<Exception>(() => context.GetService<IMigrator>().MigrateAsync(StorageReferenceSchema.MistakeMigration));
+        await Assert.ThrowsAnyAsync<Exception>(() => context.GetService<IMigrator>().MigrateAsync(StorageReferenceRemovalSchema.Added));
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(3, (await database.ArchiveAsync()).Count);
     }
@@ -361,13 +360,38 @@ public sealed class LegacySchemaConvergencePostgresTests
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        await context.GetService<IMigrator>().MigrateAsync(StorageReferenceSchema.MistakeMigration);
+        await context.GetService<IMigrator>().MigrateAsync(StorageReferenceRemovalSchema.Added);
         Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.legacy_archive') IS NOT NULL"));
         Assert.Equal(0L, await database.ScalarAsync<long>("SELECT count(*) FROM pg_proc WHERE proname='guard_legacy_archive'"));
         var result = await DatabaseInitializer.UpgradeToTargetAsync(context);
         Assert.Equal(10, result.FromVersion);
-        Assert.Equal(13, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
+    }
+
+    [Fact]
+    public async Task VersionThirteenDropsTheRetiredReferenceTableAndDowngradeRecreatesIt()
+    {
+        // ADR-0030 step 4: snapshots are not business data, so a non-empty table is dropped too.
+        await using var database = await IsolatedDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        await context.GetService<IMigrator>().MigrateAsync(LayoutJobSchema.Migration);
+        await database.ExecuteAsync("""
+            INSERT INTO storage_reference_snapshot (snapshot_id,requester,provider,version,created_at,expires_at,coverage,keys,entry_count,sha256)
+            VALUES ('6f1c2d3e-4a5b-4c6d-8e7f-001122334455','ruoyu.admin.storage-audit','mistake','storage-references-v1',now(),now()+interval '1 hour','item','[]'::jsonb,0,'x')
+            """);
+
+        var result = await DatabaseInitializer.UpgradeToTargetAsync(context);
+
+        Assert.Equal(13, result.FromVersion);
+        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.storage_reference_snapshot') IS NOT NULL"));
+        Assert.Equal(0L, await database.ScalarAsync<long>("SELECT count(*) FROM pg_proc WHERE proname='guard_storage_reference_snapshot'"));
+
+        await context.GetService<IMigrator>().MigrateAsync(LayoutJobSchema.Migration);
+        Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('public.storage_reference_snapshot') IS NOT NULL"));
+        Assert.Equal(13, (await DatabaseInitializer.UpgradeToTargetAsync(context)).FromVersion);
+        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     private static string[] StringArrayOrEmpty(string value)
@@ -411,7 +435,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         {
             var result = await DatabaseInitializer.UpgradeToTargetAsync(context);
             Assert.Equal(count, result.ArchivedRows);
-            Assert.Equal(13, (await context.Database.GetAppliedMigrationsAsync()).Count());
+            Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
         }
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.mistake') IS NOT NULL"));
         Assert.Equal(oldPractices, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'image_paths')::text FROM mistake_practice p"));

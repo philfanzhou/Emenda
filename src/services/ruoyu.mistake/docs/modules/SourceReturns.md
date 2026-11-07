@@ -44,7 +44,7 @@ receipt 必须来自正常 TLS 和 RS256 uploads.return 服务身份，核对 op
 
 `Mistake:LegacyReturns:Enabled` 默认 false，只接受 bool。true 要求 Student、strict API、resource auth、有效 RS256 签发与正常 HTTPS，在 DB/OSS 初始化和升级命令前校验；无需同时开启 intake、targets 或 SourceReturns。false 保留授权读取、永久 guards/完整引用和已有 Completed 精确同请求重放，未完成同请求503且状态不变、canonical 冲突409。合法 true 注册既有引擎与 worker，启动时及每20秒扫描 Capturing/Prepared/Sending，同 operation 继续；Conflict 不自动重建。
 
-没有跨 PG/S3 原子提交、即时停止非取消 IO、历史缺失记录修复或 GC 保证。退回图是 Student 可编辑正常 uploads，后续合法 COW/删除/再分类可以发生，历史选定关联不授权重写或回收。完整 Storage Audit 合同前必须隔离旧 movers 和外部破坏性 GC；独立 DB/OSS 管理凭据不在应用保证内。
+没有跨 PG/S3 原子提交、即时停止非取消 IO、历史缺失记录修复或 GC 保证。退回图是 Student 可编辑正常 uploads，后续合法 COW/删除/再分类可以发生，历史选定关联不授权重写或回收。必须隔离旧 movers 和外部破坏性 GC；独立 DB/OSS 管理凭据不在应用保证内。
 
 ## 验证入口
 

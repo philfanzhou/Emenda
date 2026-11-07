@@ -58,9 +58,9 @@ Student 当前记录可能因完整消费而被移除，或保留其他分类图
 
 ### 完整引用与只读对账
 
-[StorageReferences v1](../../../../../docs/integrations/StorageReferences.md)从 Student、Mistake、Homework 各自捕获完整持久引用快照并分页返回。验证涵盖所有状态的条目、练习、来源快照、候选、退回和交接引用；对象键精确区分大小写和 Unicode。任一来源不可达、页缺失、解析失败、摘要或完整性不符，都不能返回部分快照或成功空集。
+StorageReferences v1 引用快照已按 ADR-0030 第 4 步删除，不再有跨服务引用快照验证。
 
-实际 Admin 消费方收齐并验证三方全部页后才能进行对象列举。结果只能表示“未观察到引用”；`deletionAuthorized=false` 恒成立，完整快照也不授权删除或复制。引用审计不是普通条目分页拼接，也没有旧 `GetAllReferencedImagePaths` RPC 可调用。
+没有旧 `GetAllReferencedImagePaths` RPC；不得仅凭业务列表推断全部引用，也不得据此删除对象。
 
 `GET /api/mistakes/reconciliation` 的[对账报告](../modules/SourceReconciliation.md)只报告缺失/冲突/待恢复/未受管引用及修复预览。读取失败不输出部分报告；报告前后业务数据和对象字节不变。没有可信旧来源时标为未知，不据此补建记录、搬图或删图。
 
@@ -76,7 +76,6 @@ Student 当前记录可能因完整消费而被移除，或保留其他分类图
 | 多图退回、各提交阶段故障、回执丢失、取消/晚到 Copy、并发写入、恢复与备份 | `SourceReturnPostgresTests`、`SourceReturnRecoveryPostgresTests`、`SourceReturnS3Tests`、`SourceReturnStartupTests`；[退回验证](../modules/SourceReturns.md#验证入口)及其中的真实 BFF/ReviewDetail 检查 |
 | 旧题完整意图、固定字节/载荷、并发租约、取消/晚到 Copy、生产进程重启、关闭零推进与永久保护 | `LegacyReturnPostgresTests`、`LegacyReturnEnginePostgresTests`、`LegacyReturnLeasePostgresTests`、`LegacyReturnStartupTests`、`LegacyReturnActivationTests`、`LegacyReturnProductionTests`；[同一退回验证入口](../modules/SourceReturns.md#验证入口)及其中的实际 BFF/ReviewDetail 检查 |
 | 完整封口、混合确认/退回、条件消费、两个实例/新 revision、取消/重启与关闭开关 | `SourceHandoffPostgresTests`、`SourceHandoffRecoveryPostgresTests`、`SourceHandoffS3Tests`、`SourceHandoffStartupTests`；[交接验证](../modules/SourceHandoffs.md#验证策略) |
-| 全部引用、坏持久数据/部分页、取消和禁止物理清理 | [公共引用合同测试](../../../../ruoyu.common/test/Ruoyu.Study.Common.Tests/StorageReferenceContractTests.cs)、[Student 引用 PG 测试](../../../ruoyu.student/src/Tests/StorageReferencePostgresTests.cs)；[三方提供者与实际 Admin 的联合验证要求](../../../../../docs/integrations/StorageReferences.md) |
 | 对账异常、读取失败、截断计数与零写入 | `SourceReconciliationPostgresTests`；[对账验证](../modules/SourceReconciliation.md#验证策略) |
 | 重分析提交未知、输入变化、独立 worker、取消与旧租约失效 | [ReanalyzeLeasePostgresTests](../../src/Tests/Ruoyu.Study.Mistake.Service.Tests/ReanalyzeLeasePostgresTests.cs)、[ReanalyzeJobServiceTests](../../src/Tests/Ruoyu.Study.Mistake.Domain.Tests/ReanalyzeJobServiceTests.cs) |
 | 开关缺失/矛盾、错误身份/地址、正常 TLS 与能力关闭 | `SourceIntakeStartupTests`、`SourceReturnStartupTests`、`SourceHandoffStartupTests`；[隔离运行](./IsolatedDeployVerification.md)与[部署](./Deployment.md) |

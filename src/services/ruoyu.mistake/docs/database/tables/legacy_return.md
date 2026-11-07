@@ -28,7 +28,7 @@
 
 数据库日志/guards已可用；公开入口和安全启停沿 [SourceReturns](../../modules/SourceReturns.md)；LegacyReturns 默认 false，只读禁用和 Completed 精确认证重放保持，合法 true 接入同一恢复引擎与20秒 worker。关闭时须保留日志、guards和完整图片引用，不回到先删除的旧路径。有任一新操作时 Down 拒绝；回退保留认识当前 schema 的 binary 并停止推进。恢复使用整个数据库 pg_dump/restore，包含三表、业务、旧归档、迁移 history、所有函数/触发器和永久 pins；不能只导出载荷或图片路径。
 
-[StorageReferences v1](../../../../../../docs/integrations/StorageReferences.md) 的既有 return/return-object/return-attempt coverage 同时覆盖新操作原图、固定 payload、全部 object 和全部 attempt，包括 Unknown/未选/Completed。wire版本、固定coverage、摘要算法和 deletionAuthorized=false 不变；缺表、坏行或数据库故障不得发布部分快照。
+原图、固定 payload、全部 object 和全部 attempt（包括 Unknown/未选/Completed）都是在用引用；本服务不据此删除任何对象。（原 StorageReferences v1 快照已随 ADR-0030 删除。）
 
 验证用例为 `LegacyReturnJournalPostgresTests`，用任务自有 PostgreSQL 15、随机库与高位端口执行版本升级、状态约束、并发争抢、原子完成、完整引用和整库备份恢复；专项跳过不算通过。
 
