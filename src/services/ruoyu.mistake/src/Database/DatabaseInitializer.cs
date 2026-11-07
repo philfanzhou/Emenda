@@ -1,4 +1,4 @@
-using Ruoyu.Study.Common.StorageReferences;
+using Ruoyu.Study.Common.Database;
 using System.Data;
 using System.Data.Common;
 using System.Text.Json;
@@ -17,7 +17,7 @@ public static class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
-    private const int TargetVersion = 13;
+    private const int TargetVersion = 14;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -247,9 +247,9 @@ public static class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(LayoutJobSchema.Migration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(StorageReferenceRemovalSchema.Migration, cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {LayoutJobSchema.Migration}");
+                steps.Add($"migrate to {StorageReferenceRemovalSchema.Migration}");
             }
 
             archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -350,21 +350,22 @@ public static class DatabaseInitializer
         var sourceTargetHistory=new HashSet<string>(intakeHistory,StringComparer.Ordinal) { $"{SourceTargetSchema.Migration}|8.0.11" };
         var sourceReturnHistory=new HashSet<string>(sourceTargetHistory,StringComparer.Ordinal) { $"{SourceReturnSchema.Migration}|8.0.11" };
         var sourceHandoffHistory=new HashSet<string>(sourceReturnHistory,StringComparer.Ordinal) { $"{SourceHandoffSchema.Migration}|8.0.11" };
-        var referenceHistory = new HashSet<string>(sourceHandoffHistory,StringComparer.Ordinal) { $"{StorageReferenceSchema.MistakeMigration}|8.0.11" };
+        var referenceHistory = new HashSet<string>(sourceHandoffHistory,StringComparer.Ordinal) { $"{StorageReferenceRemovalSchema.Added}|8.0.11" };
         var archiveHistory = new HashSet<string>(referenceHistory, StringComparer.Ordinal) { $"{LegacyArchiveSchema.Migration}|8.0.11" };
         var legacyReturnHistory = new HashSet<string>(archiveHistory, StringComparer.Ordinal) { $"{LegacyReturnSchema.Migration}|8.0.11" };
         var layoutJobHistory = new HashSet<string>(legacyReturnHistory, StringComparer.Ordinal) { $"{LayoutJobSchema.Migration}|8.0.11" };
+        var referenceRemovalHistory = new HashSet<string>(layoutJobHistory, StringComparer.Ordinal) { $"{StorageReferenceRemovalSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
 
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,version>=10,version>=11,version>=12,version>=13);
+            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
@@ -375,7 +376,7 @@ public static class DatabaseInitializer
         if (version >= 7) expectedTables.UnionWith(SourceTargetCatalog.Tables);
         if (version >= 8) expectedTables.UnionWith(SourceReturnCatalog.Tables);
         if (version >= 9) expectedTables.UnionWith(SourceHandoffCatalog.Tables);
-        if (version >= 10) expectedTables.Add("storage_reference_snapshot");
+        if (StorageReferenceRemovalSchema.Present(version)) expectedTables.Add(RetiredStorageReferenceSchema.Table);
         if (version >= 11) expectedTables.UnionWith(LegacyArchiveSchema.Relations);
         if (version >= 12) expectedTables.UnionWith(LegacyReturnCatalog.Tables);
         if (version >= 13) expectedTables.UnionWith(LayoutJobCatalog.Tables);
@@ -394,7 +395,7 @@ public static class DatabaseInitializer
         if (version >= 7) expectedColumns.UnionWith(SourceTargetCatalog.Columns);
         if (version >= 8) expectedColumns.UnionWith(SourceReturnCatalog.Columns);
         if (version >= 9) expectedColumns.UnionWith(SourceHandoffCatalog.Columns);
-        if (version >= 10) expectedColumns.UnionWith(StorageReferenceSchema.Columns);
+        if (StorageReferenceRemovalSchema.Present(version)) expectedColumns.UnionWith(RetiredStorageReferenceSchema.Columns);
         if (version >= 11) expectedColumns.UnionWith(LegacyArchiveSchema.Columns);
         if (version >= 12) expectedColumns.UnionWith(LegacyReturnCatalog.Columns);
         if (version >= 13) expectedColumns.UnionWith(LayoutJobCatalog.Columns);
@@ -449,7 +450,7 @@ public static class DatabaseInitializer
             """, cancellationToken).ConfigureAwait(false);
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,version>=10,version>=11,version>=12,version>=13);
+            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (triggers.Count > 0) return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");
@@ -469,7 +470,7 @@ public static class DatabaseInitializer
         if (version >= 7) expectedIndexes.UnionWith(SourceTargetCatalog.Indexes);
         if (version >= 8) expectedIndexes.UnionWith(SourceReturnCatalog.Indexes);
         if (version >= 9) expectedIndexes.UnionWith(SourceHandoffCatalog.Indexes);
-        if (version >= 10) expectedIndexes.UnionWith(StorageReferenceSchema.Indexes);
+        if (StorageReferenceRemovalSchema.Present(version)) expectedIndexes.UnionWith(RetiredStorageReferenceSchema.Indexes);
         if (version >= 11) expectedIndexes.UnionWith(LegacyArchiveSchema.Indexes);
         if (version >= 12) expectedIndexes.UnionWith(LegacyReturnCatalog.Indexes);
         if (version >= 13) expectedIndexes.UnionWith(LayoutJobCatalog.Indexes);
@@ -513,7 +514,7 @@ public static class DatabaseInitializer
         if (version >= 7) expectedConstraints.UnionWith(SourceTargetCatalog.Constraints);
         if (version >= 8) expectedConstraints.UnionWith(SourceReturnCatalog.Constraints);
         if (version >= 9) expectedConstraints.UnionWith(SourceHandoffCatalog.Constraints);
-        if (version >= 10) expectedConstraints.UnionWith(StorageReferenceSchema.Constraints);
+        if (StorageReferenceRemovalSchema.Present(version)) expectedConstraints.UnionWith(RetiredStorageReferenceSchema.Constraints);
         if (version >= 11) expectedConstraints.UnionWith(LegacyArchiveSchema.Constraints);
         if (version >= 12) expectedConstraints.UnionWith(LegacyReturnCatalog.Constraints);
         if (version >= 13) expectedConstraints.UnionWith(LayoutJobCatalog.Constraints);

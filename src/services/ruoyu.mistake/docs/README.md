@@ -12,5 +12,3 @@ ruoyu.mistake 是错题本服务，负责错题提交、审核、管理、练习
 | [database/](./database/README.md) | 数据结构与数据主责 |
 | [development/](./development/README.md) | 开发执行支持 |
 
-
-[StorageReferences v1](../../../../docs/integrations/StorageReferences.md)：本域完整持久引用快照、专属服务身份与升级/恢复。

@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Common.StorageReferences;
 using Ruoyu.Study.Mistake.Database;
 using Ruoyu.Study.Mistake.Domain.Services;
 using Ruoyu.Study.Mistake.Service.Intake;
@@ -13,8 +12,7 @@ namespace Ruoyu.Study.Mistake.Host.Services.Intake;
 /// <summary>
 /// Read-only reconciliation of the mistake reference set against the persisted
 /// managed-chain state and the actual OSS bytes. The whole database state is
-/// computed inside one REPEATABLE READ READ ONLY PostgreSQL transaction (the
-/// same isolation mode as StorageReferences capture); every referenced key is
+/// computed inside one REPEATABLE READ READ ONLY PostgreSQL transaction; every referenced key is
 /// verified by an actual download, never by an existence listing. The report
 /// never writes anything and never advances any worker state.
 /// </summary>
@@ -68,8 +66,7 @@ public sealed class SourceReconciliationService(DbContextOptions<MistakeDbContex
             if(!expectations.TryGetValue(key,out var set)) expectations[key]=set=new HashSet<(long,string)>();
             set.Add((length,sha));
         }
-        // Same fail-closed parsing rules as the StorageReferences v1 coverage query.
-        static string[] Parse(string format,string value)=>[.. StorageReferenceSource.Parse(format,value)];
+        static string[] Parse(string format,string value)=>ReferencePaths.Parse(format,value);
         long? Age(DateTimeOffset? since)=>since.HasValue ? (long)(generated-since.Value).TotalSeconds : null;
 
         var items=new List<ItemRow>();
