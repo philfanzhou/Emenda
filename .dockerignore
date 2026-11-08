@@ -1,0 +1,17 @@
+.git
+.gitignore
+.agent
+.claude
+.trae
+script
+testcode
+docs
+node_modules
+**/bin
+**/obj
+**/node_modules
+**/wwwroot
+dist
+.vs
+*.user
+*.suo
