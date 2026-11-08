@@ -1,14 +1,31 @@
-# ruoyu.mistake 文档
+# Emenda Documentation
 
-ruoyu.mistake 是错题本服务，负责错题提交、审核、管理、练习与处理日志能力。
+Emenda is a self-hosted, AI-driven mistake-management service for learning platforms,
+extracted from the Ruoyu.Study platform and now an independent open-source product.
 
-## 入口
+## Authoritative product documentation
 
-| 入口 | 用途 |
-|------|------|
-| [overview/](./overview/README.md) | 服务级总览 |
-| [modules/](./modules/README.md) | 内部业务功能 |
-| [Integration/](./Integration/README.md) | 外部系统交互 |
-| [database/](./database/README.md) | 数据结构与数据主责 |
-| [development/](./development/README.md) | 开发执行支持 |
+| Document | Purpose |
+|---|---|
+| [README.md](../README.md) | Product overview, standalone deployment, configuration and the intake API |
+| [SECURITY.md](../SECURITY.md) | Reporting a vulnerability and deployment security expectations |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | Local build/test workflow and pull-request expectations |
+| [Standalone deployment](./development/StandaloneDeployment.md) | Container deployment, required configuration, health checks and API examples |
+| [OpenAPI contract](./Integration/mistake-http-v3.json) | The versioned machine-readable HTTP contract served at `/contracts/mistake-http-v3.json` |
 
+## Inherited service documentation
+
+The directories below were inherited from the Ruoyu.Study Mistake service. They still
+describe the platform-era implementation (including stale gRPC-era descriptions) and are
+being rewritten for the standalone product. Treat `README.md` as authoritative for the
+product surface until a document says otherwise.
+
+| Entry | Purpose |
+|---|---|
+| [overview/](./overview/README.md) | Service-level overview inherited from the platform |
+| [modules/](./modules/README.md) | Internal business capabilities |
+| [Integration/](./Integration/README.md) | External system interactions |
+| [database/](./database/README.md) | Data structures and ownership |
+| [development/](./development/README.md) | Development and verification entry points |
+
+The domain terminology inherited from the platform is in [CONTEXT.md](../CONTEXT.md).
