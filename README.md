@@ -9,22 +9,30 @@ in this repository.
 
 ## Status
 
-Extraction baseline, work in progress. The repository currently keeps the source layout of
-the platform repository:
-
-- `src/services/ruoyu.mistake/` — service source, versioned HTTP contract and documentation
-
-Follow-up changes will move the code to the product layout, vendor the shared components the
-service needs to build on its own, and replace the platform-specific integration points
-(caller authentication, mistake intake, configuration bootstrap) with product boundaries.
+Extraction baseline, work in progress. The source has been moved to the product layout and
+the components the service needs to build on its own have been vendored into this
+repository. The platform-specific integration points (caller authentication, mistake intake,
+configuration bootstrap) and the Emenda naming are follow-up changes.
 
 Do not treat this repository as a deployable product until the README says otherwise.
 
-## Requirements
+## Layout
 
-- .NET 10 SDK
-- PostgreSQL 15 (database-backed tests)
-- Docker (image build; not required for the .NET build and unit tests)
+- `src/` — service solution (`Host`, `Service`, `Domain`, `Database`, `StudentClient`, `Tests`)
+- `docs/` — versioned HTTP contract and documentation
+- `manifest/` — minimal source package manifest used by the build rehearsal
+- `vendor/` — shared components vendored from Ruoyu.Study and maintained independently here
+- `start.sh` — container start entry point
+
+## Build
+
+```bash
+dotnet build src/Ruoyu.Study.Mistake.sln -c Release
+dotnet test src/Tests/Ruoyu.Study.Mistake.Domain.Tests/Ruoyu.Study.Mistake.Domain.Tests.csproj -c Release
+```
+
+The database-backed suites need PostgreSQL 15 and a dedicated connection; the image build
+needs Docker.
 
 ## License
 

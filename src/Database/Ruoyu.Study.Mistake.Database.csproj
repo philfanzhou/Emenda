@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\ruoyu.common\backend\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
+    <ProjectReference Include="..\..\vendor\Ruoyu.Study.Common\Ruoyu.Study.Common.csproj" />
     <ProjectReference Include="..\Domain\Ruoyu.Study.Mistake.Domain.csproj" />
   </ItemGroup>
 

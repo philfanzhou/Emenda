@@ -5,7 +5,6 @@
 .trae
 script
 testcode
-docs
 node_modules
 **/bin
 **/obj
