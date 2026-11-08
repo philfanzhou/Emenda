@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service.StudentIntegration;
+namespace Emenda.Service.StudentIntegration;
 
 /// <summary>
 /// Fixed-at-startup Student integration capability. The Host resolves and

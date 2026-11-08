@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using Ruoyu.Study.Mistake.Database;
+using Emenda.Database;
 
 #nullable disable
 
-namespace Ruoyu.Study.Mistake.Database.Migrations
+namespace Emenda.Database.Migrations
 {
     [DbContext(typeof(MistakeDbContext))]
     partial class MistakeDbContextModelSnapshot : ModelSnapshot
@@ -22,7 +22,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutJobEntity", b =>
                 {
                     b.Property<Guid>("JobId")
                         .HasColumnType("uuid")
@@ -119,7 +119,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("layout_job");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobImageEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutJobImageEntity", b =>
                 {
                     b.Property<Guid>("JobId")
                         .HasColumnType("uuid")
@@ -172,7 +172,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("layout_job_image");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutResultEntity", b =>
                 {
                     b.Property<Guid>("ResultId")
                         .HasColumnType("uuid")
@@ -293,7 +293,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("layout_result");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultRegionEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutResultRegionEntity", b =>
                 {
                     b.Property<Guid>("ResultId")
                         .HasColumnType("uuid")
@@ -329,7 +329,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("layout_result_region");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutRequestEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutRequestEntity", b =>
                 {
                     b.Property<string>("Actor")
                         .HasColumnType("text")
@@ -371,7 +371,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("layout_request");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LegacyReturnAttemptEntity", b =>
                 {
                     b.Property<Guid>("AttemptId")
                         .HasColumnType("uuid")
@@ -427,7 +427,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("legacy_return_attempt");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LegacyReturnEntity", b =>
                 {
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid")
@@ -539,7 +539,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("legacy_return");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnObjectEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LegacyReturnObjectEntity", b =>
                 {
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid")
@@ -574,7 +574,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("legacy_return_object");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.MistakeItemEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -651,7 +651,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("mistake_item");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.MistakePracticeEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -699,7 +699,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("mistake_practice");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.ProcessLogEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -737,7 +737,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("process_log");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ReanalyzeJobEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.ReanalyzeJobEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -831,7 +831,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("reanalyze_job");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceHandoffEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceHandoffEntity", b =>
                 {
                     b.Property<Guid>("SourceUploadId")
                         .HasColumnType("uuid")
@@ -927,7 +927,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_handoff");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceIntakeEntity", b =>
                 {
                     b.Property<Guid>("SourceUploadId")
                         .HasColumnType("uuid")
@@ -978,7 +978,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_intake");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeGroupEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceIntakeGroupEntity", b =>
                 {
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid")
@@ -1038,7 +1038,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_intake_group");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeRequestEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceIntakeRequestEntity", b =>
                 {
                     b.Property<string>("Actor")
                         .HasColumnType("text")
@@ -1077,7 +1077,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_intake_request");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnAttemptEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceReturnAttemptEntity", b =>
                 {
                     b.Property<Guid>("AttemptId")
                         .HasColumnType("uuid")
@@ -1133,7 +1133,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_return_attempt");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceReturnEntity", b =>
                 {
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid")
@@ -1252,7 +1252,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_return");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnObjectEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceReturnObjectEntity", b =>
                 {
                     b.Property<Guid>("ItemId")
                         .HasColumnType("uuid")
@@ -1293,7 +1293,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_return_object");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetAttemptEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceTargetAttemptEntity", b =>
                 {
                     b.Property<Guid>("AttemptId")
                         .HasColumnType("uuid")
@@ -1351,7 +1351,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_target_attempt");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetObjectEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceTargetObjectEntity", b =>
                 {
                     b.Property<Guid>("SourceUploadId")
                         .HasColumnType("uuid")
@@ -1396,9 +1396,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("source_target_object");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutJobEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceIntakeEntity", null)
                         .WithMany()
                         .HasForeignKey("SourceUploadId", "ContentRevision")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1406,9 +1406,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_layout_job_source_intake");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutJobImageEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutJobImageEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", null)
+                    b.HasOne("Emenda.Database.Entities.LayoutJobEntity", null)
                         .WithMany()
                         .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1416,9 +1416,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_layout_job_image_layout_job");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutResultEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", null)
+                    b.HasOne("Emenda.Database.Entities.LayoutJobEntity", null)
                         .WithMany()
                         .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1426,9 +1426,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_layout_result_layout_job");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutResultRegionEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutResultRegionEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutResultEntity", null)
+                    b.HasOne("Emenda.Database.Entities.LayoutResultEntity", null)
                         .WithMany()
                         .HasForeignKey("ResultId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1436,9 +1436,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_layout_result_region_layout_result");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LayoutRequestEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LayoutRequestEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LayoutJobEntity", null)
+                    b.HasOne("Emenda.Database.Entities.LayoutJobEntity", null)
                         .WithMany()
                         .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1446,9 +1446,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_layout_request_layout_job");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LegacyReturnAttemptEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnObjectEntity", null)
+                    b.HasOne("Emenda.Database.Entities.LegacyReturnObjectEntity", null)
                         .WithMany()
                         .HasForeignKey("ItemId", "Position")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1456,15 +1456,15 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_legacy_return_attempt_object");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LegacyReturnEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", null)
+                    b.HasOne("Emenda.Database.Entities.ProcessLogEntity", null)
                         .WithMany()
                         .HasForeignKey("FinalLogId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_legacy_return_log");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", null)
+                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", null)
                         .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1472,25 +1472,25 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_legacy_return_item");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnObjectEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.LegacyReturnObjectEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnEntity", null)
+                    b.HasOne("Emenda.Database.Entities.LegacyReturnEntity", null)
                         .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_legacy_return_object_return");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.LegacyReturnAttemptEntity", null)
+                    b.HasOne("Emenda.Database.Entities.LegacyReturnAttemptEntity", null)
                         .WithMany()
                         .HasForeignKey("SelectedAttemptId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_legacy_return_object_selected");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.MistakePracticeEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
+                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", "MistakeItem")
                         .WithMany()
                         .HasForeignKey("MistakeItemId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1499,9 +1499,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.Navigation("MistakeItem");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.ProcessLogEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
+                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", "MistakeItem")
                         .WithMany()
                         .HasForeignKey("MistakeItemId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1510,9 +1510,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.Navigation("MistakeItem");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceHandoffEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceHandoffEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceIntakeEntity", null)
                         .WithMany()
                         .HasForeignKey("SourceUploadId", "ContentRevision")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1520,23 +1520,23 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_source_handoff_intake");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeGroupEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceIntakeGroupEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", null)
+                    b.HasOne("Emenda.Database.Entities.ProcessLogEntity", null)
                         .WithMany()
                         .HasForeignKey("CreatedLogId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_source_intake_group_created_log");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", null)
+                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", null)
                         .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_source_intake_group_item");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceIntakeEntity", null)
                         .WithMany()
                         .HasForeignKey("SourceUploadId", "ContentRevision")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1544,9 +1544,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_source_intake_group_source_intake");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeRequestEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceIntakeRequestEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceIntakeEntity", null)
                         .WithMany()
                         .HasForeignKey("SourceUploadId", "ContentRevision")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1554,9 +1554,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_source_intake_request_source_intake");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnAttemptEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceReturnAttemptEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceReturnObjectEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceReturnObjectEntity", null)
                         .WithMany()
                         .HasForeignKey("ItemId", "Position")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1564,22 +1564,22 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_source_return_attempt_object");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceReturnEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", null)
+                    b.HasOne("Emenda.Database.Entities.ProcessLogEntity", null)
                         .WithMany()
                         .HasForeignKey("FinalLogId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_source_return_log");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeGroupEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceIntakeGroupEntity", null)
                         .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_source_return_group");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceIntakeEntity", null)
                         .WithMany()
                         .HasForeignKey("SourceUploadId", "ContentRevision")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1587,25 +1587,25 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_source_return_intake");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceReturnObjectEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceReturnObjectEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceReturnEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceReturnEntity", null)
                         .WithMany()
                         .HasForeignKey("ItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_source_return_object_return");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceReturnAttemptEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceReturnAttemptEntity", null)
                         .WithMany()
                         .HasForeignKey("SelectedAttemptId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_source_return_object_selected");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetAttemptEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceTargetAttemptEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceTargetObjectEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceTargetObjectEntity", null)
                         .WithMany()
                         .HasForeignKey("SourceUploadId", "ContentRevision", "SourcePath")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1613,15 +1613,15 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                         .HasConstraintName("FK_source_target_attempt_object");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.SourceTargetObjectEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.SourceTargetObjectEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceTargetAttemptEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceTargetAttemptEntity", null)
                         .WithMany()
                         .HasForeignKey("SelectedAttemptId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_source_target_object_selected");
 
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.SourceIntakeEntity", null)
+                    b.HasOne("Emenda.Database.Entities.SourceIntakeEntity", null)
                         .WithMany()
                         .HasForeignKey("SourceUploadId", "ContentRevision")
                         .OnDelete(DeleteBehavior.Restrict)

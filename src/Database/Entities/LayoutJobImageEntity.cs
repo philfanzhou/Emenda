@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Ruoyu.Study.Mistake.Database.Entities;
+namespace Emenda.Database.Entities;
 
 /// <summary>One per-image work item of a layout job (IKQA2O): the exact retained byte
 /// identity (length + SHA-256) verified before every transmission, independent progress

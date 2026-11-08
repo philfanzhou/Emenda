@@ -5,11 +5,11 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Mistake.Domain.Errors;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Repositories;
+using Emenda.Domain.Errors;
+using Emenda.Domain.Models;
+using Emenda.Domain.Repositories;
 
-namespace Ruoyu.Study.Mistake.Domain.Services;
+namespace Emenda.Domain.Services;
 
 public class ReanalyzeJobService : IReanalyzeJobService
 {

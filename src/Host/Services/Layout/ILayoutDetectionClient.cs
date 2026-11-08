@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// One layout-detection input: the exact bytes of a single source image and, when the

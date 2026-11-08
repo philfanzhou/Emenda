@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Health;
+namespace Emenda.Host.Services.Health;
 
 /// <summary>
 /// Anonymous health endpoints (IKJFIX). Both live outside the /api group, so

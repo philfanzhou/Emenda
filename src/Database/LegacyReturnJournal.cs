@@ -1,8 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Mistake.Database.Entities;
+using Emenda.Database.Entities;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>Persists short transactions only. Callers authenticate review requests and verify external bytes and receipts.</summary>
 public sealed class LegacyReturnJournal(DbContextOptions<MistakeDbContext> options)

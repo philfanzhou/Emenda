@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service.StudentIntegration;
+namespace Emenda.Service.StudentIntegration;
 
 public interface IUploadSourceGateway
 {

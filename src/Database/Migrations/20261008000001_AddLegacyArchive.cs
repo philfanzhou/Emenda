@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
-namespace Ruoyu.Study.Mistake.Database.Migrations;
+namespace Emenda.Database.Migrations;
 
 [DbContext(typeof(MistakeDbContext))]
 [Migration(LegacyArchiveSchema.Migration)]

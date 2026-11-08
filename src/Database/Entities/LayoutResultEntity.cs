@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Ruoyu.Study.Mistake.Database.Entities;
+namespace Emenda.Database.Entities;
 
 /// <summary>One accepted layout result for one image of one job generation (IKQA2O).
 /// Insert-only: the first accepted answer per job image wins and a late duplicate is

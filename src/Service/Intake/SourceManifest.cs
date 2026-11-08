@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-namespace Ruoyu.Study.Mistake.Service.Intake;
+namespace Emenda.Service.Intake;
 
 public sealed class SourceManifest
 {

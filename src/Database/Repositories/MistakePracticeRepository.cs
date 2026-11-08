@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Mistake.Database.Entities;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Repositories;
+using Emenda.Database.Entities;
+using Emenda.Domain.Models;
+using Emenda.Domain.Repositories;
 
-namespace Ruoyu.Study.Mistake.Database.Repositories;
+namespace Emenda.Database.Repositories;
 
 public class MistakePracticeRepository : IMistakePracticeRepository
 {

@@ -1,5 +1,5 @@
-using Ruoyu.Study.Mistake.Domain.Models;
-namespace Ruoyu.Study.Mistake.Service.Intake;
+using Emenda.Domain.Models;
+namespace Emenda.Service.Intake;
 
 public interface ISourceIntakeService
 {

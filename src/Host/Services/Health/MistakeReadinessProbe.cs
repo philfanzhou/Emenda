@@ -1,9 +1,9 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Mistake.Database;
+using Emenda.Common.Oss;
+using Emenda.Database;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Health;
+namespace Emenda.Host.Services.Health;
 
 /// <summary>
 /// Startup snapshot of the readiness dependency matrix (IKJFIX): which optional

@@ -3,12 +3,12 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Ruoyu.Study.Common.Authentication;
+using Emenda.Common.Authentication;
 using Microsoft.Extensions.DependencyInjection;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.Intake;
-using Ruoyu.Study.Mistake.Service.Dtos;
-namespace Ruoyu.Study.Mistake.Service;
+using Emenda.Domain.Services;
+using Emenda.Service.Intake;
+using Emenda.Service.Dtos;
+namespace Emenda.Service;
 
 public static partial class MistakeHttpEndpoints
 {
@@ -81,13 +81,13 @@ public static partial class MistakeHttpEndpoints
             if (schemes!=null && intake!=null && await NeedsManagedAuthenticationAsync(context,intake))
             {
                 var identities=new List<ClaimsIdentity>();
-                foreach(var name in new[] {JwtBearerDefaults.AuthenticationScheme,RuoyuAdminApiAuthorization.SchemeName})
+                foreach(var name in new[] {JwtBearerDefaults.AuthenticationScheme,EmendaAdminApiAuthorization.SchemeName})
                 {
                     if(await schemes.GetSchemeAsync(name)==null) continue;
                     var result=await context.HttpContext.AuthenticateAsync(name);
                     if(result.Succeeded && result.Principal!=null) identities.AddRange(result.Principal.Identities);
                 }
-                if(identities.Count==0 && context.Arguments.OfType<GetPresignedUrlRequest>().Any(r=>Ruoyu.Study.Common.Oss.ReservedSourceTargetPath.IsReserved(r.ObjectPath)))
+                if(identities.Count==0 && context.Arguments.OfType<GetPresignedUrlRequest>().Any(r=>Emenda.Common.Oss.ReservedSourceTargetPath.IsReserved(r.ObjectPath)))
                     return IntakeError("authentication_required",401);
                 if(identities.Count>0)
                 {
@@ -131,7 +131,7 @@ public static partial class MistakeHttpEndpoints
                     // Reject competing writes before domain validation or external effects.
                     // The original reject is the only permitted same-operation replay.
                     if (!HttpMethods.IsGet(context.HttpContext.Request.Method)
-                        && !context.Arguments.OfType<ReviewMistakeItemRequest>().Any(r => r.ReviewStatus == Ruoyu.Study.Mistake.Domain.Models.ReviewStatus.Rejected)
+                        && !context.Arguments.OfType<ReviewMistakeItemRequest>().Any(r => r.ReviewStatus == Emenda.Domain.Models.ReviewStatus.Rejected)
                         && context.HttpContext.RequestServices.GetService<ILegacyReturnService>() is { } legacy
                         && await legacy.GetAsync(id, context.HttpContext.RequestAborted) is not null)
                         return IntakeError("return_in_progress", 409);
@@ -155,7 +155,7 @@ public static partial class MistakeHttpEndpoints
     private static async Task<bool> NeedsManagedAuthenticationAsync(EndpointFilterInvocationContext context,ISourceIntakeService intake)
     {
         var http=context.HttpContext;var ct=http.RequestAborted;var path=http.Request.Path.Value ?? "";
-        if(IsManagedNamespace(http.Request.Path) || context.Arguments.OfType<ReviewMistakeItemRequest>().Any(r => r.ReviewStatus == Ruoyu.Study.Mistake.Domain.Models.ReviewStatus.Rejected)) return true;
+        if(IsManagedNamespace(http.Request.Path) || context.Arguments.OfType<ReviewMistakeItemRequest>().Any(r => r.ReviewStatus == Emenda.Domain.Models.ReviewStatus.Rejected)) return true;
         var id=context.Arguments.OfType<Guid>().FirstOrDefault();
         if(id!=Guid.Empty && await intake.GetManagedItemStudentAsync(id,ct)!=null) return true;
         foreach(var argument in context.Arguments)
@@ -167,7 +167,7 @@ public static partial class MistakeHttpEndpoints
                 return intake.Enabled || add.ExpectedContentRevision.HasValue || add.RequestKey.HasValue
                     || await intake.HasManagedDataAsync(sourceId:add.SourceUploadId,ct:ct);
             if(argument is GetPresignedUrlRequest image && !string.IsNullOrWhiteSpace(image.ObjectPath))
-                return Ruoyu.Study.Common.Oss.ReservedSourceTargetPath.IsReserved(image.ObjectPath) || await intake.GetManagedObjectStudentAsync(image.ObjectPath,ct)!=null
+                return Emenda.Common.Oss.ReservedSourceTargetPath.IsReserved(image.ObjectPath) || await intake.GetManagedObjectStudentAsync(image.ObjectPath,ct)!=null
                     || await intake.IsManagedPracticeObjectAsync(image.ObjectPath,ct);
             if(argument is GetReanalyzeJobsRequest jobs && jobs.JobIds is {Count: >0 and <=100})
             {

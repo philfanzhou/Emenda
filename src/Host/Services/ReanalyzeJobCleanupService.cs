@@ -4,9 +4,9 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Mistake.Domain.Services;
+using Emenda.Domain.Services;
 
-namespace Ruoyu.Study.Mistake.Host.Services;
+namespace Emenda.Host.Services;
 
 /// <summary>
 /// Periodically deletes Completed/Failed jobs older than 30 days.

@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Ruoyu.Study.Common.Database;
-namespace Ruoyu.Study.Mistake.Database.Migrations;
+using Emenda.Common.Database;
+namespace Emenda.Database.Migrations;
 
 [DbContext(typeof(MistakeDbContext))]
 [Migration(StorageReferenceRemovalSchema.Added)]

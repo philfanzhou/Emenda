@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 
-namespace Ruoyu.Study.Mistake.Host.Security;
+namespace Emenda.Host.Security;
 
 /// <summary>
 /// Authenticates product callers with <c>X-Emenda-Api-Key</c> and rejects

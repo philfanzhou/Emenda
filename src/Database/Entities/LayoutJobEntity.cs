@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Ruoyu.Study.Mistake.Database.Entities;
+namespace Emenda.Database.Entities;
 
 /// <summary>One durable layout-detection job over an existing managed source revision
 /// (IKQA2O). Carries the lease/heartbeat/fencing claim state, the retained manifest, the

@@ -1,11 +1,11 @@
-using Ruoyu.Study.Common.Database;
+using Emenda.Common.Database;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>
 /// Mistake's StorageReferences v1 snapshot table: added by <see cref="Added"/> (schema version 10)
 /// and dropped by <see cref="Migration"/> (schema version 14) when the contract was retired with
-/// Ruoyu.Admin (ADR-0030 step 4). Versions 10–13 still carry the table.
+/// Emenda.Admin (ADR-0030 step 4). Versions 10–13 still carry the table.
 /// </summary>
 public static class StorageReferenceRemovalSchema
 {

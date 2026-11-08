@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>
 /// Failure raised by the database upgrade itself. Messages carry only object names and counts, never

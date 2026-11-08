@@ -5,7 +5,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Ruoyu.Study.Mistake.Host;
+namespace Emenda.Host;
 
 public sealed class StudentServiceTokenHandler : DelegatingHandler
 {

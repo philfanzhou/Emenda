@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service.Services;
+namespace Emenda.Service.Services;
 
 // Defined in Service layer so gRPC implementations (e.g. MistakeServiceImpl) can inject this
 // without creating a circular reference (Host -> Service -> Host).

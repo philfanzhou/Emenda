@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Ruoyu.Study.Mistake.Database.Entities;
+namespace Emenda.Database.Entities;
 
 /// <summary>Request-key replay record for layout jobs (IKQA2O), mirroring
 /// source_intake_request: the same caller/action/request key replays the same job; a

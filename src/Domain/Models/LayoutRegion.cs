@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 /// <summary>
 /// One detected region of a layout-detection answer: a generic type label plus its normalized

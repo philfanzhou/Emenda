@@ -5,7 +5,7 @@
   "source_commit": "75ddfc3c7406e2f1283afa8078bfb1fae0cef212",
   "source_commit_note": "产品布局迁移后的审计基线（Mistake 子树抽取自 Ruoyu.Study，ADR-0031）；后续提交可用 --commit <sha> --allow-commit-drift 预演。",
   "service_identity_note": "Host 本地 RS256 signer/config 随递归成员导出，无 Student 编译依赖。portable Service.Tests 不含 Student 或 Portal BFF 引用；真实跨域 provider 回归由 Ruoyu.Study 平台仓库持有（ADR-0031 决策 11），不属于产品发布闭包。secret 只进入任务自有外部受限环境，不导出或 COPY。",
-  "solution": "src/Ruoyu.Study.Mistake.sln",
+  "solution": "src/Emenda.sln",
   "members": {
     "mistake_projects": [
       "src/Database",
@@ -13,13 +13,13 @@
       "src/Service",
       "src/Host",
       "src/StudentClient",
-      "src/Tests/Ruoyu.Study.Mistake.Domain.Tests",
-      "src/Tests/Ruoyu.Study.Mistake.Service.Tests"
+      "src/Tests/Emenda.Domain.Tests",
+      "src/Tests/Emenda.Service.Tests"
     ],
     "shared_projects": [
-      "vendor/Ruoyu.Study.Common",
-      "vendor/Ruoyu.Study.Ai.Shared",
-      "vendor/Ruoyu.Study.Consul.Shared"
+      "vendor/Emenda.Common",
+      "vendor/Emenda.Ai",
+      "vendor/Emenda.Consul"
     ],
     "context_files": [
       ".dockerignore",
@@ -52,7 +52,7 @@
     "secrets": "manifest 与导出产物不含运行密钥或真实凭据；源码内既有 appsettings 示例随源码原样导出；MISTAKE_MIGRATION_TEST_CONNECTION 仅传入测试进程环境，不写入任何文件或日志。"
   },
   "dependencies": {
-    "src/Database/Ruoyu.Study.Mistake.Database.csproj": [
+    "src/Database/Emenda.Database.csproj": [
       {
         "id": "Microsoft.EntityFrameworkCore.Relational",
         "version": "10.0.13",
@@ -69,21 +69,21 @@
         "license": "MIT"
       }
     ],
-    "src/Domain/Ruoyu.Study.Mistake.Domain.csproj": [
+    "src/Domain/Emenda.Domain.csproj": [
       {
         "id": "Microsoft.Extensions.Logging.Abstractions",
         "version": "10.0.13",
         "license": "MIT"
       }
     ],
-    "src/Service/Ruoyu.Study.Mistake.Service.csproj": [
+    "src/Service/Emenda.Service.csproj": [
       {
         "id": "Mapster",
         "version": "10.0.6",
         "license": "MIT"
       }
     ],
-    "src/Host/Ruoyu.Study.Mistake.Host.csproj": [
+    "src/Host/Emenda.Host.csproj": [
       {
         "id": "Microsoft.EntityFrameworkCore.Design",
         "version": "10.0.13",
@@ -95,7 +95,7 @@
         "license": "PostgreSQL"
       }
     ],
-    "src/StudentClient/Ruoyu.Study.Mistake.StudentClient.csproj": [
+    "src/StudentClient/Emenda.StudentClient.csproj": [
       {
         "id": "Microsoft.Extensions.Http",
         "version": "10.0.13",
@@ -107,7 +107,7 @@
         "license": "MIT"
       }
     ],
-    "src/Tests/Ruoyu.Study.Mistake.Domain.Tests/Ruoyu.Study.Mistake.Domain.Tests.csproj": [
+    "src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj": [
       {
         "id": "coverlet.collector",
         "version": "6.0.0",
@@ -146,7 +146,7 @@
         "license": "MIT"
       }
     ],
-    "src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj": [
+    "src/Tests/Emenda.Service.Tests/Emenda.Service.Tests.csproj": [
       {
         "id": "coverlet.collector",
         "version": "6.0.0",
@@ -190,7 +190,7 @@
         "license": "Apache-2.0"
       }
     ],
-    "vendor/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj": [
+    "vendor/Emenda.Common/Emenda.Common.csproj": [
       {
         "id": "Magick.NET-Q8-AnyCPU",
         "version": "15.0.0",
@@ -228,7 +228,7 @@
         "license": "MIT"
       }
     ],
-    "vendor/Ruoyu.Study.Ai.Shared/Ruoyu.Study.Ai.Shared.csproj": [
+    "vendor/Emenda.Ai/Emenda.Ai.csproj": [
       {
         "id": "Microsoft.Extensions.Http",
         "version": "10.0.13",
@@ -245,7 +245,7 @@
         "license": "MIT"
       }
     ],
-    "vendor/Ruoyu.Study.Consul.Shared/Ruoyu.Study.Consul.Shared.csproj": [
+    "vendor/Emenda.Consul/Emenda.Consul.csproj": [
       {
         "id": "Microsoft.Extensions.Configuration",
         "version": "10.0.13",
@@ -322,9 +322,9 @@
   },
   "dependencies_note": "直接依赖（csproj PackageReference）id/版本/许可证表达式，逐项目采集自 ~/.nuget/packages 中对应 nuspec 的 license 元数据；license 为 null 的条目仅含已弃用 licenseUrl，如实记录不推断。版本为 source_commit 处的 as-is 快照（产品布局迁移基线）；依赖版本变化（如 NU1903 升级切片）合入后必须在同一提交中同步本清单。",
   "forbidden_content": [
-    "src/ruoyu.common/backend/Ruoyu.Study.MistakeBff.HttpClients",
-    "src/ruoyu.common/backend/Ruoyu.Study.MistakeReviewBff.Shared",
-    "src/ruoyu.common/backend/Ruoyu.Study.MistakeUploadBff.Shared",
+    "src/ruoyu.common/backend/EmendaBff.HttpClients",
+    "src/ruoyu.common/backend/EmendaReviewBff.Shared",
+    "src/ruoyu.common/backend/EmendaUploadBff.Shared",
     "src/ruoyu.common/backend/Ruoyu.Study.PortalAuthBff.Shared",
     "src/ruoyu.common/frontend",
     "src/ruoyu.common/docs",

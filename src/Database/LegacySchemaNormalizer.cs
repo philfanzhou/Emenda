@@ -1,7 +1,7 @@
 using System.Data.Common;
 using System.Text.Json;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>
 /// Converges structures left by the automatic schema maintenance of 2026-04-19 to 2026-09-29 builds into one of the

@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 /// <summary>
 /// A normalized layout box in the <see cref="Services.LayoutGeometry.CoordinateFrame"/>: the

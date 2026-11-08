@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 
-namespace Ruoyu.Study.Mistake.Host;
+namespace Emenda.Host;
 
 public sealed class StudentServiceAuthenticationOptions
 {

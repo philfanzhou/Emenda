@@ -1,6 +1,6 @@
-using Ruoyu.Study.Common.Database;
+using Emenda.Common.Database;
 using System.Data.Common;
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 internal static class SourceIntakeCatalog
 {

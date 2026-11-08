@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace Ruoyu.Study.Mistake.HttpContracts;
+namespace Emenda.HttpContracts;
 
 /// <summary>
 /// Executes the JSON Schema vocabulary used by the pinned Mistake contract.

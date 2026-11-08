@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 internal static class LegacyReturnWriteGuard
 {

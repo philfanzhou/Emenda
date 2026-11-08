@@ -1,7 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Http;
 
-namespace Ruoyu.Study.Mistake.Service;
+namespace Emenda.Service;
 
 /// <summary>
 /// Unified HTTP response envelope helper for all Mistake HTTP endpoints.

@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using Ruoyu.Study.Mistake.Database;
+using Emenda.Database;
 
 #nullable disable
 
-namespace Ruoyu.Study.Mistake.Database.Migrations
+namespace Emenda.Database.Migrations
 {
     [DbContext(typeof(MistakeDbContext))]
     [Migration("20260626000000_AddReanalyzeJob")]
@@ -24,7 +24,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ReanalyzeJobEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.ReanalyzeJobEntity", b =>
             {
                 b.Property<Guid>("Id")
                     .HasColumnType("uuid")

@@ -1,6 +1,6 @@
 using System;
 
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 /// <summary>
 /// Reanalyze job lifecycle status. The state machine is:
@@ -8,7 +8,7 @@ namespace Ruoyu.Study.Mistake.Domain.Models;
 ///   Expired Running can be reclaimed with a new owner and fencing version.
 /// Cancelled is intentionally not supported (per product decision).
 /// Renamed from ReanalyzeJobStatus to avoid name collision with the
-/// proto-generated enum in Ruoyu.Study.Mistake.Contract.Protos.
+/// proto-generated enum in Emenda.Contract.Protos.
 /// </summary>
 public enum ReanalyzeJobState
 {

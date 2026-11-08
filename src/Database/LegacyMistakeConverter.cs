@@ -1,6 +1,6 @@
 using System.Data.Common;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>Converts the complete 2026-04-19 through 2026-05-13 old-table layout within the upgrade transaction.</summary>
 internal static class LegacyMistakeConverter

@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 /// <summary>
 /// One validated, non-archiving layout-detection answer for a single submitted image.

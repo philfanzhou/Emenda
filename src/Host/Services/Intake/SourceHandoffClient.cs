@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.Intake;
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+using Emenda.Domain.Services;
+using Emenda.Service.Intake;
+namespace Emenda.Host.Services.Intake;
 
 public sealed class SourceHandoffClient(HttpClient http,StudentServiceAuthenticationOptions identity)
 {

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
-using Ruoyu.Study.Common.Oss;
+using Emenda.Common.Oss;
 
-namespace Ruoyu.Study.Mistake.Host;
+namespace Emenda.Host;
 
 internal static class LocalOssConfiguration
 {

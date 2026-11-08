@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace Ruoyu.Study.Mistake.StudentClient;
+namespace Emenda.StudentClient;
 
 // Mistake-owned outbound Student client (IKJFF5). This library decouples the
 // Mistake service from the Portal-facing shared MistakeBff.HttpClients

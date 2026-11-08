@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// The classified failure of one layout-detection exchange (IKQA2N). The classification is

@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service.Intake;
+namespace Emenda.Service.Intake;
 
 /// <summary>
 /// Read-only legacy anomaly reconciliation over the mistake reference set and

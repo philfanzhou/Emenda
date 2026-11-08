@@ -13,8 +13,8 @@ the local workflow; the product behaviour is described in [`README.md`](README.m
 ## Build and test
 
 ```bash
-dotnet build src/Ruoyu.Study.Mistake.sln -c Release
-dotnet test src/Tests/Ruoyu.Study.Mistake.Domain.Tests/Ruoyu.Study.Mistake.Domain.Tests.csproj -c Release
+dotnet build src/Emenda.sln -c Release
+dotnet test src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj -c Release
 ```
 
 Database-backed Service tests require a dedicated PostgreSQL admin connection supplied

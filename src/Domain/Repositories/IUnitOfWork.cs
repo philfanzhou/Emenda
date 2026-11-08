@@ -1,7 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Ruoyu.Study.Mistake.Domain.Repositories;
+namespace Emenda.Domain.Repositories;
 
 public interface IUnitOfWork
 {

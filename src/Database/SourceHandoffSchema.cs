@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 public static class SourceHandoffSchema
 {

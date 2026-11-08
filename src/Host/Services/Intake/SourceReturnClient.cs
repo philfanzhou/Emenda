@@ -3,9 +3,9 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.StudentClient;
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+using Emenda.Domain.Services;
+using Emenda.StudentClient;
+namespace Emenda.Host.Services.Intake;
 
 public sealed class SourceReturnClient(HttpClient http, StudentServiceAuthenticationOptions identity)
 {

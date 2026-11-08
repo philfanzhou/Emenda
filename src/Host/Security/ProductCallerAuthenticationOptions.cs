@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Host.Security;
+namespace Emenda.Host.Security;
 
 /// <summary>
 /// Product-owned inbound authentication for standalone deployments

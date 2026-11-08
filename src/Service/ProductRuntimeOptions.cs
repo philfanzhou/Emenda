@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service;
+namespace Emenda.Service;
 
 /// <summary>
 /// Fixed-at-startup product runtime shape (<c>Emenda:Runtime:Mode=Standalone</c>).

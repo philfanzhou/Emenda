@@ -1,6 +1,6 @@
 using System;
 
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 public class ProcessLogModel
 {

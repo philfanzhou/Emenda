@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Domain.Services;
+namespace Emenda.Domain.Services;
 
 public sealed class SourceIntakeException(string errorKind, int statusCode = 409, Exception? inner = null) : Exception(errorKind, inner)
 {

@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>
 /// Thirteenth versioned migration (IKQA2O): durable layout-detection jobs and accepted

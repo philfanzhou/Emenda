@@ -1,12 +1,12 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Common.Authentication;
-using Ruoyu.Study.Common.Constants;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.StudentIntegration;
+using Emenda.Common.Authentication;
+using Emenda.Common.Constants;
+using Emenda.Domain.Services;
+using Emenda.Service.StudentIntegration;
 
-namespace Ruoyu.Study.Mistake.Service;
+namespace Emenda.Service;
 
 /// <summary>
 /// Fixed-at-startup snapshot of the per-resource authorization switch

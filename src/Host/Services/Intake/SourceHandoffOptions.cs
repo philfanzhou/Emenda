@@ -1,3 +1,3 @@
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+namespace Emenda.Host.Services.Intake;
 
 public sealed record SourceHandoffOptions(bool Enabled);

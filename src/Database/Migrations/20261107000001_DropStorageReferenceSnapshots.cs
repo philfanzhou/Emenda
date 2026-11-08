@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
-namespace Ruoyu.Study.Mistake.Database.Migrations;
+namespace Emenda.Database.Migrations;
 
 /// <summary>
 /// Drops the StorageReferences v1 snapshot table (ADR-0030 step 4). Snapshots expire and are not

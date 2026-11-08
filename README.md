@@ -68,8 +68,8 @@ Callers should retry a failed request with the same `sourceKey` only after fixin
 ## Build
 
 ```bash
-dotnet build src/Ruoyu.Study.Mistake.sln -c Release
-dotnet test src/Tests/Ruoyu.Study.Mistake.Domain.Tests/Ruoyu.Study.Mistake.Domain.Tests.csproj -c Release
+dotnet build src/Emenda.sln -c Release
+dotnet test src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj -c Release
 ```
 
 The database-backed suites need PostgreSQL 15 and a dedicated connection; the image build

@@ -4,25 +4,25 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Serilog;
-using Ruoyu.Study.Common.Ai;
-using Ruoyu.Study.Common.Authentication;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Mistake.Database;
-using Ruoyu.Study.Mistake.Database.Repositories;
-using Ruoyu.Study.Mistake.Domain.Repositories;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Host.Services;
-using Ruoyu.Study.Mistake.Host.Services.Intake;
-using Ruoyu.Study.Mistake.Host.Services.Layout;
-using Ruoyu.Study.Mistake.Service.Intake;
-using Ruoyu.Study.Mistake.Host.Services.Health;
-using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
-using Ruoyu.Study.Mistake.Host;
-using Ruoyu.Study.Mistake.Host.Security;
-using Ruoyu.Study.Mistake.Service;
-using Ruoyu.Study.Consul.Shared;
-using Ruoyu.Study.Mistake.StudentClient;
-using Ruoyu.Study.Mistake.Service.StudentIntegration;
+using Emenda.Common.Ai;
+using Emenda.Common.Authentication;
+using Emenda.Common.Oss;
+using Emenda.Database;
+using Emenda.Database.Repositories;
+using Emenda.Domain.Repositories;
+using Emenda.Domain.Services;
+using Emenda.Host.Services;
+using Emenda.Host.Services.Intake;
+using Emenda.Host.Services.Layout;
+using Emenda.Service.Intake;
+using Emenda.Host.Services.Health;
+using Emenda.Host.Services.VlImageAnalysis;
+using Emenda.Host;
+using Emenda.Host.Security;
+using Emenda.Service;
+using Emenda.Consul;
+using Emenda.StudentClient;
+using Emenda.Service.StudentIntegration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,13 +55,13 @@ else if (localMode)
 }
 else
 {
-    builder.Configuration.AddRuoyuConsulConfiguration(builder.Configuration);
-    builder.Configuration.AddRuoyuLokiSink();
-    builder.Host.UseRuoyuSerilog("Ruoyu.Study.Mistake");
+    builder.Configuration.AddEmendaConsulConfiguration(builder.Configuration);
+    builder.Configuration.AddEmendaLokiSink();
+    builder.Host.UseEmendaSerilog("Emenda");
 }
 
-var consulOptions = standalone || localMode ? null : RuoyuConsulOptions.Bind(builder.Configuration);
-var consulRuntimeState = standalone || localMode ? null : RuoyuConsulRuntimeState.Instance;
+var consulOptions = standalone || localMode ? null : EmendaConsulOptions.Bind(builder.Configuration);
+var consulRuntimeState = standalone || localMode ? null : EmendaConsulRuntimeState.Instance;
 
 bool ReadWorkerEnabled(string key)
 {
@@ -198,7 +198,7 @@ if (strictApiAuth && identityTrustValidation.Failed)
 var identityTrustConfigured = identityTrustValidation.Succeeded;
 if (!standalone && identityTrustConfigured)
 {
-    builder.Services.AddRuoyuJwtBearer(
+    builder.Services.AddEmendaJwtBearer(
         builder.Configuration,
         builder.Environment,
         configureAuthorization: options =>
@@ -213,7 +213,7 @@ if (!standalone && identityTrustConfigured)
         });
     // Optional Admin AppId audience scheme (shared library, IKJ8PJ failure
     // semantics): unconfigured fails closed for that audience only.
-    builder.Services.AddRuoyuAdminAudienceJwtBearer(builder.Configuration);
+    builder.Services.AddEmendaAdminAudienceJwtBearer(builder.Configuration);
 }
 
 if (standalone)
@@ -351,7 +351,7 @@ builder.Services.AddSingleton<OpenAiCompatibleClient>(sp =>
     var logger = sp.GetRequiredService<ILogger<OpenAiCompatibleClient>>();
     return new OpenAiCompatibleClient(httpClient, options, logger);
 });
-builder.Services.AddSingleton<Ruoyu.Study.Mistake.Service.Services.IVlAnalyzer, VlUploadAnalyzer>();
+builder.Services.AddSingleton<Emenda.Service.Services.IVlAnalyzer, VlUploadAnalyzer>();
 
 // Polling worker: polls Student service for Processing records and processes them
 if (uploadPollingEnabled) builder.Services.AddHostedService<UploadPollingWorker>();

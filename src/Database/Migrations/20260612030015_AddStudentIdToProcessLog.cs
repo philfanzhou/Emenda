@@ -2,7 +2,7 @@
 
 #nullable disable
 
-namespace Ruoyu.Study.Mistake.Database.Migrations
+namespace Emenda.Database.Migrations
 {
     /// <inheritdoc />
     public partial class AddStudentIdToProcessLog : Migration

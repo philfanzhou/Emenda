@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Ruoyu.Study.Mistake.Database.Entities;
+namespace Emenda.Database.Entities;
 
 /// <summary>One validated region of an accepted layout result (IKQA2O): the
 /// response-local region id (which is also the preserved upstream detection sequence),

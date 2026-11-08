@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service.Intake;
+namespace Emenda.Service.Intake;
 
 public interface ILegacyReturnService
 {

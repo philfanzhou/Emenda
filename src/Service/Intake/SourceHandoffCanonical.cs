@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-namespace Ruoyu.Study.Mistake.Service.Intake;
+namespace Emenda.Service.Intake;
 
 public static class SourceHandoffCanonical
 {

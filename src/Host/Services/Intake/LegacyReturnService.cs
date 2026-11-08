@@ -2,14 +2,14 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Mistake.Database;
-using Ruoyu.Study.Mistake.Database.Entities;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.Intake;
-using Ruoyu.Study.Mistake.StudentClient;
+using Emenda.Common.Oss;
+using Emenda.Database;
+using Emenda.Database.Entities;
+using Emenda.Domain.Services;
+using Emenda.Service.Intake;
+using Emenda.StudentClient;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+namespace Emenda.Host.Services.Intake;
 
 public sealed class LegacyReturnService(DbContextOptions<MistakeDbContext> databaseOptions,
     LegacyReturnOptions options, IOssService oss, SourceReturnClient client) : ILegacyReturnService

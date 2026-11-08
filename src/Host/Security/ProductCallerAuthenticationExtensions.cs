@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Ruoyu.Study.Mistake.Host.Security;
+namespace Emenda.Host.Security;
 
 public static class ProductCallerAuthenticationExtensions
 {

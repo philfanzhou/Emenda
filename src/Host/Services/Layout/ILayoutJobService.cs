@@ -1,6 +1,6 @@
-using Ruoyu.Study.Mistake.Domain.Models;
+using Emenda.Domain.Models;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>One per-image work item of a layout job as exposed on views. The expected
 /// byte identity is the retained manifest truth the worker re-verifies before every

@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// Startup snapshot of the StructaDoc layout capability switch, resolved once in Program.cs

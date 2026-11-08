@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>
 /// Outcome of <see cref="DatabaseInitializer.UpgradeToTargetAsync"/>. Version 0 means an empty database;

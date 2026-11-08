@@ -1,8 +1,8 @@
-using Ruoyu.Study.Mistake.HttpContracts;
+using Emenda.HttpContracts;
 using System.Security.Cryptography;
 using Microsoft.Net.Http.Headers;
 
-namespace Ruoyu.Study.Mistake.Host;
+namespace Emenda.Host;
 
 /// <summary>Immutable release metadata, independent of every business dependency.</summary>
 public static class MistakeContractEndpoints
@@ -33,7 +33,7 @@ public static class MistakeContractEndpoints
             if (version != Version)
             {
                 http.Response.Headers["Link"] = "</contracts/" + Version + ".json>; rel=\"latest-version\"";
-                http.Response.Headers["X-Ruoyu-Contract-Status"] = "historical";
+                http.Response.Headers["X-Emenda-Contract-Status"] = "historical";
             }
             http.Response.GetTypedHeaders().ETag = tag;
             http.Response.Headers.CacheControl = "public, no-cache";

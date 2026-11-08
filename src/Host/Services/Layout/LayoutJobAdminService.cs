@@ -1,6 +1,6 @@
-using Ruoyu.Study.Mistake.Service.Intake;
+using Emenda.Service.Intake;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// Service-project administrative surface adapter (IKQA2P): delegates to the enqueue

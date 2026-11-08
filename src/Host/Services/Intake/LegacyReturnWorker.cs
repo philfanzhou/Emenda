@@ -1,6 +1,6 @@
-using Ruoyu.Study.Mistake.Service.Intake;
+using Emenda.Service.Intake;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+namespace Emenda.Host.Services.Intake;
 
 public sealed class LegacyReturnWorker(IServiceScopeFactory scopes, ILogger<LegacyReturnWorker> logger) : BackgroundService
 {

@@ -2,9 +2,9 @@ using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Ruoyu.Study.Mistake.Service.Intake;
+using Emenda.Service.Intake;
 
-namespace Ruoyu.Study.Mistake.Service;
+namespace Emenda.Service;
 
 public static partial class MistakeHttpEndpoints
 {

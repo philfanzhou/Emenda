@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <EmbeddedResource Include="../../docs/Integration/mistake-http-v1.json" LogicalName="mistake-http-v1.json" />
+    <EmbeddedResource Include="../../docs/Integration/mistake-http-v2.json" LogicalName="mistake-http-v2.json" />
+    <EmbeddedResource Include="../../docs/Integration/mistake-http-v3.json" LogicalName="mistake-http-v3.json" />
+    <ProjectReference Include="..\Domain\Emenda.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mapster" Version="10.0.6" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

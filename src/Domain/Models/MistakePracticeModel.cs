@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 public class MistakePracticeModel
 {

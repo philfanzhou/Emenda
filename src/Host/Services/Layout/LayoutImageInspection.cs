@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// Bounded header inspection of one submitted layout image (IKQA2N), mirroring the upstream

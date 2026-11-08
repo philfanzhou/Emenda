@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>
 /// Append-only archive for data that automatic legacy convergence removes or rewrites. Business code never reads it.

@@ -2,10 +2,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
-using Ruoyu.Study.Mistake.Host.Services.Intake;
-using Ruoyu.Study.Mistake.Service.Intake;
+using Emenda.Host.Services.Intake;
+using Emenda.Service.Intake;
 
-namespace Ruoyu.Study.Mistake.Host;
+namespace Emenda.Host;
 
 /// <summary>
 /// Product-owned intake HTTP surface: POST /api/intake/uploads accepts a

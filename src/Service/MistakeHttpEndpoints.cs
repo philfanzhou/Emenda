@@ -6,22 +6,22 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
-using Ruoyu.Study.Mistake.Service.Intake;
+using Emenda.Service.Intake;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.Dtos;
-using Ruoyu.Study.Mistake.Service.StudentIntegration;
-using MistakeItemDto = Ruoyu.Study.Mistake.Service.Dtos.MistakeItemDto;
-using ReanalyzeJobDto = Ruoyu.Study.Mistake.Service.Dtos.ReanalyzeJobDto;
-using MistakeItemPageResult = Ruoyu.Study.Mistake.Service.Dtos.MistakeItemPageResult;
-using PendingReviewUploadDto = Ruoyu.Study.Mistake.Service.Dtos.PendingReviewUploadDto;
+using Emenda.Common.Oss;
+using Emenda.Domain.Models;
+using Emenda.Domain.Services;
+using Emenda.Service.Dtos;
+using Emenda.Service.StudentIntegration;
+using MistakeItemDto = Emenda.Service.Dtos.MistakeItemDto;
+using ReanalyzeJobDto = Emenda.Service.Dtos.ReanalyzeJobDto;
+using MistakeItemPageResult = Emenda.Service.Dtos.MistakeItemPageResult;
+using PendingReviewUploadDto = Emenda.Service.Dtos.PendingReviewUploadDto;
 
-namespace Ruoyu.Study.Mistake.Service;
+namespace Emenda.Service;
 
 /// <summary>
 /// Mistake HTTP 端点（18 个，由 gRPC MistakeServiceImpl 18 RPC 1:1 迁移）。

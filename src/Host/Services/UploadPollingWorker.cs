@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Options;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Host.Services.Intake;
-using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
-using Ruoyu.Study.Mistake.Service.Intake;
-using Ruoyu.Study.Mistake.Service.StudentIntegration;
+using Emenda.Domain.Services;
+using Emenda.Host.Services.Intake;
+using Emenda.Host.Services.VlImageAnalysis;
+using Emenda.Service.Intake;
+using Emenda.Service.StudentIntegration;
 
-namespace Ruoyu.Study.Mistake.Host.Services;
+namespace Emenda.Host.Services;
 
 /// <summary>
 /// Background service that polls Student service for Processing upload records

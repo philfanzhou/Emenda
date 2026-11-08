@@ -1,6 +1,6 @@
 using System.Data.Common;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>
 /// Transaction-scoped staging for data the upgrade removes or rewrites. Rows are captured before the change and

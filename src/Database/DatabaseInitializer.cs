@@ -1,4 +1,4 @@
-using Ruoyu.Study.Common.Database;
+using Emenda.Common.Database;
 using System.Data;
 using System.Data.Common;
 using System.Text.Json;
@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 public static class DatabaseInitializer
 {

@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Ruoyu.Study.Common.Authentication;
+using Emenda.Common.Authentication;
 
-namespace Ruoyu.Study.Mistake.Service;
+namespace Emenda.Service;
 
 /// <summary>
 /// Authorization policy used by the Mistake /api endpoint group when
@@ -27,7 +27,7 @@ public static class MistakeApiAuthorization
         options.AddPolicy(PolicyName, policy => policy
             .AddAuthenticationSchemes(
                 JwtBearerDefaults.AuthenticationScheme,
-                RuoyuAdminApiAuthorization.SchemeName)
+                EmendaAdminApiAuthorization.SchemeName)
             .RequireAuthenticatedUser());
     }
 }

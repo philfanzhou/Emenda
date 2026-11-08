@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 /// <summary>
 /// A rectangle as continuous coordinates in a pixel frame. A pixel cell occupies [i, i+1), so

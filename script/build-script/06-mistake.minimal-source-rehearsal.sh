@@ -21,9 +21,9 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MANIFEST="$REPO_ROOT/manifest/mistake-minimal-source-package.json"
-SOLUTION_REL="src/Ruoyu.Study.Mistake.sln"
-DOMAIN_TESTS_REL="src/Tests/Ruoyu.Study.Mistake.Domain.Tests/Ruoyu.Study.Mistake.Domain.Tests.csproj"
-SERVICE_TESTS_REL="src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj"
+SOLUTION_REL="src/Emenda.sln"
+DOMAIN_TESTS_REL="src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj"
+SERVICE_TESTS_REL="src/Tests/Emenda.Service.Tests/Emenda.Service.Tests.csproj"
 DOCKERFILE_REL="src/Host/Dockerfile"
 
 TARGET=""

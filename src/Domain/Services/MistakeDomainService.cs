@@ -1,12 +1,12 @@
-using Ruoyu.Study.Common.Oss;
+using Emenda.Common.Oss;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Repositories;
+using Emenda.Domain.Models;
+using Emenda.Domain.Repositories;
 
-namespace Ruoyu.Study.Mistake.Domain.Services;
+namespace Emenda.Domain.Services;
 
 public class MistakeValidationException : Exception
 {

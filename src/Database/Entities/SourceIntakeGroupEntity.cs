@@ -1,5 +1,5 @@
 using System.ComponentModel.DataAnnotations.Schema;
-namespace Ruoyu.Study.Mistake.Database.Entities;
+namespace Emenda.Database.Entities;
 
 [Table("source_intake_group")]
 public sealed class SourceIntakeGroupEntity

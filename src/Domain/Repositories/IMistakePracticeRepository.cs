@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Ruoyu.Study.Mistake.Domain.Models;
+using Emenda.Domain.Models;
 
-namespace Ruoyu.Study.Mistake.Domain.Repositories;
+namespace Emenda.Domain.Repositories;
 
 public interface IMistakePracticeRepository
 {

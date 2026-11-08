@@ -1,13 +1,13 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
-using Ruoyu.Study.Mistake.Service.Services;
-using Ruoyu.Study.Mistake.Service.StudentIntegration;
+using Emenda.Common.Oss;
+using Emenda.Domain.Models;
+using Emenda.Domain.Services;
+using Emenda.Host.Services.VlImageAnalysis;
+using Emenda.Service.Services;
+using Emenda.Service.StudentIntegration;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+namespace Emenda.Host.Services.Intake;
 
 /// <summary>Outcome of one legacy upload record processing pass.</summary>
 public enum LegacyUploadProcessingStatus

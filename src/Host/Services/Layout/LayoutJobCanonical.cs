@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Host.Services.Intake;
+using Emenda.Domain.Services;
+using Emenda.Host.Services.Intake;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// Pure logic of the layout job pipeline (IKQA2O): the request canonical form, the

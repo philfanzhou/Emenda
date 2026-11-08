@@ -1,9 +1,9 @@
-using Ruoyu.Study.Mistake.Domain.Models;
+using Emenda.Domain.Models;
 
-namespace Ruoyu.Study.Mistake.Service.Dtos;
+namespace Emenda.Service.Dtos;
 
 // ===== Enums =====
-// ReviewStatus and ProcessAction are defined in Ruoyu.Study.Mistake.Domain.Models
+// ReviewStatus and ProcessAction are defined in Emenda.Domain.Models
 // (see Domain/Models/MistakeEnums.cs) and reused by DTOs here.
 // ReanalyzeJobStatus is DTO-specific (Domain uses ReanalyzeJobState with the same values).
 

@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Ruoyu.Study.Mistake.Database.Migrations
+namespace Emenda.Database.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

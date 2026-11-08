@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Mistake.Database.Entities;
-namespace Ruoyu.Study.Mistake.Database;
+using Emenda.Database.Entities;
+namespace Emenda.Database;
 
 internal static class SourceHandoffModel
 {

@@ -1,5 +1,5 @@
-using Ruoyu.Study.Mistake.Domain.Models;
-namespace Ruoyu.Study.Mistake.Domain.Services;
+using Emenda.Domain.Models;
+namespace Emenda.Domain.Services;
 
 public interface IMistakeSourceGuard
 {

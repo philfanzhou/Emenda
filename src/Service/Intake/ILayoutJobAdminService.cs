@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service.Intake;
+namespace Emenda.Service.Intake;
 
 /// <summary>The typed administrative layout failure (IKQA2P): a stable error kind plus
 /// the HTTP-style status the administrative surface maps onto. Messages never contain

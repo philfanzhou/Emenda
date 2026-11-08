@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>The typed layout-job failure (IKQA2O), mirroring the intake convention: a
 /// stable error kind plus the HTTP-style status the future administrative surface maps

@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Domain.Models;
+namespace Emenda.Domain.Models;
 
 /// <summary>
 /// Mistake item review status. Migrated from proto ReviewStatus enum.

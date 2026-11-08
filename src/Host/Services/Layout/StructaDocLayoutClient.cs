@@ -1,9 +1,9 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Services;
+using Emenda.Domain.Models;
+using Emenda.Domain.Services;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// The Mistake-owned typed client for StructaDoc's dedicated non-archiving layout endpoint

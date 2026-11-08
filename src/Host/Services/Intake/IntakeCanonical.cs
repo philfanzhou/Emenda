@@ -1,12 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Ruoyu.Study.Common.Oss;
+using Emenda.Common.Oss;
 using System.Globalization;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.Intake;
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+using Emenda.Domain.Models;
+using Emenda.Domain.Services;
+using Emenda.Service.Intake;
+namespace Emenda.Host.Services.Intake;
 
 public static class IntakeCanonical
 {

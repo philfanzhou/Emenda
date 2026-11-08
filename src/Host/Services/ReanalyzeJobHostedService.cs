@@ -2,11 +2,11 @@ using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.Services;
+using Emenda.Domain.Models;
+using Emenda.Domain.Services;
+using Emenda.Service.Services;
 
-namespace Ruoyu.Study.Mistake.Host.Services;
+namespace Emenda.Host.Services;
 
 /// <summary>Two local consumers share the database's two global lease slots.</summary>
 public class ReanalyzeJobHostedService : BackgroundService

@@ -1,12 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
-using Ruoyu.Study.Common.Ai;
-using Ruoyu.Study.Common.Constants;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Mistake.Service.Services;
+using Emenda.Common.Ai;
+using Emenda.Common.Constants;
+using Emenda.Common.Oss;
+using Emenda.Service.Services;
 
-namespace Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
+namespace Emenda.Host.Services.VlImageAnalysis;
 
 public class VlUploadAnalyzer : IVlAnalyzer
 {

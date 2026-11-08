@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Service.Intake;
+namespace Emenda.Service.Intake;
 
 public sealed record SourceHandoffReceipt(Guid ReceiptId, string OperationId, Guid SourceUploadId,
     Guid ContentRevision, Guid SnapshotId, string StudentId, string GroupsDigest, string PayloadDigest,

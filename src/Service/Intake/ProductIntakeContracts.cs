@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Ruoyu.Study.Mistake.Service.Intake;
+namespace Emenda.Service.Intake;
 
 /// <summary>
 /// Product-owned mistake intake contract: the Host HTTP surface uploads the

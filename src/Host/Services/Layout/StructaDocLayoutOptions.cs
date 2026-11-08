@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Host.Services.Layout;
+namespace Emenda.Host.Services.Layout;
 
 /// <summary>
 /// Configuration options for the StructaDoc layout-detection client (IKQA2N), bound once at

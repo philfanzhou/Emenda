@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+namespace Emenda.Host.Services.Intake;
 
 /// <summary>
 /// Extracts the object keys a Mistake row references, failing closed on any shape it does not

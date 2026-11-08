@@ -1,4 +1,4 @@
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 /// <summary>Exact-catalog expectations for the layout job tables of migration thirteen
 /// (IKQA2O), unioned into the startup verification for version 13 and above.</summary>

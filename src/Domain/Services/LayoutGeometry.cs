@@ -1,6 +1,6 @@
-using Ruoyu.Study.Mistake.Domain.Models;
+using Emenda.Domain.Models;
 
-namespace Ruoyu.Study.Mistake.Domain.Services;
+namespace Emenda.Domain.Services;
 
 /// <summary>
 /// Pure geometry for layout-detection results (IKQA2N). All mapping is closed-form arithmetic

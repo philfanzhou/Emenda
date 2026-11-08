@@ -1,7 +1,7 @@
-using Ruoyu.Study.Mistake.Service.StudentIntegration;
-using Ruoyu.Study.Mistake.StudentClient;
+using Emenda.Service.StudentIntegration;
+using Emenda.StudentClient;
 
-namespace Ruoyu.Study.Mistake.Host.Services;
+namespace Emenda.Host.Services;
 
 public sealed class StudentUploadSourceGateway : IUploadSourceGateway
 {

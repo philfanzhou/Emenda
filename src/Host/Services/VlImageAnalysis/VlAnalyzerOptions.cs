@@ -1,6 +1,6 @@
-using Ruoyu.Study.Common.Ai;
+using Emenda.Common.Ai;
 
-namespace Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
+namespace Emenda.Host.Services.VlImageAnalysis;
 
 /// <summary>
 /// Configuration options for VL (Vision-Language) image analysis.

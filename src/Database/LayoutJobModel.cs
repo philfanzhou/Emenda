@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using Ruoyu.Study.Mistake.Database.Entities;
+using Emenda.Database.Entities;
 
-namespace Ruoyu.Study.Mistake.Database;
+namespace Emenda.Database;
 
 internal static class LayoutJobModel
 {

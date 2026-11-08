@@ -1,11 +1,11 @@
 using Microsoft.Extensions.Logging;
-using Ruoyu.Study.Common.Oss;
-using Ruoyu.Study.Mistake.Domain.Models;
-using Ruoyu.Study.Mistake.Domain.Services;
-using Ruoyu.Study.Mistake.Service.Intake;
-using Ruoyu.Study.Mistake.Service.StudentIntegration;
+using Emenda.Common.Oss;
+using Emenda.Domain.Models;
+using Emenda.Domain.Services;
+using Emenda.Service.Intake;
+using Emenda.Service.StudentIntegration;
 
-namespace Ruoyu.Study.Mistake.Host.Services.Intake;
+namespace Emenda.Host.Services.Intake;
 
 /// <summary>
 /// Product-owned mistake intake: validates a direct upload, stores the image

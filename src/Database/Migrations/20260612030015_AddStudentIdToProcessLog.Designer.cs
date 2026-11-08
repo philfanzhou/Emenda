@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using Ruoyu.Study.Mistake.Database;
+using Emenda.Database;
 
 #nullable disable
 
-namespace Ruoyu.Study.Mistake.Database.Migrations
+namespace Emenda.Database.Migrations
 {
     [DbContext(typeof(MistakeDbContext))]
     [Migration("20260612030015_AddStudentIdToProcessLog")]
@@ -25,7 +25,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.MistakeItemEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -106,7 +106,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("mistake_item");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.MistakePracticeEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -154,7 +154,7 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("mistake_practice");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.ProcessLogEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
@@ -192,9 +192,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.ToTable("process_log");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.MistakePracticeEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.MistakePracticeEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
+                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", "MistakeItem")
                         .WithMany()
                         .HasForeignKey("MistakeItemId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -203,9 +203,9 @@ namespace Ruoyu.Study.Mistake.Database.Migrations
                     b.Navigation("MistakeItem");
                 });
 
-            modelBuilder.Entity("Ruoyu.Study.Mistake.Database.Entities.ProcessLogEntity", b =>
+            modelBuilder.Entity("Emenda.Database.Entities.ProcessLogEntity", b =>
                 {
-                    b.HasOne("Ruoyu.Study.Mistake.Database.Entities.MistakeItemEntity", "MistakeItem")
+                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", "MistakeItem")
                         .WithMany()
                         .HasForeignKey("MistakeItemId")
                         .OnDelete(DeleteBehavior.Cascade)

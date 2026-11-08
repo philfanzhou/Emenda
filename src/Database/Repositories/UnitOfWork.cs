@@ -1,8 +1,8 @@
 using System.Threading;
 using System.Threading.Tasks;
-using Ruoyu.Study.Mistake.Domain.Repositories;
+using Emenda.Domain.Repositories;
 
-namespace Ruoyu.Study.Mistake.Database.Repositories;
+namespace Emenda.Database.Repositories;
 
 public class UnitOfWork : IUnitOfWork
 {

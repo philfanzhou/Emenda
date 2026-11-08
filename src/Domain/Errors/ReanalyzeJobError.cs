@@ -1,6 +1,6 @@
 using System;
 
-namespace Ruoyu.Study.Mistake.Domain.Errors;
+namespace Emenda.Domain.Errors;
 
 /// <summary>
 /// Stable error codes returned by IReanalyzeJobService. The Service layer
