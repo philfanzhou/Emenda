@@ -1,0 +1,177 @@
+using System.Net;
+using System.Text.Json;
+using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Emenda.Common.Oss;
+using Emenda.Database;
+using Emenda.Host.Security;
+using Xunit;
+
+namespace Emenda.Service.Tests;
+
+/// <summary>
+/// Standalone product readiness: a deployment with no Consul, no Loki, no
+/// SignaCore identity and no Student service must report ready with exactly
+/// the components it actually wired (database and object storage), and the
+/// caller-credential configuration must fail startup when it has no usable
+/// credential.
+/// </summary>
+public sealed class StandaloneReadinessTests
+{
+    private const string CallerName = "readiness-tests";
+    private const string CallerKey = "readiness-test-api-key-0123456789";
+
+    [Fact]
+    public async Task StandaloneMode_ReadinessReportsOnlyDatabaseAndObjectStorageAsync()
+    {
+        using var factory = new StandaloneReadinessWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/health/ready");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("status").GetString().Should().Be("ok");
+        var checks = body.RootElement.GetProperty("checks").EnumerateArray()
+            .Select(check => check.GetProperty("name").GetString())
+            .ToList();
+        checks.Should().Equal("db", "oss");
+        body.RootElement.GetProperty("checks").EnumerateArray()
+            .Should().OnlyContain(check => check.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public void StandaloneCallerAuthentication_FailsWithoutAnyCredential()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Emenda:Security:Enabled"] = "true",
+                ["Emenda:Security:AllowAnonymous"] = "false"
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        Action act = () => services.AddProductCallerAuthentication(configuration);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Callers*ApiKey*");
+    }
+
+    [Fact]
+    public void StandaloneCallerAuthentication_AllowsAnonymousOnlyForLocalDevelopment()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Emenda:Security:Enabled"] = "true",
+                ["Emenda:Security:AllowAnonymous"] = "true"
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        Action act = () => services.AddProductCallerAuthentication(configuration);
+
+        act.Should().NotThrow();
+    }
+
+    private sealed class StandaloneReadinessWebApplicationFactory : WebApplicationFactory<Program>
+    {
+        private readonly string _ossRoot =
+            Path.Combine(Path.GetTempPath(), $"emenda-readiness-tests-{Guid.NewGuid():N}");
+
+        private static readonly string[] OwnedEnvironmentKeys =
+        [
+            "Emenda__Runtime__Mode",
+            "Emenda__Security__Callers__0__Name",
+            "Emenda__Security__Callers__0__ApiKey",
+            "ConnectionStrings__Emenda",
+            "Mistake__ConfigMode",
+            "Mistake__Student__Enabled",
+            "Mistake__Workers__UploadPollingWorker__Enabled",
+            "Mistake__Workers__ReanalyzeJobHostedService__Enabled",
+            "Mistake__Workers__ReanalyzeJobCleanupService__Enabled",
+            "Oss__InternalEndpoint",
+            "Oss__InternalSecure",
+            "Oss__AccessKey",
+            "Oss__SecretKey",
+            "Oss__BucketName",
+            "Oss__PublicBaseUrl",
+            "VlAnalyzer__ApiKey",
+            "IdentityService__Authority",
+            "IdentityService__Issuer",
+            "IdentityService__Audience",
+            "IdentityService__AdminAudience",
+            "IdentityService__MistakeApiStrictAuth",
+            "IdentityService__MistakeApiResourceAuth",
+        ];
+
+        public StandaloneReadinessWebApplicationFactory()
+        {
+            Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
+            Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
+            Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);
+            Environment.SetEnvironmentVariable(
+                "ConnectionStrings__Emenda",
+                "Host=127.0.0.1;Port=5432;Database=emenda_readiness_tests;Username=emenda;Password=readiness-tests-only");
+            Environment.SetEnvironmentVariable("Mistake__ConfigMode", null);
+            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "false");
+            Environment.SetEnvironmentVariable("Mistake__Workers__UploadPollingWorker__Enabled", "false");
+            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobHostedService__Enabled", "false");
+            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobCleanupService__Enabled", "false");
+            Environment.SetEnvironmentVariable("Oss__InternalEndpoint", "127.0.0.1:19051");
+            Environment.SetEnvironmentVariable("Oss__InternalSecure", "false");
+            Environment.SetEnvironmentVariable("Oss__AccessKey", "readiness-test-access");
+            Environment.SetEnvironmentVariable("Oss__SecretKey", "readiness-test-secret");
+            Environment.SetEnvironmentVariable("Oss__BucketName", "emenda-readiness-tests");
+            Environment.SetEnvironmentVariable("Oss__PublicBaseUrl", "http://127.0.0.1/oss");
+            Environment.SetEnvironmentVariable("VlAnalyzer__ApiKey", null);
+            Environment.SetEnvironmentVariable("IdentityService__Authority", null);
+            Environment.SetEnvironmentVariable("IdentityService__Issuer", null);
+            Environment.SetEnvironmentVariable("IdentityService__Audience", null);
+            Environment.SetEnvironmentVariable("IdentityService__AdminAudience", null);
+            Environment.SetEnvironmentVariable("IdentityService__MistakeApiStrictAuth", null);
+            Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", null);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            foreach (var key in OwnedEnvironmentKeys)
+                Environment.SetEnvironmentVariable(key, null);
+            try
+            {
+                if (Directory.Exists(_ossRoot))
+                    Directory.Delete(_ossRoot, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup only.
+            }
+
+            base.Dispose(disposing);
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            var databaseName = $"emenda_readiness_{Guid.NewGuid():N}";
+
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<DbContextOptions<MistakeDbContext>>();
+                services.RemoveAll<IDbContextOptionsConfiguration<MistakeDbContext>>();
+                services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
+
+                services.RemoveAll<IOssService>();
+                services.AddSingleton<IOssService>(new LocalFileOssService(_ossRoot));
+            });
+        }
+    }
+}
