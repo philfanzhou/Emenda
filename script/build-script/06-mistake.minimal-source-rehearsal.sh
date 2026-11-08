@@ -58,11 +58,11 @@ step_ok() { echo "PASS: $*"; }
 
 trap 'echo "INTERRUPTED: rehearsal aborted by signal, target kept: $TARGET" >&2; exit 130' INT TERM
 
-manifest_value() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$MANIFEST" "$1"; }
+manifest_value() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))[sys.argv[2]])' "$MANIFEST" "$1" | tr -d '\r'; }
 manifest_paths() {
-  python3 - "$MANIFEST" <<'PYEOF'
+  python3 - "$MANIFEST" <<'PYEOF' | tr -d '\r'
 import json, sys
-m = json.load(open(sys.argv[1]))
+m = json.load(open(sys.argv[1], encoding="utf-8"))
 paths = [m["solution"]]
 members = m["members"]
 for key in ("mistake_projects", "shared_projects", "context_files"):
@@ -72,8 +72,8 @@ PYEOF
 }
 
 target_abs="$(cd "$(dirname "$TARGET")" 2>/dev/null && pwd)/$(basename "$TARGET")" || target_abs="$TARGET"
-repo_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$REPO_ROOT")"
-target_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$target_abs")"
+repo_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$REPO_ROOT" | tr -d '\r')"
+target_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$target_abs" | tr -d '\r')"
 case "$target_real/" in
   "$repo_real"/*) die "target directory must be outside the source repository: $target_real" ;;
 esac
