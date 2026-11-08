@@ -18,6 +18,7 @@ using Ruoyu.Study.Mistake.Service.Intake;
 using Ruoyu.Study.Mistake.Host.Services.Health;
 using Ruoyu.Study.Mistake.Host.Services.VlImageAnalysis;
 using Ruoyu.Study.Mistake.Host;
+using Ruoyu.Study.Mistake.Host.Security;
 using Ruoyu.Study.Mistake.Service;
 using Ruoyu.Study.Consul.Shared;
 using Ruoyu.Study.Mistake.StudentClient;
@@ -25,13 +26,26 @@ using Ruoyu.Study.Mistake.Service.StudentIntegration;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Product standalone mode: standard configuration only; the product does not
+// read Consul, does not require Loki and does not use the platform identity
+// trust. Legacy Local/Platform modes stay available for compatibility.
+var standalone = builder.Configuration.IsStandaloneProductMode();
+
 var modeValue = builder.Configuration["Mistake:ConfigMode"];
-var localMode = string.Equals(modeValue, "Local", StringComparison.OrdinalIgnoreCase);
-if (modeValue is not null && !localMode &&
+var localMode = !standalone && string.Equals(modeValue, "Local", StringComparison.OrdinalIgnoreCase);
+if (!standalone && modeValue is not null && !localMode &&
     !string.Equals(modeValue, "Platform", StringComparison.OrdinalIgnoreCase))
     throw new InvalidOperationException("Mistake:ConfigMode must be Local or Platform.");
 
-if (localMode)
+if (standalone)
+{
+    // Standalone deployments log to the console; no platform Loki sink.
+    builder.Host.UseSerilog((_, _, logger) => logger
+        .MinimumLevel.Information()
+        .Enrich.FromLogContext()
+        .WriteTo.Console());
+}
+else if (localMode)
 {
     // Avoid reading the platform Serilog:WriteTo array: it contains a Loki sink.
     builder.Host.UseSerilog((_, _, logger) => logger
@@ -46,13 +60,16 @@ else
     builder.Host.UseRuoyuSerilog("Ruoyu.Study.Mistake");
 }
 
-var consulOptions = localMode ? null : RuoyuConsulOptions.Bind(builder.Configuration);
-var consulRuntimeState = localMode ? null : RuoyuConsulRuntimeState.Instance;
+var consulOptions = standalone || localMode ? null : RuoyuConsulOptions.Bind(builder.Configuration);
+var consulRuntimeState = standalone || localMode ? null : RuoyuConsulRuntimeState.Instance;
 
 bool ReadWorkerEnabled(string key)
 {
     var value = builder.Configuration[key];
-    if (value is null) return !localMode;
+    if (value is null)
+        return standalone
+            ? !key.EndsWith("UploadPollingWorker:Enabled", StringComparison.Ordinal)
+            : !localMode;
     if (bool.TryParse(value, out var enabled)) return enabled;
     throw new InvalidOperationException($"{key} must be true or false.");
 }
@@ -70,7 +87,7 @@ const string studentEnabledKey = "Mistake:Student:Enabled";
 var studentEnabledValue = builder.Configuration[studentEnabledKey];
 bool studentEnabled;
 if (studentEnabledValue is null)
-    studentEnabled = !localMode;
+    studentEnabled = standalone ? false : !localMode;
 else if (bool.TryParse(studentEnabledValue, out var parsedStudentEnabled))
     studentEnabled = parsedStudentEnabled;
 else
@@ -112,6 +129,10 @@ else
 if (resourceApiAuth && !strictApiAuth)
     throw new InvalidOperationException(
         $"{resourceApiAuthKey}=true requires {strictApiAuthKey}=true; per-resource authorization presupposes an authenticated caller.");
+if (standalone && (strictApiAuth || resourceApiAuth))
+    throw new InvalidOperationException(
+        "Standalone mode uses product caller credentials; " +
+        $"{strictApiAuthKey} and {resourceApiAuthKey} must not be enabled in this mode.");
 
 var intakeValue = builder.Configuration["Mistake:SourceIntake:Enabled"];
 var intakeEnabled = intakeValue is null ? false : bool.TryParse(intakeValue, out var parsedIntake)
@@ -172,7 +193,7 @@ if (strictApiAuth && identityTrustValidation.Failed)
         identityTrustValidation.Failures);
 }
 var identityTrustConfigured = identityTrustValidation.Succeeded;
-if (identityTrustConfigured)
+if (!standalone && identityTrustConfigured)
 {
     builder.Services.AddRuoyuJwtBearer(
         builder.Configuration,
@@ -190,6 +211,11 @@ if (identityTrustConfigured)
     // Optional Admin AppId audience scheme (shared library, IKJ8PJ failure
     // semantics): unconfigured fails closed for that audience only.
     builder.Services.AddRuoyuAdminAudienceJwtBearer(builder.Configuration);
+}
+
+if (standalone)
+{
+    builder.Services.AddProductCallerAuthentication(builder.Configuration);
 }
 
 // Kestrel has one HTTP/1 listener. Resolve the final value after Platform
@@ -214,7 +240,18 @@ builder.WebHost.ConfigureKestrel(options =>
 var intakeSettings = (intakeEnabled || returnsEnabled || handoffsEnabled || legacyReturnsEnabled) ? ResolveStudentSettings() : ((string Url, string Source, StudentServiceAuthenticationOptions Authentication)?)null;
 
 string? connectionString;
-if (localMode)
+if (standalone)
+{
+    connectionString = builder.Configuration.GetConnectionString("Emenda")
+        ?? builder.Configuration.GetConnectionString("Default");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        throw new InvalidOperationException(
+            "Standalone mode requires ConnectionStrings:Emenda (or ConnectionStrings:Default).");
+    var connectionSource = Environment.GetEnvironmentVariable("ConnectionStrings__Emenda") is null
+        ? "File" : "Environment";
+    Console.WriteLine($"Emenda configuration: Mode=Standalone, DatabaseConnectionSource={connectionSource}.");
+}
+else if (localMode)
 {
     connectionString = builder.Configuration.GetConnectionString("MistakeLocal");
     if (string.IsNullOrWhiteSpace(connectionString))
@@ -495,7 +532,7 @@ app.Logger.LogInformation("VL Analyzer: Configured={IsConfigured}, Model={Model}
 
 app.Logger.LogInformation(
     "Student capability: Enabled={Enabled}, Mode={Mode}, AddressSource={AddressSource}, BaseUrl={BaseUrl}",
-    studentEnabled, localMode ? "Local" : "Platform", studentAddressSource,
+    studentEnabled, standalone ? "Standalone" : localMode ? "Local" : "Platform", studentAddressSource,
     studentEnabled ? studentBaseUrl : "(capability disabled)");
 
 app.Logger.LogInformation(
@@ -524,6 +561,15 @@ app.Logger.LogInformation(
     identityTrustConfigured ? identityTrustOptions.Audience : "(not configured)",
     identityTrustOptions.GetAdminAudiences().Count > 0);
 
+if (standalone)
+{
+    var callerOptions = app.Services
+        .GetRequiredService<IOptions<ProductCallerAuthenticationOptions>>().Value;
+    app.Logger.LogInformation(
+        "Product caller authentication: Enabled={Enabled}, AllowAnonymous={AllowAnonymous}, Callers={CallerCount}",
+        callerOptions.Enabled, callerOptions.AllowAnonymous, callerOptions.ValidCallers.Count);
+}
+
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
     ossConfig.InternalEndpoint ?? "N/A", ossConfig.BucketName ?? "N/A");
 app.Logger.LogInformation("UploadPollingWorker: Enabled={Enabled}, PollInterval=60s", uploadPollingEnabled);
@@ -547,7 +593,13 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.MapMistakeHttpEndpoints(requireAuthenticatedApi: strictApiAuth);
+if (standalone)
+{
+    // Product callers present a per-caller credential; health, contract and
+    // root endpoints stay anonymous.
+    app.UseMiddleware<ProductCallerAuthenticationMiddleware>();
+}
+app.MapMistakeHttpEndpoints(requireAuthenticatedApi: !standalone && strictApiAuth);
 app.MapMistakeContractEndpoints();
 // Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.
 app.MapMistakeHealthEndpoints();

@@ -1,46 +1,37 @@
 #!/bin/bash
+# Emenda standalone deployment entry point.
+#
+# The product reads standard appsettings/environment configuration only: it
+# does not read Consul, does not require Loki and does not depend on the
+# Ruoyu.Study platform identity or Student services. Callers authenticate with
+# a per-caller credential header (X-Emenda-Api-Key).
 set -e
 
-IMAGE_NAME="ruoyu.study.mistake:20260501"
-CONTAINER_NAME="ruoyu-mistake"
-Port="5007"
+IMAGE_NAME="${EMENDA_IMAGE:-emenda:latest}"
+CONTAINER_NAME="${EMENDA_CONTAINER_NAME:-emenda}"
+PORT="${EMENDA_HTTP_PORT:-5007}"
 
-CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR:-192.168.100.10:8500}"
-CONSUL_TOKEN="${CONSUL_TOKEN:-}"
+require_env() {
+    local name="$1"
+    if [ -z "${!name:-}" ]; then
+        echo "Error: $name is required." >&2
+        exit 1
+    fi
+}
+
+require_env EMENDA_DB_CONNECTION
+require_env EMENDA_API_KEY
+
+OSS_INTERNAL_ENDPOINT="${OSS_INTERNAL_ENDPOINT:-localhost:8333}"
+OSS_INTERNAL_SECURE="${OSS_INTERNAL_SECURE:-false}"
+OSS_ACCESS_KEY="${OSS_ACCESS_KEY:-}"
+OSS_SECRET_KEY="${OSS_SECRET_KEY:-}"
+OSS_BUCKET_NAME="${OSS_BUCKET_NAME:-emenda}"
+OSS_PUBLIC_BASE_URL="${OSS_PUBLIC_BASE_URL:-http://localhost:8333/emenda}"
 
 VL_API_KEY="${VL_API_KEY:-}"
-VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.stepfun.com/v1}"
-VL_MODEL="${VL_MODEL:-step-3.7-flash}"
-
-DB_NAME="ruoyu_study_mistake"
-
-# Optional local service identity is supplied only by deployment-owned files.
-SERVICE_AUTH_ARGS=()
-if [ -n "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE:-}" ] || [ -n "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE:-}" ]; then
-    : "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE:?A protected service authentication env file is required}"
-    : "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE:?Service authentication key material is required}"
-    test -f "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE}"
-    test "$(stat -c '%a' "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE}")" = 600
-    test "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE:0:1}" = /
-    case "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE}" in *','*|*$'\n'*|*$'\r'*) exit 2 ;; esac
-    test -f "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE}"
-    test "$(stat -c '%a' "${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE}")" = 600
-    SERVICE_AUTH_ARGS+=(--env-file "${MISTAKE_STUDENT_SERVICE_AUTH_ENV_FILE}" --mount "type=bind,source=${MISTAKE_STUDENT_SERVICE_AUTH_PRIVATE_KEY_FILE},target=/run/ruoyu/mistake-signing-key.pem,readonly")
-fi
-if [ -n "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE:-}" ]; then
-    test "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE:0:1}" = /
-    case "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE}" in *','*|*$'\n'*|*$'\r'*) exit 2 ;; esac
-    test -f "${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE}"
-    SERVICE_AUTH_ARGS+=(--mount "type=bind,source=${MISTAKE_STUDENT_SERVICE_AUTH_CA_BUNDLE_FILE},target=/run/ruoyu/student-ca-bundle.pem,readonly" -e SSL_CERT_FILE=/run/ruoyu/student-ca-bundle.pem)
-fi
-
-# Administrator audiences (ADR-0030): the Portal console applications whose administrators
-# create or edit mistake items. Space- or comma-separated
-# application ids; empty keeps the admin-audience path closed.
-ADMIN_AUDIENCE_ARGS=()
-if [ -n "${MISTAKE_ADMIN_AUDIENCES:-}" ]; then
-    ADMIN_AUDIENCE_ARGS+=(-e "IdentityService__AdminAudience=${MISTAKE_ADMIN_AUDIENCES}")
-fi
+VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.siliconflow.cn/v1}"
+VL_MODEL="${VL_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
 
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER_NAME}$")" ]; then
     echo "Container is already running, stopping it..."
@@ -52,15 +43,20 @@ if [ -n "$(docker ps -aq --filter "name=^/${CONTAINER_NAME}$")" ]; then
 fi
 
 docker run -d \
-  ${SERVICE_AUTH_ARGS[@]+"${SERVICE_AUTH_ARGS[@]}"} \
-  ${ADMIN_AUDIENCE_ARGS[@]+"${ADMIN_AUDIENCE_ARGS[@]}"} \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
-  -p "${Port}:5007" \
-  -e TZ=Asia/Shanghai \
-  -e CONSUL_HTTP_ADDR="${CONSUL_HTTP_ADDR}" \
-  -e CONSUL_TOKEN="${CONSUL_TOKEN}" \
-  -e Database__Name="${DB_NAME}" \
+  -p "${PORT}:5007" \
+  -e TZ="${TZ:-Asia/Shanghai}" \
+  -e Emenda__Runtime__Mode=Standalone \
+  -e ConnectionStrings__Emenda="${EMENDA_DB_CONNECTION}" \
+  -e Emenda__Security__Callers__0__Name="${EMENDA_CALLER_NAME:-platform}" \
+  -e Emenda__Security__Callers__0__ApiKey="${EMENDA_API_KEY}" \
+  -e Oss__InternalEndpoint="${OSS_INTERNAL_ENDPOINT}" \
+  -e Oss__InternalSecure="${OSS_INTERNAL_SECURE}" \
+  -e Oss__AccessKey="${OSS_ACCESS_KEY}" \
+  -e Oss__SecretKey="${OSS_SECRET_KEY}" \
+  -e Oss__BucketName="${OSS_BUCKET_NAME}" \
+  -e Oss__PublicBaseUrl="${OSS_PUBLIC_BASE_URL}" \
   -e VlAnalyzer__ApiKey="${VL_API_KEY}" \
   -e VlAnalyzer__BaseUrl="${VL_API_BASE_URL}" \
   -e VlAnalyzer__Model="${VL_MODEL}" \

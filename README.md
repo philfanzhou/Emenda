@@ -11,10 +11,32 @@ in this repository.
 
 Extraction baseline, work in progress. The source has been moved to the product layout and
 the components the service needs to build on its own have been vendored into this
-repository. The platform-specific integration points (caller authentication, mistake intake,
-configuration bootstrap) and the Emenda naming are follow-up changes.
+repository.
 
-Do not treat this repository as a deployable product until the README says otherwise.
+**Standalone mode is implemented:** the service runs from standard
+appsettings/environment configuration, requires no Consul, Loki, SignaCore or Student
+service, and authenticates callers with a per-caller credential. The platform-specific
+intake/authorization code from Ruoyu.Study remains available only in the legacy modes and is
+being replaced by the product intake API. Do not treat this repository as a deployable
+product until the README says otherwise.
+
+## Standalone mode
+
+Configuration comes from `appsettings*.json` and environment variables; the product reads
+no Consul KV and writes no Loki sink. Start the container with `./start.sh` (or the same
+environment variables):
+
+| Environment variable | Required | Purpose |
+|---|---|---|
+| `EMENDA_DB_CONNECTION` | yes | PostgreSQL connection string (`ConnectionStrings__Emenda`) |
+| `EMENDA_API_KEY` | yes | Per-caller credential value (`Emenda__Security__Callers__0__ApiKey`) |
+| `EMENDA_CALLER_NAME` | no | Caller name recorded for audit (default `platform`) |
+| `OSS_INTERNAL_ENDPOINT` / `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` / `OSS_BUCKET_NAME` / `OSS_PUBLIC_BASE_URL` | yes | S3-compatible object storage (`Oss__*`) |
+| `VL_API_KEY` / `VL_API_BASE_URL` / `VL_MODEL` | no | OpenAI-compatible vision-language provider (`VlAnalyzer__*`) |
+
+Business requests under `/api/*` must carry `X-Emenda-Api-Key`. Health (`/health/live`,
+`/health/ready`), the contract endpoint (`/contracts/*`) and the root endpoint stay
+anonymous. The service applies database migrations automatically on startup.
 
 ## Layout
 
