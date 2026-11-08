@@ -545,7 +545,7 @@ sealed Manual仅Admin首次固定，worker只恢复已有Manual并扫描完整Au
 
 真实pg_dump→自有PG15恢复须包含所有source/group/request/item/practice/log/jobs/targets/returns/候选及source_handoff阶段，Student完整snapshot/receipt/current/fingerprint/tombstone与所有guards、对象桶同时保留。核对原ID、payload、receipt、阶段及lease后恢复同op；非空handoff禁止EF Down/旧binary，回退仅停自身处理并保留新schema/binary/guards或经过完整核验恢复。不能清表、换payload、假确认或匿名降级。
 
-专项测试只用任务自有随机PG库/Seaweed4.48桶，两服务target核验均实际同一S3，正常CA/SAN HTTPS与RS256 uploads.handoff。变量沿SourceReturns，backup容器须与连接同自有PG；通过55.10 SDK8串行运行控制内存。协议/验证策略见[SourceHandoffs](../modules/SourceHandoffs.md)。SourceRetained和HandoffCompleted同时为真不授权物理GC/SourceReleased；外部StorageAudit/旧movers与共享rollout仍由原父项协调。
+专项测试只用任务自有随机PG库/Seaweed4.48桶，两服务target核验均实际同一S3，正常CA/SAN HTTPS与RS256 uploads.handoff。变量沿SourceReturns，backup容器须与连接同自有PG；通过55.10 串行运行控制内存。协议/验证策略见[SourceHandoffs](../modules/SourceHandoffs.md)。SourceRetained和HandoffCompleted同时为真不授权物理GC/SourceReleased；外部StorageAudit/旧movers与共享rollout仍由原父项协调。
 
 ## 机器 HTTP 合同发布
 
