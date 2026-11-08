@@ -1,31 +1,31 @@
 {
   "manifest_version": 1,
-  "name": "mistake-minimal-source-package",
-  "description": "Mistake 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外预演与未来迁出按清单复制使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
-  "source_commit": "e685530524a8f4f316e745792d777db5ff9ebe7b",
-  "source_commit_note": ".NET 10 与 Magick.NET 迁移合入后的审计基线；默认预演即本基线，后续实施 head 仍须显式 --commit 与 --allow-commit-drift 预演；历史 baa3cee（Magick.NET 迁移前 .NET 8 基线）可用 --commit baa3cee --allow-commit-drift 重放对照。Common 内置策略与 notices 随递归成员导出。",
-  "service_identity_note": "Host 本地 RS256 signer/config 随递归成员导出，无 Student 编译依赖。portable Service.Tests 不含 Student 或 Portal BFF 引用；真实跨域 provider 测试由 integration 独立项目执行，不属于导出闭包。secret 只进入任务自有外部受限环境，不导出或 COPY。",
-  "solution": "src/services/ruoyu.mistake/src/Ruoyu.Study.Mistake.sln",
+  "name": "emenda-minimal-source-package",
+  "description": "Emenda 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外发布预演使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
+  "source_commit": "75ddfc3c7406e2f1283afa8078bfb1fae0cef212",
+  "source_commit_note": "产品布局迁移后的审计基线（Mistake 子树抽取自 Ruoyu.Study，ADR-0031）；后续提交可用 --commit <sha> --allow-commit-drift 预演。",
+  "service_identity_note": "Host 本地 RS256 signer/config 随递归成员导出，无 Student 编译依赖。portable Service.Tests 不含 Student 或 Portal BFF 引用；真实跨域 provider 回归由 Ruoyu.Study 平台仓库持有（ADR-0031 决策 11），不属于产品发布闭包。secret 只进入任务自有外部受限环境，不导出或 COPY。",
+  "solution": "src/Ruoyu.Study.Mistake.sln",
   "members": {
     "mistake_projects": [
-      "src/services/ruoyu.mistake/src/Database",
-      "src/services/ruoyu.mistake/src/Domain",
-      "src/services/ruoyu.mistake/src/Service",
-      "src/services/ruoyu.mistake/src/Host",
-      "src/services/ruoyu.mistake/src/StudentClient",
-      "src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Domain.Tests",
-      "src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests"
+      "src/Database",
+      "src/Domain",
+      "src/Service",
+      "src/Host",
+      "src/StudentClient",
+      "src/Tests/Ruoyu.Study.Mistake.Domain.Tests",
+      "src/Tests/Ruoyu.Study.Mistake.Service.Tests"
     ],
     "shared_projects": [
-      "src/ruoyu.common/backend/Ruoyu.Study.Common",
-      "src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared",
-      "src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared"
+      "vendor/Ruoyu.Study.Common",
+      "vendor/Ruoyu.Study.Ai.Shared",
+      "vendor/Ruoyu.Study.Consul.Shared"
     ],
     "context_files": [
       ".dockerignore",
-      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v1.json",
-      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v2.json",
-      "src/services/ruoyu.mistake/docs/Integration/mistake-http-v3.json"
+      "docs/Integration/mistake-http-v1.json",
+      "docs/Integration/mistake-http-v2.json",
+      "docs/Integration/mistake-http-v3.json"
     ]
   },
   "export": {
@@ -46,82 +46,281 @@
       "build：dotnet build <solution> -c Release --no-restore（0 错误）",
       "domain_tests：dotnet test Domain.Tests（必须全通过）",
       "service_tests：dotnet test Service.Tests；无 PG 环境时 PG 依赖用例按 $XunitDynamicSkip$ 门控跳过（失败数等于门控数即通过），设置 MISTAKE_MIGRATION_TEST_CONNECTION 专用 PG admin 连接后全量运行",
-      "docker_build：校验导出树无 bin/obj 残留后，docker build -f src/services/ruoyu.mistake/src/Host/Dockerfile <导出根目录>，产物文件名集合与仓内基线镜像一致（--baseline-image 可选对照）"
+      "docker_build：校验导出树无 bin/obj 残留后，docker build -f src/Host/Dockerfile <导出根目录>，产物文件名集合与仓内基线镜像一致（--baseline-image 可选对照）"
     ],
     "on_failure": "任一步非零退出即整体失败并保留现场目录；信号中断退出非零，不删除目标目录（脚本不使用仓库外临时目录）。",
     "secrets": "manifest 与导出产物不含运行密钥或真实凭据；源码内既有 appsettings 示例随源码原样导出；MISTAKE_MIGRATION_TEST_CONNECTION 仅传入测试进程环境，不写入任何文件或日志。"
   },
   "dependencies": {
-    "src/services/ruoyu.mistake/src/Database/Ruoyu.Study.Mistake.Database.csproj": [
-      { "id": "Microsoft.EntityFrameworkCore.Relational", "version": "10.0.13", "license": "MIT" },
-      { "id": "Npgsql.EntityFrameworkCore.PostgreSQL", "version": "10.0.3", "license": "PostgreSQL" },
-      { "id": "Mapster", "version": "10.0.7", "license": "MIT" }
+    "src/Database/Ruoyu.Study.Mistake.Database.csproj": [
+      {
+        "id": "Microsoft.EntityFrameworkCore.Relational",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Npgsql.EntityFrameworkCore.PostgreSQL",
+        "version": "10.0.3",
+        "license": "PostgreSQL"
+      },
+      {
+        "id": "Mapster",
+        "version": "10.0.7",
+        "license": "MIT"
+      }
     ],
-    "src/services/ruoyu.mistake/src/Domain/Ruoyu.Study.Mistake.Domain.csproj": [
-      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.13", "license": "MIT" }
+    "src/Domain/Ruoyu.Study.Mistake.Domain.csproj": [
+      {
+        "id": "Microsoft.Extensions.Logging.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      }
     ],
-    "src/services/ruoyu.mistake/src/Service/Ruoyu.Study.Mistake.Service.csproj": [
-      { "id": "Mapster", "version": "10.0.6", "license": "MIT" }
+    "src/Service/Ruoyu.Study.Mistake.Service.csproj": [
+      {
+        "id": "Mapster",
+        "version": "10.0.6",
+        "license": "MIT"
+      }
     ],
-    "src/services/ruoyu.mistake/src/Host/Ruoyu.Study.Mistake.Host.csproj": [
-      { "id": "Microsoft.EntityFrameworkCore.Design", "version": "10.0.13", "license": "MIT" },
-      { "id": "Npgsql.EntityFrameworkCore.PostgreSQL", "version": "10.0.3", "license": "PostgreSQL" }
+    "src/Host/Ruoyu.Study.Mistake.Host.csproj": [
+      {
+        "id": "Microsoft.EntityFrameworkCore.Design",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Npgsql.EntityFrameworkCore.PostgreSQL",
+        "version": "10.0.3",
+        "license": "PostgreSQL"
+      }
     ],
-    "src/services/ruoyu.mistake/src/StudentClient/Ruoyu.Study.Mistake.StudentClient.csproj": [
-      { "id": "Microsoft.Extensions.Http", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.13", "license": "MIT" }
+    "src/StudentClient/Ruoyu.Study.Mistake.StudentClient.csproj": [
+      {
+        "id": "Microsoft.Extensions.Http",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Logging.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      }
     ],
-    "src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Domain.Tests/Ruoyu.Study.Mistake.Domain.Tests.csproj": [
-      { "id": "coverlet.collector", "version": "6.0.0", "license": "MIT" },
-      { "id": "FluentAssertions", "version": "6.12.0", "license": "Apache-2.0" },
-      { "id": "Microsoft.NET.Test.Sdk", "version": "17.8.0", "license": null, "license_url": "https://aka.ms/deprecateLicenseUrl", "license_note": "nuspec 未提供 license expression" },
-      { "id": "Moq", "version": "4.20.70", "license": "BSD-3-Clause" },
-      { "id": "xunit", "version": "2.5.3", "license": "Apache-2.0" },
-      { "id": "xunit.runner.visualstudio", "version": "2.5.3", "license": "Apache-2.0" },
-      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.13", "license": "MIT" }
+    "src/Tests/Ruoyu.Study.Mistake.Domain.Tests/Ruoyu.Study.Mistake.Domain.Tests.csproj": [
+      {
+        "id": "coverlet.collector",
+        "version": "6.0.0",
+        "license": "MIT"
+      },
+      {
+        "id": "FluentAssertions",
+        "version": "6.12.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Microsoft.NET.Test.Sdk",
+        "version": "17.8.0",
+        "license": null,
+        "license_url": "https://aka.ms/deprecateLicenseUrl",
+        "license_note": "nuspec 未提供 license expression"
+      },
+      {
+        "id": "Moq",
+        "version": "4.20.70",
+        "license": "BSD-3-Clause"
+      },
+      {
+        "id": "xunit",
+        "version": "2.5.3",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "xunit.runner.visualstudio",
+        "version": "2.5.3",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Microsoft.Extensions.Logging.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      }
     ],
-    "src/services/ruoyu.mistake/src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj": [
-      { "id": "coverlet.collector", "version": "6.0.0", "license": "MIT" },
-      { "id": "FluentAssertions", "version": "6.12.0", "license": "Apache-2.0" },
-      { "id": "Microsoft.AspNetCore.Mvc.Testing", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.EntityFrameworkCore.InMemory", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.NET.Test.Sdk", "version": "17.8.0", "license": null, "license_url": "https://aka.ms/deprecateLicenseUrl", "license_note": "nuspec 未提供 license expression" },
-      { "id": "Moq", "version": "4.20.70", "license": "BSD-3-Clause" },
-      { "id": "xunit", "version": "2.5.3", "license": "Apache-2.0" },
-      { "id": "xunit.runner.visualstudio", "version": "2.5.3", "license": "Apache-2.0" }
+    "src/Tests/Ruoyu.Study.Mistake.Service.Tests/Ruoyu.Study.Mistake.Service.Tests.csproj": [
+      {
+        "id": "coverlet.collector",
+        "version": "6.0.0",
+        "license": "MIT"
+      },
+      {
+        "id": "FluentAssertions",
+        "version": "6.12.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Microsoft.AspNetCore.Mvc.Testing",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.EntityFrameworkCore.InMemory",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.NET.Test.Sdk",
+        "version": "17.8.0",
+        "license": null,
+        "license_url": "https://aka.ms/deprecateLicenseUrl",
+        "license_note": "nuspec 未提供 license expression"
+      },
+      {
+        "id": "Moq",
+        "version": "4.20.70",
+        "license": "BSD-3-Clause"
+      },
+      {
+        "id": "xunit",
+        "version": "2.5.3",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "xunit.runner.visualstudio",
+        "version": "2.5.3",
+        "license": "Apache-2.0"
+      }
     ],
-    "src/ruoyu.common/backend/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj": [
-      { "id": "Magick.NET-Q8-AnyCPU", "version": "15.0.0", "license": "Apache-2.0", "license_note": "ImageMagick 7.1.2-33；包自带第三方 Notice 随实际发布保留。" },
-      { "id": "Minio", "version": "7.0.0", "license": "Apache-2.0" },
-      { "id": "Microsoft.EntityFrameworkCore.Relational", "version": "10.0.13", "license": "MIT" },
-      { "id": "Npgsql.EntityFrameworkCore.PostgreSQL", "version": "10.0.3", "license": "PostgreSQL" },
-      { "id": "Npgsql", "version": "10.0.3", "license": "PostgreSQL" },
-      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.AspNetCore.Authentication.JwtBearer", "version": "10.0.13", "license": "MIT" }
+    "vendor/Ruoyu.Study.Common/Ruoyu.Study.Common.csproj": [
+      {
+        "id": "Magick.NET-Q8-AnyCPU",
+        "version": "15.0.0",
+        "license": "Apache-2.0",
+        "license_note": "ImageMagick 7.1.2-33；包自带第三方 Notice 随实际发布保留。"
+      },
+      {
+        "id": "Minio",
+        "version": "7.0.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Microsoft.EntityFrameworkCore.Relational",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Npgsql.EntityFrameworkCore.PostgreSQL",
+        "version": "10.0.3",
+        "license": "PostgreSQL"
+      },
+      {
+        "id": "Npgsql",
+        "version": "10.0.3",
+        "license": "PostgreSQL"
+      },
+      {
+        "id": "Microsoft.Extensions.Logging.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.AspNetCore.Authentication.JwtBearer",
+        "version": "10.0.13",
+        "license": "MIT"
+      }
     ],
-    "src/ruoyu.common/backend/Ruoyu.Study.Ai.Shared/Ruoyu.Study.Ai.Shared.csproj": [
-      { "id": "Microsoft.Extensions.Http", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Options", "version": "10.0.13", "license": "MIT" }
+    "vendor/Ruoyu.Study.Ai.Shared/Ruoyu.Study.Ai.Shared.csproj": [
+      {
+        "id": "Microsoft.Extensions.Http",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Logging.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Options",
+        "version": "10.0.13",
+        "license": "MIT"
+      }
     ],
-    "src/ruoyu.common/backend/Ruoyu.Study.Consul.Shared/Ruoyu.Study.Consul.Shared.csproj": [
-      { "id": "Microsoft.Extensions.Configuration", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Configuration.Binder", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Configuration.CommandLine", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Configuration.EnvironmentVariables", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.DependencyInjection.Abstractions", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Hosting.Abstractions", "version": "10.0.13", "license": "MIT" },
-      { "id": "Microsoft.Extensions.Logging.Abstractions", "version": "10.0.13", "license": "MIT" },
-      { "id": "Serilog.AspNetCore", "version": "8.0.0", "license": "Apache-2.0" },
-      { "id": "Serilog.Enrichers.Environment", "version": "3.0.0", "license": "Apache-2.0" },
-      { "id": "Serilog.Enrichers.Thread", "version": "4.0.0", "license": "Apache-2.0" },
-      { "id": "Serilog.Settings.Configuration", "version": "8.0.0", "license": "Apache-2.0" },
-      { "id": "Serilog.Sinks.Console", "version": "6.0.0", "license": "Apache-2.0" },
-      { "id": "Serilog.Sinks.Grafana.Loki", "version": "8.3.2", "license": null, "license_url": "https://aka.ms/deprecateLicenseUrl", "license_note": "nuspec 未提供 license expression" },
-      { "id": "Steeltoe.Discovery.Consul", "version": "4.3.0", "license": "Apache-2.0" }
+    "vendor/Ruoyu.Study.Consul.Shared/Ruoyu.Study.Consul.Shared.csproj": [
+      {
+        "id": "Microsoft.Extensions.Configuration",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Configuration.Binder",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Configuration.CommandLine",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Configuration.EnvironmentVariables",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.DependencyInjection.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Hosting.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Microsoft.Extensions.Logging.Abstractions",
+        "version": "10.0.13",
+        "license": "MIT"
+      },
+      {
+        "id": "Serilog.AspNetCore",
+        "version": "8.0.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Serilog.Enrichers.Environment",
+        "version": "3.0.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Serilog.Enrichers.Thread",
+        "version": "4.0.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Serilog.Settings.Configuration",
+        "version": "8.0.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Serilog.Sinks.Console",
+        "version": "6.0.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Serilog.Sinks.Grafana.Loki",
+        "version": "8.3.2",
+        "license": null,
+        "license_url": "https://aka.ms/deprecateLicenseUrl",
+        "license_note": "nuspec 未提供 license expression"
+      },
+      {
+        "id": "Steeltoe.Discovery.Consul",
+        "version": "4.3.0",
+        "license": "Apache-2.0"
+      }
     ]
   },
-  "dependencies_note": "直接依赖（csproj PackageReference）id/版本/许可证表达式，逐项目采集自 ~/.nuget/packages 中对应 nuspec 的 license 元数据；license 为 null 的条目仅含已弃用 licenseUrl，如实记录不推断。版本为 source_commit 处的 as-is 快照；依赖版本变化（如 NU1903 升级切片）合入后必须在同一提交中同步本清单。",
+  "dependencies_note": "直接依赖（csproj PackageReference）id/版本/许可证表达式，逐项目采集自 ~/.nuget/packages 中对应 nuspec 的 license 元数据；license 为 null 的条目仅含已弃用 licenseUrl，如实记录不推断。版本为 source_commit 处的 as-is 快照（产品布局迁移基线）；依赖版本变化（如 NU1903 升级切片）合入后必须在同一提交中同步本清单。",
   "forbidden_content": [
     "src/ruoyu.common/backend/Ruoyu.Study.MistakeBff.HttpClients",
     "src/ruoyu.common/backend/Ruoyu.Study.MistakeReviewBff.Shared",
@@ -136,5 +335,5 @@
     "src/assistant_portal",
     "src/user_portal"
   ],
-  "forbidden_content_note": "这些路径不属于 Mistake 最小闭包，导出树按成员集合精确判定，出现任何一项即预演失败。"
+  "forbidden_content_note": "这些 Ruoyu.Study 平台路径不属于 Emenda 产品闭包，导出树出现任何一项即预演失败。"
 }
