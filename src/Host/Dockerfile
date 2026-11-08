@@ -31,6 +31,7 @@ RUN dotnet publish "src/Host/Ruoyu.Study.Mistake.Host.csproj" -c $BUILD_CONFIGUR
 
 FROM base AS final
 WORKDIR /app
+ENV ASPNETCORE_ENVIRONMENT=Standalone
 ENV Emenda__Runtime__Mode=Standalone
 COPY --from=build /app/publish .
 
