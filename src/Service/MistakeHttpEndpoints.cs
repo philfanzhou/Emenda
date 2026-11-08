@@ -379,6 +379,7 @@ public static partial class MistakeHttpEndpoints
         ClaimsPrincipal user,
         IMistakeApiResourceAuthorizationService resourceAuthz,
         IMistakeDomainService mistakeService,
+        ProductRuntimeOptions runtimeOptions,
         IUploadSourceGateway studentClient,
         IOssService ossService,
         StudentCapabilityOptions studentCapability,
@@ -400,6 +401,12 @@ public static partial class MistakeHttpEndpoints
 
         if (request.ReviewStatus != ReviewStatus.Confirmed && request.ReviewStatus != ReviewStatus.Rejected)
             return MistakeHttpResponse.BadRequest("审核结果只能是确认或退回");
+
+        // Product standalone mode has no Student service to return the rejected
+        // item to: persist the rejection (status + process log) and keep the
+        // images in place instead of delegating to the Student return flow.
+        if (runtimeOptions.Standalone && request.ReviewStatus == ReviewStatus.Rejected)
+            return await RejectMistakeItemLocallyAsync(id, request, mistakeService, logger);
 
         var intake=http.RequestServices.GetService<ISourceIntakeService>();
         if (request.ReviewStatus == ReviewStatus.Rejected)
@@ -462,6 +469,49 @@ public static partial class MistakeHttpEndpoints
             };
 
             return MistakeHttpResponse.Ok(response);
+        }
+        catch (MistakeValidationException ex)
+        {
+            return MistakeHttpResponse.BadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Product standalone rejection path. Standalone deployments have no Student
+    /// service, so there is no returned-upload record, callback or return
+    /// workflow to run: the review status and its ProcessLog are persisted by
+    /// the domain service and the source images stay where they are (no OSS
+    /// copy/delete, no Student contact). The response shape is the same success
+    /// envelope the confirm path returns.
+    /// </summary>
+    private static async Task<IResult> RejectMistakeItemLocallyAsync(
+        Guid id,
+        ReviewMistakeItemRequest request,
+        IMistakeDomainService mistakeService,
+        ILogger logger)
+    {
+        try
+        {
+            var item = await mistakeService.ReviewMistakeItemAsync(
+                id,
+                (int)ReviewStatus.Rejected,
+                request.ReviewerId,
+                request.RootCause,
+                request.Grade > 0 ? request.Grade : null,
+                request.Subject > 0 ? request.Subject : null);
+
+            if (item == null)
+                return MistakeHttpResponse.Ok(new ReviewMistakeItemResponse { Success = false, ErrorMessage = "错题不存在" });
+
+            logger.LogInformation(
+                "ReviewMistakeItem: Rejected MistakeItem {ItemId} locally in standalone mode; images retained", item.Id);
+
+            return MistakeHttpResponse.Ok(new ReviewMistakeItemResponse
+            {
+                Success = true,
+                SourceUploadId = item.SourceUploadId ?? string.Empty,
+                StudentId = item.StudentId ?? string.Empty
+            });
         }
         catch (MistakeValidationException ex)
         {

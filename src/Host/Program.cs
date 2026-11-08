@@ -163,6 +163,9 @@ var handoffsEnabled=handoffValue is null ? false : bool.TryParse(handoffValue,ou
 if(handoffsEnabled && (!studentEnabled || !strictApiAuth || !resourceApiAuth))
     throw new InvalidOperationException("Source handoffs require Student, strict API authentication and resource authorization.");
 builder.Services.AddSingleton(new SourceHandoffOptions(handoffsEnabled));
+// Product runtime shape: a standalone deployment has no Student service, so
+// review rejection is persisted locally instead of using the return flow.
+builder.Services.AddSingleton(new ProductRuntimeOptions(standalone));
 
 // StructaDoc layout capability switch (IKQA2N): same startup-snapshot family as the
 // switches above. Default off; disabled configuration makes zero layout requests

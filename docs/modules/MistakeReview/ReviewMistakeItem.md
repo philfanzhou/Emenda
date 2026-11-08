@@ -8,6 +8,8 @@ Confirm 更新本域审核信息并记录 ReviewConfirmed，不执行图像迁�
 
 legacy 未受管 reject 保持原行为：本域审核后，图片 mistakes/→uploads、删除 item、通过 Student HTTP 创建退回记录；回调分类为成功/冲突/未知，使用固定 operationId。它没有持久 Saga 保证，异常对账/授权修复另归原实施 Issue。Student 能力禁用在 legacy reject 的任何副作用之前503；受管新退回禁用503，完成重放仍有效。reserved source-target namespace 与受管原来源拒绝 legacy mover。
 
+Standalone 产品模式（`Emenda:Runtime:Mode=Standalone`）没有 Student 服务：Rejected 走本域本地路径，直接持久化 Rejected 状态与 ReviewRejected 日志，图片留在 `mistakes/` 原位，不创建 Student 退回记录、不发回调、不复制/删除 OSS 对象，成功响应与 Confirm 相同（HTTP 200，`data.Success=true`）。该分支仅在 Standalone 生效，上方受管与 legacy 行为不变。
+
 响应沿旧 envelope/data.Success 与 ErrorMessage，未找到错题返回旧失败语义；managed分支错误分类与 removedImagePaths 空集合见 SourceReturns。rootCause 为错因、returnReason 为学生看到的退回原因，不混合写入 comments。
 
-验证沿 `MistakeDomainServiceTests`、`ReviewRejectCallbackTests`、`SourceReturnPostgresTests`、`SourceReturnS3Tests` 和共享 BFF 响应消费回归。运行目标 solution Release build/test；数据库与实际S3专项环境见 SourceReturns，未执行不算通过。
+验证沿 `MistakeDomainServiceTests`、`ReviewRejectCallbackTests`、`StandaloneReviewRejectTests`、`SourceReturnPostgresTests`、`SourceReturnS3Tests` 和共享 BFF 响应消费回归。运行目标 solution Release build/test；数据库与实际S3专项环境见 SourceReturns，未执行不算通过。
