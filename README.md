@@ -9,16 +9,17 @@ in this repository.
 
 ## Status
 
-Extraction baseline, work in progress. The source has been moved to the product layout and
-the components the service needs to build on its own have been vendored into this
-repository.
+**Standalone baseline (product v0.1).** The service is extracted from Ruoyu.Study, moved to
+its own product layout, renamed to Emenda, and can be deployed independently: it runs from
+standard appsettings/environment configuration, requires no Consul, Loki, SignaCore or
+Student service, authenticates callers with a per-caller credential and serves a
+product-owned intake API. The existing mistake lifecycle behaviour is preserved and covered
+by the inherited test suites.
 
-**Standalone mode is implemented:** the service runs from standard
-appsettings/environment configuration, requires no Consul, Loki, SignaCore or Student
-service, and authenticates callers with a per-caller credential. The platform-specific
-intake/authorization code from Ruoyu.Study remains available only in the legacy modes and is
-being replaced by the product intake API. Do not treat this repository as a deployable
-product until the README says otherwise.
+Not part of this baseline yet: the AI-autonomy features of the product roadmap, the
+published product HTTP contract beyond the inherited `mistake-http-v1/v2/v3` documents, and
+platform-side cutover. The legacy Local/Platform modes and Student integration remain in the
+codebase as the compatibility surface for the Ruoyu.Study platform until that cutover.
 
 ## Standalone mode
 
