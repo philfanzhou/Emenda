@@ -472,6 +472,10 @@ builder.Services.AddHttpClient<IStudentHttpClient, StudentHttpClient>()
     .AddHttpMessageHandler<StudentServiceTokenHandler>();
 builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 
+// Product intake: the product-owned upload API and the shared legacy upload
+// processor (the polling worker also resolves it from DI).
+builder.Services.AddProductIntake();
+
 // Readiness dependency matrix (IKJFIX): registered after every capability
 // switch and address is resolved so the snapshot reflects the wired process.
 builder.Services.AddSingleton(new MistakeReadinessSnapshot(
@@ -600,6 +604,12 @@ if (standalone)
     app.UseMiddleware<ProductCallerAuthenticationMiddleware>();
 }
 app.MapMistakeHttpEndpoints(requireAuthenticatedApi: !standalone && strictApiAuth);
+if (standalone)
+{
+    // Product-owned intake entry point; it lives under /api, so the product
+    // caller credential middleware above protects it.
+    app.MapProductIntakeEndpoints();
+}
 app.MapMistakeContractEndpoints();
 // Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.
 app.MapMistakeHealthEndpoints();

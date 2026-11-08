@@ -38,6 +38,25 @@ Business requests under `/api/*` must carry `X-Emenda-Api-Key`. Health (`/health
 `/health/ready`), the contract endpoint (`/contracts/*`) and the root endpoint stay
 anonymous. The service applies database migrations automatically on startup.
 
+### Intake API
+
+`POST /api/intake/uploads` (multipart/form-data) is the product-owned mistake intake
+entry point. The service stores the original images in object storage, groups them with the
+vision-language analyzer (falling back to one group when the analyzer is not configured),
+creates the mistake items and moves the images from the `uploads/` staging prefix to the
+`mistakes/` prefix.
+
+| Field | Required | Notes |
+|---|---|---|
+| `studentId` | yes | Opaque external student reference (max 128 chars); the caller owns its authorization |
+| `sourceKey` | no | Idempotency key matching `^[A-Za-z0-9._-]{1,64}$`; repeating the same key returns the existing items instead of creating duplicates |
+| `images` or `images[]` | yes | 1 to 20 files, `image/jpeg` or `image/png`, at most 15 MiB each |
+
+Success returns `{"success":true,"sourceId":"...","items":[{"id":"...","subject":1,"grade":7,"reviewStatus":1,"imagePaths":["mistakes/..."]}]}`.
+Failures return `{"success":false,"errorCode":"invalid_request","message":"..."}` (HTTP 400
+for invalid input, 409 for a reserved source target, 500 for a processing failure).
+Callers should retry a failed request with the same `sourceKey` only after fixing the input.
+
 ## Layout
 
 - `src/` — service solution (`Host`, `Service`, `Domain`, `Database`, `StudentClient`, `Tests`)

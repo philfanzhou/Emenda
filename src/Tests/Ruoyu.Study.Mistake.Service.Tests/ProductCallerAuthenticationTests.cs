@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -77,6 +78,27 @@ public sealed class ProductCallerAuthenticationTests
 
         live.StatusCode.Should().Be(HttpStatusCode.OK);
         contract.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task StandaloneMode_ProtectsProductIntakeEndpointAsync()
+    {
+        using var factory = new StandaloneWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        using var anonymous = await client.PostAsync(
+            "/api/intake/uploads",
+            new StringContent("{}", Encoding.UTF8, "application/json"));
+        anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/intake/uploads");
+        request.Headers.Add(ProductCallerAuthenticationOptions.ApiKeyHeaderName, CallerKey);
+        request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+        using var response = await client.SendAsync(request);
+
+        // Authenticated but not multipart: the intake API rejects the request
+        // shape, proving the endpoint is wired behind the caller credential.
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     private static class ProductCallerAuthenticationOptions
