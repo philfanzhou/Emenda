@@ -68,8 +68,9 @@ builds and tests the exported release closure outside the repository.
 - CodeQL is enabled; the first run on `main` established the code-scanning results.
 - `main` is protected by the required status checks `Backend build and tests`,
   `Container image build`, `Analyze actions`, `Analyze csharp` and
-  `Review dependency changes`. Force pushes and deletions are disabled; repository
-  administrators are exempt so release tooling can still push tags and perform emergency
-  maintenance.
+  `Review dependency changes`. Force pushes and deletions are disabled and repository
+  administrators are also subject to the protection, so every change to `main` arrives
+  through a pull request whose checks are green. Release tags are not branch pushes and
+  remain unaffected.
 - Dependabot is configured for NuGet, the Dockerfile base images and GitHub Actions, and
   security updates are enabled for the repository.
