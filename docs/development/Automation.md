@@ -61,12 +61,14 @@ need dedicated disposable PostgreSQL 15 containers; they are not part of the gen
 job. The release rehearsal (`script/build-script/06-mistake.minimal-source-rehearsal.sh`)
 builds and tests the exported release closure outside the repository.
 
-## Notes and current gaps
+## Repository settings
 
-- The published GHCR package may default to private on first publication; make it public
-  in the package settings if the image is meant to be pulled anonymously.
-- CodeQL needs the repository's code scanning feature; the first run establishes the
-  results.
-- Branch protection is not configured by these workflows. Requiring the CI checks on
-  `main` is a separate repository setting so that direct maintainer pushes are not
-  accidentally locked out.
+- The GHCR package `ghcr.io/philfanzhou/emenda` is public and can be pulled anonymously.
+- CodeQL is enabled; the first run on `main` established the code-scanning results.
+- `main` is protected by the required status checks `Backend build and tests`,
+  `Container image build`, `Analyze actions`, `Analyze csharp` and
+  `Review dependency changes`. Force pushes and deletions are disabled; repository
+  administrators are exempt so release tooling can still push tags and perform emergency
+  maintenance.
+- Dependabot is configured for NuGet, the Dockerfile base images and GitHub Actions, and
+  security updates are enabled for the repository.
