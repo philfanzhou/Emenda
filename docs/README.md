@@ -11,6 +11,7 @@ extracted from the Ruoyu.Study platform and now an independent open-source produ
 | [SECURITY.md](../SECURITY.md) | Reporting a vulnerability and deployment security expectations |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Local build/test workflow and pull-request expectations |
 | [Standalone deployment](./development/StandaloneDeployment.md) | Container deployment, required configuration, health checks and API examples |
+| [Automation and releases](./development/Automation.md) | CI/CodeQL/Dependabot workflows, GHCR image tags and the release process |
 | [OpenAPI contract](./Integration/mistake-http-v3.json) | The versioned machine-readable HTTP contract served at `/contracts/mistake-http-v3.json` |
 
 ## Inherited service documentation

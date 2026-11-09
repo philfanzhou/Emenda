@@ -1,5 +1,9 @@
 # Emenda
 
+[![CI](https://github.com/philfanzhou/Emenda/actions/workflows/ci.yml/badge.svg)](https://github.com/philfanzhou/Emenda/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/philfanzhou/Emenda/actions/workflows/codeql.yml/badge.svg)](https://github.com/philfanzhou/Emenda/actions/workflows/codeql.yml)
+[![Release](https://github.com/philfanzhou/Emenda/actions/workflows/release.yml/badge.svg)](https://github.com/philfanzhou/Emenda/actions/workflows/release.yml)
+
 Self-hosted, AI-driven mistake management service for learning platforms.
 
 Emenda owns the mistake lifecycle: intake, AI-assisted image analysis, review, practice
@@ -75,6 +79,21 @@ dotnet test src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj -c Release
 
 The database-backed suites need PostgreSQL 15 and a dedicated connection; the image build
 needs Docker.
+
+## Container images
+
+`release.yml` publishes multi-platform (amd64/arm64) images to GitHub Container Registry:
+
+| Tag | Meaning |
+|---|---|
+| `ghcr.io/philfanzhou/emenda:latest` | latest stable release |
+| `ghcr.io/philfanzhou/emenda:X.Y.Z` (also `X.Y`, `X`) | stable semantic version |
+| `ghcr.io/philfanzhou/emenda:X.Y.Z-rc.N` | prerelease |
+| `ghcr.io/philfanzhou/emenda:edge` | moving build of `main` |
+
+Every tag also produces a GitHub Release with generated notes. See
+[Automation](docs/development/Automation.md) for the workflow contract and the release
+process.
 
 ## License
 

@@ -1,5 +1,9 @@
 ARG ASPNET_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0
 ARG SDK_IMAGE=mcr.microsoft.com/dotnet/sdk:10.0
+ARG APP_VERSION=0.0.0-dev
+ARG APP_REVISION=
+ARG APP_CHANNEL=development
+
 FROM ${ASPNET_IMAGE} AS base
 WORKDIR /app
 EXPOSE 5007
@@ -31,8 +35,21 @@ RUN dotnet publish "src/Host/Emenda.Host.csproj" -c $BUILD_CONFIGURATION -o /app
 
 FROM base AS final
 WORKDIR /app
+ARG APP_VERSION
+ARG APP_REVISION
+ARG APP_CHANNEL
+LABEL org.opencontainers.image.title="Emenda" \
+      org.opencontainers.image.description="Self-hosted AI-driven mistake management service for learning platforms" \
+      org.opencontainers.image.source="https://github.com/philfanzhou/Emenda" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${APP_REVISION}" \
+      org.opencontainers.image.channel="${APP_CHANNEL}"
 ENV ASPNETCORE_ENVIRONMENT=Standalone
 ENV Emenda__Runtime__Mode=Standalone
+ENV APP_VERSION=${APP_VERSION}
+ENV APP_REVISION=${APP_REVISION}
+ENV APP_CHANNEL=${APP_CHANNEL}
 COPY --from=build /app/publish .
 
 ENTRYPOINT ["dotnet", "Emenda.Host.dll"]
