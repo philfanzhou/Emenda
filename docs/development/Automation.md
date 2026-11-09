@@ -13,7 +13,7 @@ release image plus a GitHub Release.
 | [`release.yml`](../../.github/workflows/release.yml) | Tags `v*.*.*` | Validates the semantic version, re-verifies through `ci.yml`, publishes a multi-platform (amd64/arm64) GHCR image with SBOM and provenance attestation, and creates a GitHub Release with generated notes. Merges to `main` never build or publish an image. |
 | [`codeql.yml`](../../.github/workflows/codeql.yml) | Push/PR to `main`, weekly schedule, manual | CodeQL analysis for `actions` and `csharp`. |
 | [`dependency-review.yml`](../../.github/workflows/dependency-review.yml) | `pull_request` to `main` | Fails a pull request that introduces a high-or-higher severity dependency change. |
-| [`registry-cleanup.yml`](../../.github/workflows/registry-cleanup.yml) | Weekly schedule, manual | Deletes GHCR image versions that no tag can reach after a retention window, walking the multi-platform index and attestation referrer graph so a published image is never partially deleted. Supports a manual dry run. |
+| [`registry-cleanup.yml`](../../.github/workflows/registry-cleanup.yml) | Weekly schedule, manual | Deletes GHCR image versions that no tag can reach after a retention window, walking the multi-platform index and attestation referrer graph so a published image is never partially deleted. Former moving tags (default `edge`) are treated as retired, so they stop keeping their old image alive. Supports a manual dry run. |
 
 Dependabot is configured in [`.github/dependabot.yml`](../../.github/dependabot.yml) for
 NuGet, the Dockerfile base images and GitHub Actions.

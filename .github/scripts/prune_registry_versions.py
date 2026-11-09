@@ -92,8 +92,15 @@ def registry_token(repository: str, token: str) -> str:
     return value
 
 
-def reachable_digests(versions: list[dict], repository: str, token: str) -> set[str]:
-    """Every digest some tag leads to, directly or through an index."""
+def reachable_digests(
+    versions: list[dict], repository: str, token: str, retired_tags: set[str]
+) -> set[str]:
+    """Every digest some ordinary tag leads to, directly or through an index.
+
+    Tags named in ``retired_tags`` are former moving labels the repository no
+    longer publishes; they do not keep their image alive, so the retention
+    window eventually removes them like any other unreferenced version.
+    """
     seen: set[str] = set()
 
     def drain(queue: list[str]) -> None:
@@ -116,7 +123,10 @@ def reachable_digests(versions: list[dict], repository: str, token: str) -> set[
     ordinary = [
         version["name"]
         for version in versions
-        if any(not REFERRER_TAG.match(tag) for tag in tags_of(version))
+        if any(
+            tag not in retired_tags and not REFERRER_TAG.match(tag)
+            for tag in tags_of(version)
+        )
     ]
     # A package carrying no ordinary tag at all is not a state these workflows
     # can produce, so treat it as a failed read rather than as an instruction.
@@ -163,6 +173,11 @@ def main() -> int:
     retention_days = int(require("RETENTION_DAYS", "7"))
     dry_run = require("DRY_RUN", "true").lower() == "true"
     token = require("GH_TOKEN")
+    retired_tags = {
+        tag.strip()
+        for tag in (os.environ.get("RETIRED_TAGS") or "").split(",")
+        if tag.strip()
+    }
 
     repository = f"{owner}/{package}".lower()
 
@@ -180,6 +195,7 @@ def main() -> int:
     print(f"Package     {base}")
     print(f"Registry    ghcr.io/{repository}")
     print(f"Retention   {retention_days} days")
+    print(f"Retired     {','.join(sorted(retired_tags)) or '-'}")
     print(f"Dry run     {dry_run}\n")
 
     versions = api_paginated(f"{base}/versions?per_page=100", token)
@@ -188,7 +204,9 @@ def main() -> int:
     if not versions:
         raise Abort("The package reports no versions; refusing to continue.")
 
-    reachable = reachable_digests(versions, repository, registry_token(repository, token))
+    reachable = reachable_digests(
+        versions, repository, registry_token(repository, token), retired_tags
+    )
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
     kept, held, doomed = 0, 0, []

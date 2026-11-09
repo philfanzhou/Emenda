@@ -15,6 +15,10 @@ on:
         description: Keep unreferenced versions younger than this many days
         type: string
         default: "7"
+      retired-tags:
+        description: Comma-separated former moving tags that no longer keep an image alive
+        type: string
+        default: "edge"
 
 permissions:
   contents: read
@@ -42,5 +46,6 @@ jobs:
           PACKAGE_OWNER: ${{ github.repository_owner }}
           PACKAGE_NAME: ${{ github.event.repository.name }}
           RETENTION_DAYS: ${{ inputs.retention-days || '7' }}
+          RETIRED_TAGS: ${{ inputs.retired-tags || 'edge' }}
           DRY_RUN: ${{ inputs.dry-run || 'false' }}
         run: python3 .github/scripts/prune_registry_versions.py
