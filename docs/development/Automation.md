@@ -9,8 +9,8 @@ release image plus a GitHub Release.
 
 | Workflow | Triggers | What it does |
 |---|---|---|
-| [`ci.yml`](../../.github/workflows/ci.yml) | `pull_request` to `main`, `workflow_call`, `workflow_dispatch` | Restores and builds `src/Emenda.sln` in Release, runs the Domain tests, runs the Service tests that do not require PostgreSQL (`FullyQualifiedName!~PostgresTests`), and builds the container image without pushing it. |
-| [`release.yml`](../../.github/workflows/release.yml) | Push to `main`, tags `v*.*.*` | Validates the semantic version (tags), re-verifies through `ci.yml`, publishes a multi-platform (amd64/arm64) GHCR image with SBOM and provenance attestation, and on tags creates a GitHub Release with generated notes. |
+| [`ci.yml`](../../.github/workflows/ci.yml) | `push` to `main`, `pull_request` to `main`, `workflow_call`, `workflow_dispatch` | Restores and builds `src/Emenda.sln` in Release, runs the Domain tests, runs the Service tests that do not require PostgreSQL (`FullyQualifiedName!~PostgresTests`), and builds the container image without pushing it. |
+| [`release.yml`](../../.github/workflows/release.yml) | Tags `v*.*.*` | Validates the semantic version, re-verifies through `ci.yml`, publishes a multi-platform (amd64/arm64) GHCR image with SBOM and provenance attestation, and creates a GitHub Release with generated notes. Merges to `main` never build or publish an image. |
 | [`codeql.yml`](../../.github/workflows/codeql.yml) | Push/PR to `main`, weekly schedule, manual | CodeQL analysis for `actions` and `csharp`. |
 | [`dependency-review.yml`](../../.github/workflows/dependency-review.yml) | `pull_request` to `main` | Fails a pull request that introduces a high-or-higher severity dependency change. |
 | [`registry-cleanup.yml`](../../.github/workflows/registry-cleanup.yml) | Weekly schedule, manual | Deletes GHCR image versions that no tag can reach after a retention window, walking the multi-platform index and attestation referrer graph so a published image is never partially deleted. Supports a manual dry run. |
@@ -21,11 +21,12 @@ NuGet, the Dockerfile base images and GitHub Actions.
 ## Container image tags
 
 The image name is `ghcr.io/<repository>` (lower-cased), i.e. `ghcr.io/philfanzhou/emenda`.
+Images are built and published only for version tags; merges to `main` run CI and never
+build an image.
 
 | Trigger | Tags |
 |---|---|
-| Push to `main` | `edge` (moving build of the default branch) |
-| Tag `vX.Y.Z` | `X.Y.Z`, `X.Y`, `X`, `latest`, plus the moving `edge`-style build identity is not applied |
+| Tag `vX.Y.Z` | `X.Y.Z`, `X.Y`, `X`, `latest` |
 | Tag `vX.Y.Z-rc.N` (prerelease) | `X.Y.Z-rc.N` only; no `latest`/major/minor tags |
 
 A stable tag is never overwritten: publishing runs are serialised with
