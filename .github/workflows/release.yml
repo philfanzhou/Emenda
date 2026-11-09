@@ -1,0 +1,191 @@
+name: Release
+
+on:
+  push:
+    # Tags publish a release. Default-branch pushes publish the moving edge
+    # image through the same verified jobs.
+    branches: [main]
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-version:
+    name: Validate version tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      number: ${{ steps.version.outputs.number }}
+    steps:
+      - name: Validate semantic version
+        id: version
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          # A default-branch push carries no version. Both outputs stay empty
+          # rather than being derived from the ref, because a branch name is
+          # not a version.
+          if [[ "$IS_TAG" != "true" ]]; then
+            echo "prerelease=" >> "$GITHUB_OUTPUT"
+            echo "number=" >> "$GITHUB_OUTPUT"
+            echo "Ref ${GITHUB_REF} is not a tag; building without a version."
+            exit 0
+          fi
+
+          if [[ ! "$VERSION_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must use semantic versioning, for example v1.2.3 or v1.2.3-rc.1" >&2
+            exit 1
+          fi
+          if [[ "$VERSION_TAG" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The tag without its v prefix, which is what the image tags and the
+          # published release use as a version number.
+          echo "number=${VERSION_TAG#v}" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify release source
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish-container:
+    name: Publish container image
+    # The two refs this workflow may publish from, named explicitly rather
+    # than inferred from the trigger. Anything else added to the trigger
+    # later, or a workflow_dispatch, cannot publish unless it is also listed
+    # here.
+    if: >-
+      startsWith(github.ref, 'refs/tags/')
+      || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [validate-version, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      # A job-level block replaces the top-level default outright, so contents
+      # has to be restated here or the checkout below loses its token.
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read checked-out build identity
+        id: identity
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          # HEAD is the commit even when the triggering ref is an annotated tag.
+          revision="$(git rev-parse HEAD)"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          if [[ "$IS_TAG" == "true" ]]; then
+            echo "channel=release" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=edge" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Normalize image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.image.outputs.name }}
+          # The semver rules read the tag out of the ref and produce nothing on
+          # a branch, so edge and the release tags cannot appear together. The
+          # latest rule carries the tag test explicitly: without it the first
+          # default-branch push would move latest onto a development build.
+          tags: |
+            type=edge,branch=${{ github.event.repository.default_branch }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && needs.validate-version.outputs.prerelease == 'false' }}
+            type=semver,pattern={{major}},enable=${{ startsWith(github.ref, 'refs/tags/v') && needs.validate-version.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && needs.validate-version.outputs.prerelease == 'false' }}
+
+      - name: Build and publish multi-platform image
+        id: publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: src/Host/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          # Passed only when a tag supplied a version. An empty build argument
+          # would override the Dockerfile default rather than fall back to it.
+          build-args: |
+            ${{ needs.validate-version.outputs.number != '' && format('APP_VERSION={0}', needs.validate-version.outputs.number) || '' }}
+            APP_REVISION=${{ steps.identity.outputs.revision }}
+            APP_CHANNEL=${{ steps.identity.outputs.channel }}
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest image provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ steps.image.outputs.name }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          # Pushed into the registry only for a release: the referrer tag this
+          # writes is named after the image digest, so on the default branch it
+          # would leave one permanent tag behind per push.
+          push-to-registry: ${{ startsWith(github.ref, 'refs/tags/') }}
+
+  publish-release:
+    name: Publish GitHub Release
+    # Same guard as publish-container, for the same reason.
+    if: startsWith(github.ref, 'refs/tags/')
+    # Depends on publish-container rather than running alongside it, so a
+    # release never announces a version whose image failed to publish.
+    needs: [validate-version, publish-container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Only what `gh release create` needs. The registry and attestation
+      # scopes stay in publish-container.
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.validate-version.outputs.prerelease }}
+        run: |
+          arguments=("$VERSION_TAG" --verify-tag --generate-notes --title "$VERSION_TAG")
+          if [[ "$PRERELEASE" == "true" ]]; then
+            arguments+=(--prerelease)
+          fi
+          gh release create "${arguments[@]}"
