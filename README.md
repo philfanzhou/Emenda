@@ -82,14 +82,14 @@ needs Docker.
 
 ## Container images
 
-`release.yml` publishes multi-platform (amd64/arm64) images to GitHub Container Registry:
+`release.yml` publishes multi-platform (amd64/arm64) images to GitHub Container Registry
+for version tags only; merges to `main` run CI and do not build images.
 
 | Tag | Meaning |
 |---|---|
 | `ghcr.io/philfanzhou/emenda:latest` | latest stable release |
 | `ghcr.io/philfanzhou/emenda:X.Y.Z` (also `X.Y`, `X`) | stable semantic version |
 | `ghcr.io/philfanzhou/emenda:X.Y.Z-rc.N` | prerelease |
-| `ghcr.io/philfanzhou/emenda:edge` | moving build of `main` |
 
 Every tag also produces a GitHub Release with generated notes. See
 [Automation](docs/development/Automation.md) for the workflow contract and the release

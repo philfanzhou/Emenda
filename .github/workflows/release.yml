@@ -2,9 +2,8 @@ name: Release
 
 on:
   push:
-    # Tags publish a release. Default-branch pushes publish the moving edge
-    # image through the same verified jobs.
-    branches: [main]
+    # Only a version tag publishes an image and a GitHub Release. Merges to
+    # main are verified by ci.yml and never build a container image.
     tags:
       - "v*.*.*"
 
@@ -61,13 +60,10 @@ jobs:
 
   publish-container:
     name: Publish container image
-    # The two refs this workflow may publish from, named explicitly rather
-    # than inferred from the trigger. Anything else added to the trigger
-    # later, or a workflow_dispatch, cannot publish unless it is also listed
-    # here.
-    if: >-
-      startsWith(github.ref, 'refs/tags/')
-      || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # Only a version tag may publish an image, named explicitly rather than
+    # inferred from the trigger, so a future trigger change cannot publish by
+    # accident.
+    if: startsWith(github.ref, 'refs/tags/')
     needs: [validate-version, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -84,18 +80,12 @@ jobs:
 
       - name: Read checked-out build identity
         id: identity
-        env:
-          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
           # HEAD is the commit even when the triggering ref is an annotated tag.
           revision="$(git rev-parse HEAD)"
           [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
-          if [[ "$IS_TAG" == "true" ]]; then
-            echo "channel=release" >> "$GITHUB_OUTPUT"
-          else
-            echo "channel=edge" >> "$GITHUB_OUTPUT"
-          fi
+          echo "channel=release" >> "$GITHUB_OUTPUT"
 
       - name: Normalize image name
         id: image
@@ -121,12 +111,9 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ steps.image.outputs.name }}
-          # The semver rules read the tag out of the ref and produce nothing on
-          # a branch, so edge and the release tags cannot appear together. The
-          # latest rule carries the tag test explicitly: without it the first
-          # default-branch push would move latest onto a development build.
+          # Version tags only: the semver rules read the tag out of the ref,
+          # and latest/major/minor move only for a stable release.
           tags: |
-            type=edge,branch=${{ github.event.repository.default_branch }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && needs.validate-version.outputs.prerelease == 'false' }}
             type=semver,pattern={{major}},enable=${{ startsWith(github.ref, 'refs/tags/v') && needs.validate-version.outputs.prerelease == 'false' }}
@@ -139,10 +126,8 @@ jobs:
           context: .
           file: src/Host/Dockerfile
           platforms: linux/amd64,linux/arm64
-          # Passed only when a tag supplied a version. An empty build argument
-          # would override the Dockerfile default rather than fall back to it.
           build-args: |
-            ${{ needs.validate-version.outputs.number != '' && format('APP_VERSION={0}', needs.validate-version.outputs.number) || '' }}
+            APP_VERSION=${{ needs.validate-version.outputs.number }}
             APP_REVISION=${{ steps.identity.outputs.revision }}
             APP_CHANNEL=${{ steps.identity.outputs.channel }}
           push: true
