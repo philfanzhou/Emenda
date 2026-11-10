@@ -34,6 +34,7 @@ environment variables):
 | Environment variable | Required | Purpose |
 |---|---|---|
 | `EMENDA_DB_CONNECTION` | yes | PostgreSQL connection string (`ConnectionStrings__Emenda`) |
+| `EMENDA_SCHEMA_OWNERSHIP` | no | `Own` (default, product owns/migrates the schema) or `Shared` (legacy-database coexistence: no schema changes, baseline verified) |
 | `EMENDA_API_KEY` | yes | Per-caller credential value (`Emenda__Security__Callers__0__ApiKey`) |
 | `EMENDA_CALLER_NAME` | no | Caller name recorded for audit (default `platform`) |
 | `OSS_INTERNAL_ENDPOINT` / `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` / `OSS_BUCKET_NAME` / `OSS_PUBLIC_BASE_URL` | yes | S3-compatible object storage (`Oss__*`) |
@@ -41,7 +42,13 @@ environment variables):
 
 Business requests under `/api/*` must carry `X-Emenda-Api-Key`. Health (`/health/live`,
 `/health/ready`), the contract endpoint (`/contracts/*`) and the root endpoint stay
-anonymous. The service applies database migrations automatically on startup.
+anonymous. The connection (`EMENDA_DB_CONNECTION`) must be explicit: either a dedicated
+Emenda database (schema owned and migrated by the product), or — for the coexistence
+window with the running legacy Mistake service — the existing mistake database with
+`EMENDA_SCHEMA_OWNERSHIP=Shared`, which guarantees no schema changes and refuses to start
+when the shared database is behind the product's migration baseline. When both services
+share a Docker host, publish Emenda on a different host port (`EMENDA_HTTP_PORT`, default
+`5007`).
 
 ### Intake API
 

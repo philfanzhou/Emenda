@@ -82,6 +82,122 @@ public sealed class StandaloneReadinessTests
         act.Should().NotThrow();
     }
 
+    [Fact]
+    public void StandaloneMode_RequiresExplicitEmendaConnection()
+    {
+        // Standalone must resolve only ConnectionStrings:Emenda. The inherited
+        // ConnectionStrings:Default (the legacy platform example, pointing at
+        // the running mistake database) is never used implicitly: connecting to
+        // the legacy database is a deliberate coexistence decision declared
+        // through the explicit Emenda connection.
+        using var factory = new StandaloneStartupFailureWebApplicationFactory(
+            environmentOverrides: settings => settings.Remove("ConnectionStrings__Emenda"));
+
+        Action act = () => factory.CreateClient();
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*requires ConnectionStrings:Emenda*");
+    }
+
+    [Fact]
+    public void SharedSchemaOwnership_IsAStandaloneOnlySetting()
+    {
+        using var factory = new StandaloneStartupFailureWebApplicationFactory(
+            standalone: false,
+            extraEnvironment: new Dictionary<string, string?>
+            {
+                ["Mistake__ConfigMode"] = "Local",
+                ["Emenda__Database__SchemaOwnership"] = "Shared"
+            });
+
+        Action act = () => factory.CreateClient();
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*SchemaOwnership=Shared is a standalone-mode setting*");
+    }
+
+    private sealed class StandaloneStartupFailureWebApplicationFactory : WebApplicationFactory<Program>
+    {
+        private readonly Action<Dictionary<string, string?>>? _environmentOverrides;
+        private readonly IReadOnlyDictionary<string, string?> _extraEnvironment;
+
+        private static readonly string[] OwnedEnvironmentKeys =
+        [
+            "Emenda__Runtime__Mode",
+            "Emenda__Database__SchemaOwnership",
+            "Emenda__Security__Callers__0__Name",
+            "Emenda__Security__Callers__0__ApiKey",
+            "ConnectionStrings__Emenda",
+            "Mistake__ConfigMode",
+            "Mistake__Student__Enabled",
+            "Mistake__Workers__UploadPollingWorker__Enabled",
+            "Mistake__Workers__ReanalyzeJobHostedService__Enabled",
+            "Mistake__Workers__ReanalyzeJobCleanupService__Enabled",
+            "VlAnalyzer__ApiKey",
+            "IdentityService__Authority",
+            "IdentityService__Issuer",
+            "IdentityService__Audience",
+            "IdentityService__AdminAudience",
+            "IdentityService__MistakeApiStrictAuth",
+            "IdentityService__MistakeApiResourceAuth",
+        ];
+
+        public StandaloneStartupFailureWebApplicationFactory(
+            bool standalone = true,
+            IReadOnlyDictionary<string, string?>? extraEnvironment = null,
+            Action<Dictionary<string, string?>>? environmentOverrides = null)
+        {
+            _extraEnvironment = extraEnvironment ?? new Dictionary<string, string?>();
+            _environmentOverrides = environmentOverrides;
+
+            var settings = new Dictionary<string, string?>
+            {
+                ["Emenda__Runtime__Mode"] = standalone ? "Standalone" : null,
+                ["Emenda__Database__SchemaOwnership"] = null,
+                ["Emenda__Security__Callers__0__Name"] = CallerName,
+                ["Emenda__Security__Callers__0__ApiKey"] = CallerKey,
+                ["ConnectionStrings__Emenda"] =
+                    "Host=127.0.0.1;Port=5432;Database=emenda_startup_failure_tests;Username=emenda;Password=startup-failure-tests-only",
+                ["Mistake__ConfigMode"] = null,
+                ["Mistake__Student__Enabled"] = "false",
+                ["Mistake__Workers__UploadPollingWorker__Enabled"] = "false",
+                ["Mistake__Workers__ReanalyzeJobHostedService__Enabled"] = "false",
+                ["Mistake__Workers__ReanalyzeJobCleanupService__Enabled"] = "false",
+                ["VlAnalyzer__ApiKey"] = null,
+                ["IdentityService__Authority"] = null,
+                ["IdentityService__Issuer"] = null,
+                ["IdentityService__Audience"] = null,
+                ["IdentityService__AdminAudience"] = null,
+                ["IdentityService__MistakeApiStrictAuth"] = null,
+                ["IdentityService__MistakeApiResourceAuth"] = null,
+            };
+            foreach (var pair in _extraEnvironment)
+                settings[pair.Key] = pair.Value;
+            _environmentOverrides?.Invoke(settings);
+            foreach (var pair in settings)
+                Environment.SetEnvironmentVariable(pair.Key, pair.Value);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            foreach (var key in OwnedEnvironmentKeys)
+                Environment.SetEnvironmentVariable(key, null);
+            base.Dispose(disposing);
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            var databaseName = $"emenda_startup_failure_{Guid.NewGuid():N}";
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<DbContextOptions<MistakeDbContext>>();
+                services.RemoveAll<IDbContextOptionsConfiguration<MistakeDbContext>>();
+                services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
+            });
+        }
+    }
+
     private sealed class StandaloneReadinessWebApplicationFactory : WebApplicationFactory<Program>
     {
         private readonly string _ossRoot =

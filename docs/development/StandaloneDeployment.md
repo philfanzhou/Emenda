@@ -10,6 +10,7 @@ Student service. The product image defaults to `ASPNETCORE_ENVIRONMENT=Standalon
 | Purpose | Environment variable | Configuration key |
 |---|---|---|
 | PostgreSQL connection | `EMENDA_DB_CONNECTION` / `ConnectionStrings__Emenda` | `ConnectionStrings:Emenda` |
+| Schema ownership (`Own`/`Shared`) | `EMENDA_SCHEMA_OWNERSHIP` | `Emenda:Database:SchemaOwnership` |
 | Caller credential (per caller) | `EMENDA_API_KEY` / `Emenda__Security__Callers__0__ApiKey` | `Emenda:Security:Callers:0:ApiKey` |
 | Caller name (audit) | `Emenda__Security__Callers__0__Name` | `Emenda:Security:Callers:0:Name` |
 | S3-compatible endpoint | `OSS_INTERNAL_ENDPOINT` | `Oss:InternalEndpoint` |
@@ -18,12 +19,62 @@ Student service. The product image defaults to `ASPNETCORE_ENVIRONMENT=Standalon
 | Public pre-signed base URL | `OSS_PUBLIC_BASE_URL` | `Oss:PublicBaseUrl` |
 | Vision-language provider | `VL_API_KEY` / `VL_API_BASE_URL` / `VL_MODEL` | `VlAnalyzer:*` |
 
-The service refuses to start in standalone mode without a database connection or at least
-one caller credential. `Emenda:Security:AllowAnonymous=true` exists only for local
+The service refuses to start in standalone mode without an explicit `ConnectionStrings:Emenda`
+database connection (the inherited `ConnectionStrings:Default` example is never used) or without
+at least one caller credential. `Emenda:Security:AllowAnonymous=true` exists only for local
 development; never expose such a deployment.
 
 The bucket must stay private. Pre-signed image URLs returned by `/api/mistakes/presigned-url`
 are short-lived bearer capabilities.
+
+## Database ownership and the legacy coexistence window
+
+`Emenda:Database:SchemaOwnership` selects how the product treats its database:
+
+| Value | Behaviour | Use for |
+|---|---|---|
+| `Own` (default) | Startup applies migrations automatically and may create/upgrade the schema | A dedicated Emenda database |
+| `Shared` | Startup applies **no** schema changes at all (no migrations, no `EnsureCreated`, no repair DDL); it only verifies the database already covers this build's migration baseline and refuses to start when it does not | Connecting to the **existing legacy mistake database** during the coexistence window |
+
+During the window where the legacy Ruoyu.Study Mistake service and Emenda must coexist on the
+same data, run Emenda with:
+
+```bash
+export EMENDA_DB_CONNECTION='<the exact connection the legacy Mistake service uses>'
+export EMENDA_SCHEMA_OWNERSHIP='Shared'
+./start.sh
+```
+
+Guarantees in `Shared` mode:
+
+- **No structure changes.** Emenda never issues DDL against the shared database; the running
+  legacy service stays the only writer of schema. If the shared database is behind Emenda's
+  migration baseline (for example after a future Emenda release adds a migration), Emenda
+  refuses to start instead of migrating it. The manual `--upgrade-empty-db` /
+  `--upgrade-known-db` commands are refused with the same message.
+- **Data-level coexistence.** Both services read and write the same rows with the same model
+  (both are extracted from the same code at the same schema version 14 baseline).
+- **Keep the polling worker off.** `Mistake:Workers:UploadPollingWorker:Enabled` defaults to
+  `false` in standalone mode; leave it off while the legacy service owns the Student polling,
+  or both services would process the same upload records.
+
+`Shared` is a standalone-mode setting: legacy Local/Platform modes keep the platform's own
+upgrade behaviour unchanged.
+
+## Host port and other coexistence notes
+
+- **Separate host port.** Both images listen on container port `5007`. When both run on the
+  same Docker host, publish Emenda on a different host port, e.g.
+  `EMENDA_HTTP_PORT=5017 ./start.sh`.
+- **No platform dependencies.** Standalone mode reads no Consul KV, writes no Loki sink and
+  contacts no Student or identity service by default, so Emenda exerts no load on the running
+  platform beyond the shared database.
+- **Same bucket while sharing the database.** Pre-signed URLs are generated
+  against the single configured `Oss:BucketName`. During the shared-database
+  window the existing rows reference objects in the legacy `ruoyu-study`
+  bucket, so Emenda must be configured with that same bucket — a dedicated
+  bucket (the `start.sh` default `emenda`) is only for dedicated-database
+  deployments where no legacy paths need to resolve.
 
 ## Run
 
@@ -42,8 +93,9 @@ export EMENDA_IMAGE='ghcr.io/philfanzhou/emenda:latest'
 ./start.sh
 ```
 
-`start.sh` replaces an existing container, publishes port `5007` and passes the variables
-above. The container applies database migrations automatically on startup.
+`start.sh` replaces an existing container, publishes port `${EMENDA_HTTP_PORT:-5007}` and
+passes the variables above. The container applies database migrations automatically on
+startup.
 
 ## Health and contracts
 
