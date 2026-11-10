@@ -50,6 +50,10 @@ ENV Emenda__Runtime__Mode=Standalone
 ENV APP_VERSION=${APP_VERSION}
 ENV APP_REVISION=${APP_REVISION}
 ENV APP_CHANNEL=${APP_CHANNEL}
+# Volume-mountable state directory: the dynamic caller credential file and
+# future admin-console state live here so they survive container replacement.
+RUN mkdir -p /app/data
+VOLUME /app/data
 COPY --from=build /app/publish .
 
 ENTRYPOINT ["dotnet", "Emenda.Host.dll"]

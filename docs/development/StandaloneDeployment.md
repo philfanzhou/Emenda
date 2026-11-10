@@ -12,6 +12,9 @@ Student service. The product image defaults to `ASPNETCORE_ENVIRONMENT=Standalon
 | PostgreSQL connection | `EMENDA_DB_CONNECTION` / `ConnectionStrings__Emenda` | `ConnectionStrings:Emenda` |
 | Schema ownership (`Own`/`Shared`) | `EMENDA_SCHEMA_OWNERSHIP` | `Emenda:Database:SchemaOwnership` |
 | Caller credential (per caller) | `EMENDA_API_KEY` / `Emenda__Security__Callers__0__ApiKey` | `Emenda:Security:Callers:0:ApiKey` |
+| Caller name (audit) | `EMENDA_CALLER_NAME` / `Emenda__Security__Callers__0__Name` | `Emenda:Security:Callers:0:Name` |
+| Dynamic caller file | (fixed to `/app/data/emenda-callers.json` by `start.sh`) | `Emenda:Security:DynamicCallers:Path` |
+| Admin console SignaCore login | `EMENDA_ADMIN_AUTHORITY` / `EMENDA_ADMIN_CLIENT_ID` / `EMENDA_ADMIN_CLIENT_SECRET` / `EMENDA_ADMIN_REDIRECT_URI` / `EMENDA_ADMIN_POST_LOGOUT_REDIRECT_URI` | `Emenda:Admin:Oidc:*` |
 | Caller name (audit) | `Emenda__Security__Callers__0__Name` | `Emenda:Security:Callers:0:Name` |
 | S3-compatible endpoint | `OSS_INTERNAL_ENDPOINT` | `Oss:InternalEndpoint` |
 | S3 credentials | `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` | `Oss:AccessKey` / `Oss:SecretKey` |
