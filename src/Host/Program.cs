@@ -37,6 +37,22 @@ if (!standalone && modeValue is not null && !localMode &&
     !string.Equals(modeValue, "Platform", StringComparison.OrdinalIgnoreCase))
     throw new InvalidOperationException("Mistake:ConfigMode must be Local or Platform.");
 
+// Product schema ownership. Own (default): startup applies migrations to a
+// database the product owns. Shared: the coexistence window with the running
+// legacy Mistake service — the product connects to the existing database,
+// guarantees to change no structure (no migrations, no EnsureCreated, no
+// repair DDL) and only verifies the shared database already covers this
+// build's migration baseline, failing closed when it does not.
+const string schemaOwnershipKey = "Emenda:Database:SchemaOwnership";
+var schemaOwnershipValue = builder.Configuration[schemaOwnershipKey];
+var sharedSchemaOwnership = string.Equals(schemaOwnershipValue, "Shared", StringComparison.OrdinalIgnoreCase);
+if (schemaOwnershipValue is not null && !sharedSchemaOwnership &&
+    !string.Equals(schemaOwnershipValue, "Own", StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException($"{schemaOwnershipKey} must be Own or Shared.");
+if (sharedSchemaOwnership && !standalone)
+    throw new InvalidOperationException(
+        $"{schemaOwnershipKey}=Shared is a standalone-mode setting; legacy Local/Platform modes keep the platform's own upgrade behavior.");
+
 if (standalone)
 {
     // Standalone deployments log to the console; no platform Loki sink.
@@ -245,14 +261,20 @@ var intakeSettings = (intakeEnabled || returnsEnabled || handoffsEnabled || lega
 string? connectionString;
 if (standalone)
 {
-    connectionString = builder.Configuration.GetConnectionString("Emenda")
-        ?? builder.Configuration.GetConnectionString("Default");
+    // Standalone resolves only the explicit product connection; the inherited
+    // ConnectionStrings:Default (the legacy platform example, which points at
+    // the running mistake database) is never used implicitly. Pointing the
+    // product at the legacy database is a deliberate coexistence decision,
+    // declared through this explicit value together with
+    // Emenda:Database:SchemaOwnership=Shared (no schema changes).
+    connectionString = builder.Configuration.GetConnectionString("Emenda");
     if (string.IsNullOrWhiteSpace(connectionString))
         throw new InvalidOperationException(
-            "Standalone mode requires ConnectionStrings:Emenda (or ConnectionStrings:Default).");
+            "Standalone mode requires ConnectionStrings:Emenda. Use a dedicated Emenda database, or point it at the legacy mistake database with Emenda:Database:SchemaOwnership=Shared for the coexistence window.");
     var connectionSource = Environment.GetEnvironmentVariable("ConnectionStrings__Emenda") is null
         ? "File" : "Environment";
-    Console.WriteLine($"Emenda configuration: Mode=Standalone, DatabaseConnectionSource={connectionSource}.");
+    Console.WriteLine(
+        $"Emenda configuration: Mode=Standalone, DatabaseConnectionSource={connectionSource}, SchemaOwnership={(sharedSchemaOwnership ? "Shared" : "Own")}.");
 }
 else if (localMode)
 {
@@ -291,6 +313,9 @@ var emptyCommand = args.Length == 1 && args[0] == "--upgrade-empty-db";
 var knownCommand = args.Contains("--upgrade-known-db", StringComparer.Ordinal);
 if (emptyCommand || knownCommand)
 {
+    if (sharedSchemaOwnership)
+        throw new InvalidOperationException(
+            "Emenda:Database:SchemaOwnership=Shared forbids schema upgrades: the shared database's structure belongs to the running legacy service.");
     string? expectedDatabase = null;
     var databaseIndex = knownCommand ? Array.IndexOf(args, "--database") : -1;
     if (databaseIndex >= 0)
@@ -590,7 +615,19 @@ using (var scope = app.Services.CreateScope())
     if (dbContext.Database.IsRelational())
     {
         var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-        await DatabaseInitializer.InitializeAsync(dbContext, loggerFactory);
+        if (sharedSchemaOwnership)
+        {
+            // Coexistence window: the database is shared with the running
+            // legacy Mistake service and must keep its exact structure. No
+            // migrations, no EnsureCreated, no repair DDL — only a read-only
+            // baseline verification that fails closed when the shared
+            // database is behind this build's migration set.
+            await VerifySharedSchemaBaselineAsync(dbContext, loggerFactory);
+        }
+        else
+        {
+            await DatabaseInitializer.InitializeAsync(dbContext, loggerFactory);
+        }
     }
     else
     {
@@ -671,6 +708,27 @@ app.Run();
         !Uri.TryCreate(studentBaseUrl, UriKind.Absolute, out var intakeStudentUri) || intakeStudentUri.Scheme != "https"))
         throw new InvalidOperationException(intakeEnabled ? "Source intake requires RS256 Student service credentials and HTTPS." : returnsEnabled ? "Source returns require RS256 Student service credentials and HTTPS." : handoffsEnabled ? "Source handoffs require RS256 Student service credentials and HTTPS." : "Legacy returns require RS256 Student service credentials and HTTPS.");
     return (studentBaseUrl, studentAddressSource, studentServiceAuthentication);
+}
+
+static async Task VerifySharedSchemaBaselineAsync(MistakeDbContext dbContext, ILoggerFactory loggerFactory)
+{
+    var logger = loggerFactory.CreateLogger("DatabaseSchemaOwnership");
+    var applied = (await dbContext.Database.GetAppliedMigrationsAsync()).ToHashSet(StringComparer.Ordinal);
+    var required = dbContext.Database.GetMigrations().ToList();
+    var missing = required.Where(migration => !applied.Contains(migration)).ToList();
+    if (missing.Count > 0)
+        throw new InvalidOperationException(
+            "Shared-schema coexistence refuses to start: the database is missing product migrations [" +
+            string.Join(", ", missing) +
+            "]. The product never changes a shared database's structure; bring the database to the product baseline first " +
+            "(for example by letting the legacy service apply its own upgrade) and restart.");
+    logger.LogInformation(
+        "Shared-schema coexistence: the database covers the product migration baseline; no schema changes will be applied.");
+    var beyond = applied.Where(migration => !required.Contains(migration)).ToList();
+    if (beyond.Count > 0)
+        logger.LogWarning(
+            "Shared-schema coexistence: the database carries {Count} migration(s) beyond this build's baseline: {Migrations}",
+            beyond.Count, string.Join(", ", beyond));
 }
 
 // Make Program class public for integration tests (WebApplicationFactory<Program>)

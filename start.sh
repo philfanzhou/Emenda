@@ -49,6 +49,7 @@ docker run -d \
   -e TZ="${TZ:-Asia/Shanghai}" \
   -e Emenda__Runtime__Mode=Standalone \
   -e ConnectionStrings__Emenda="${EMENDA_DB_CONNECTION}" \
+  -e Emenda__Database__SchemaOwnership="${EMENDA_SCHEMA_OWNERSHIP:-Own}" \
   -e Emenda__Security__Callers__0__Name="${EMENDA_CALLER_NAME:-platform}" \
   -e Emenda__Security__Callers__0__ApiKey="${EMENDA_API_KEY}" \
   -e Oss__InternalEndpoint="${OSS_INTERNAL_ENDPOINT}" \
