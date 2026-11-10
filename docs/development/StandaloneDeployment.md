@@ -69,10 +69,12 @@ upgrade behaviour unchanged.
 - **No platform dependencies.** Standalone mode reads no Consul KV, writes no Loki sink and
   contacts no Student or identity service by default, so Emenda exerts no load on the running
   platform beyond the shared database.
-- **Separate bucket for product intake.** The product-owned intake API stores its images in
-  `Oss:BucketName` (the default in `start.sh` is `emenda`). During the shared-database window,
-  keep using a dedicated bucket so legacy pre-signed URLs and object lifecycles stay with the
-  legacy `ruoyu-study` bucket.
+- **Same bucket while sharing the database.** Pre-signed URLs are generated
+  against the single configured `Oss:BucketName`. During the shared-database
+  window the existing rows reference objects in the legacy `ruoyu-study`
+  bucket, so Emenda must be configured with that same bucket — a dedicated
+  bucket (the `start.sh` default `emenda`) is only for dedicated-database
+  deployments where no legacy paths need to resolve.
 
 ## Run
 
