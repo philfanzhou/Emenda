@@ -17,6 +17,9 @@ public sealed class DynamicCallerEntry
 
     public bool Enabled { get; set; } = true;
 
+    /// <summary>A durable tombstone suppressing any same-name configuration caller.</summary>
+    public bool Deleted { get; set; }
+
     public string Note { get; set; } = string.Empty;
 
     public string CreatedAtUtc { get; set; } = string.Empty;
@@ -27,26 +30,27 @@ public sealed class DynamicCallerEntry
 }
 
 /// <summary>
-/// File document of the dynamic caller store (version 1).
+/// File document of the dynamic caller store (version 2; version 1 remains readable).
 /// </summary>
 public sealed class DynamicCallerDocument
 {
+    [JsonRequired]
     [JsonPropertyName("version")]
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 
+    [JsonRequired]
     [JsonPropertyName("callers")]
     public List<DynamicCallerEntry> Callers { get; set; } = new();
 }
 
 /// <summary>
 /// Caller credentials persisted in a JSON file under a configurable path
-/// (default <c>/app/data/emenda-callers.json</c>, volume-mountable). The file
-/// and the static <c>Emenda:Security:Callers</c> configuration are merged by
-/// caller name: a dynamic entry with the same name replaces the static one,
-/// so the admin console can rotate a deployment-provided credential without
-/// touching the container environment. The store is the only writer of the
-/// file; concurrent requests serialize on a single async lock and every write
-/// is atomic (temp file + move) so a crash never leaves a partial document.
+/// (default <c>/app/data/emenda-callers.json</c>, volume-mountable). Dynamic
+/// entries override configuration by name, including disabled entries and
+/// durable deletion tombstones. Bootstrap requires an explicitly provisioned
+/// empty document; missing or invalid state never falls back to configuration.
+/// The file is read once per process. Writes serialize on one async lock and
+/// publish the new cache only after an atomic temp-file move succeeds.
 /// </summary>
 public sealed class DynamicCallerStore
 {
@@ -60,8 +64,9 @@ public sealed class DynamicCallerStore
     private readonly string _path;
     private readonly ILogger<DynamicCallerStore> _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private readonly object _cacheLock = new();
     private List<DynamicCallerEntry> _cache = new();
+    private bool _loaded;
+    private DynamicCallerStoreUnavailableException? _loadFailure;
 
     public string Path => _path;
 
@@ -74,9 +79,9 @@ public sealed class DynamicCallerStore
     }
 
     /// <summary>
-    /// Reads the current entries. The file is read at most once per changed
-    /// write; missing or invalid files log a warning and yield no dynamic
-    /// callers (fail closed) instead of failing the request path.
+    /// Reads entries including deletion tombstones. State is loaded once;
+    /// unreadable or invalid state blocks both authentication and management
+    /// until operators restore a valid file and restart the process.
     /// </summary>
     public async Task<IReadOnlyList<DynamicCallerEntry>> ListAsync(CancellationToken ct = default)
     {
@@ -84,10 +89,7 @@ public sealed class DynamicCallerStore
         try
         {
             EnsureLoaded();
-            lock (_cacheLock)
-            {
-                return _cache.Select(entry => Clone(entry)).ToList();
-            }
+            return _cache.Select(Clone).ToList();
         }
         finally
         {
@@ -95,7 +97,7 @@ public sealed class DynamicCallerStore
         }
     }
 
-    /// <summary>Creates a new caller or replaces an existing one with the given key.</summary>
+    /// <summary>Creates or rotates a caller; recreating a tombstone requires a new key.</summary>
     public async Task<DynamicCallerEntry> UpsertAsync(
         string name, string apiKey, string createdBy, string note, CancellationToken ct = default)
     {
@@ -104,35 +106,31 @@ public sealed class DynamicCallerStore
         try
         {
             EnsureLoaded();
-            DynamicCallerEntry entry;
-            lock (_cacheLock)
+            var next = _cache.Select(Clone).ToList();
+            var entry = next.FirstOrDefault(c =>
+                string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            if (entry is null || entry.Deleted)
             {
-                var now = DateTimeOffset.UtcNow.ToString("O");
-                var existing = _cache.FirstOrDefault(c =>
-                    string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (existing is null)
+                if (entry is not null) next.Remove(entry);
+                entry = new DynamicCallerEntry
                 {
-                    entry = new DynamicCallerEntry
-                    {
-                        Name = name,
-                        ApiKey = apiKey,
-                        Enabled = true,
-                        Note = note,
-                        CreatedAtUtc = now,
-                        CreatedBy = createdBy,
-                        UpdatedAtUtc = now
-                    };
-                    _cache.Add(entry);
-                }
-                else
-                {
-                    existing.ApiKey = apiKey;
-                    existing.Note = note;
-                    existing.UpdatedAtUtc = now;
-                    entry = existing;
-                }
-                SaveLocked();
+                    Name = name,
+                    ApiKey = apiKey,
+                    Note = note,
+                    CreatedAtUtc = now,
+                    CreatedBy = createdBy,
+                    UpdatedAtUtc = now
+                };
+                next.Add(entry);
             }
+            else
+            {
+                entry.ApiKey = apiKey;
+                entry.Note = note;
+                entry.UpdatedAtUtc = now;
+            }
+            Save(next);
             _logger.LogInformation(
                 "Dynamic caller store: caller {CallerName} created/rotated by {Actor}", name, createdBy);
             return Clone(entry);
@@ -143,7 +141,7 @@ public sealed class DynamicCallerStore
         }
     }
 
-    /// <summary>Updates the management fields (enabled/note) of an existing caller.</summary>
+    /// <summary>Updates enabled/note fields; deletion tombstones cannot be re-enabled.</summary>
     public async Task<DynamicCallerEntry?> UpdateAsync(
         string name, bool? enabled, string? note, CancellationToken ct = default)
     {
@@ -151,17 +149,15 @@ public sealed class DynamicCallerStore
         try
         {
             EnsureLoaded();
-            lock (_cacheLock)
-            {
-                var existing = _cache.FirstOrDefault(c =>
-                    string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (existing is null) return null;
-                if (enabled is { } value) existing.Enabled = value;
-                if (note is not null) existing.Note = note;
-                existing.UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O");
-                SaveLocked();
-                return Clone(existing);
-            }
+            var next = _cache.Select(Clone).ToList();
+            var entry = next.FirstOrDefault(c => !c.Deleted &&
+                string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (entry is null) return null;
+            if (enabled is { } value) entry.Enabled = value;
+            if (note is not null) entry.Note = note;
+            entry.UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O");
+            Save(next);
+            return Clone(entry);
         }
         finally
         {
@@ -169,22 +165,24 @@ public sealed class DynamicCallerStore
         }
     }
 
-    /// <summary>Removes a caller; returns the removed entry or null when absent.</summary>
+    /// <summary>Replaces a caller with a durable tombstone, never exposing a static predecessor.</summary>
     public async Task<DynamicCallerEntry?> RemoveAsync(string name, CancellationToken ct = default)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             EnsureLoaded();
-            lock (_cacheLock)
-            {
-                var existing = _cache.FirstOrDefault(c =>
-                    string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (existing is null) return null;
-                _cache.Remove(existing);
-                SaveLocked();
-                return Clone(existing);
-            }
+            var next = _cache.Select(Clone).ToList();
+            var entry = next.FirstOrDefault(c => !c.Deleted &&
+                string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (entry is null) return null;
+            var removed = Clone(entry);
+            entry.Deleted = true;
+            entry.Enabled = false;
+            entry.ApiKey = string.Empty;
+            entry.UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O");
+            Save(next);
+            return removed;
         }
         finally
         {
@@ -192,57 +190,70 @@ public sealed class DynamicCallerStore
         }
     }
 
-    /// <summary>
-    /// Loads the file into the cache when it has not been loaded yet. Called
-    /// under <see cref="_lock"/>; a missing file leaves the cache empty (the
-    /// file appears on the first write).
-    /// </summary>
     private void EnsureLoaded()
     {
-        lock (_cacheLock)
+        if (_loadFailure is not null) throw _loadFailure;
+        if (_loaded) return;
+        try
         {
-            if (_cache.Count > 0 || _loaded) return;
-            try
+            using var stream = File.OpenRead(_path);
+            var document = JsonSerializer.Deserialize<DynamicCallerDocument>(stream, DocumentJson);
+            if (document is null || document.Version is not (1 or 2) || document.Callers is null)
+                throw new InvalidDataException("Invalid caller document version or callers collection.");
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in document.Callers)
             {
-                if (!File.Exists(_path))
-                {
-                    _loaded = true;
-                    return;
-                }
-                using var stream = File.OpenRead(_path);
-                var document = JsonSerializer.Deserialize<DynamicCallerDocument>(stream, DocumentJson);
-                _cache = document?.Callers?
-                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Name) && !string.IsNullOrWhiteSpace(entry.ApiKey))
-                    .ToList() ?? new List<DynamicCallerEntry>();
-                _loaded = true;
-                _logger.LogInformation(
-                    "Dynamic caller store: loaded {Count} caller(s) from {Path}", _cache.Count, _path);
+                if (entry is null || !names.Add(entry.Name))
+                    throw new InvalidDataException("Caller entries must be non-null and uniquely named.");
+                Validate(entry.Name, entry.Deleted ? "tombstone" : entry.ApiKey);
+                if (entry.Deleted && (document.Version != 2 || entry.Enabled || entry.ApiKey != string.Empty))
+                    throw new InvalidDataException("Invalid caller deletion tombstone.");
             }
-            catch (Exception ex)
-            {
-                // Fail closed: an unreadable store contributes no callers, and
-                // the static configuration keeps serving.
-                _cache = new List<DynamicCallerEntry>();
-                _loaded = true;
-                _logger.LogError(ex,
-                    "Dynamic caller store: failed to read {Path}; dynamic callers are not active until the file is fixed",
-                    _path);
-            }
+            _cache = document.Callers;
+            _loaded = true;
+            _logger.LogInformation(
+                "Dynamic caller store: loaded {Count} caller record(s) from {Path}", _cache.Count, _path);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or ArgumentException)
+        {
+            _logger.LogError(ex,
+                "Dynamic caller store: cannot load {Path}; authentication and management are blocked. Restore the file and restart; never bootstrap over lost revocation state.",
+                _path);
+            _loadFailure = new DynamicCallerStoreUnavailableException();
+            throw _loadFailure;
         }
     }
 
-    private bool _loaded;
-
-    /// <summary>Persists the cache atomically. Called under <see cref="_lock"/> and <see cref="_cacheLock"/>.</summary>
-    private void SaveLocked()
+    /// <summary>Persists before publishing the next cache; a failed write leaves current keys unchanged.</summary>
+    private void Save(List<DynamicCallerEntry> next)
     {
-        var document = new DynamicCallerDocument { Callers = _cache.Select(Clone).ToList() };
-        var directory = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(_path));
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-        var temp = _path + ".tmp";
-        var json = JsonSerializer.Serialize(document, DocumentJson);
-        File.WriteAllText(temp, json);
-        File.Move(temp, _path, overwrite: true);
+        try
+        {
+            var document = new DynamicCallerDocument { Callers = next };
+            var temp = _path + ".tmp";
+            var fileOptions = new FileStreamOptions
+            {
+                Mode = FileMode.Create,
+                Access = FileAccess.Write,
+                Share = FileShare.None
+            };
+            if (!OperatingSystem.IsWindows())
+                fileOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+            using (var stream = new FileStream(temp, fileOptions))
+            {
+                if (!OperatingSystem.IsWindows())
+                    File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                JsonSerializer.Serialize(stream, document, DocumentJson);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temp, _path, overwrite: true);
+            _cache = next;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogError(ex, "Dynamic caller store: failed to persist {Path}; requested change was not published", _path);
+            throw new DynamicCallerStoreUnavailableException();
+        }
     }
 
     private static void Validate(string name, string apiKey)
@@ -259,6 +270,7 @@ public sealed class DynamicCallerStore
         Name = entry.Name,
         ApiKey = entry.ApiKey,
         Enabled = entry.Enabled,
+        Deleted = entry.Deleted,
         Note = entry.Note,
         CreatedAtUtc = entry.CreatedAtUtc,
         CreatedBy = entry.CreatedBy,

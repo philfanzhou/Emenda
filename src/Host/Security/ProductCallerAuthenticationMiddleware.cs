@@ -40,7 +40,21 @@ public sealed class ProductCallerAuthenticationMiddleware
         }
 
         var provided = context.Request.Headers[ProductCallerAuthenticationOptions.ApiKeyHeaderName].ToString();
-        var callerName = await registry.MatchAsync(provided, context.RequestAborted).ConfigureAwait(false);
+        string? callerName;
+        try
+        {
+            callerName = await registry.MatchAsync(provided, context.RequestAborted).ConfigureAwait(false);
+        }
+        catch (DynamicCallerStoreUnavailableException)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                success = false,
+                message = "caller credential storage unavailable"
+            }, context.RequestAborted).ConfigureAwait(false);
+            return;
+        }
         if (callerName is null)
         {
             _logger.LogWarning(

@@ -17,7 +17,7 @@ public static class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
-    private const int TargetVersion = 14;
+    private const int TargetVersion = 15;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -247,9 +247,9 @@ public static class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(StorageReferenceRemovalSchema.Migration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(ProductIntakeSchema.Migration, cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {StorageReferenceRemovalSchema.Migration}");
+                steps.Add($"migrate to {ProductIntakeSchema.Migration}");
             }
 
             archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -355,11 +355,12 @@ public static class DatabaseInitializer
         var legacyReturnHistory = new HashSet<string>(archiveHistory, StringComparer.Ordinal) { $"{LegacyReturnSchema.Migration}|8.0.11" };
         var layoutJobHistory = new HashSet<string>(legacyReturnHistory, StringComparer.Ordinal) { $"{LayoutJobSchema.Migration}|8.0.11" };
         var referenceRemovalHistory = new HashSet<string>(layoutJobHistory, StringComparer.Ordinal) { $"{StorageReferenceRemovalSchema.Migration}|8.0.11" };
+        var productIntakeHistory = new HashSet<string>(referenceRemovalHistory, StringComparer.Ordinal) { $"{ProductIntakeSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
         // Name the leftover directly instead of reporting it as a routine or relation mismatch.
@@ -384,6 +385,7 @@ public static class DatabaseInitializer
         if (version >= 11) expectedTables.UnionWith(LegacyArchiveSchema.Relations);
         if (version >= 12) expectedTables.UnionWith(LegacyReturnCatalog.Tables);
         if (version >= 13) expectedTables.UnionWith(LayoutJobCatalog.Tables);
+        if (version >= 15) expectedTables.Add("product_intake_request");
         var mismatch = Compare("relation", expectedTables, relations);
         if (mismatch is not null) return Invalid(mismatch);
 
@@ -403,6 +405,7 @@ public static class DatabaseInitializer
         if (version >= 11) expectedColumns.UnionWith(LegacyArchiveSchema.Columns);
         if (version >= 12) expectedColumns.UnionWith(LegacyReturnCatalog.Columns);
         if (version >= 13) expectedColumns.UnionWith(LayoutJobCatalog.Columns);
+        if (version >= 15) expectedColumns.UnionWith(ProductIntakeSchema.Columns);
         if (version < 3)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
         else if (version < 5)
@@ -478,6 +481,7 @@ public static class DatabaseInitializer
         if (version >= 11) expectedIndexes.UnionWith(LegacyArchiveSchema.Indexes);
         if (version >= 12) expectedIndexes.UnionWith(LegacyReturnCatalog.Indexes);
         if (version >= 13) expectedIndexes.UnionWith(LayoutJobCatalog.Indexes);
+        if (version >= 15) expectedIndexes.Add("PK_product_intake_request|product_intake_request|request_id|U");
         if (version < 3)
             expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
         if (version < 2)
@@ -522,6 +526,7 @@ public static class DatabaseInitializer
         if (version >= 11) expectedConstraints.UnionWith(LegacyArchiveSchema.Constraints);
         if (version >= 12) expectedConstraints.UnionWith(LegacyReturnCatalog.Constraints);
         if (version >= 13) expectedConstraints.UnionWith(LayoutJobCatalog.Constraints);
+        if (version >= 15) expectedConstraints.Add("PK_product_intake_request|p|request_id|-|-|-|V");
         mismatch = Compare("constraint", expectedConstraints, constraints);
         if (mismatch is not null) return Invalid(mismatch);
 

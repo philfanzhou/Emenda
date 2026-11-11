@@ -12,7 +12,10 @@ extracted from the Ruoyu.Study platform and now an independent open-source produ
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Local build/test workflow and pull-request expectations |
 | [Standalone deployment](./development/StandaloneDeployment.md) | Container deployment, required configuration, health checks and API examples |
 | [Automation and releases](./development/Automation.md) | CI/CodeQL/Dependabot workflows, GHCR image tags and the release process |
-| [OpenAPI contract](./Integration/mistake-http-v3.json) | The versioned machine-readable HTTP contract served at `/contracts/mistake-http-v3.json` |
+| [Product intake contract](./Integration/emenda-intake-v1.json) | Caller authentication, input limits, immutable replay and error handling for standalone intake |
+| [Lifecycle contract](./Integration/mistake-http-v3.json) | Inherited lifecycle transport; Standalone authentication and rejection semantics are defined by the deployment guide |
+| [Standalone verification](./development/StandaloneVerification.md) | Task-owned PostgreSQL/S3 acceptance entry point, without the platform |
+| [Local acceptance record](./development/StandaloneVerificationResult.md) | Observed checks, runtime versions, tested binary hashes and unverified boundaries |
 
 ## Inherited service documentation
 

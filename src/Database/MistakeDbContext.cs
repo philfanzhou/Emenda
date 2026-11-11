@@ -16,6 +16,7 @@ public class MistakeDbContext : DbContext
     public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
     public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
+    public DbSet<ProductIntakeRequestEntity> ProductIntakeRequests => Set<ProductIntakeRequestEntity>();
 
     public DbSet<SourceIntakeEntity> SourceIntakes => Set<SourceIntakeEntity>();
     public DbSet<SourceIntakeGroupEntity> SourceIntakeGroups => Set<SourceIntakeGroupEntity>();
@@ -47,6 +48,7 @@ public class MistakeDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        ProductIntakeSchema.Configure(modelBuilder);
         SourceIntakeModel.Configure(modelBuilder);
         SourceTargetModel.Configure(modelBuilder);
         SourceReturnModel.Configure(modelBuilder);

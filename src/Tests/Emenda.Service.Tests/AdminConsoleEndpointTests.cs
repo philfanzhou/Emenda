@@ -43,7 +43,7 @@ public sealed class AdminConsoleEndpointTests
 
         using var page = await client.GetAsync("/admin");
         page.StatusCode.Should().Be(HttpStatusCode.OK);
-        page.Headers.CacheControl.NoStore.Should().BeTrue();
+        (page.Headers.CacheControl?.NoStore).Should().BeTrue();
         (await page.Content.ReadAsStringAsync()).Should().Contain("Emenda 管理控制台");
 
         using var session = await client.GetAsync("/admin/auth/oidc/session");
@@ -86,19 +86,7 @@ public sealed class AdminConsoleEndpointTests
         }
 
         // Seed a server-side session ticket the way a completed hosted login does.
-        string cookieKey;
-        using (var scope = factory.Services.CreateScope())
-        {
-            var store = (InMemoryTicketStore)scope.ServiceProvider.GetRequiredService<ITicketStore>();
-            var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
-                new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "seed-admin") },
-                authenticationType: SignaCoreHostedLoginDefaults.SessionAuthenticationScheme));
-            var ticket = new SignaCoreSessionTicket(
-                principal, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(20),
-                "seed-access-token", "seed-id-token");
-            cookieKey = await store.StoreAsync(ticket, CancellationToken.None);
-        }
-        client.DefaultRequestHeaders.Add("Cookie", $"{AdminConsoleConstants.SessionCookie}={cookieKey}");
+        var cookieKey = await SeedSessionAsync(factory, client);
 
         // The seeded session restores through the package's session endpoint.
         using var session = await client.GetAsync("/admin/auth/oidc/session");
@@ -125,7 +113,6 @@ public sealed class AdminConsoleEndpointTests
         var setCookies = csrf.Headers.NonValidated.SelectMany(header =>
                 header.Key == "Set-Cookie" ? header.Value : Enumerable.Empty<string>())
             .ToList();
-        Console.WriteLine("SET-COOKIES: " + string.Join(" | ", setCookies));
         var csrfCookie = setCookies
             .Select(value => value.Split(';', '='))
             .Where(parts => parts.Length > 1 && parts[0].Trim() == AdminConsoleConstants.CsrfCookie)
@@ -187,6 +174,144 @@ public sealed class AdminConsoleEndpointTests
         afterRemove.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    [Fact]
+    public async Task ConfiguredConsole_StaticRotationDisableAndDeletionSurviveRestarts()
+    {
+        string state;
+        string rotatedKey;
+        using (var factory = new AdminConsoleWebApplicationFactory(configured: true))
+        using (var client = factory.CreateClient())
+        {
+            await AuthenticateWithCsrfAsync(factory, client);
+            // Untouched configuration credentials require deployment management,
+            // not a misleading successful delete/disable that cannot be persisted.
+            using var staticDisable = await client.PutAsJsonAsync($"/admin/api/callers/{CallerName}", new { enabled = false });
+            staticDisable.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            using var staticDelete = await client.DeleteAsync($"/admin/api/callers/{CallerName}");
+            staticDelete.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            await AssertProductStatusAsync(factory, CallerKey, HttpStatusCode.BadRequest);
+
+            using var rotate = await client.PostAsync($"/admin/api/callers/{CallerName}/rotate", null);
+            rotate.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var body = JsonDocument.Parse(await rotate.Content.ReadAsStringAsync());
+            rotatedKey = body.RootElement.GetProperty("data").GetProperty("apiKey").GetString()!;
+            await AssertProductStatusAsync(factory, rotatedKey, HttpStatusCode.BadRequest);
+            await AssertProductStatusAsync(factory, CallerKey, HttpStatusCode.Unauthorized);
+
+            using var disable = await client.PutAsJsonAsync($"/admin/api/callers/{CallerName}", new { enabled = false });
+            disable.StatusCode.Should().Be(HttpStatusCode.OK);
+            await AssertProductStatusAsync(factory, rotatedKey, HttpStatusCode.Unauthorized);
+            await AssertProductStatusAsync(factory, CallerKey, HttpStatusCode.Unauthorized);
+            state = await File.ReadAllTextAsync(factory.Services.GetRequiredService<DynamicCallerStore>().Path);
+        }
+
+        using (var factory = new AdminConsoleWebApplicationFactory(configured: true, callerState: state))
+        using (var client = factory.CreateClient())
+        {
+            await AuthenticateWithCsrfAsync(factory, client);
+            await AssertProductStatusAsync(factory, rotatedKey, HttpStatusCode.Unauthorized);
+            await AssertProductStatusAsync(factory, CallerKey, HttpStatusCode.Unauthorized);
+            using var delete = await client.DeleteAsync($"/admin/api/callers/{CallerName}");
+            delete.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var reveal = await client.GetAsync($"/admin/api/callers/{CallerName}/secret");
+            reveal.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            using var rotateDeleted = await client.PostAsync($"/admin/api/callers/{CallerName}/rotate", null);
+            rotateDeleted.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            using var enableDeleted = await client.PutAsJsonAsync($"/admin/api/callers/{CallerName}", new { enabled = true });
+            enableDeleted.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            state = await File.ReadAllTextAsync(factory.Services.GetRequiredService<DynamicCallerStore>().Path);
+        }
+
+        using (var factory = new AdminConsoleWebApplicationFactory(configured: true, callerState: state))
+        using (var client = factory.CreateClient())
+        {
+            await SeedSessionAsync(factory, client);
+            await AssertProductStatusAsync(factory, rotatedKey, HttpStatusCode.Unauthorized);
+            await AssertProductStatusAsync(factory, CallerKey, HttpStatusCode.Unauthorized);
+            using var list = await client.GetAsync("/admin/api/callers");
+            list.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var body = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+            body.RootElement.GetProperty("data").EnumerateArray()
+                .Should().NotContain(entry => entry.GetProperty("name").GetString() == CallerName);
+        }
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("{ broken")]
+    public async Task ConfiguredConsole_UnavailableStateReturns503AndNeverOverwritesIt(string? state)
+    {
+        using var factory = new AdminConsoleWebApplicationFactory(
+            configured: true, initializeStore: state is not null, callerState: state);
+        using var client = factory.CreateClient();
+        await AuthenticateWithCsrfAsync(factory, client);
+        var operations = new[]
+        {
+            (HttpMethod.Get, "/admin/api/callers"),
+            (HttpMethod.Post, "/admin/api/callers"),
+            (HttpMethod.Get, $"/admin/api/callers/{CallerName}/secret"),
+            (HttpMethod.Post, $"/admin/api/callers/{CallerName}/rotate"),
+            (HttpMethod.Put, $"/admin/api/callers/{CallerName}"),
+            (HttpMethod.Delete, $"/admin/api/callers/{CallerName}")
+        };
+        foreach (var (method, path) in operations)
+        {
+            using var request = new HttpRequestMessage(method, path)
+            {
+                Content = JsonContent.Create(new { name = "new-caller", enabled = false })
+            };
+            using var response = await client.SendAsync(request);
+            response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+            var body = await response.Content.ReadAsStringAsync();
+            body.Should().Contain("Caller credential storage is unavailable").And.NotContain(CallerKey);
+        }
+        await AssertProductStatusAsync(factory, CallerKey, HttpStatusCode.ServiceUnavailable);
+        var storePath = factory.Services.GetRequiredService<DynamicCallerStore>().Path;
+        if (state is null) File.Exists(storePath).Should().BeFalse();
+        else (await File.ReadAllTextAsync(storePath)).Should().Be(state);
+    }
+
+    private static async Task AssertProductStatusAsync(
+        AdminConsoleWebApplicationFactory factory, string key, HttpStatusCode expected)
+    {
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/mistakes")
+            .WithHeader("X-Emenda-Api-Key", key);
+        using var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(expected);
+    }
+
+    private static async Task<string> SeedSessionAsync(AdminConsoleWebApplicationFactory factory, HttpClient client)
+    {
+        using var scope = factory.Services.CreateScope();
+        var store = (InMemoryTicketStore)scope.ServiceProvider.GetRequiredService<ITicketStore>();
+        var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "seed-admin") },
+            authenticationType: SignaCoreHostedLoginDefaults.SessionAuthenticationScheme));
+        var ticket = new SignaCoreSessionTicket(
+            principal, DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(20),
+            "seed-access-token", "seed-id-token");
+        var key = await store.StoreAsync(ticket, CancellationToken.None)
+            ?? throw new InvalidOperationException("The test session ticket could not be stored.");
+        client.DefaultRequestHeaders.Add("Cookie", $"{AdminConsoleConstants.SessionCookie}={key}");
+        return key;
+    }
+
+    private static async Task AuthenticateWithCsrfAsync(AdminConsoleWebApplicationFactory factory, HttpClient client)
+    {
+        var sessionKey = await SeedSessionAsync(factory, client);
+        using var csrf = await client.GetAsync("/admin/auth/oidc/csrf");
+        csrf.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = JsonDocument.Parse(await csrf.Content.ReadAsStringAsync());
+        var token = body.RootElement.GetProperty("token").GetString();
+        var csrfCookie = csrf.Headers.GetValues("Set-Cookie")
+            .Select(value => value.Split(';')[0])
+            .Single(value => value.StartsWith(AdminConsoleConstants.CsrfCookie + "=", StringComparison.Ordinal));
+        client.DefaultRequestHeaders.Remove("Cookie");
+        client.DefaultRequestHeaders.Add("Cookie", $"{AdminConsoleConstants.SessionCookie}={sessionKey}; {csrfCookie}");
+        client.DefaultRequestHeaders.Add(AdminConsoleConstants.CsrfHeader, token);
+    }
+
     private static readonly string[] OwnedEnvironmentKeys =
     [
         "Emenda__Runtime__Mode",
@@ -219,9 +344,15 @@ public sealed class AdminConsoleEndpointTests
         private readonly string _dataRoot =
             Path.Combine(Path.GetTempPath(), $"emenda-admin-tests-{Guid.NewGuid():N}");
 
-        public AdminConsoleWebApplicationFactory(bool configured = false)
+        public AdminConsoleWebApplicationFactory(
+            bool configured = false, bool initializeStore = true, string? callerState = null)
         {
             _configured = configured;
+            if (configured && initializeStore)
+            {
+                Directory.CreateDirectory(_dataRoot);
+                File.WriteAllText(Path.Combine(_dataRoot, "emenda-callers.json"), callerState ?? "{\"version\":1,\"callers\":[]}");
+            }
             Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);

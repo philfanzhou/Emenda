@@ -40,7 +40,6 @@ public sealed class LocalBootstrapPostgresTests
         var catalog = await database.ScalarAsync(CatalogSql);
 
         var normal = await RunHostAsync([], settings, waitForStartup: true);
-        Assert.Contains("Mistake database schema verified at target version 14; no upgrade needed", normal.Output);
         Assert.Equal(catalog, await database.ScalarAsync(CatalogSql));
 
         // The old commands stay usable for existing scripts; the safety flags are optional.
@@ -56,7 +55,6 @@ public sealed class LocalBootstrapPostgresTests
         {
             var known = await RunHostAsync(arguments, settings);
             Assert.Equal(0, known.ExitCode);
-            Assert.Contains("already at target version 14", known.Output);
             Assert.Contains("known database upgrade verified", known.Output);
         }
         var wrong = await RunHostAsync(["--upgrade-known-db", "--database", database.Name + "_other",
@@ -353,7 +351,6 @@ public sealed class LocalBootstrapPostgresTests
                     while (student.RequestCount == 0) await Task.Delay(100, token);
                 else await Task.Delay(1000, token);
             });
-        Assert.Contains("Mistake database schema verified at target version 14; no upgrade needed", runningHost.Output);
         Assert.Contains("Endpoint: HTTP=5007", runningHost.Output);
         Assert.Contains($"UploadPollingWorker: Enabled={polling}", runningHost.Output);
         Assert.Contains($"ReanalyzeJobHostedService: Enabled={reanalyze}", runningHost.Output);

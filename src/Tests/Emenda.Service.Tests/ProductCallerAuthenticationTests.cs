@@ -101,6 +101,35 @@ public sealed class ProductCallerAuthenticationTests
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("{ broken")]
+    [InlineData("{\"version\":1,\"callers\":null}")]
+    public async Task StandaloneMode_UnavailableDynamicStateReturns503WithoutStaticFallback(string? state)
+    {
+        using var factory = new StandaloneWebApplicationFactory(configureDynamicStore: true, callerState: state);
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, ListPath);
+        request.Headers.Add(ProductCallerAuthenticationOptions.ApiKeyHeaderName, CallerKey);
+        using var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("caller credential storage unavailable").And.NotContain(CallerKey);
+        using var live = await client.GetAsync("/health/live");
+        live.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task StandaloneMode_ExplicitEmptyBootstrapAllowsConfiguredCaller()
+    {
+        using var factory = new StandaloneWebApplicationFactory(
+            configureDynamicStore: true, callerState: "{\"version\":1,\"callers\":[]}");
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(ProductCallerAuthenticationOptions.ApiKeyHeaderName, CallerKey);
+        using var response = await client.GetAsync(ListPath);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     private static class ProductCallerAuthenticationOptions
     {
         public const string ApiKeyHeaderName = "X-Emenda-Api-Key";
@@ -108,11 +137,14 @@ public sealed class ProductCallerAuthenticationTests
 
     private sealed class StandaloneWebApplicationFactory : WebApplicationFactory<Program>
     {
+        private readonly string _dataRoot = Path.Combine(Path.GetTempPath(), $"emenda-auth-tests-{Guid.NewGuid():N}");
+
         private static readonly string[] OwnedEnvironmentKeys =
         [
             "Emenda__Runtime__Mode",
             "Emenda__Security__Callers__0__Name",
             "Emenda__Security__Callers__0__ApiKey",
+            "Emenda__Security__DynamicCallers__Path",
             "ConnectionStrings__Emenda",
             "Mistake__ConfigMode",
             "Mistake__Student__Enabled",
@@ -133,8 +165,15 @@ public sealed class ProductCallerAuthenticationTests
             "IdentityService__MistakeApiResourceAuth",
         ];
 
-        public StandaloneWebApplicationFactory()
+        public StandaloneWebApplicationFactory(bool configureDynamicStore = false, string? callerState = null)
         {
+            var path = Path.Combine(_dataRoot, "emenda-callers.json");
+            if (configureDynamicStore && callerState is not null)
+            {
+                Directory.CreateDirectory(_dataRoot);
+                File.WriteAllText(path, callerState);
+            }
+            Environment.SetEnvironmentVariable("Emenda__Security__DynamicCallers__Path", configureDynamicStore ? path : null);
             Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);
@@ -165,6 +204,7 @@ public sealed class ProductCallerAuthenticationTests
             foreach (var key in OwnedEnvironmentKeys)
                 Environment.SetEnvironmentVariable(key, null);
             base.Dispose(disposing);
+            if (Directory.Exists(_dataRoot)) Directory.Delete(_dataRoot, recursive: true);
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)

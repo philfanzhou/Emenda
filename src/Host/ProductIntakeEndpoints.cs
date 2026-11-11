@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Emenda.Host.Services.Intake;
 using Emenda.Service.Intake;
+using Emenda.Host.Security;
 
 namespace Emenda.Host;
 
@@ -23,9 +24,8 @@ public static class ProductIntakeEndpoints
     private const string DefaultFileName = "image";
 
     /// <summary>
-    /// Registers the product intake service and the reusable legacy upload
-    /// processor. The multipart envelope limits are raised to the documented
-    /// intake budget (20 images x 15 MiB) so the accepted limits are reachable.
+    /// Registers the product intake and the platform compatibility processor.
+    /// The multipart envelope accepts the documented 20 x 15 MiB budget.
     /// </summary>
     public static IServiceCollection AddProductIntake(this IServiceCollection services)
     {
@@ -120,6 +120,8 @@ public static class ProductIntakeEndpoints
 
         var result = await intake.CreateAsync(new ProductIntakeRequest
         {
+            CallerName = http.Items[ProductCallerAuthenticationMiddleware.CallerNameItemKey] as string
+                ?? "local-development",
             StudentId = form["studentId"].ToString(),
             SourceKey = string.IsNullOrWhiteSpace(form["sourceKey"].ToString())
                 ? null
@@ -144,7 +146,7 @@ public static class ProductIntakeEndpoints
     private static int StatusForErrorCode(string? errorCode) => errorCode switch
     {
         ProductIntakeErrorCodes.InvalidRequest => StatusCodes.Status400BadRequest,
-        ProductIntakeErrorCodes.ReservedTarget => StatusCodes.Status409Conflict,
+        ProductIntakeErrorCodes.Conflict or ProductIntakeErrorCodes.InProgress => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status500InternalServerError
     };
 
