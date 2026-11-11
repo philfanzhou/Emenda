@@ -46,10 +46,18 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   -p "${PORT}:5007" \
+  -v "${EMENDA_DATA_DIR:-emenda-data}:/app/data" \
   -e TZ="${TZ:-Asia/Shanghai}" \
   -e Emenda__Runtime__Mode=Standalone \
   -e ConnectionStrings__Emenda="${EMENDA_DB_CONNECTION}" \
   -e Emenda__Database__SchemaOwnership="${EMENDA_SCHEMA_OWNERSHIP:-Own}" \
+  -e Emenda__Security__DynamicCallers__Path="/app/data/emenda-callers.json" \
+  -e Emenda__Admin__RequiredRole="${EMENDA_ADMIN_REQUIRED_ROLE:-admin}" \
+  -e Emenda__Admin__Oidc__Authority="${EMENDA_ADMIN_AUTHORITY:-}" \
+  -e Emenda__Admin__Oidc__ClientId="${EMENDA_ADMIN_CLIENT_ID:-}" \
+  -e Emenda__Admin__Oidc__ClientSecret="${EMENDA_ADMIN_CLIENT_SECRET:-}" \
+  -e Emenda__Admin__Oidc__RedirectUri="${EMENDA_ADMIN_REDIRECT_URI:-}" \
+  -e Emenda__Admin__Oidc__PostLogoutRedirectUri="${EMENDA_ADMIN_POST_LOGOUT_REDIRECT_URI:-}" \
   -e Emenda__Security__Callers__0__Name="${EMENDA_CALLER_NAME:-platform}" \
   -e Emenda__Security__Callers__0__ApiKey="${EMENDA_API_KEY}" \
   -e Oss__InternalEndpoint="${OSS_INTERNAL_ENDPOINT}" \

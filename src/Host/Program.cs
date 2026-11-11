@@ -18,6 +18,8 @@ using Emenda.Service.Intake;
 using Emenda.Host.Services.Health;
 using Emenda.Host.Services.VlImageAnalysis;
 using Emenda.Host;
+using Emenda.Host.Admin;
+using Emenda.Host.Authentication;
 using Emenda.Host.Security;
 using Emenda.Service;
 using Emenda.Consul;
@@ -235,6 +237,10 @@ if (!standalone && identityTrustConfigured)
 if (standalone)
 {
     builder.Services.AddProductCallerAuthentication(builder.Configuration);
+    // Admin console (SignaCore hosted login + caller management). Registers
+    // the OIDC slice only when Emenda:Admin:Oidc is fully configured; a missing
+    // configuration leaves the public API running and the console answers 503.
+    builder.Services.AddEmendaAdminConsole(builder.Configuration);
 }
 
 // Kestrel has one HTTP/1 listener. Resolve the final value after Platform
@@ -600,6 +606,11 @@ if (standalone)
     app.Logger.LogInformation(
         "Product caller authentication: Enabled={Enabled}, AllowAnonymous={AllowAnonymous}, Callers={CallerCount}",
         callerOptions.Enabled, callerOptions.AllowAnonymous, callerOptions.ValidCallers.Count);
+    var adminSettings = app.Services.GetRequiredService<AdminConsoleSettings>();
+    app.Logger.LogInformation(
+        "Admin console: Available={Available}, Authority={Authority}, MissingKeys={MissingKeys}",
+        adminSettings.Available, adminSettings.Available ? adminSettings.Authority : "(not configured)",
+        adminSettings.MissingKeys.Count == 0 ? "none" : string.Join(", ", adminSettings.MissingKeys));
 }
 
 app.Logger.LogInformation("OSS: Endpoint={Endpoint}, Bucket={Bucket}, Prefixes=mistakes/,uploads/",
@@ -642,6 +653,8 @@ if (standalone)
     // Product callers present a per-caller credential; health, contract and
     // root endpoints stay anonymous.
     app.UseMiddleware<ProductCallerAuthenticationMiddleware>();
+    // Admin console session boundary (fixed 401/403 before the console API).
+    app.UseMiddleware<AdminConsoleSessionMiddleware>();
 }
 app.MapMistakeHttpEndpoints(requireAuthenticatedApi: !standalone && strictApiAuth);
 if (standalone)
@@ -649,6 +662,9 @@ if (standalone)
     // Product-owned intake entry point; it lives under /api, so the product
     // caller credential middleware above protects it.
     app.MapProductIntakeEndpoints();
+    // Admin console page, hosted-login protocol endpoints and the caller
+    // management API (standalone only).
+    app.MapAdminConsole();
 }
 app.MapMistakeContractEndpoints();
 // Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.

@@ -1,6 +1,5 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Emenda.Host.Security;
@@ -29,9 +28,11 @@ public sealed class ProductCallerAuthenticationMiddleware
 
     public async Task InvokeAsync(
         HttpContext context,
-        IOptionsMonitor<ProductCallerAuthenticationOptions> optionsMonitor)
+        CallerRegistry registry)
     {
-        var options = optionsMonitor.CurrentValue;
+        var options = context.RequestServices
+            .GetRequiredService<IOptionsMonitor<ProductCallerAuthenticationOptions>>()
+            .CurrentValue;
         if (!options.Enabled || options.AllowAnonymous || !context.Request.Path.StartsWithSegments("/api"))
         {
             await _next(context).ConfigureAwait(false);
@@ -39,8 +40,8 @@ public sealed class ProductCallerAuthenticationMiddleware
         }
 
         var provided = context.Request.Headers[ProductCallerAuthenticationOptions.ApiKeyHeaderName].ToString();
-        var caller = MatchCaller(options, provided);
-        if (caller is null)
+        var callerName = await registry.MatchAsync(provided, context.RequestAborted).ConfigureAwait(false);
+        if (callerName is null)
         {
             _logger.LogWarning(
                 "Product caller authentication failed for {Method} {Path}",
@@ -56,37 +57,15 @@ public sealed class ProductCallerAuthenticationMiddleware
             return;
         }
 
-        context.Items[CallerNameItemKey] = caller.Name;
+        context.Items[CallerNameItemKey] = callerName;
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
             new[]
             {
-                new Claim(ClaimTypes.Name, caller.Name),
-                new Claim("emenda:caller", caller.Name)
+                new Claim(ClaimTypes.Name, callerName),
+                new Claim("emenda:caller", callerName)
             },
             authenticationType: "ProductCaller"));
 
         await _next(context).ConfigureAwait(false);
-    }
-
-    private static ProductCallerCredential? MatchCaller(
-        ProductCallerAuthenticationOptions options,
-        string provided)
-    {
-        if (string.IsNullOrWhiteSpace(provided))
-            return null;
-
-        var providedBytes = Encoding.UTF8.GetBytes(provided);
-        ProductCallerCredential? matched = null;
-        foreach (var candidate in options.ValidCallers)
-        {
-            var expected = Encoding.UTF8.GetBytes(candidate.ApiKey);
-            if (expected.Length == providedBytes.Length &&
-                CryptographicOperations.FixedTimeEquals(expected, providedBytes))
-            {
-                matched = candidate;
-            }
-        }
-
-        return matched;
     }
 }

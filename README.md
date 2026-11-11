@@ -39,6 +39,15 @@ environment variables):
 | `EMENDA_CALLER_NAME` | no | Caller name recorded for audit (default `platform`) |
 | `OSS_INTERNAL_ENDPOINT` / `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` / `OSS_BUCKET_NAME` / `OSS_PUBLIC_BASE_URL` | yes | S3-compatible object storage (`Oss__*`) |
 | `VL_API_KEY` / `VL_API_BASE_URL` / `VL_MODEL` | no | OpenAI-compatible vision-language provider (`VlAnalyzer__*`) |
+| `EMENDA_ADMIN_AUTHORITY` / `EMENDA_ADMIN_CLIENT_ID` / `EMENDA_ADMIN_CLIENT_SECRET` / `EMENDA_ADMIN_REDIRECT_URI` / `EMENDA_ADMIN_POST_LOGOUT_REDIRECT_URI` | no | SignaCore hosted login for the admin console (`Emenda__Admin__Oidc__*`) |
+
+Standalone deployments also serve a built-in **admin console** at `GET /admin`
+(SignaCore administrator login, the same pattern as Lexarbor/Doctheca) that
+displays and manages the caller credentials: create, reveal, rotate,
+enable/disable and delete, effective immediately without a restart. The
+credentials live in a volume-mounted JSON file (`-v emenda-data:/app/data`,
+default of `start.sh`) that can also be edited directly. See
+[Admin Console](docs/development/AdminConsole.md).
 
 Business requests under `/api/*` must carry `X-Emenda-Api-Key`. Health (`/health/live`,
 `/health/ready`), the contract endpoint (`/contracts/*`) and the root endpoint stay
