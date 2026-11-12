@@ -17,13 +17,13 @@ in this repository.
 its own product layout, renamed to Emenda, and can be deployed independently: it runs from
 standard appsettings/environment configuration, requires no Consul, Loki, SignaCore or
 Student service, authenticates callers with a per-caller credential and serves a
-product-owned intake API. The existing mistake lifecycle behaviour is preserved and covered
-by the inherited test suites.
+product-owned intake API. This product targets new, trusted backend callers with its own
+database and object store; it is not a drop-in replacement for the current Ruoyu.Study service.
 
-Not part of this baseline yet: the AI-autonomy features of the product roadmap, the
-published product HTTP contract beyond the inherited `mistake-http-v1/v2/v3` documents, and
-platform-side cutover. The legacy Local/Platform modes and Student integration remain in the
-codebase as the compatibility surface for the Ruoyu.Study platform until that cutover.
+The product intake contract is [emenda-intake-v1](docs/Integration/emenda-intake-v1.json).
+AI-autonomy roadmap work and platform-side cutover are outside this baseline. Legacy
+Local/Platform modes and Student integration remain compatibility code, not deployment
+prerequisites for new callers.
 
 ## Standalone mode
 
@@ -34,49 +34,51 @@ environment variables):
 | Environment variable | Required | Purpose |
 |---|---|---|
 | `EMENDA_DB_CONNECTION` | yes | PostgreSQL connection string (`ConnectionStrings__Emenda`) |
-| `EMENDA_SCHEMA_OWNERSHIP` | no | `Own` (default, product owns/migrates the schema) or `Shared` (legacy-database coexistence: no schema changes, baseline verified) |
+| `EMENDA_SCHEMA_OWNERSHIP` | no | `Own` (default, product owns/migrates its dedicated schema); `Shared` is an advanced compatibility mode, not a new installation path |
 | `EMENDA_API_KEY` | yes | Per-caller credential value (`Emenda__Security__Callers__0__ApiKey`) |
-| `EMENDA_CALLER_NAME` | no | Caller name recorded for audit (default `platform`) |
+| `EMENDA_CALLER_NAME` | no | Stable caller name for audit and the intake idempotency namespace (default `platform`) |
 | `OSS_INTERNAL_ENDPOINT` / `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` / `OSS_BUCKET_NAME` / `OSS_PUBLIC_BASE_URL` | yes | S3-compatible object storage (`Oss__*`) |
 | `VL_API_KEY` / `VL_API_BASE_URL` / `VL_MODEL` | no | OpenAI-compatible vision-language provider (`VlAnalyzer__*`) |
 | `EMENDA_ADMIN_AUTHORITY` / `EMENDA_ADMIN_CLIENT_ID` / `EMENDA_ADMIN_CLIENT_SECRET` / `EMENDA_ADMIN_REDIRECT_URI` / `EMENDA_ADMIN_POST_LOGOUT_REDIRECT_URI` | no | SignaCore hosted login for the admin console (`Emenda__Admin__Oidc__*`) |
 
-Standalone deployments also serve a built-in **admin console** at `GET /admin`
-(SignaCore administrator login, the same pattern as Lexarbor/Doctheca) that
-displays and manages the caller credentials: create, reveal, rotate,
-enable/disable and delete, effective immediately without a restart. The
-credentials live in a volume-mounted JSON file (`-v emenda-data:/app/data`,
-default of `start.sh`) that can also be edited directly. See
-[Admin Console](docs/development/AdminConsole.md).
+The optional **admin console** at `GET /admin` uses SignaCore administrator login and
+manages dynamic credentials. Before a **new installation**, explicitly initialize the
+persistent caller file with `./start.sh --init-callers` using the same image/data mount as
+the service, then run `./start.sh`. Initialization never overwrites an existing file.
+Missing or invalid configured credential state fails closed with HTTP 503; restore lost
+state rather than bootstrapping over historical revocations. Console writes are immediate;
+direct file edits require a restart. See [Admin Console](docs/development/AdminConsole.md).
 
 Business requests under `/api/*` must carry `X-Emenda-Api-Key`. Health (`/health/live`,
 `/health/ready`), the contract endpoint (`/contracts/*`) and the root endpoint stay
-anonymous. The connection (`EMENDA_DB_CONNECTION`) must be explicit: either a dedicated
-Emenda database (schema owned and migrated by the product), or — for the coexistence
-window with the running legacy Mistake service — the existing mistake database with
-`EMENDA_SCHEMA_OWNERSHIP=Shared`, which guarantees no schema changes and refuses to start
-when the shared database is behind the product's migration baseline. When both services
-share a Docker host, publish Emenda on a different host port (`EMENDA_HTTP_PORT`, default
-`5007`).
+anonymous. Use an explicit connection to a **dedicated Emenda database**, with its own
+private S3 bucket. Callers own student authorization; API keys identify trusted backends,
+not isolated tenants. Standalone review rejection changes local state and preserves images;
+it does not create a Student returned-upload record. See
+[Standalone deployment](docs/development/StandaloneDeployment.md).
 
 ### Intake API
 
 `POST /api/intake/uploads` (multipart/form-data) is the product-owned mistake intake
-entry point. The service stores the original images in object storage, groups them with the
-vision-language analyzer (falling back to one group when the analyzer is not configured),
-creates the mistake items and moves the images from the `uploads/` staging prefix to the
-`mistakes/` prefix.
+entry point. Images are stored and verified directly under the product-owned
+`mistakes/intake/` prefix, without copying or deleting legacy source images. The optional
+vision-language analyzer groups the images (one group when not configured). Every group,
+Created log and completion receipt commits in one PostgreSQL transaction.
 
 | Field | Required | Notes |
 |---|---|---|
-| `studentId` | yes | Opaque external student reference (max 128 chars); the caller owns its authorization |
-| `sourceKey` | no | Idempotency key matching `^[A-Za-z0-9._-]{1,64}$`; repeating the same key returns the existing items instead of creating duplicates |
+| `studentId` | yes | Opaque external student reference, at most 36 characters; the caller owns its authorization |
+| `sourceKey` | no | Caller-scoped key matching `^[A-Za-z0-9._-]{1,64}$`; bound to the student and ordered image bytes/media types |
 | `images` or `images[]` | yes | 1 to 20 files, `image/jpeg` or `image/png`, at most 15 MiB each |
 
 Success returns `{"success":true,"sourceId":"...","items":[{"id":"...","subject":1,"grade":7,"reviewStatus":1,"imagePaths":["mistakes/..."]}]}`.
-Failures return `{"success":false,"errorCode":"invalid_request","message":"..."}` (HTTP 400
-for invalid input, 409 for a reserved source target, 500 for a processing failure).
-Callers should retry a failed request with the same `sourceKey` only after fixing the input.
+`sourceId` is opaque and is not `sourceKey`. A completed replay returns the original receipt,
+not the current review state. Invalid input returns 400. Reusing a key for different content
+returns 409 `source_conflict`; active processing returns 409 `source_in_progress`.
+Storage/processing failures return 500, never partial success: retry the **unchanged** keyed
+request after the dependency recovers. Product objects remain available for recovery.
+Without `sourceKey`, automatic retries are not idempotent. The machine-readable contract is
+served anonymously at `GET /contracts/emenda-intake-v1.json`.
 
 ## Layout
 
@@ -95,6 +97,9 @@ dotnet test src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj -c Release
 
 The database-backed suites need PostgreSQL 15 and a dedicated connection; the image build
 needs Docker.
+
+For real PostgreSQL + S3 acceptance, use the repository-owned
+[standalone verification entry point](docs/development/StandaloneVerification.md).
 
 ## Container images
 

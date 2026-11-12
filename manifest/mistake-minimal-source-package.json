@@ -3,7 +3,7 @@
   "name": "emenda-minimal-source-package",
   "description": "Emenda 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外发布预演使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
   "source_commit": "921cebc84644ec36d6251a93ce303a79b68a12a1",
-  "source_commit_note": "Emenda 品牌改名与 standalone 产品化之后的审计基线；后续提交可用 --commit <sha> --allow-commit-drift 预演。",
+  "source_commit_note": "历史来源审计基线，非当前闭包发布提交。预演默认导出已提交 HEAD；指定 --commit <sha> 与此基线不同时用 --allow-commit-drift。未提交工作不属于 git archive 产物。",
   "service_identity_note": "Host 本地 RS256 signer/config 随递归成员导出，无 Student 编译依赖。portable Service.Tests 不含 Student 或 Portal BFF 引用；真实跨域 provider 回归由 Ruoyu.Study 平台仓库持有（ADR-0031 决策 11），不属于产品发布闭包。secret 只进入任务自有外部受限环境，不导出或 COPY。",
   "solution": "src/Emenda.sln",
   "members": {
@@ -25,7 +25,8 @@
       ".dockerignore",
       "docs/Integration/mistake-http-v1.json",
       "docs/Integration/mistake-http-v2.json",
-      "docs/Integration/mistake-http-v3.json"
+      "docs/Integration/mistake-http-v3.json",
+      "docs/Integration/emenda-intake-v1.json"
     ]
   },
   "export": {
@@ -93,6 +94,11 @@
         "id": "Npgsql.EntityFrameworkCore.PostgreSQL",
         "version": "10.0.3",
         "license": "PostgreSQL"
+      },
+      {
+        "id": "SignaCore.Client.AspNetCore",
+        "version": "0.1.21",
+        "license": "MIT"
       }
     ],
     "src/StudentClient/Emenda.StudentClient.csproj": [

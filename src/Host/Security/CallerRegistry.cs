@@ -75,19 +75,21 @@ public sealed class CallerRegistry
         var result = new List<EffectiveCallerEntry>();
         foreach (var caller in _options.CurrentValue.ValidCallers)
         {
-            if (dynamicByName.TryGetValue(caller.Name, out var replacement))
+            if (dynamicByName.Remove(caller.Name, out var replacement))
             {
-                result.Add(new EffectiveCallerEntry
+                if (!replacement.Deleted)
                 {
-                    Name = caller.Name,
-                    ApiKey = replacement.ApiKey,
-                    Source = CallerEntrySource.Dynamic,
-                    Enabled = replacement.Enabled,
-                    Note = replacement.Note,
-                    CreatedAtUtc = replacement.CreatedAtUtc,
-                    UpdatedAtUtc = replacement.UpdatedAtUtc
-                });
-                dynamicByName.Remove(caller.Name);
+                    result.Add(new EffectiveCallerEntry
+                    {
+                        Name = caller.Name,
+                        ApiKey = replacement.ApiKey,
+                        Source = CallerEntrySource.Dynamic,
+                        Enabled = replacement.Enabled,
+                        Note = replacement.Note,
+                        CreatedAtUtc = replacement.CreatedAtUtc,
+                        UpdatedAtUtc = replacement.UpdatedAtUtc
+                    });
+                }
             }
             else
             {
@@ -102,6 +104,7 @@ public sealed class CallerRegistry
         }
         foreach (var entry in dynamicByName.Values)
         {
+            if (entry.Deleted) continue;
             result.Add(new EffectiveCallerEntry
             {
                 Name = entry.Name,

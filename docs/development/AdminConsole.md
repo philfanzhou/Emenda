@@ -54,51 +54,118 @@ Register in this order (see the [SignaCore hosted-login guide]):
 
 ## Caller credentials
 
-Two sources merge by caller name, the dynamic entry winning:
+Caller names are case-insensitive. When a dynamic store is configured, its
+records override same-name static configuration, including disabled records
+and deletion tombstones. Without a configured dynamic path, authentication
+continues to use static configuration only.
 
-- **Static configuration** — `Emenda:Security:Callers` (appsettings/env, what
-  deployments bootstrap with). The console lists these as 配置-sourced and
-  never displays their key: they belong to the deployment configuration.
-- **Dynamic file** — the JSON file at `Emenda:Security:DynamicCallers:Path`,
-  created and updated by the console (atomic writes, version 1 document):
+- **Static configuration** — `Emenda:Security:Callers` (appsettings/env).
+  The console lists untouched entries as configuration-sourced and does not
+  reveal their keys. Disable/delete of an untouched configuration entry
+  returns **409**: change deployment configuration, or rotate it into a
+  dynamic credential first. Rotation immediately replaces the static key.
+- **Dynamic file** — `Emenda:Security:DynamicCallers:Path`. Existing version 1
+  documents are readable without migration. Every successful management
+  write persists a version 2 document atomically before publishing the new
+  in-memory state:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "callers": [
     {
       "name": "study-platform",
-      "apiKey": "43-char-random-credential",
+      "apiKey": "generated-caller-key",
       "enabled": true,
-      "note": "Ruoyu.Study platform backend",
+      "deleted": false,
+      "note": "Study platform backend",
       "createdAtUtc": "2026-11-11T00:00:00.0000000+00:00",
       "createdBy": "admin",
       "updatedAtUtc": "2026-11-11T00:00:00.0000000+00:00"
+    },
+    {
+      "name": "retired-platform",
+      "apiKey": "",
+      "enabled": false,
+      "deleted": true
     }
   ]
 }
 ```
 
-The file can also be edited directly (it is the same document the console
-writes) and is designed to live on a volume mount (`-v emenda-data:/app/data`,
-the default of `start.sh`), so credentials survive container replacement.
-An unreadable file fails closed: its entries stop matching until it is fixed,
-and static callers keep serving.
+Deletion removes the credential from the console's effective caller list and
+clears its stored secret, but **keeps a tombstone by name**. This prevents a
+same-name deployment key from becoming valid again after deletion or restart.
+Tombstones cannot be revealed, rotated or enabled (404); an explicit Create
+with that name generates a new credential. Never remove tombstones manually
+while a same-name configuration caller can still exist.
 
-Console operations (all CSRF-protected; the fixed session cookie never leaves
-the browser's cookie jar):
+### First bootstrap and recovery
+
+A configured dynamic path must already contain a valid document. Missing,
+unreadable, malformed or unsupported-version files, invalid entries, duplicate
+names and invalid tombstones block **all caller authentication**, including
+static callers; they never silently fall back to deployment keys. Presented
+credentials receive **503** on the product API, and authenticated management
+requests also receive **503**. Invalid files are logged and are not replaced
+by management operations. Health and the admin login surface remain available.
+
+For a confirmed **new installation only**, provision an empty file on the
+persistent volume before the first request:
+
+```sh
+mkdir -p ./data
+(umask 077; set -C; printf '%s\n' '{"version":1,"callers":[]}' > ./data/emenda-callers.json)
+```
+
+The no-clobber command fails rather than overwriting existing state. Use the
+actual configured/mounted path and grant the service account read/write
+access. This file contains plaintext caller keys: restrict volume access and
+protect backups. Use a persistent volume (for example `-v emenda-data:/app/data`)
+so container replacement preserves both credentials and revocations.
+
+**Do not bootstrap to recover a missing file or lost volume.** Restore the
+latest trusted credential state, including all tombstones, then restart.
+Losing the entire volume still fails closed because the missing file is never
+automatically initialized. However, explicitly replacing it with an empty
+document, restoring an older snapshot, removing the dynamic-path setting or
+rolling back the binary can remove revocation history. There is no external
+revocation authority to detect that rollback. If the state cannot be recovered,
+remove/rotate the deployment's old static keys before deliberately initializing
+new state; then issue new caller credentials. Do not claim old keys remain
+revoked after an operator discards their only revocation record.
+
+Existing version 1 overrides remain authoritative when read by this version:
+rotation, disable and deletion preserve suppression of their static
+predecessors across restart. Previously deleted overrides whose history was
+already lost cannot be reconstructed; rotate/remove those deployment keys
+as part of the upgrade.
+
+### Runtime operations
+
+The file is read **once per process**, not watched. Console changes affect the
+next request immediately and persist across restart. Direct edits, repair or
+restoration of the file require a process restart; a process that failed its
+initial load remains unavailable until restart. Stop the service before manual
+maintenance to avoid overwriting in-memory state or losing console changes.
+Only one service process may write a given file; this is not a distributed
+multi-instance credential store.
+
+Console operations (unsafe methods require CSRF; the fixed session cookie
+never leaves the browser's cookie jar):
 
 | Action | Endpoint | Effect |
 |---|---|---|
-| List (masked keys) | `GET /admin/api/callers` | name, `abcd****wxyz`, source, state, note |
-| Create | `POST /admin/api/callers` | generates a 43-char key, shown **once** |
-| Reveal | `GET /admin/api/callers/{name}/secret` | full key of a dynamic entry |
-| Rotate | `POST /admin/api/callers/{name}/rotate` | new key; the old key stops working immediately (rotating a static entry creates the dynamic override) |
-| Enable/disable | `PUT /admin/api/callers/{name}` | disabled entries never match |
-| Delete | `DELETE /admin/api/callers/{name}` | the key stops working immediately |
+| List (masked keys) | `GET /admin/api/callers` | effective, non-deleted callers: name, `abcd****wxyz`, source, state, note |
+| Create | `POST /admin/api/callers` | generates a 43-char key, shown **once**; explicitly recreates a deleted name with a new key |
+| Reveal | `GET /admin/api/callers/{name}/secret` | full key of a non-deleted dynamic entry; configuration entries return 409 |
+| Rotate | `POST /admin/api/callers/{name}/rotate` | existing caller only; new key revokes the previous one; static entries become dynamic overrides; disabled entries stay disabled |
+| Enable/disable | `PUT /admin/api/callers/{name}` | dynamic entries only; disabling never reactivates their static predecessor |
+| Delete | `DELETE /admin/api/callers/{name}` | dynamic entries only; persists a tombstone so neither the removed key nor its static predecessor matches |
 
-Every change is effective immediately on the next request — the middleware
-resolves the merged caller set per request, no restart needed.
+A failed persistence operation returns 503 and does **not** publish the
+requested credential change. The last successfully committed state stays
+active; do not treat a failed rotate/disable/delete response as revocation.
 
 ## Security properties
 
@@ -117,10 +184,15 @@ resolves the merged caller set per request, no restart needed.
 
 ## Testing
 
-`AdminConsoleEndpointTests` and `DynamicCallerStoreTests` cover: the
-unconfigured state (page anonymous, protocol 503, no management API, product
-API contract intact); a seeded session ticket driving the full management
-round-trip through the real CSRF boundary; immediate activation/revocation of
-keys on `/api/*`; and the store's file persistence, validation and fail-closed
-behaviour. The hosted-login flow itself is owned by the official package and
-verified against a live SignaCore at deployment time.
+`AdminConsoleEndpointTests`, `DynamicCallerStoreTests` and
+`ProductCallerAuthenticationTests` cover the unconfigured console, real
+session/CSRF boundary with seeded tickets, product API activation/revocation,
+version 1 override compatibility, rotation/disable/deletion across fresh store
+and host instances, deletion tombstones, failed-write consistency, and explicit
+503 responses without static fallback for missing/corrupt state. Missing-file
+and complete-volume loss tests also assert that management cannot bootstrap
+over lost revocations. Tests pin direct-edit/repair restart requirements.
+No real OIDC server is used: seeded session tickets replace hosted login and
+the test backchannel rejects network access. The hosted-login protocol remains
+owned by the official package and must be verified against SignaCore at
+deployment time.

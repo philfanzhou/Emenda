@@ -27,6 +27,7 @@ COPY src src
 COPY docs/Integration/mistake-http-v1.json docs/Integration/mistake-http-v1.json
 COPY docs/Integration/mistake-http-v2.json docs/Integration/mistake-http-v2.json
 COPY docs/Integration/mistake-http-v3.json docs/Integration/mistake-http-v3.json
+COPY docs/Integration/emenda-intake-v1.json docs/Integration/emenda-intake-v1.json
 COPY vendor/Emenda.Common vendor/Emenda.Common
 COPY vendor/Emenda.Ai vendor/Emenda.Ai
 COPY vendor/Emenda.Consul vendor/Emenda.Consul

@@ -1,0 +1,95 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Emenda standalone intake",
+    "version": "1.0.0",
+    "description": "Product-owned intake for trusted backend callers. Student authorization belongs to the caller. Caller credentials are not tenant-isolation boundaries. The inherited mistake-http-v3 contract describes the lifecycle routes; Standalone rejection is local and never returns an upload to Student."
+  },
+  "paths": {
+    "/api/intake/uploads": {
+      "post": {
+        "operationId": "createProductIntake",
+        "summary": "Create a complete mistake batch or replay its original receipt",
+        "description": "sourceKey is scoped by the authenticated caller name and bound to studentId plus ordered image bytes and normalized media types. Filenames are not part of request identity. Replays return the original completion receipt, not current review state. Different bound content returns source_conflict. An active request returns source_in_progress; retry unchanged after it finishes. Storage, analysis and processing failures return failure, never partial success. An unchanged retry reuses deterministic product-owned objects. Without sourceKey, automatic retry is not idempotent. sourceId is opaque and is not sourceKey. No Student service is contacted and no source object is deleted.",
+        "security": [{ "CallerKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["studentId", "images"],
+                "properties": {
+                  "studentId": { "type": "string", "minLength": 1, "maxLength": 36 },
+                  "sourceKey": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
+                  "images": {
+                    "type": "array", "minItems": 1, "maxItems": 20,
+                    "description": "Repeated images or images[] parts, each 1 byte to 15 MiB, image/jpeg or image/png.",
+                    "items": { "type": "string", "format": "binary" }
+                  }
+                }
+              },
+              "encoding": { "images": { "contentType": "image/jpeg, image/png" } }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every image is stored and verified; every grouped item, Created log and receipt has committed atomically, or an original receipt is replayed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Receipt" } } }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "401": { "description": "Missing or invalid caller credential; success=false and a fixed message." },
+          "409": {
+            "description": "source_conflict: use a different key for different input. source_in_progress: retry the same key and content after the active request finishes.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "500": {
+            "description": "vl_failed or processing_failed. Completion was not confirmed; retry the unchanged keyed request. Uncompleted product objects are retained for recovery, not automatically garbage-collected.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "503": { "description": "Configured caller credential store is unavailable. Authentication fails closed; repair or restore that store and restart before retrying." }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "CallerKey": { "type": "apiKey", "in": "header", "name": "X-Emenda-Api-Key" } },
+    "schemas": {
+      "Receipt": {
+        "type": "object", "required": ["success", "sourceId", "items"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [true] },
+          "sourceId": { "type": "string", "description": "Opaque source reference for lifecycle queries; do not derive it from sourceKey." },
+          "items": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object", "required": ["id", "subject", "grade", "reviewStatus", "imagePaths"],
+              "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "subject": { "type": "integer", "minimum": 1, "maximum": 9 },
+                "grade": { "type": "integer", "minimum": 1, "maximum": 12 },
+                "reviewStatus": { "type": "integer", "enum": [1] },
+                "imagePaths": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object", "required": ["success", "errorCode", "message"],
+        "properties": {
+          "success": { "type": "boolean", "enum": [false] },
+          "errorCode": { "type": "string", "enum": ["invalid_request", "source_conflict", "source_in_progress", "vl_failed", "processing_failed"] },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "responses": {
+      "InvalidRequest": {
+        "description": "Invalid multipart envelope, student reference, source key or image limit. Correct the request before retrying.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
+  }
+}

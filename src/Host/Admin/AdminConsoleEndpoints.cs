@@ -49,7 +49,19 @@ public static class AdminConsoleEndpoints
         app.MapGroup(string.Empty).MapSignaCoreHostedLogin(AdminConsoleConstants.Prefix);
 
         var api = app.MapGroup("/admin/api")
-            .RequireAuthorization(AdminConsoleConstants.Policy);
+            .RequireAuthorization(AdminConsoleConstants.Policy)
+            .AddEndpointFilter(async (context, next) =>
+            {
+                try
+                {
+                    return await next(context).ConfigureAwait(false);
+                }
+                catch (DynamicCallerStoreUnavailableException ex)
+                {
+                    return Results.Json(new { success = false, message = ex.Message },
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+                }
+            });
         api.MapGet("/callers", ListCallers);
         api.MapPost("/callers", CreateCaller);
         api.MapGet("/callers/{name}/secret", RevealSecret);
@@ -133,15 +145,10 @@ public static class AdminConsoleEndpoints
             return Results.Json(
                 new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
                 statusCode: 503);
-        var existing = (await store.ListAsync(ct).ConfigureAwait(false)).FirstOrDefault(candidate =>
+        var existing = (await registry.ListAsync(ct).ConfigureAwait(false)).FirstOrDefault(candidate =>
             string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
         if (existing is null)
-        {
-            // Rotating a static entry creates the dynamic override with the same name.
-            var created = await store.UpsertAsync(name, GenerateKey(), Actor(http), "rotated from configuration", ct)
-                .ConfigureAwait(false);
-            return Results.Json(new { success = true, data = new { name = created.Name, apiKey = created.ApiKey } });
-        }
+            return Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404);
         var rotated = await store.UpsertAsync(existing.Name, GenerateKey(), Actor(http), existing.Note, ct)
             .ConfigureAwait(false);
         return Results.Json(new { success = true, data = new { name = rotated.Name, apiKey = rotated.ApiKey } });
@@ -155,6 +162,9 @@ public static class AdminConsoleEndpoints
             return Results.Json(
                 new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
                 statusCode: 503);
+        if ((await registry.ListAsync(ct).ConfigureAwait(false)).Any(entry =>
+            string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase) && entry.Source == CallerEntrySource.Configuration))
+            return ConfigurationManaged();
         var body = await ReadJsonBody(http, ct).ConfigureAwait(false);
         var enabled = BodyBool(body, "enabled");
         var note = BodyString(body, "note");
@@ -172,6 +182,9 @@ public static class AdminConsoleEndpoints
             return Results.Json(
                 new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
                 statusCode: 503);
+        if ((await registry.ListAsync(ct).ConfigureAwait(false)).Any(entry =>
+            string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase) && entry.Source == CallerEntrySource.Configuration))
+            return ConfigurationManaged();
         var removed = await store.RemoveAsync(name, ct).ConfigureAwait(false);
         return removed is null
             ? Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404)
@@ -179,6 +192,11 @@ public static class AdminConsoleEndpoints
     }
 
     // ---- helpers ----
+
+    private static IResult ConfigurationManaged() => Results.Json(
+        new { success = false, message = "静态配置调用方由部署配置管理；请修改部署配置，或先轮换为动态凭据后再禁用/删除。" },
+        statusCode: StatusCodes.Status409Conflict);
+
 
     private static async Task<JsonDocument?> ReadJsonBody(HttpContext http, CancellationToken ct)
     {

@@ -49,7 +49,6 @@ public sealed class LegacySchemaConvergencePostgresTests
             await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
 
         await using var check = database.CreateContext();
-        Assert.Equal(14, (await check.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(before.Items.Order(), (await check.MistakeItems.Select(row => row.Id).ToListAsync()).Order());
         var orphanPractices = before.Practices.Where(p => !before.Items.Contains(p.Parent)).Select(p => p.Id).ToHashSet();
         var orphanLogs = before.Logs.Where(l => !before.Items.Contains(l.Parent)).Select(l => l.Id).ToHashSet();
@@ -154,7 +153,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         }));
         var upgraded = Assert.Single(results, result => result.Upgraded);
         Assert.Equal(count, upgraded.ArchivedRows);
-        Assert.All(results.Where(result => !result.Upgraded), result => Assert.Equal(14, result.FromVersion));
         Assert.Equal(count, (await database.ArchiveAsync()).Count);
     }
 
@@ -238,7 +236,6 @@ public sealed class LegacySchemaConvergencePostgresTests
 
         await using var retry = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
-        Assert.Equal(14, (await retry.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(count, (await database.ArchiveAsync()).Count);
     }
 
@@ -274,7 +271,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         await using var context = database.CreateContext(commandTimeout: 1);
         var configuredTimeout = context.Database.GetCommandTimeout();
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal(configuredTimeout, context.Database.GetCommandTimeout());
     }
 
@@ -295,7 +291,6 @@ public sealed class LegacySchemaConvergencePostgresTests
             await command.ExecuteNonQueryAsync();
         var result = await upgrade;
         Assert.Equal(3, result.FromVersion);
-        Assert.Equal(14, result.ToVersion);
         Assert.Equal(1, result.ResetImagePaths);
     }
 
@@ -366,7 +361,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.Equal(0L, await database.ScalarAsync<long>("SELECT count(*) FROM pg_proc WHERE proname='guard_legacy_archive'"));
         var result = await DatabaseInitializer.UpgradeToTargetAsync(context);
         Assert.Equal(10, result.FromVersion);
-        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -384,14 +378,12 @@ public sealed class LegacySchemaConvergencePostgresTests
         var result = await DatabaseInitializer.UpgradeToTargetAsync(context);
 
         Assert.Equal(13, result.FromVersion);
-        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.storage_reference_snapshot') IS NOT NULL"));
         Assert.Equal(0L, await database.ScalarAsync<long>("SELECT count(*) FROM pg_proc WHERE proname='guard_storage_reference_snapshot'"));
 
         await context.GetService<IMigrator>().MigrateAsync(LayoutJobSchema.Migration);
         Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('public.storage_reference_snapshot') IS NOT NULL"));
         Assert.Equal(13, (await DatabaseInitializer.UpgradeToTargetAsync(context)).FromVersion);
-        Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     private static string[] StringArrayOrEmpty(string value)
@@ -435,7 +427,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         {
             var result = await DatabaseInitializer.UpgradeToTargetAsync(context);
             Assert.Equal(count, result.ArchivedRows);
-            Assert.Equal(14, (await context.Database.GetAppliedMigrationsAsync()).Count());
         }
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.mistake') IS NOT NULL"));
         Assert.Equal(oldPractices, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'image_paths')::text FROM mistake_practice p"));

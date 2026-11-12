@@ -13,26 +13,26 @@
 
 ### 启动时自动升级
 
-Host 正常启动时自动把数据库升级到当前目标结构（十四条 EF 历史，最后一条为 `20261107000001_DropStorageReferenceSnapshots`），不需要人工命令、停写确认或备份前置。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。
+Host 在 `Own` 模式正常启动时自动把数据库升级到当前目标结构（十五条 EF 历史，最后一条为 `20261111000000_AddProductIntakeRequests`）。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。已部署实例升级前应备份完整数据库、对象和凭据卷；备份不是由 Host 自动完成。
 
 | 启动时数据库状态 | 结果 |
 |---|---|
 | 空库（public 下无对象） | 应用全部迁移并核验，继续启动 |
-| 已知 1–13 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源相关表的行与 ID 保留，继续启动 |
+| 已知 1–14 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源相关表的行与 ID 保留，继续启动 |
 | 2026-05-14 至 2026-09-29 版本自动维护留下的旧结构（见[旧版自动维护结构的收敛](#旧版自动维护结构的收敛)） | 同一事务内先收敛到已知形态，被移除或改写的旧数据写入 `legacy_archive`，再升级到目标，继续启动 |
-| 已是精确目标（14 条历史及完整结构） | 不写入，继续启动；只读账号也可启动 |
+| 已是精确目标（15 条历史及完整结构） | 不写入，继续启动；只读账号也可启动 |
 | 2026-04-19 至 2026-05-13 版本留下的精确 `public.mistake`（见[旧表转换](#旧表-mistake-的转换)） | 保留旧条目与关系，同事务转换、归档并升级，继续启动 |
 | 其他未知或矛盾结构 | 拒绝启动，数据库原样保留 |
 
-空库或已知旧版本升级需要相应的 DDL 与迁移历史写入权限；旧结构收敛还需要其数据写入权限。13 条历史的库仍须删除 StorageReferences 快照表并写入第十四条历史，不能以只读账号完成启动。只有历史和完整结构均精确符合版本 14 时，启动才保持零写入。
+空库或已知旧版本升级需要相应的 DDL 与迁移历史写入权限；旧结构收敛还需要其数据写入权限。13 条历史的库仍须删除 StorageReferences 快照表；14 条历史的 Emenda 库还须创建产品入库请求表。只有历史和完整结构均精确符合版本 15 时，启动才保持零写入。
 
-For the recognized fourteen-migration chain, `ProductVersion` accepts the original `8.0.11` stamp and the current EF Core `10.0.13` stamp, including a mixture after upgrading an existing database. Existing stamps are preserved; only newly applied migrations receive the current EF version. Other versions remain unsupported, and the complete schema checks still apply. The EF 10 model snapshots introduce no new migration or database schema change. The provider-defined history table is created inside the existing advisory-lock transaction before EF 10 probes applied migrations; rollback and final catalog verification still cover the whole upgrade.
+For the recognized migration chain, `ProductVersion` accepts the original `8.0.11` stamp and the current EF Core `10.0.13` stamp, including a mixture after upgrading an existing database. Existing stamps are preserved; only newly applied migrations receive the current EF version. Other versions remain unsupported, and the complete schema checks still apply. The provider-defined history table is created inside the advisory-lock transaction before EF 10 probes applied migrations; rollback and final catalog verification cover the whole upgrade.
 
 升级事务内的命令（含等待 advisory lock）不受连接串 `Command Timeout`（Npgsql 默认 30 秒）限制，大库首次升级不会因命令超时回滚；宿主停止或取消仍会中断并回滚。没有新增配置项。
 
 升级失败、取消、连接中断或权限不足时整个事务回滚，数据库保持升级前状态，启动失败；诊断只给出版本、本服务自身的核验结论或 SQLSTATE，不输出连接串、密码或业务行内容。下次启动重新分类再试；COMMIT 确认丢失时，下次启动看到已提交的目标结构直接启动。多个实例同时启动时共用同一把锁：一个升级，其余等锁后看到目标结构直接启动，不重复写历史。日志记录升级前版本、执行步骤和目标版本。
 
-已知历史的升级路径：InitialCreate（1 条）、前两条历史及前三条历史的 `review_comment` 先迁移到第四条（列重命名），再迁移到目标；前三条历史但已由旧运行时重命名为 `root_cause` 的库，在 catalog 精确核验后补第四条历史再迁移到目标；4–13 条历史直接迁移到目标版本 14。
+已知历史的升级路径：InitialCreate（1 条）、前两条历史及前三条历史的 `review_comment` 先迁移到第四条（列重命名），再迁移到目标；前三条历史但已由旧运行时重命名为 `root_cause` 的库，在 catalog 精确核验后补第四条历史再迁移到目标；4–14 条历史直接迁移到目标版本 15。此处的版本 14 特指 Emenda 的删除引用快照迁移链，不包括相邻 Ruoyu.Study 已分叉的会话错题迁移链。
 
 **精确三历史误盖章形态**：`root_cause` 已重命名，`process_log.student_id` 及索引和 `reanalyze_job` 已存在，但 `mistake_practice.image_paths` 仍为 `text`，其余完整指纹与该历史运行时一致。升级先锁定练习表并核验每行均为 JSON 字符串数组，保存 ID 与路径序列清单，在同一事务中用 `USING image_paths::jsonb` 转换、复核每行语义，再补第四条历史并迁移到目标。空数组、中文、大小写、顺序与重复字符串保留。
 
@@ -210,3 +210,11 @@ For the recognized fourteen-migration chain, `ProductVersion` accepts the origin
 ## 20261107000001_DropStorageReferenceSnapshots
 
 第十四条迁移随 [ADR-0030](../../../../../docs/adr/0030-portal-hosted-administration.md) 第 4 步删除 StorageReferences v1：删除 `storage_reference_snapshot` 表与 `guard_storage_reference_snapshot` 函数。快照会过期、不是业务数据，表非空也直接删除。版本 10–13 的精确 schema 检查仍要求该表，版本 14 要求它不存在（`StorageReferenceRemovalSchema.Present`）。Down 重建空表与保护函数。部署镜像不带 `dotnet ef`，Host 也没有降级命令，所以与前几条迁移相同：回退时保留认识当前 schema 的 binary，或按完整备份恢复流程处理；不认识第十四条历史的旧 binary 会因历史不匹配拒绝启动。`LegacySchemaConvergencePostgresTests.VersionThirteenDropsTheRetiredReferenceTableAndDowngradeRecreatesIt` 覆盖升级与 Down。
+
+## 20261111000000_AddProductIntakeRequests
+
+独立产品第十五条迁移创建 `product_intake_request`，以 caller-scoped request ID 为主键，保存可信调用方、最长 36 字符的学生引用、固定请求摘要、原始完成响应及创建时间。它不修改已有错题、练习、日志或对象路径。
+
+请求摘要绑定学生与有序图片字节/规范化媒体类型；文件名不参与身份。请求绑定先独立提交，图片使用确定性产品对象键；全部分组条目、Created 日志及完成响应随后在同一事务提交。进程失败或取消不留下部分已提交的题目；完成响应丢失后，同 key 原载荷重放读取同一回执。未完成请求的图片保留供恢复，不做自动物理清理。
+
+Down 在该表非空时以 `product_intake_requests_present` 拒绝，避免丢失幂等与重放事实。已有 v14 产品上传没有可信请求摘要，不能伪造或自动补建绑定；原条目保持可读。独立部署边界及恢复规则以 [StandaloneDeployment](../development/StandaloneDeployment.md) 为准，真实 PostgreSQL 回归见 `ProductIntakePostgresTests`。

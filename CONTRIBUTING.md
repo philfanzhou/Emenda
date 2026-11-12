@@ -15,11 +15,18 @@ the local workflow; the product behaviour is described in [`README.md`](README.m
 ```bash
 dotnet build src/Emenda.sln -c Release
 dotnet test src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj -c Release
+dotnet test src/Tests/Emenda.Service.Tests/Emenda.Service.Tests.csproj -c Release --filter "FullyQualifiedName!~PostgresTests"
 ```
 
-Database-backed Service tests require a dedicated PostgreSQL admin connection supplied
-through `MISTAKE_MIGRATION_TEST_CONNECTION`; without it the PostgreSQL suites are gated and
-the remaining tests still run.
+`ProductIntakePostgresTests` and `StandaloneIntakePostgresTests` require a task-owned
+PostgreSQL admin connection in `MISTAKE_MIGRATION_TEST_CONNECTION`. They exercise durable
+payload binding, concurrent Hosts, transaction rollback, cancellation and replay; do not
+point this variable at a business database. Other inherited PostgreSQL suites have their
+own `MISTAKE_*_TEST_CONNECTION` gates. Excluded/gated tests are not a full database pass.
+
+For real Host + PostgreSQL + S3 acceptance, use
+[Standalone Verification](docs/development/StandaloneVerification.md). Build once before
+running its acceptance phase; the script does not compile or publish the service itself.
 
 ## Pull requests
 

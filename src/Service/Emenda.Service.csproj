@@ -4,6 +4,7 @@
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v1.json" LogicalName="mistake-http-v1.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v2.json" LogicalName="mistake-http-v2.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v3.json" LogicalName="mistake-http-v3.json" />
+    <EmbeddedResource Include="../../docs/Integration/emenda-intake-v1.json" LogicalName="emenda-intake-v1.json" />
     <ProjectReference Include="..\Domain\Emenda.Domain.csproj" />
   </ItemGroup>
 

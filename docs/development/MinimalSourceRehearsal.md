@@ -16,7 +16,7 @@ Service.Tests 只保留 portable 核心/宿主测试，不引用 Student 或 Por
 ## 命令
 
 ```bash
-# 基线预演（默认使用 manifest 固定的 source_commit）
+# 当前已提交版本预演（默认 HEAD；manifest source_commit 仅为历史来源审计基线）
 bash script/build-script/06-mistake.minimal-source-rehearsal.sh --target /tmp/mistake-rehearsal
 
 # 指定 commit（与 manifest source_commit 不同时必须显式允许漂移，实际 commit 会记录在输出与 .rehearsal/actual-commit.txt）
@@ -34,6 +34,7 @@ bash script/build-script/06-mistake.minimal-source-rehearsal.sh --docker-only --
 ## 前提
 
 - 源仓库 git 对象完整（脚本用 `git archive` 导出，只导出被跟踪文件，宿主 bin/obj 天然不会进入导出树）。
+- `git archive` 不包含未提交修改。新文件和本次改动须先由维护者审查并提交，才能作为相应 commit 的完整发布预演；本地运行验收不要求提交。
 - dotnet 10 SDK 与 docker 可用。
 - 可选：设置 `MISTAKE_MIGRATION_TEST_CONNECTION` 为专用 PostgreSQL admin 连接串后 Service 测试全量运行；该变量只传入测试进程，脚本不打印、不落盘。未设置时 PG 依赖用例按 `$XunitDynamicSkip$` 门控跳过（表现为失败计数与门控计数相等的"门控跳过"），非 PG 用例必须全部通过。
 
@@ -41,7 +42,7 @@ bash script/build-script/06-mistake.minimal-source-rehearsal.sh --docker-only --
 
 脚本按 `[1/9]` 到 `[9/9]` 输出每个阶段的 `PASS:`/`FAIL:`：
 
-1. commit 解析（与 manifest 不一致且未加 `--allow-commit-drift` 即失败）；
+1. commit 解析（默认当前已提交 HEAD；显式 `--commit` 与历史基线不一致且未加 `--allow-commit-drift` 时失败）；
 2. 闭包成员在目标 commit 全部存在；
 3. `git archive` 导出到仓库外空目录；
 4. 导出文件集与 manifest 闭包逐项一致（多一个文件或漏一个文件即失败，diff 写入 `.rehearsal/fileset.diff`）；

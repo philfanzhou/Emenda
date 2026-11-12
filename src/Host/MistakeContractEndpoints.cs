@@ -8,6 +8,8 @@ namespace Emenda.Host;
 public static class MistakeContractEndpoints
 {
     public const string Version = "mistake-http-v3";
+    public const string ProductVersion = "emenda-intake-v1";
+    private static readonly byte[] ProductDocument = ReadDocument(ProductVersion);
     private static readonly byte[] Document = ReadDocument(Version);
     private static readonly IReadOnlyDictionary<string, byte[]> HistoricalDocuments = new Dictionary<string, byte[]>
     {
@@ -22,15 +24,15 @@ public static class MistakeContractEndpoints
         endpoints.MapGet("/contracts/{version}.json", async (string version, HttpContext http) =>
         {
             http.RequestAborted.ThrowIfCancellationRequested();
-            if (version != Version && !HistoricalDocuments.ContainsKey(version))
+            if (version != Version && version != ProductVersion && !HistoricalDocuments.ContainsKey(version))
             {
                 http.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;
             }
 
-            var document = version == Version ? Document : HistoricalDocuments[version];
+            var document = version == ProductVersion ? ProductDocument : version == Version ? Document : HistoricalDocuments[version];
             var tag = version == Version ? Tag : new EntityTagHeaderValue('"' + Convert.ToHexString(SHA256.HashData(document)).ToLowerInvariant() + '"');
-            if (version != Version)
+            if (HistoricalDocuments.ContainsKey(version))
             {
                 http.Response.Headers["Link"] = "</contracts/" + Version + ".json>; rel=\"latest-version\"";
                 http.Response.Headers["X-Emenda-Contract-Status"] = "historical";

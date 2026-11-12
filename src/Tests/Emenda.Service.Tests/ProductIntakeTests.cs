@@ -21,12 +21,8 @@ using Emenda.Service.StudentIntegration;
 
 namespace Emenda.Service.Tests;
 
-/// <summary>
-/// Product-owned intake acceptance tests: validation and idempotency of
-/// <see cref="ProductIntakeService"/>, the extracted
-/// <see cref="LegacyUploadProcessor"/> pipeline, and the minimal-API surface.
-/// Everything is mocked; no PostgreSQL or OSS instance is required.
-/// </summary>
+/// <summary>Input and transport boundaries plus the unchanged platform upload processor.
+/// Durable product intake is exercised against PostgreSQL by ProductIntakePostgresTests.</summary>
 public sealed class ProductIntakeTests
 {
     private static readonly byte[] PngBytes =
@@ -49,11 +45,11 @@ public sealed class ProductIntakeTests
     }
 
     [Fact]
-    public async Task StudentIdLongerThan128Characters_ReturnsInvalidRequest()
+    public async Task StudentIdLongerThan36Characters_ReturnsInvalidRequest()
     {
         var harness = new Harness();
 
-        var result = await harness.Service.CreateAsync(harness.Request(studentId: new string('s', 129)));
+        var result = await harness.Service.CreateAsync(harness.Request(studentId: new string('s', 37)));
 
         result.ErrorCode.Should().Be(ProductIntakeErrorCodes.InvalidRequest);
         harness.Oss.VerifyNoOtherCalls();
@@ -141,180 +137,6 @@ public sealed class ProductIntakeTests
         result.ErrorCode.Should().Be(ProductIntakeErrorCodes.InvalidRequest);
         result.ErrorMessage.Should().Be(ProductIntakeMessages.ContentTypeInvalid);
         harness.Oss.VerifyNoOtherCalls();
-    }
-
-    // ===== Processing =====
-
-    [Fact]
-    public async Task ValidRequest_StoresImagesAndReturnsProcessedItems()
-    {
-        var harness = new Harness(vlConfigured: true);
-        harness.Analyzer
-            .Setup(a => a.AnalyzeAsync("student-1", It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new VlAnalysisResult
-            {
-                Groups =
-                [
-                    new VlImageGroup { ImageIndices = [0], Subject = 2, Grade = 8, RootCause = "algebra" },
-                    new VlImageGroup { ImageIndices = [1], Subject = 3, Grade = 9, RootCause = "geometry" }
-                ]
-            });
-        var request = harness.Request(imageCount: 2, sourceKey: "batch-001");
-        request.Images[0].ContentType = "image/png";
-        request.Images[1].ContentType = "image/jpeg";
-
-        var result = await harness.Service.CreateAsync(request);
-
-        result.Success.Should().BeTrue();
-        result.SourceId.Should().Be("batch-001");
-        result.Items.Should().HaveCount(2);
-        result.Items.Select(item => item.Subject).Should().BeEquivalentTo([2, 3]);
-        result.Items.Select(item => item.Grade).Should().BeEquivalentTo([8, 9]);
-        result.Items.Should().OnlyContain(item => item.ReviewStatus == (int)ReviewStatus.PendingReview);
-        result.Items.SelectMany(item => item.ImagePaths)
-            .Should().OnlyContain(path => path.StartsWith("mistakes/", StringComparison.Ordinal));
-
-        harness.UploadBuckets.Should().OnlyContain(bucket => bucket == OssBucket.Uploads);
-        harness.UploadBuckets.Should().HaveCount(2);
-        harness.Copies.Should().HaveCount(2);
-        harness.Copies.Should().OnlyContain(copy =>
-            copy.Source.StartsWith("uploads/", StringComparison.Ordinal) &&
-            copy.Destination == "mistakes/" + copy.Source.Substring("uploads/".Length));
-        harness.Deletes.Should().BeEquivalentTo(harness.Copies.Select(copy => copy.Source));
-    }
-
-    [Fact]
-    public async Task ExistingSourceKey_ReturnsExistingItemsWithoutTouchingOss()
-    {
-        var harness = new Harness();
-        var existingId = Guid.NewGuid();
-        harness.StoredItems.Add(new MistakeItemModel
-        {
-            Id = existingId,
-            StudentId = "student-1",
-            Subject = 4,
-            Grade = 10,
-            SourceUploadId = "batch-001",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = [new SourceRegionModel { SourceImagePath = "mistakes/2026/11/09/a/image.png" }]
-        });
-        var request = harness.Request(sourceKey: "batch-001");
-
-        var result = await harness.Service.CreateAsync(request);
-
-        result.Success.Should().BeTrue();
-        result.SourceId.Should().Be("batch-001");
-        var item = result.Items.Should().ContainSingle().Subject;
-        item.Id.Should().Be(existingId);
-        item.Subject.Should().Be(4);
-        item.Grade.Should().Be(10);
-        item.ReviewStatus.Should().Be((int)ReviewStatus.Confirmed);
-        item.ImagePaths.Should().Equal("mistakes/2026/11/09/a/image.png");
-        harness.Oss.VerifyNoOtherCalls();
-        harness.Domain.Verify(service => service.GetMistakeItemsByUploadAsync("batch-001"), Times.Once);
-    }
-
-    [Fact]
-    public async Task MissingSourceKey_GeneratesIdempotentSourceId()
-    {
-        var harness = new Harness();
-
-        var result = await harness.Service.CreateAsync(harness.Request());
-
-        result.Success.Should().BeTrue();
-        result.SourceId.Should().NotBeNullOrWhiteSpace();
-        result.SourceId.Should().MatchRegex("^[A-Za-z0-9._-]{1,64}$");
-        var stored = harness.StoredItems.Should().ContainSingle().Subject;
-        stored.SourceUploadId.Should().Be(result.SourceId);
-        // Two service-level checks (idempotency probe + result read) plus the
-        // processor's own idempotency check for the same source key.
-        harness.Domain.Verify(service => service.GetMistakeItemsByUploadAsync(result.SourceId!), Times.Exactly(3));
-    }
-
-    [Fact]
-    public async Task VlNotConfigured_UsesDefaultSingleGroup()
-    {
-        var harness = new Harness();
-        var request = harness.Request(imageCount: 2);
-
-        var result = await harness.Service.CreateAsync(request);
-
-        result.Success.Should().BeTrue();
-        harness.Analyzer.VerifyNoOtherCalls();
-        harness.Submits.Should().ContainSingle();
-        harness.Submits[0].Subject.Should().Be(1);
-        harness.Submits[0].Grade.Should().Be(7);
-        harness.Submits[0].RootCause.Should().Be("Mistake upload (VL skipped)");
-        harness.Submits[0].ImagePaths.Should().HaveCount(2);
-    }
-
-    [Fact]
-    public async Task VlFailure_ReturnsVlFailed()
-    {
-        var harness = new Harness(vlConfigured: true);
-        harness.Analyzer
-            .Setup(a => a.AnalyzeAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("upstream unavailable"));
-
-        var result = await harness.Service.CreateAsync(harness.Request());
-
-        result.Success.Should().BeFalse();
-        result.ErrorCode.Should().Be(ProductIntakeErrorCodes.VlFailed);
-        result.ErrorMessage.Should().Be(ProductIntakeMessages.VlFailed);
-        harness.Submits.Should().BeEmpty();
-        harness.Domain.Verify(service => service.SubmitMistakeUploadAsync(
-            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<List<string>>(),
-            It.IsAny<string?>(), It.IsAny<string>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task ProcessingProducesNoItems_ReturnsProcessingFailed()
-    {
-        var harness = new Harness();
-        harness.Domain
-            .Setup(service => service.SubmitMistakeUploadAsync(
-                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<List<string>>(),
-                It.IsAny<string?>(), It.IsAny<string>()))
-            .ReturnsAsync(new List<MistakeItemModel>());
-
-        var result = await harness.Service.CreateAsync(harness.Request());
-
-        result.Success.Should().BeFalse();
-        result.ErrorCode.Should().Be(ProductIntakeErrorCodes.ProcessingFailed);
-        result.ErrorMessage.Should().Be(ProductIntakeMessages.ProcessingFailed);
-    }
-
-    [Fact]
-    public async Task UnexpectedFailure_ReturnsProcessingFailed()
-    {
-        var harness = new Harness();
-        harness.Domain
-            .Setup(service => service.GetMistakeItemsByUploadAsync(It.IsAny<string>()))
-            .ThrowsAsync(new InvalidOperationException("database unavailable"));
-
-        var result = await harness.Service.CreateAsync(harness.Request());
-
-        result.Success.Should().BeFalse();
-        result.ErrorCode.Should().Be(ProductIntakeErrorCodes.ProcessingFailed);
-        result.ErrorMessage.Should().Be(ProductIntakeMessages.ProcessingFailed);
-    }
-
-    [Fact]
-    public async Task ReservedTargetPath_ReturnsReservedTarget()
-    {
-        var harness = new Harness();
-        harness.Oss
-            .Setup(oss => oss.UploadAsync(
-                It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<OssBucket>(), It.IsAny<string?>()))
-            .ReturnsAsync("uploads/source-targets/source-1/1/original");
-
-        var result = await harness.Service.CreateAsync(harness.Request());
-
-        result.Success.Should().BeFalse();
-        result.ErrorCode.Should().Be(ProductIntakeErrorCodes.ReservedTarget);
-        result.ErrorMessage.Should().Be(ProductIntakeMessages.ReservedTarget);
-        harness.Submits.Should().BeEmpty();
     }
 
     // ===== LegacyUploadProcessor =====
@@ -416,20 +238,6 @@ public sealed class ProductIntakeTests
 
     // ===== DI registration and HTTP surface =====
 
-    [Fact]
-    public void AddProductIntakeRegistersScopedServices()
-    {
-        var services = new ServiceCollection();
-
-        services.AddProductIntake();
-
-        services.Single(descriptor => descriptor.ServiceType == typeof(IProductIntakeService))
-            .Should().Match<ServiceDescriptor>(descriptor =>
-                descriptor.Lifetime == ServiceLifetime.Scoped &&
-                descriptor.ImplementationType == typeof(ProductIntakeService));
-        services.Single(descriptor => descriptor.ServiceType == typeof(LegacyUploadProcessor))
-            .Lifetime.Should().Be(ServiceLifetime.Scoped);
-    }
 
     [Fact]
     public async Task EndpointRejectsNonMultipartRequest()
@@ -451,60 +259,13 @@ public sealed class ProductIntakeTests
         intake.VerifyNoOtherCalls();
     }
 
-    [Theory]
-    [InlineData("images")]
-    [InlineData("images[]")]
-    public async Task EndpointReturnsCreatedItemsForMultipartRequest(string imageFieldName)
-    {
-        var itemId = Guid.Parse("50000000-0000-0000-0000-000000000001");
-        var intake = new Mock<IProductIntakeService>();
-        intake.Setup(service => service.CreateAsync(It.IsAny<ProductIntakeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ProductIntakeResult.Completed("source-1",
-            [
-                new ProductIntakeItem
-                {
-                    Id = itemId,
-                    Subject = 2,
-                    Grade = 8,
-                    ReviewStatus = 1,
-                    ImagePaths = ["mistakes/2026/11/09/a/one.png"]
-                }
-            ]));
-        await using var app = await StartEndpointHostAsync(intake.Object);
-        using var client = app.GetTestClient();
-        using var form = new MultipartFormDataContent();
-        form.Add(new StringContent("student-1"), "studentId");
-        form.Add(new StringContent("batch-001"), "sourceKey");
-        form.Add(new ByteArrayContent(PngBytes) { Headers = { ContentType = new MediaTypeHeaderValue("image/png") } },
-            imageFieldName, "one.png");
-
-        using var response = await client.PostAsync(ProductIntakeEndpoints.Route, form);
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        json.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
-        json.RootElement.GetProperty("sourceId").GetString().Should().Be("source-1");
-        var item = json.RootElement.GetProperty("items")[0];
-        item.GetProperty("id").GetString().Should().Be(itemId.ToString());
-        item.GetProperty("subject").GetInt32().Should().Be(2);
-        item.GetProperty("grade").GetInt32().Should().Be(8);
-        item.GetProperty("reviewStatus").GetInt32().Should().Be(1);
-        item.GetProperty("imagePaths")[0].GetString().Should().Be("mistakes/2026/11/09/a/one.png");
-        intake.Verify(service => service.CreateAsync(
-            It.Is<ProductIntakeRequest>(request =>
-                request.StudentId == "student-1" &&
-                request.SourceKey == "batch-001" &&
-                request.Images.Count == 1 &&
-                request.Images[0].ContentType == "image/png" &&
-                request.Images[0].Content.Length == PngBytes.Length),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
 
     [Theory]
     [InlineData(ProductIntakeErrorCodes.InvalidRequest, 400)]
-    [InlineData(ProductIntakeErrorCodes.ReservedTarget, 409)]
     [InlineData(ProductIntakeErrorCodes.ProcessingFailed, 500)]
     [InlineData(ProductIntakeErrorCodes.VlFailed, 500)]
+    [InlineData(ProductIntakeErrorCodes.Conflict, 409)]
+    [InlineData(ProductIntakeErrorCodes.InProgress, 409)]
     public async Task EndpointMapsIntakeErrorCodes(string errorCode, int expectedStatus)
     {
         var intake = new Mock<IProductIntakeService>();
@@ -640,11 +401,13 @@ public sealed class ProductIntakeTests
                 Domain.Object, Oss.Object, Analyzer.Object,
                 Options.Create(VlOptions), NullLogger<LegacyUploadProcessor>.Instance);
             Service = new ProductIntakeService(
-                Oss.Object, Domain.Object, Processor, NullLogger<ProductIntakeService>.Instance);
+                Oss.Object, Domain.Object, null!, Analyzer.Object, Options.Create(VlOptions),
+                NullLogger<ProductIntakeService>.Instance);
         }
 
         public ProductIntakeRequest Request(int imageCount = 1, string studentId = "student-1", string? sourceKey = null) => new()
         {
+            CallerName = "test-caller",
             StudentId = studentId,
             SourceKey = sourceKey,
             Images = Enumerable.Range(0, imageCount)

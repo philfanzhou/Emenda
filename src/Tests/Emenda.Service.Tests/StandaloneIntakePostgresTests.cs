@@ -18,23 +18,18 @@ using Xunit;
 
 namespace Emenda.Service.Tests;
 
-/// <summary>
-/// End-to-end product intake through the real standalone host: caller
-/// credential -> multipart intake -> OSS storage -> VL grouping -> mistake
-/// item creation -> image migration to the mistakes/ prefix. OSS is replaced
-/// by the local file implementation and the VL analyzer by a deterministic
-/// fake; no Student, Identity, Consul or PostgreSQL is involved.
-/// </summary>
-public sealed class StandaloneIntakeEndpointTests
+/// <summary>Real standalone Host and PostgreSQL with local object bytes and a deterministic analyzer.</summary>
+public sealed class StandaloneIntakePostgresTests
 {
     private const string CallerName = "intake-tests";
     private const string CallerKey = "intake-test-api-key-0123456789";
     private const string IntakePath = "/api/intake/uploads";
 
     [Fact]
-    public async Task StandaloneMode_IntakeCreatesMistakeAndMigratesImagesAsync()
+    public async Task StandaloneMode_IntakeCreatesMistakeAndStoresVerifiedImagesAsync()
     {
-        using var factory = new StandaloneIntakeWebApplicationFactory();
+        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        using var factory = new StandaloneIntakeWebApplicationFactory(database.Connection);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Emenda-Api-Key", CallerKey);
 
@@ -49,7 +44,7 @@ public sealed class StandaloneIntakeEndpointTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         body.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
-        body.RootElement.GetProperty("sourceId").GetString().Should().Be("source-key-1");
+        var sourceId = body.RootElement.GetProperty("sourceId").GetString();
         var items = body.RootElement.GetProperty("items");
         items.GetArrayLength().Should().Be(1);
 
@@ -58,6 +53,7 @@ public sealed class StandaloneIntakeEndpointTests
         var itemsInDb = await db.MistakeItems.AsNoTracking().ToListAsync();
         itemsInDb.Should().HaveCount(1);
         itemsInDb[0].StudentId.Should().Be("student-42");
+        itemsInDb[0].SourceUploadId.Should().Be(sourceId);
         itemsInDb[0].SourceRegions.Should().NotBeEmpty();
         itemsInDb[0].SourceRegions.Should().OnlyContain(region =>
             region.SourceImagePath.StartsWith("mistakes/"));
@@ -66,7 +62,8 @@ public sealed class StandaloneIntakeEndpointTests
     [Fact]
     public async Task StandaloneMode_IntakeIsIdempotentBySourceKeyAsync()
     {
-        using var factory = new StandaloneIntakeWebApplicationFactory();
+        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        using var factory = new StandaloneIntakeWebApplicationFactory(database.Connection);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Emenda-Api-Key", CallerKey);
 
@@ -126,6 +123,8 @@ public sealed class StandaloneIntakeEndpointTests
             };
             return Task.FromResult(result);
         }
+        public Task<VlAnalysisResult> AnalyzeVerifiedAsync(string studentId, List<string> imagePaths,
+            IReadOnlyList<byte[]> bytes, CancellationToken ct = default) => AnalyzeAsync(studentId, imagePaths, ct);
 
         public Task<VlReanalysisResult> ReAnalyzeAsync(
             string studentId,
@@ -138,6 +137,7 @@ public sealed class StandaloneIntakeEndpointTests
 
     private sealed class StandaloneIntakeWebApplicationFactory : WebApplicationFactory<Program>
     {
+        private readonly string _connection;
         private readonly string _ossRoot =
             Path.Combine(Path.GetTempPath(), $"emenda-intake-tests-{Guid.NewGuid():N}");
 
@@ -166,14 +166,15 @@ public sealed class StandaloneIntakeEndpointTests
             "IdentityService__MistakeApiResourceAuth",
         ];
 
-        public StandaloneIntakeWebApplicationFactory()
+        public StandaloneIntakeWebApplicationFactory(string connection)
         {
+            _connection = connection;
             Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__Emenda",
-                "Host=127.0.0.1;Port=5432;Database=emenda_intake_tests;Username=emenda;Password=intake-tests-only");
+                connection);
             Environment.SetEnvironmentVariable("Mistake__ConfigMode", null);
             Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "false");
             Environment.SetEnvironmentVariable("Mistake__Workers__UploadPollingWorker__Enabled", "false");
@@ -213,13 +214,12 @@ public sealed class StandaloneIntakeEndpointTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
-            var databaseName = $"emenda_intake_{Guid.NewGuid():N}";
 
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<DbContextOptions<MistakeDbContext>>();
                 services.RemoveAll<IDbContextOptionsConfiguration<MistakeDbContext>>();
-                services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
+                services.AddDbContext<MistakeDbContext>(options => options.UseNpgsql(_connection));
 
                 services.RemoveAll<IOssService>();
                 services.AddSingleton<IOssService>(new LocalFileOssService(_ossRoot));

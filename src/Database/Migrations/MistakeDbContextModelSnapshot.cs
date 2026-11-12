@@ -21,6 +21,35 @@ namespace Emenda.Database.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            modelBuilder.Entity("Emenda.Database.Entities.ProductIntakeRequestEntity", b =>
+                {
+                    b.Property<string>("RequestId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("request_id");
+                    b.Property<string>("Caller")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("caller");
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)")
+                        .HasColumnName("student_id");
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("payload_hash");
+                    b.Property<string>("Response")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("response");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+                    b.HasKey("RequestId");
+                    b.ToTable("product_intake_request");
+                });
 
             modelBuilder.Entity("Emenda.Database.Entities.LayoutJobEntity", b =>
                 {

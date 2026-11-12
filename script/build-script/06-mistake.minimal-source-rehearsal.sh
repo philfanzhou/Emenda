@@ -102,8 +102,9 @@ else
 
   MANIFEST_COMMIT="$(manifest_value source_commit)"
   if [ -z "$COMMIT" ]; then
-    COMMIT="$MANIFEST_COMMIT"
-    COMMIT_SOURCE="manifest source_commit"
+    COMMIT="HEAD"
+    COMMIT_SOURCE="current committed HEAD"
+    ALLOW_DRIFT=1
   else
     COMMIT_SOURCE="--commit argument"
   fi
