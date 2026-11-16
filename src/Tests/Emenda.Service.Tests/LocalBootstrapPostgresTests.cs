@@ -36,7 +36,7 @@ public sealed class LocalBootstrapPostgresTests
         Assert.Contains("after automatic upgrade from version 0", first.Output);
         Assert.Contains("Endpoint: HTTP=5007", first.Output);
         Assert.DoesNotContain("Consul KV load", first.Output);
-        Assert.Equal("14", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+        Assert.Equal("16", await database.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
         var catalog = await database.ScalarAsync(CatalogSql);
 
         var normal = await RunHostAsync([], settings, waitForStartup: true);
@@ -104,13 +104,13 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("Source=Environment", result.Output);
             Assert.Equal("0", await fileDatabase.ScalarAsync("SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace AND relname='mistake_item'"));
-            Assert.Equal("14", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("16", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings.Remove("ConnectionStrings__MistakeLocal");
             var fromFile = await RunHostAsync(["--upgrade-empty-db"], settings);
             Assert.Equal(0, fromFile.ExitCode);
             Assert.Contains("Source=File", fromFile.Output);
-            Assert.Equal("14", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("16", await fileDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             settings["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
                 { Database = environmentDatabase.Name, Password = "wrong-password-marker" }.ConnectionString;
@@ -163,14 +163,14 @@ public sealed class LocalBootstrapPostgresTests
             Assert.Contains("Mode=Platform", fallback.Output);
             Assert.Contains("Source=Cache", fallback.Output);
             Assert.True(consul.RequestCount > 0);
-            Assert.Equal("14", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("16", await cachedDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment["Mistake__ConfigMode"] = "Platform";
             environment["Database__Name"] = environmentDatabase.Name;
             var overrideResult = await RunHostAsync(["--upgrade-empty-db"], environment);
             Assert.Equal(0, overrideResult.ExitCode);
             Assert.Contains("Mode=Platform", overrideResult.Output);
-            Assert.Equal("14", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
+            Assert.Equal("16", await environmentDatabase.ScalarAsync("SELECT count(*) FROM \"__EFMigrationsHistory\""));
 
             environment.Remove("Mistake__Http__Port");
             var invalidCachedPort = await RunHostAsync(["--upgrade-empty-db"], environment);
