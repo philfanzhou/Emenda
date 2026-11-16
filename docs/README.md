@@ -16,6 +16,9 @@ extracted from the Ruoyu.Study platform and now an independent open-source produ
 | [Lifecycle contract](./Integration/mistake-http-v3.json) | Inherited lifecycle transport; Standalone authentication and rejection semantics are defined by the deployment guide |
 | [Standalone verification](./development/StandaloneVerification.md) | Task-owned PostgreSQL/S3 acceptance entry point, without the platform |
 | [Local acceptance record](./development/StandaloneVerificationResult.md) | Observed checks, runtime versions, tested binary hashes and unverified boundaries |
+| [Automatic extraction](./modules/AutomaticExtraction.md) | Multi-image grouping, AI judgment, asynchronous intake, admin correction and retained history |
+| [Extraction HTTP contract](./Integration/emenda-extraction-v1.json) | Additive versioned asynchronous intake and admin revision contract |
+| [Paired AI Tutor source](../integrations/ai-tutor/README.md) | Exact upstream baseline and complete shared-provider implementation patch |
 
 ## Inherited service documentation
 

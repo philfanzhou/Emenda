@@ -60,6 +60,7 @@ internal static class AdminConsolePage
 <body>
 <header>
   <h1>Emenda 管理控制台</h1>
+  <a href="/admin/extractions" style="color:inherit;font-size:13px">图片提取与纠偏</a>
   <span class="who" id="who"></span>
   <button id="logout" class="hidden" type="button">退出登录</button>
 </header>

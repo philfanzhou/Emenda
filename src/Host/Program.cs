@@ -509,6 +509,7 @@ builder.Services.AddScoped<IUploadSourceGateway, StudentUploadSourceGateway>();
 // Product intake: the product-owned upload API and the shared legacy upload
 // processor (the polling worker also resolves it from DI).
 builder.Services.AddProductIntake();
+builder.Services.AddExtraction(builder.Configuration);
 
 // Readiness dependency matrix (IKJFIX): registered after every capability
 // switch and address is resolved so the snapshot reflects the wired process.
@@ -665,6 +666,7 @@ if (standalone)
     // Admin console page, hosted-login protocol endpoints and the caller
     // management API (standalone only).
     app.MapAdminConsole();
+    app.MapExtractionEndpoints();
 }
 app.MapMistakeContractEndpoints();
 // Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.

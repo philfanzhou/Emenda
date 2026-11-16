@@ -14,7 +14,8 @@ public static class MistakeContractEndpoints
     private static readonly IReadOnlyDictionary<string, byte[]> HistoricalDocuments = new Dictionary<string, byte[]>
     {
         ["mistake-http-v1"] = ReadDocument("mistake-http-v1"),
-        ["mistake-http-v2"] = ReadDocument("mistake-http-v2")
+        ["mistake-http-v2"] = ReadDocument("mistake-http-v2"),
+        ["emenda-extraction-v1"] = ReadDocument("emenda-extraction-v1")
     };
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Document)).ToLowerInvariant();
     private static readonly EntityTagHeaderValue Tag = new('"' + Sha256 + '"');
@@ -32,7 +33,7 @@ public static class MistakeContractEndpoints
 
             var document = version == ProductVersion ? ProductDocument : version == Version ? Document : HistoricalDocuments[version];
             var tag = version == Version ? Tag : new EntityTagHeaderValue('"' + Convert.ToHexString(SHA256.HashData(document)).ToLowerInvariant() + '"');
-            if (HistoricalDocuments.ContainsKey(version))
+            if (version.StartsWith("mistake-http-", StringComparison.Ordinal) && HistoricalDocuments.ContainsKey(version))
             {
                 http.Response.Headers["Link"] = "</contracts/" + Version + ".json>; rel=\"latest-version\"";
                 http.Response.Headers["X-Emenda-Contract-Status"] = "historical";
