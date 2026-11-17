@@ -77,13 +77,15 @@ public sealed class MistakeAnalysisPostgresTests
         finally { await worker.StopAsync(CancellationToken.None); }
     }
 
-    [Fact]
-    public async Task UpgradeAndConcurrentFeedbackRejectStaleOrExpiredCompletions()
+    [Theory]
+    [InlineData(ProductIntakeSchema.Migration)]
+    [InlineData(ExtractionSchema.Migration)]
+    public async Task UpgradeAndConcurrentFeedbackRejectStaleOrExpiredCompletions(string previousMigration)
     {
         await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync(initialize: false);
         await using (var db = database.CreateContext())
         {
-            await db.GetService<IMigrator>().MigrateAsync(ProductIntakeSchema.Migration);
+            await db.GetService<IMigrator>().MigrateAsync(previousMigration);
             await DatabaseInitializer.InitializeAsync(db, NullLoggerFactory.Instance);
             Assert.False(db.Database.HasPendingModelChanges());
         }

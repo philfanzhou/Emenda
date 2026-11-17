@@ -21,6 +21,67 @@ namespace Emenda.Database.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionJobEntity", b =>
+            {
+                b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
+                b.Property<string>("Caller").IsRequired().HasColumnType("text").HasColumnName("caller");
+                b.Property<string>("SourceKey").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)").HasColumnName("source_key");
+                b.Property<string>("PayloadHash").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)").HasColumnName("payload_hash");
+                b.Property<string>("StudentId").IsRequired().HasMaxLength(36).HasColumnType("character varying(36)").HasColumnName("student_id");
+                b.Property<int>("Grade").HasColumnType("integer").HasColumnName("grade");
+                b.Property<string>("Status").IsRequired().HasColumnType("text").HasColumnName("status");
+                b.Property<int>("Version").ValueGeneratedOnAdd().HasColumnType("integer").HasColumnName("version").HasDefaultValue(0);
+                b.Property<string>("SourcesJson").IsRequired().ValueGeneratedOnAdd().HasColumnType("jsonb").HasColumnName("sources_json").HasDefaultValueSql("'[]'::jsonb");
+                b.Property<string>("LayoutJson").IsRequired().ValueGeneratedOnAdd().HasColumnType("jsonb").HasColumnName("layout_json").HasDefaultValueSql("'[]'::jsonb");
+                b.Property<string>("CandidateJson").HasColumnType("jsonb").HasColumnName("candidate_json");
+                b.Property<string>("ErrorCode").HasColumnType("text").HasColumnName("error_code");
+                b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone").HasColumnName("created_at");
+                b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone").HasColumnName("updated_at");
+                b.Property<Guid?>("OwnerId").HasColumnType("uuid").HasColumnName("owner_id");
+                b.Property<long>("Fence").ValueGeneratedOnAdd().HasColumnType("bigint").HasColumnName("fence").HasDefaultValue(0L);
+                b.Property<DateTimeOffset?>("LeaseUntil").HasColumnType("timestamp with time zone").HasColumnName("lease_until");
+                b.Property<int>("Attempt").ValueGeneratedOnAdd().HasColumnType("integer").HasColumnName("attempt").HasDefaultValue(0);
+                b.Property<Guid?>("LastRetryKey").HasColumnType("uuid").HasColumnName("last_retry_key");
+                b.Property<string>("RetryKeysJson").IsRequired().ValueGeneratedOnAdd().HasColumnType("jsonb").HasColumnName("retry_keys_json").HasDefaultValueSql("'[]'::jsonb");
+                b.HasKey("Id");
+                b.HasIndex("Caller", "SourceKey").IsUnique().HasDatabaseName("IX_extraction_job_caller_source_key");
+                b.ToTable("extraction_job");
+            });
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionQuestionEntity", b =>
+            {
+                b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
+                b.Property<Guid>("JobId").HasColumnType("uuid").HasColumnName("job_id");
+                b.Property<Guid?>("ItemId").HasColumnType("uuid").HasColumnName("item_id");
+                b.Property<bool>("Active").HasColumnType("boolean").HasColumnName("active");
+                b.HasKey("Id");
+                b.HasIndex("JobId").HasDatabaseName("IX_extraction_question_job_id");
+                b.ToTable("extraction_question");
+            });
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionRevisionEntity", b =>
+            {
+                b.Property<Guid>("JobId").HasColumnType("uuid").HasColumnName("job_id");
+                b.Property<int>("Version").HasColumnType("integer").HasColumnName("version");
+                b.Property<Guid>("RequestKey").HasColumnType("uuid").HasColumnName("request_key");
+                b.Property<string>("PayloadHash").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)").HasColumnName("payload_hash");
+                b.Property<string>("SnapshotJson").IsRequired().HasColumnType("jsonb").HasColumnName("snapshot_json");
+                b.Property<string>("Actor").IsRequired().HasColumnType("text").HasColumnName("actor");
+                b.Property<string>("Reason").IsRequired().HasColumnType("text").HasColumnName("reason");
+                b.Property<string>("Model").IsRequired().HasColumnType("text").HasColumnName("model");
+                b.Property<DateTimeOffset>("CreatedAt").HasColumnType("timestamp with time zone").HasColumnName("created_at");
+                b.HasKey("JobId", "Version");
+                b.HasIndex("JobId", "RequestKey").IsUnique().HasDatabaseName("IX_extraction_revision_job_request_key");
+                b.ToTable("extraction_revision");
+            });
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionQuestionEntity", b =>
+            {
+                b.HasOne("Emenda.Database.Entities.ExtractionJobEntity", null).WithMany().HasForeignKey("JobId")
+                    .OnDelete(DeleteBehavior.Restrict).IsRequired().HasConstraintName("FK_extraction_question_job");
+            });
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionRevisionEntity", b =>
+            {
+                b.HasOne("Emenda.Database.Entities.ExtractionJobEntity", null).WithMany().HasForeignKey("JobId")
+                    .OnDelete(DeleteBehavior.Restrict).IsRequired().HasConstraintName("FK_extraction_revision_job");
+            });
             modelBuilder.Entity("Emenda.Database.Entities.ProductIntakeRequestEntity", b =>
                 {
                     b.Property<string>("RequestId")

@@ -74,18 +74,19 @@ public static partial class MistakeHttpEndpoints
         try
         {
             // Authenticate the same configured schemes as the strict API policy.
-            // Only managed/new-intake operations enrich the principal. Unmanaged
-            // routes retain their original authentication and compatibility behavior.
+            // Managed/new-intake and structured-analysis operations enrich the principal.
+            // Existing authenticated identities, especially ProductCaller, retain precedence.
             var intake=context.HttpContext.RequestServices.GetService<ISourceIntakeService>();
             var schemes=context.HttpContext.RequestServices.GetService<IAuthenticationSchemeProvider>();
-            if (schemes!=null && intake!=null && await NeedsManagedAuthenticationAsync(context,intake))
+            if (schemes!=null && await NeedsManagedAuthenticationAsync(context,intake))
             {
-                var identities=new List<ClaimsIdentity>();
+                var identities=context.HttpContext.User.Identities.Where(identity=>identity.IsAuthenticated).ToList();
                 foreach(var name in new[] {JwtBearerDefaults.AuthenticationScheme,EmendaAdminApiAuthorization.SchemeName})
                 {
                     if(await schemes.GetSchemeAsync(name)==null) continue;
                     var result=await context.HttpContext.AuthenticateAsync(name);
-                    if(result.Succeeded && result.Principal!=null) identities.AddRange(result.Principal.Identities);
+                    if(result.Succeeded && result.Principal!=null)
+                        identities.AddRange(result.Principal.Identities.Where(identity=>identity.IsAuthenticated));
                 }
                 if(identities.Count==0 && context.Arguments.OfType<GetPresignedUrlRequest>().Any(r=>Emenda.Common.Oss.ReservedSourceTargetPath.IsReserved(r.ObjectPath)))
                     return IntakeError("authentication_required",401);
@@ -160,9 +161,13 @@ public static partial class MistakeHttpEndpoints
             return IntakeError(kind ?? "database_unavailable",kind==null ? 503 : 409);
         }
     }
-    private static async Task<bool> NeedsManagedAuthenticationAsync(EndpointFilterInvocationContext context,ISourceIntakeService intake)
+    private static async Task<bool> NeedsManagedAuthenticationAsync(EndpointFilterInvocationContext context,ISourceIntakeService? intake)
     {
         var http=context.HttpContext;var ct=http.RequestAborted;var path=http.Request.Path.Value ?? "";
+        if(context.Arguments.Any(argument=>argument is ConfirmMistakeAnalysisRequest or ReanalyzeMistakeItemRequest {StructuredAnalysis:true})
+            || HttpMethods.IsGet(http.Request.Method) && http.Request.RouteValues.ContainsKey("id")
+                && path.EndsWith("/analysis",StringComparison.Ordinal)) return true;
+        if(intake==null) return false;
         if(IsManagedNamespace(http.Request.Path) || context.Arguments.OfType<ReviewMistakeItemRequest>().Any(r => r.ReviewStatus == Emenda.Domain.Models.ReviewStatus.Rejected)) return true;
         var id=context.Arguments.OfType<Guid>().FirstOrDefault();
         if(id!=Guid.Empty && await intake.GetManagedItemStudentAsync(id,ct)!=null) return true;

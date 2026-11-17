@@ -18,6 +18,9 @@ public class MistakeDbContext : DbContext
     public DbSet<MistakeAnalysisEntity> MistakeAnalyses => Set<MistakeAnalysisEntity>();
     public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
     public DbSet<ProductIntakeRequestEntity> ProductIntakeRequests => Set<ProductIntakeRequestEntity>();
+    public DbSet<ExtractionJobEntity> ExtractionJobs => Set<ExtractionJobEntity>();
+    public DbSet<ExtractionQuestionEntity> ExtractionQuestions => Set<ExtractionQuestionEntity>();
+    public DbSet<ExtractionRevisionEntity> ExtractionRevisions => Set<ExtractionRevisionEntity>();
 
     public DbSet<SourceIntakeEntity> SourceIntakes => Set<SourceIntakeEntity>();
     public DbSet<SourceIntakeGroupEntity> SourceIntakeGroups => Set<SourceIntakeGroupEntity>();
@@ -51,6 +54,7 @@ public class MistakeDbContext : DbContext
         base.OnModelCreating(modelBuilder);
         ProductIntakeSchema.Configure(modelBuilder);
         MistakeAnalysisSchema.Configure(modelBuilder);
+        ExtractionModel.Configure(modelBuilder);
         SourceIntakeModel.Configure(modelBuilder);
         SourceTargetModel.Configure(modelBuilder);
         SourceReturnModel.Configure(modelBuilder);

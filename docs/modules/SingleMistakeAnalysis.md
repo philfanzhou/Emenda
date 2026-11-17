@@ -41,6 +41,8 @@ authenticate with `X-Emenda-Api-Key`, supply the teacher identifier, and remain
 responsible for student authorization. Anonymous requests and learner identities
 cannot access these teacher reports. The student is taken from the stored mistake.
 
+All three analysis operations authenticate the existing shared-audience and admin-AppId JWT schemes even when strict API mode is disabled and an item is not source-intake managed. Existing authenticated ProductCaller identity takes precedence; an anonymous identity returned by a scheme cannot authorize access or replace that caller. Extraction data additionally requires its owning caller or an authenticated administrator.
+
 ## Feedback and concurrent work
 
 Feedback is kept in submission order, including comments associated with failed
@@ -69,6 +71,10 @@ Identical repeated confirmation is idempotent. Old text-only reanalysis or summa
 edits on a mistake with structured analysis return `409 structured_analysis_required`.
 Rejection remains available and preserves the analysis summary.
 
+For extraction-generated mistakes, the three analysis operations also enforce the extraction task's caller ownership. A caller cannot inspect another caller's or an administrator's reports by supplying a known mistake ID. Administrator access uses the existing authenticated administrator role, not a caller name supplied in the request.
+
+Extraction content correction or group retraction locks the existing mistake rows and invalidates their analysis revision in the same transaction that publishes the corrected extraction. This includes text-only corrections that reuse the same crop bytes and UUIDs. Older worker completions and confirmations are rejected; retained reports and ordered teacher feedback remain readable as prior evidence, and a fresh analysis is required. Changing only the printed question number preserves the existing analysis and review, matching the extraction metadata-only rule.
+
 ## Persistence and ownership
 
 One `mistake_analysis` row per mistake stores the latest draft, last confirmed
@@ -84,9 +90,19 @@ reasoning can appear in error explanations; there is no separately maintained
 correct-answer field. The current model and prompt version describe the draft.
 
 The existing `VlAnalyzer` provider configuration and reanalysis worker switches
-apply. The product migration adds one table and the nullable `analysis_input`
-column to `reanalyze_job`. Existing jobs use the text-only path when the column is
-null. Downgrade is refused while analysis rows exist, to preserve teacher work.
+apply. The product migration appends schema version 17 after extraction version 16,
+adding one table and nullable `analysis_input` on `reanalyze_job`. Existing jobs use
+the text-only path when that column is null. Downgrade is refused while analysis
+rows exist, to preserve teacher work.
 
-The repository provides backend endpoints. The teacher application integrates the
-report view, feedback box, progress display and confirmation action.
+The repository provides backend endpoints. Downstream teacher applications must
+explicitly integrate the report view, feedback box, progress display and confirmation
+action; this backend contribution does not deploy or implement those pages.
+
+## Integration verification, 2026-11-17
+
+- Integrated the structured-analysis contribution with the current automatic-extraction mainline. Schema version 17 follows version 16; migration/model checks preserve extraction manifests, receipts and prior item rows, and repeated target startup remains a no-op.
+- Release solution build passed with zero warnings/errors. The 97 domain tests and 513 independent service tests passed.
+- On an owned PostgreSQL 15 instance, the integration selection passed all 129 non-authorization cases. The 14 new structured-analysis authorization cases passed in a focused rerun after correcting their fixture to use the report's actual revision, not a hard-coded pre-generation revision. No cases were skipped. Coverage includes extraction correction/report invalidation, metadata-only labels, owner isolation, both JWT audiences in strict and compatibility modes, startup/read-only behavior and version-15/16 upgrades.
+- Dockerfile now copies the embedded `mistake-http-v4.json` resource that the prior container build lacked. A local image build was not run because the local Docker daemon was unavailable; the PR container build remains the release integration check.
+- The tests use controlled model/storage adapters and isolated databases. No live provider accuracy, production database migration, downstream teacher page or deployment acceptance is claimed.

@@ -443,6 +443,7 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
     }
     public async Task EnsureLegacySourceAsync(string sourceId,CancellationToken ct=default)
     {
+        if (sourceId.StartsWith("extract:", StringComparison.Ordinal)) throw new SourceIntakeException("source_managed",409);
         if (!Guid.TryParse(sourceId,out var id)) return;
         await using var db=Open();
         if (await db.SourceIntakes.AnyAsync(s=>s.SourceUploadId==id,ct)) throw new SourceIntakeException("source_managed");
@@ -457,6 +458,14 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
     {
         await using var db=Open();
         if (await db.LegacyReturns.AnyAsync(o => o.ItemId == item.Id, ct)) throw new SourceIntakeException("return_in_progress", 409);
+        if (await db.ExtractionQuestions.AnyAsync(q => q.ItemId == item.Id, ct))
+        {
+            var stored = await db.MistakeItems.AsNoTracking().SingleAsync(i => i.Id == item.Id, ct);
+            if (item.StudentId != stored.StudentId || item.SourceUploadId != stored.SourceUploadId ||
+                JsonSerializer.Serialize(item.SourceRegions, IntakeCanonical.Json) != JsonSerializer.Serialize(stored.SourceRegions, IntakeCanonical.Json))
+                throw new SourceIntakeException("source_managed",409);
+            return;
+        }
         var group=await db.SourceIntakeGroups.AsNoTracking().SingleOrDefaultAsync(g=>g.ItemId==item.Id,ct);
         if (group==null) { await EnsureLegacySourceAsync(item.SourceUploadId,ct); return; }
         var original=DeserializeResult(group);
