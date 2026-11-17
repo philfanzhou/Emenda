@@ -66,6 +66,8 @@ public interface IReanalyzeJobService
     /// <summary>
     /// Fail only the matching live lease with a bounded reason code.
     /// </summary>
+    Task<bool> MarkAnalysisCompletedAsync(Guid jobId, Guid ownerId, long version, StructuredAnalysisResult result, long durationMs, CancellationToken ct = default);
+
     Task<bool> MarkFailedAsync(
         Guid jobId,
         Guid ownerId,

@@ -159,6 +159,10 @@ public class ReanalyzeJobService : IReanalyzeJobService
         string newRootCause, long vlDurationMs, CancellationToken ct = default) =>
         _jobRepository.CompleteAsync(jobId, ownerId, version, newRootCause, vlDurationMs, ct);
 
+    public Task<bool> MarkAnalysisCompletedAsync(Guid jobId, Guid ownerId, long version,
+        StructuredAnalysisResult result, long durationMs, CancellationToken ct = default) =>
+        _jobRepository.CompleteAnalysisAsync(jobId, ownerId, version, result, durationMs, ct);
+
     public Task<bool> MarkFailedAsync(Guid jobId, Guid ownerId, long version,
         string reasonCode, CancellationToken ct = default) =>
         _jobRepository.FailAsync(jobId, ownerId, version, reasonCode, ct);

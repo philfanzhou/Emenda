@@ -352,6 +352,7 @@ builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
 builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IReanalyzeJobRepository, ReanalyzeJobRepository>();
+builder.Services.AddScoped<IMistakeAnalysisRepository, MistakeAnalysisRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
 builder.Services.AddScoped<IReanalyzeJobService, ReanalyzeJobService>();

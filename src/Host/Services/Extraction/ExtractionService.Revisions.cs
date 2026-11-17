@@ -61,6 +61,9 @@ public sealed partial class ExtractionService
         var incomingIds = snapshot.Questions.Select(q => q.Question.Id).ToArray();
         if (await db.ExtractionQuestions.AnyAsync(q => incomingIds.Contains(q.Id) && q.JobId != job.Id, ct))
             throw new ExtractionException("question_source_conflict", 409);
+        var itemIds = current.Where(q => q.ItemId.HasValue).Select(q => q.ItemId!.Value).ToArray();
+        var items = await db.MistakeItems.FromSqlInterpolated(
+            $"SELECT * FROM mistake_item WHERE id = ANY({itemIds}) ORDER BY id FOR UPDATE").ToDictionaryAsync(i => i.Id, ct);
         var published = new List<ExtractionQuestionView>();
         foreach (var proposed in snapshot.Questions)
         {
@@ -75,7 +78,7 @@ public sealed partial class ExtractionService
                 ExtractionRules.Hash(old.Question with { QuestionNumber = null }) !=
                 ExtractionRules.Hash(proposed.Question with { QuestionNumber = null }) || !row.Active;
             row.Active = true;
-            MistakeItemEntity? item = row.ItemId.HasValue ? await db.MistakeItems.SingleOrDefaultAsync(i => i.Id == row.ItemId.Value, ct) : null;
+            MistakeItemEntity? item = row.ItemId is { } itemId ? items.GetValueOrDefault(itemId) : null;
             if (proposed.Question.Outcome == "incorrect" && row.ItemId is null)
             {
                 item = new() { Id = Guid.NewGuid(), StudentId = job.StudentId, Subject = proposed.Question.Subject,
@@ -92,6 +95,7 @@ public sealed partial class ExtractionService
             else if (item is not null && changed)
             {
                 RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
+                await InvalidateAnalysisAsync(db, item.Id, ct);
                 item.Subject = proposed.Question.Subject;
                 item.SourceRegions = proposed.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).ToList();
                 item.ReviewStatus = proposed.Question.Outcome == "incorrect" ? (int)ReviewStatus.PendingReview : (int)ReviewStatus.Rejected;
@@ -106,9 +110,10 @@ public sealed partial class ExtractionService
         {
             removed.Active = false;
             if (removed.ItemId is not { } id) continue;
-            var item = await db.MistakeItems.SingleOrDefaultAsync(i => i.Id == id, ct);
+            var item = items.GetValueOrDefault(id);
             if (item is null) continue;
             RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
+            await InvalidateAnalysisAsync(db, item.Id, ct);
             item.ReviewStatus = (int)ReviewStatus.Rejected;
             item.ReviewerId = null;
             item.ReviewedAt = null;
@@ -125,6 +130,14 @@ public sealed partial class ExtractionService
         job.LeaseUntil = null;
         job.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task InvalidateAnalysisAsync(MistakeDbContext db, Guid itemId, CancellationToken ct)
+    {
+        var analysis = await db.MistakeAnalyses.FindAsync([itemId], ct);
+        if (analysis is null) return;
+        analysis.Revision++;
+        analysis.InputDigest = string.Empty;
     }
 
     private static void RetainBeforeCorrection(MistakeDbContext db, MistakeItemEntity item, string actor,

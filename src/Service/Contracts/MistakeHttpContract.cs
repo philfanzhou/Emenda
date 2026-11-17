@@ -12,7 +12,7 @@ namespace Emenda.HttpContracts;
 /// </summary>
 public static class MistakeHttpContract
 {
-    public const string Version = "mistake-http-v3";
+    public const string Version = "mistake-http-v4";
     private static readonly byte[] Bytes = ReadBytes();
     private static readonly JsonDocument Contract = JsonDocument.Parse(Bytes);
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Bytes)).ToLowerInvariant();
@@ -160,7 +160,7 @@ public static class MistakeHttpContract
 
     private static byte[] ReadBytes()
     {
-        using var source = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream("mistake-http-v3.json")
+        using var source = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream("mistake-http-v4.json")
             ?? throw new InvalidOperationException("Missing pinned Mistake contract resource.");
         using var bytes = new MemoryStream();
         source.CopyTo(bytes);

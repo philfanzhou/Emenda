@@ -1,23 +1,25 @@
 # Mistake 版本化 HTTP 合同
 
-[mistake-http-v3.json](./mistake-http-v3.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
+v4 adds structured single-mistake analysis. See [Single-mistake analysis](../modules/SingleMistakeAnalysis.md) for the teacher workflow. Earlier contract artifacts remain available.
+
+[mistake-http-v4.json](./mistake-http-v4.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
 
 ## 取得发布版本
 
-匿名 `GET /contracts/mistake-http-v3.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置，不提供带凭据或真实对象的示例。
+匿名 `GET /contracts/mistake-http-v4.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。v1/v2/v3 继续以原始字节发布，历史标记的 latest-version Link 指向 v4。`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。
 
 规格嵌入 `Mistake.Service` 发布程序集；Host 从该资源返回内容，Dockerfile 显式带入源 artifact。运行时无需 checkout、文档目录或特定工作目录。共享客户端也嵌入同一源 artifact，并仅 source-link 不依赖 Domain/Database 的纯 schema 校验器；它不引用服务 DTO 或服务项目。
 
 ```bash
 # 使用部署者已信任的正常 CA；不要关闭 TLS 校验。
 curl --cacert '<CA-file>' --dump-header headers.txt \
-  'https://<owned-host>/contracts/mistake-http-v3.json' -o contract.json
+  'https://<owned-host>/contracts/mistake-http-v4.json' -o contract.json
 sha256sum contract.json
 ```
 
 `x-ruoyu.ops` 将健康探针与业务路由分开：live 无依赖；ready 按固定启动快照检查 DB、OSS、已启用 Student、已配置 VL；strict 启用时还要求 issuer Discovery 与精确配置匹配、同源 JWKS 非空。任一必需组件失败返回503，spec取得仍独立可用。
 
-hash 是发布身份，不是业务权限。回滚规格发布不改变原 schema、开关默认值、认证、历史 guards 或来源 pins。破坏性改动使用新版本并原样保留历史发布 artifact，不能用同名 v1 覆盖旧消费者所需字段。v2 根据用户批准取消旧匿名/先删除退回，统一可信审核身份与持久完成语义，新增 Admin 六字段状态 GET 和 Capturing 状态。原 `/contracts/mistake-http-v1.json` 精确 bytes/hash 保留，响应 `X-Ruoyu-Contract-Status: historical` 与 latest-version Link；它只供历史核对，不表示危险旧写入仍可执行。当前 v3 的共享客户端与三个 Portal 同步消费当前合同；这里不要求先部署共享环境或人工登录。
+hash 是发布身份，不是业务权限。回滚规格发布不改变原 schema、开关默认值、认证、历史 guards 或来源 pins。破坏性改动使用新版本并原样保留历史发布 artifact，不能用同名 v1 覆盖旧消费者所需字段。v2 取消旧匿名／先删除退回，统一可信审核身份与持久完成语义，新增 Admin 状态和 Capturing 状态。历史 v1/v2/v3 的精确 bytes/hash 继续保留，响应 `X-Emenda-Contract-Status: historical` 与指向 v4 的 latest-version Link；历史合同只供核对，不表示危险旧写入仍可执行。当前 provider 的 v4 增加可选结构化分析，不把下游客户端升级或页面接入报告为本次合并成果。
 
 ## 按真实结果消费
 
@@ -39,7 +41,7 @@ hash 是发布身份，不是业务权限。回滚规格发布不改变原 schem
 
 v3 只启用现有 review 的旧题恢复可用性：合法 LegacyReturns=true 可持久接受 Capturing/Prepared/Sending，202/data.success=false；只有 durable Completed 才200/data.success=true。false 仍只读禁用，新/未完成503、确定 canonical 冲突409、Completed 精确请求认证重放200。输入、schema、路由/方法、状态 enum、资源权限和 Student wire 与 v2 精确相同。检查器对 v2→v3 重构唯一允许的文档并逐成员相等比较，仅豁免 review 的两个精确 semantics 值和发布版本 metadata，不能用整个 operation 的 changedLocations 掩盖其它漂移；原 v1→v2规则保留。
 
-历史 [v1](./mistake-http-v1.json) 和 [v2](./mistake-http-v2.json) 的原 bytes/hash/ETag/304 与历史标记继续发布，latest-version Link 指向 v3；历史合同用于核对当时行为。共享客户端与三个 Portal 嵌入当前 v3，14 方法的原 DTO/wire 不变。停止新退回应关闭相应开关并保留当前 binary/schema/永久 pins；不得恢复匿名、先删除或放松 producer guards。
+历史 [v1](./mistake-http-v1.json)、[v2](./mistake-http-v2.json) 和 [v3](./mistake-http-v3.json) 的原 bytes/hash/ETag/304 与历史标记继续发布，latest-version Link 指向 v4。现有固定 v3 的消费者无需因新增结构化分析自动切换版本；新分析操作应显式消费 v4。停止新退回应关闭相应开关并保留当前 binary/schema/永久 pins；不得恢复匿名、先删除或放松 producer guards。
 
 ## 可执行检查
 

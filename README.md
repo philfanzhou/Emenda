@@ -80,6 +80,12 @@ request after the dependency recovers. Product objects remain available for reco
 Without `sourceKey`, automatic retries are not idempotent. The machine-readable contract is
 served anonymously at `GET /contracts/emenda-intake-v1.json`.
 
+### Single-mistake analysis
+
+Mathematics reports now support natural-language teacher feedback, asynchronous
+reanalysis and explicit confirmation. See [the API workflow](docs/modules/SingleMistakeAnalysis.md)
+and [mistake-http-v4](docs/Integration/mistake-http-v4.json).
+
 ### Automatic extraction and correction
 
 The optional asynchronous intake at `POST /api/intake/extractions` preserves originals,

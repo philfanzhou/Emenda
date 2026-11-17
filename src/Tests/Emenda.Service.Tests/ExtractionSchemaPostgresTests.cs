@@ -13,7 +13,7 @@ namespace Emenda.Service.Tests;
 public sealed class ExtractionSchemaPostgresTests
 {
     [Fact]
-    public async Task Version15Upgrade_PreservesRows_AndVerifiesExactVersion16Async()
+    public async Task Version15Upgrade_PreservesRows_AndVerifiesExactTargetAsync()
     {
         await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
@@ -22,10 +22,34 @@ public sealed class ExtractionSchemaPostgresTests
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now())");
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
         result.FromVersion.Should().Be(15);
-        result.ToVersion.Should().Be(16);
+        result.ToVersion.Should().Be(17);
         (await db.MistakeItems.SingleAsync()).Id.Should().Be(itemId);
         (await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded.Should().BeFalse();
         (await db.Database.GetAppliedMigrationsAsync()).Should().Contain("20261116000000_AddExtractions");
+    }
+
+    [Fact]
+    public async Task Version16AnalysisUpgradePreservesExtractionReceiptAndOriginalManifestAsync()
+    {
+        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync(initialize: false);
+        await using var db = database.CreateContext();
+        await db.GetService<IMigrator>().MigrateAsync(ExtractionSchema.Migration);
+        var job = NewJob();
+        job.SourcesJson = "[{\"id\":\"702b2566-b846-40e5-81dd-9d742166e009\",\"path\":\"mistakes/extractions/retained/original.png\",\"sha256\":\"original-digest\"}]";
+        var receipt = NewRevision(job.Id);
+        receipt.SnapshotJson = "{\"questions\":[]}";
+        db.ExtractionJobs.Add(job);
+        db.ExtractionRevisions.Add(receipt);
+        await db.SaveChangesAsync();
+        await db.Entry(job).ReloadAsync();
+        var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
+        upgraded.FromVersion.Should().Be(16);
+        upgraded.ToVersion.Should().Be(17);
+        db.ChangeTracker.Clear();
+        (await db.ExtractionJobs.SingleAsync()).SourcesJson.Should().Be(job.SourcesJson);
+        (await db.ExtractionRevisions.SingleAsync()).RequestKey.Should().Be(receipt.RequestKey);
+        (await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded.Should().BeFalse();
+        db.Database.HasPendingModelChanges().Should().BeFalse();
     }
 
     [Fact]

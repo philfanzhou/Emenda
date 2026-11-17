@@ -153,6 +153,9 @@ public class ReviewMistakeItemResponse
 
 public class ReanalyzeMistakeItemRequest
 {
+    public bool StructuredAnalysis { get; set; }
+    public Guid? RequestId { get; set; }
+    public long? ExpectedRevision { get; set; }
     public string Id { get; set; } = string.Empty;
     public string ReviewerId { get; set; } = string.Empty;
     public string? TeacherDescription { get; set; }

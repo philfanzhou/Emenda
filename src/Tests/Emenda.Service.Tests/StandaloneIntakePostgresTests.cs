@@ -135,7 +135,7 @@ public sealed class StandaloneIntakePostgresTests
             Task.FromResult(new VlReanalysisResult { RootCause = existingRootCause });
     }
 
-    private sealed class StandaloneIntakeWebApplicationFactory : WebApplicationFactory<Program>
+    internal sealed class StandaloneIntakeWebApplicationFactory : WebApplicationFactory<Program>
     {
         private readonly string _connection;
         private readonly string _ossRoot =
