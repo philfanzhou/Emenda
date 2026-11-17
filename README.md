@@ -80,6 +80,21 @@ request after the dependency recovers. Product objects remain available for reco
 Without `sourceKey`, automatic retries are not idempotent. The machine-readable contract is
 served anonymously at `GET /contracts/emenda-intake-v1.json`.
 
+### Automatic extraction and correction
+
+The optional asynchronous intake at `POST /api/intake/extractions` preserves originals,
+uses StructaDoc layout plus a paired AI Tutor multi-image analysis API, and creates
+pending-review items only for source-backed incorrect attempts. It supports one image
+with multiple questions and one question spanning multiple images. Correct and unknown
+results remain available without creating mistakes. The existing synchronous intake is unchanged.
+
+The SignaCore admin workspace at `/admin/extractions` provides original-image region
+editing, grouping and judgment correction, version history and explicit failed-job retry.
+The feature defaults off; see [Automatic extraction](docs/modules/AutomaticExtraction.md)
+and the [paired AI Tutor implementation](integrations/ai-tutor/README.md) before enabling it.
+Schema v16 is additive; retained extraction history cannot be destructively downgraded.
+
+
 ## Layout
 
 - `src/` — service solution (`Host`, `Service`, `Domain`, `Database`, `StudentClient`, `Tests`)
