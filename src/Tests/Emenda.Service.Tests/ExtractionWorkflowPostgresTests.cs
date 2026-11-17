@@ -23,8 +23,8 @@ public sealed class ExtractionWorkflowPostgresTests
     {
         await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
         var analyzer = new Analyzer(request => new("test-model", [
-            Question("incorrect", [new(request.Images[0].SourceId, 0, 0, .5, 1), new(request.Images[1].SourceId, 0, 0, 1, 1)]),
-            Question("correct", [new(request.Images[0].SourceId, .5, 0, 1, 1)]) with { Statement = "2+2", StudentAnswer = "4", ReferenceAnswer = "4" },
+            Question("incorrect", [new(request.Images[0].SourceId, 0, 0, .5, 1), new(request.Images[1].SourceId, 0, 0, 1, 1)]) with { QuestionNumber = "三、2（1）" },
+            Question("correct", [new(request.Images[0].SourceId, .5, 0, 1, 1)]) with { QuestionNumber = "三、2（1）", Statement = "2+2", StudentAnswer = "4", ReferenceAnswer = "4" },
             Question("unknown", [new(request.Images[1].SourceId, 0, 0, .5, .5)]) with { Statement = "Unreadable attempt", StudentAnswer = null, Evidence = "" }
         ]));
         var service = Service(database, analyzer);
@@ -36,6 +36,9 @@ public sealed class ExtractionWorkflowPostgresTests
         result.Status.Should().Be("Succeeded");
         result.Questions.Select(q => q.Question.Outcome).Should().Equal("incorrect", "correct", "unknown");
         result.Questions[0].Images.Should().HaveCount(2);
+        result.Questions.Select(q => q.Question.QuestionNumber).Should().Equal("三、2（1）", "三、2（1）", null);
+        result.Questions[0].Images.Select(i => i.SourceId).Should().Equal(result.Sources.Select(s => s.Id));
+        (await service.GetVersionAsync(Caller, result.Id, 1)).Questions[0].Question.QuestionNumber.Should().Be("三、2（1）");
         result.Questions.Where(q => q.ItemId.HasValue).Should().ContainSingle();
         var original = await service.ReadSourceAsync(Caller, result.Id, result.Sources[0].Id);
         original.Bytes.Should().Equal(upload.Images[0].Content);
@@ -47,6 +50,7 @@ public sealed class ExtractionWorkflowPostgresTests
         var item = await db.MistakeItems.SingleAsync();
         item.Id.Should().Be(result.Questions[0].ItemId!.Value);
         item.ReviewStatus.Should().Be(1);
+        item.SourceRegions.Select(r => r.SourceImagePath).Should().Equal(result.Questions[0].Images.Select(i => i.Path));
         item.RootCause.Should().BeNull("a comparison explanation is not a proven root cause");
         await Assert.ThrowsAsync<ExtractionException>(() => service.GetAsync(new("other", "other"), result.Id));
     }
@@ -205,6 +209,148 @@ public sealed class ExtractionWorkflowPostgresTests
         result.Questions.Single().Question.Outcome.Should().Be("unknown");
         result.Questions.Single().ItemId.Should().BeNull();
         result.Status.Should().Be("Succeeded");
+    }
+
+    [Fact]
+    public async Task CrossPageNumberAndReadingOrder_AreVersionedWithoutChangingQuestionIdentity()
+    {
+        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        var analyzer = new Analyzer(request => new("test-model", [Question("incorrect",
+            [new(request.Images[1].SourceId, .5, 0, 1, 1), new(request.Images[0].SourceId, .5, 0, 1, 1)])
+            with { QuestionNumber = "12" }]));
+        var service = Service(database, analyzer);
+        var queued = await service.SubmitAsync(Caller, Upload(images: 2));
+        await service.RunQueuedAsync(default);
+        var job = await service.GetAsync(Caller, queued.Id);
+        job.Status.Should().Be("Succeeded", job.ErrorCode);
+        var question = job.Questions.Single();
+        question.Images.Select(i => i.SourceId).Should().Equal(job.Sources[1].Id, job.Sources[0].Id);
+        var originalParts = new[]
+        {
+            (await service.ReadCropAsync(Caller, job.Id, question.Question.Id, 1, 0)).Bytes,
+            (await service.ReadCropAsync(Caller, job.Id, question.Question.Id, 1, 1)).Bytes
+        };
+        originalParts[0].Should().NotEqual(originalParts[1]);
+        await using (var db = database.CreateContext())
+        {
+            var item = await db.MistakeItems.SingleAsync();
+            item.ReviewStatus = 2; item.RootCause = "confirmed cause"; item.ReviewerId = "teacher";
+            await db.SaveChangesAsync();
+        }
+        var renumber = new ExtractionRevisionRequest(Guid.NewGuid(), 1, "Correct printed number",
+            [question.Question with { QuestionNumber = "三、2（1）" }]);
+        var numbered = await service.ReviseAsync(Admin, job.Id, renumber);
+        numbered.Questions.Single().Question.Id.Should().Be(question.Question.Id);
+        numbered.Questions.Single().ItemId.Should().Be(question.ItemId);
+        numbered.Questions.Single().Images.Select(i => i.Path).Should().Equal(question.Images.Select(i => i.Path));
+        await using (var db = database.CreateContext())
+        {
+            var item = await db.MistakeItems.SingleAsync();
+            item.ReviewStatus.Should().Be(2, "a printed label correction does not change the solved question");
+            item.RootCause.Should().Be("confirmed cause");
+        }
+        var reordered = await service.ReviseAsync(Admin, job.Id, new(Guid.NewGuid(), 2, "Reverse reading order",
+            [numbered.Questions.Single().Question with { Regions = question.Question.Regions.AsEnumerable().Reverse().ToList() }]));
+        reordered.Version.Should().Be(3);
+        reordered.Questions.Single().Question.QuestionNumber.Should().Be("三、2（1）");
+        reordered.Questions.Single().Question.Id.Should().Be(question.Question.Id);
+        reordered.Questions.Single().ItemId.Should().Be(question.ItemId);
+        (await service.ReadCropAsync(Caller, job.Id, question.Question.Id, 3, 0)).Bytes.Should().Equal(originalParts[1]);
+        (await service.ReadCropAsync(Caller, job.Id, question.Question.Id, 3, 1)).Bytes.Should().Equal(originalParts[0]);
+        var historical = await service.GetVersionAsync(Caller, job.Id, 1);
+        historical.Questions.Single().Question.QuestionNumber.Should().Be("12");
+        (await service.ReadCropAsync(Caller, job.Id, question.Question.Id, 1, 0)).Bytes.Should().Equal(originalParts[0]);
+        (await service.GetVersionAsync(Caller, job.Id, 2)).Questions.Single().Question.QuestionNumber.Should().Be("三、2（1）");
+        (await service.ReviseAsync(Admin, job.Id, renumber)).Version.Should().Be(2);
+        await using (var db = database.CreateContext())
+        {
+            var item = await db.MistakeItems.SingleAsync();
+            item.SourceRegions.Select(r => r.SourceImagePath).Should().Equal(reordered.Questions.Single().Images.Select(i => i.Path));
+            item.ReviewStatus.Should().Be(1, "changing content order requires review again");
+        }
+    }
+
+    [Fact]
+    public async Task ManualMergeAndSplit_KeepPrintedLabelsSeparateFromStableIdentity()
+    {
+        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        var analyzer = new Analyzer(request => new("test-model", request.Images.Select((image, index) =>
+            Question("unknown", [new(image.SourceId, .5, 0, 1, 1)]) with
+            { QuestionNumber = "12", Statement = "Uncertain page " + index, StudentAnswer = null }).ToList()));
+        var service = Service(database, analyzer);
+        var queued = await service.SubmitAsync(Caller, Upload(images: 2));
+        await service.RunQueuedAsync(default);
+        var job = await service.GetAsync(Caller, queued.Id);
+        job.Status.Should().Be("Succeeded", job.ErrorCode);
+        job.Questions.Should().HaveCount(2, "matching printed labels alone cannot merge unrelated content");
+        job.Questions.Should().OnlyContain(q => q.ItemId == null);
+        var target = job.Questions[0].Question;
+        var joined = target with { Statement = "Complete cross-page question",
+            Regions = job.Questions.SelectMany(q => q.Question.Regions).ToList() };
+        var merged = await service.ReviseAsync(Admin, job.Id, new(Guid.NewGuid(), 1, "Confirmed continuation", [joined]));
+        merged.Questions.Single().Question.Id.Should().Be(target.Id);
+        merged.Questions.Single().Question.QuestionNumber.Should().Be("12");
+        merged.Questions.Single().Images.Select(i => i.SourceId).Should().Equal(job.Sources.Select(s => s.Id));
+        var splitId = Guid.NewGuid();
+        var split = await service.ReviseAsync(Admin, job.Id, new(Guid.NewGuid(), 2, "Separate unrelated second page",
+            [joined with { Regions = [joined.Regions[0]] }, joined with { Id = splitId, QuestionNumber = null,
+                Statement = "Separate unknown question", Regions = [joined.Regions[1]] }]));
+        split.Questions.Select(q => q.Question.Id).Should().Equal(target.Id, splitId);
+        split.Questions.Select(q => q.Question.QuestionNumber).Should().Equal("12", null);
+        (await service.GetVersionAsync(Caller, job.Id, 2)).Questions.Single().Images.Should().HaveCount(2);
+        (await service.GetVersionAsync(Caller, job.Id, 1)).Questions.Select(q => q.Question.QuestionNumber).Should().Equal("12", "12");
+    }
+
+    [Fact]
+    public async Task InvalidManualNumbers_DoNotPublishOrMutateHistory_AndUnknownRemainsNull()
+    {
+        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        var service = Service(database, DefaultAnalyzer());
+        var job = await Completed(service);
+        var draft = job.Questions.Single().Question;
+        draft.QuestionNumber.Should().BeNull();
+        foreach (var value in new[] { "", " ", " 12", "12 ", "12\n（1）", "12\u007f1", new string('题', 65) })
+        {
+            var error = await Assert.ThrowsAsync<ExtractionException>(() => service.ReviseAsync(Admin, job.Id,
+                new(Guid.NewGuid(), 1, "Invalid label", [draft with { QuestionNumber = value }])));
+            error.Code.Should().Be("invalid_questions");
+        }
+        (await service.GetAsync(Caller, job.Id)).Version.Should().Be(1);
+        var accepted = await service.ReviseAsync(Admin, job.Id, new(Guid.NewGuid(), 1, "Known label",
+            [draft with { QuestionNumber = new string('题', 64) }]));
+        accepted.Questions.Single().Question.QuestionNumber.Should().Be(new string('题', 64));
+        (await service.GetVersionAsync(Caller, job.Id, 1)).Questions.Single().Question.QuestionNumber.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task NumberlessLegacyRevisionReceipt_KeepsItsPayloadHashAndCanReplayAfterNumbering()
+    {
+        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        var service = Service(database, DefaultAnalyzer());
+        var job = await Completed(service);
+        var q = job.Questions.Single().Question;
+        var request = new ExtractionRevisionRequest(Guid.NewGuid(), 1, "Pre-numbering correction", [q]);
+        var json = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        // This is the exact pre-extension wire shape, without a questionNumber property.
+        var legacyBytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            request.RequestKey, request.ExpectedVersion, request.Reason,
+            Questions = new[] { new { q.Id, q.Subject, q.Statement, q.StudentAnswer, q.ReferenceAnswer,
+                q.Explanation, q.Outcome, q.Evidence, q.Regions } }
+        }, json);
+        var legacyRequest = System.Text.Json.JsonSerializer.Deserialize<ExtractionRevisionRequest>(legacyBytes, json)!;
+        (await service.ReviseAsync(Admin, job.Id, legacyRequest)).Version.Should().Be(2);
+        await using (var db = database.CreateContext())
+        {
+            var receipt = await db.ExtractionRevisions.SingleAsync(r => r.JobId == job.Id && r.Version == 2);
+            receipt.PayloadHash.Should().Be(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(legacyBytes)),
+                "adding a missing/null optional number must not invalidate historical request receipts");
+        }
+        await service.ReviseAsync(Admin, job.Id, new(Guid.NewGuid(), 2, "Read printed label", [q with { QuestionNumber = "12" }]));
+        var replay = await service.ReviseAsync(Admin, job.Id, legacyRequest);
+        replay.Version.Should().Be(2);
+        replay.Questions.Single().Question.QuestionNumber.Should().BeNull();
+        (await service.GetAsync(Caller, job.Id)).Questions.Single().Question.QuestionNumber.Should().Be("12");
     }
 
     private static ExtractionService Service(ProductIntakePostgresTests.TestDatabase database, Analyzer analyzer, LayoutClient? layout = null) =>

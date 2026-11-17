@@ -121,7 +121,7 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
             || result.Questions is null || result.Questions.Count > 32)
             throw new ExtractionException("invalid_analysis_response", 502);
         foreach (var q in result.Questions)
-            if (q is null || q.Subject is < 1 or > 9 || string.IsNullOrWhiteSpace(q.Statement) || q.Statement.Length > 8000
+            if (q is null || !ExtractionRules.ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || string.IsNullOrWhiteSpace(q.Statement) || q.Statement.Length > 8000
                 || q.StudentAnswer?.Length > 8000 || q.ReferenceAnswer is null || q.ReferenceAnswer.Length > 16000
                 || q.Explanation is null || q.Explanation.Length > 16000 || q.Evidence is null || q.Evidence.Length > 16000
                 || q.Outcome is not ("correct" or "incorrect" or "unknown")

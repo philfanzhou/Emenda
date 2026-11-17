@@ -18,7 +18,7 @@ public sealed class AiTutorQuestionClientTests
     [Fact]
     public async Task SendsExactContractAndPreservesCrossImageUnknown()
     {
-        var draft = Draft() with { Regions = [Region, Region with { SourceId = Other }] };
+        var draft = Draft() with { QuestionNumber = "三、2（1）", Regions = [Region with { SourceId = Other }, Region] };
         var request = Request() with { Images = [.. Request().Images, new(Other, "data:image/png;base64,iVBORw0KGgo=", 100, 100, [])] };
         var client = Client(async (message, ct) =>
         {
@@ -31,7 +31,8 @@ public sealed class AiTutorQuestionClientTests
         var result = await client.AnalyzeAsync(request);
         Assert.Equal("unknown", result.Questions[0].Outcome);
         Assert.Null(result.Questions[0].StudentAnswer);
-        Assert.Equal(2, result.Questions[0].Regions.Count);
+        Assert.Equal("三、2（1）", result.Questions[0].QuestionNumber);
+        Assert.Equal(new[] { Other, Source }, result.Questions[0].Regions.Select(r => r.SourceId));
     }
 
     [Fact]
@@ -148,6 +149,41 @@ public sealed class AiTutorQuestionClientTests
         });
         var request = Request() with { Images = [new(Source, dataUrl, 100, 100, [Region])] };
         Assert.Equal("vision", (await client.AnalyzeAsync(request)).Model);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(" 12")]
+    [InlineData("12 ")]
+    [InlineData("12\n（1）")]
+    [InlineData("12\u007f1")]
+    public async Task RejectsInvalidPrintedQuestionNumbers(string number)
+    {
+        var client = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new QuestionAnalysisResult("vision", [Draft() with { QuestionNumber = number }]))
+        }));
+        Assert.Equal("invalid_analysis_response", (await Assert.ThrowsAsync<ExtractionException>(() => client.AnalyzeAsync(Request()))).Code);
+    }
+
+    [Fact]
+    public async Task AcceptsMissingOrNullNumbersAndRepeatedLabelsButRejectsOversizedNumbers()
+    {
+        var number = new string('题', 64);
+        var drafts = new[] { Draft(), Draft() with { QuestionNumber = number }, Draft() with { QuestionNumber = number } };
+        var client = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new QuestionAnalysisResult("vision", drafts.ToList()))
+        }));
+        var result = await client.AnalyzeAsync(Request());
+        Assert.Null(result.Questions[0].QuestionNumber);
+        Assert.Equal(new string?[] { null, number, number }, result.Questions.Select(q => q.QuestionNumber));
+        var oversized = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new QuestionAnalysisResult("vision", [Draft() with { QuestionNumber = number + "题" }]))
+        }));
+        Assert.Equal("invalid_analysis_response", (await Assert.ThrowsAsync<ExtractionException>(() => oversized.AnalyzeAsync(Request()))).Code);
     }
 
     private static AiTutorQuestionClient Client(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) =>

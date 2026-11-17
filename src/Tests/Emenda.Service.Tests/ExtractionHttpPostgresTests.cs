@@ -46,9 +46,10 @@ public sealed class ExtractionHttpPostgresTests
             await scope.ServiceProvider.GetRequiredService<ExtractionService>().RunQueuedAsync(default);
         var result = await Data<ExtractionJobView>(await caller.GetAsync($"/api/intake/extractions/{job.Id}"));
         Assert.Equal("Succeeded", result.Status);
+        Assert.Equal("12", result.Questions.Single().Question.QuestionNumber);
         Assert.NotNull(result.Questions.Single().ItemId);
         var request = new ExtractionRevisionRequest(Guid.NewGuid(), result.Version, "Correct hand-written answer",
-            [result.Questions.Single().Question with { Outcome = "correct", StudentAnswer = "2", Evidence = "The actual answer is 2" }]);
+            [result.Questions.Single().Question with { QuestionNumber = "三、2（1）", Outcome = "correct", StudentAnswer = "2", Evidence = "The actual answer is 2" }]);
         Assert.Equal(HttpStatusCode.NotFound,
             (await caller.PutAsJsonAsync($"/api/intake/extractions/{job.Id}/questions", request)).StatusCode);
         using var anonymousAdmin = factory.CreateClient(new() { AllowAutoRedirect = false });
@@ -66,9 +67,11 @@ public sealed class ExtractionHttpPostgresTests
         var revised = await Data<ExtractionJobView>(await admin.PutAsJsonAsync($"/admin/api/extractions/{job.Id}/questions", request));
         Assert.Equal(2, revised.Version);
         Assert.Equal("correct", revised.Questions.Single().Question.Outcome);
+        Assert.Equal("三、2（1）", revised.Questions.Single().Question.QuestionNumber);
         Assert.Equal(result.Questions.Single().ItemId, revised.Questions.Single().ItemId);
         var history = await admin.GetAsync($"/admin/api/extractions/{job.Id}/versions/1");
         Assert.Equal(HttpStatusCode.OK, history.StatusCode);
+        Assert.Equal("12", (await Data<ExtractionSnapshot>(history)).Questions.Single().Question.QuestionNumber);
         var original = await admin.GetAsync($"/admin/api/extractions/{job.Id}/sources/{job.Sources[0].Id}");
         Assert.Equal(originalBytes, await original.Content.ReadAsByteArrayAsync());
         using var page = await admin.GetAsync("/admin/extractions");
@@ -215,7 +218,7 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
         public Task<QuestionAnalysisResult> AnalyzeAsync(QuestionAnalysisRequest request, CancellationToken ct = default) =>
             Task.FromResult(new QuestionAnalysisResult("controlled-test-model", [new ExtractionQuestionDraft
             {
-                Subject = 2, Statement = "1 + 1 = ?", StudentAnswer = "3", ReferenceAnswer = "2",
+                QuestionNumber = "12", Subject = 2, Statement = "1 + 1 = ?", StudentAnswer = "3", ReferenceAnswer = "2",
                 Explanation = "Add one and one", Evidence = "Actual attempt is 3 rather than 2", Outcome = "incorrect",
                 Regions = request.Images.Select(i => new ExtractionRegion(i.SourceId, 0, 0, 1, 1)).ToList()
             }]));

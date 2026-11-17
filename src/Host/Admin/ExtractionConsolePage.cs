@@ -82,6 +82,8 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
 .region-list { list-style:none; padding:0; margin:8px 0; }
 .region-row { padding:10px 0; border-bottom:1px solid #e2e8ef; }
 .region-row.active { background:#e8f1fb; padding:10px; }
+.split-select { display:flex; align-items:center; gap:8px; }
+.split-select input { width:24px; min-height:24px; margin:0; }
 .coordinates { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:8px 0; }
 .coordinates input { padding:6px; font-variant-numeric:tabular-nums; }
 .stage { position:relative; line-height:0; background:#edf1f5; width:100%; overflow:hidden; user-select:none; }
@@ -360,6 +362,9 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     const index = state.job.sources.findIndex(source => source.id === id);
     return index < 0 ? '未知来源 ' + id : '原图 ' + (index + 1);
   }
+  function printedLabel(question) { return question.questionNumber == null ? '未知' : question.questionNumber; }
+  function groupLabel(question, index) { return '列表第 ' + (index + 1) + ' 组 · 印刷题号：' + printedLabel(question) + ' · UUID ' + question.id; }
+  function normalizedQuestionNumber(value) { return typeof value === 'string' ? value.trim() || null : null; }
   function renderJob() {
     const job = state.job, root = $('detail'); root.replaceChildren();
     root.append(node('h2', '任务详情'), node('div', job.id, 'mono'));
@@ -412,15 +417,15 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     if (!views.length) root.append(node('p', '此版本没有有效题目组。', 'empty'));
     views.forEach((view, index) => {
       const question = view.question, article = node('article', null, 'question');
-      const heading = node('div', null, 'row'); heading.append(node('h3', '题目组 ' + (index + 1) + ' · 学科 ' + question.subject), node('span', outcomeNames[question.outcome] || question.outcome, 'pill ' + (Object.hasOwn(outcomeNames, question.outcome) ? question.outcome : 'unknown'))); article.append(heading, node('div', question.id, 'mono'));
+      const heading = node('div', null, 'row'); heading.append(node('h3', '列表第 ' + (index + 1) + ' 组 · 印刷题号：' + printedLabel(question) + ' · 学科 ' + question.subject), node('span', outcomeNames[question.outcome] || question.outcome, 'pill ' + (Object.hasOwn(outcomeNames, question.outcome) ? question.outcome : 'unknown'))); article.append(heading, node('div', '稳定题目 UUID：' + question.id, 'mono'));
       article.append(node('p', view.itemDeleted ? '关联错题已删除，保留关联墓碑；不会自动重建。' : view.itemId ? '关联错题：' + view.itemId : '未创建错题记录。', 'muted'));
       [['题干',question.statement],['学生实际作答',question.studentAnswer || '未记录实际作答'],['参考答案',question.referenceAnswer],['解题过程',question.explanation],['判断证据',question.evidence]].forEach(([label, text]) => article.append(node('h4', label), node('p', text || '未记录', 'read-text')));
-      const regions = node('ol'); question.regions.forEach(region => regions.append(node('li', sourceName(region.sourceId) + ' · [' + [region.x0,region.y0,region.x1,region.y1].join(', ') + ']', 'mono'))); article.append(node('h4', '有序原图区域（归一化正向坐标）'), regions);
+      const regions = node('ol'); question.regions.forEach((region, partIndex) => regions.append(node('li', '第 ' + (partIndex + 1) + ' 部分 · ' + sourceName(region.sourceId) + ' · 来源 UUID ' + region.sourceId + ' · [' + [region.x0,region.y0,region.x1,region.y1].join(', ') + ']', 'mono'))); article.append(node('h4', '有序原图区域（第 1 部分起，按阅读顺序生成题图；归一化正向坐标）'), regions);
       if (view.images.length) {
         const crops = node('div', null, 'crops'); view.images.forEach((crop, cropIndex) => {
           const figure = node('figure'), link = node('a'), image = node('img');
-          link.href = cropUrl(state.job.id, question.id, version, cropIndex); link.target = '_blank'; link.rel = 'noopener'; image.src = link.href; image.width = crop.width; image.height = crop.height; image.loading = 'lazy'; image.alt = '题目组 ' + (index + 1) + '，v' + version + ' 题图 ' + (cropIndex + 1); image.onerror = () => { image.alt = '此历史题图读取失败，请检查会话后重试'; };
-          link.append(image); figure.append(link, node('figcaption', 'v' + version + ' · 题图 ' + (cropIndex + 1) + ' · ' + sourceName(crop.sourceId)), node('div', crop.path, 'mono')); crops.append(figure);
+          link.href = cropUrl(state.job.id, question.id, version, cropIndex); link.target = '_blank'; link.rel = 'noopener'; image.src = link.href; image.width = crop.width; image.height = crop.height; image.loading = 'lazy'; image.alt = '列表第 ' + (index + 1) + ' 组，印刷题号 ' + printedLabel(question) + '，v' + version + ' 第 ' + (cropIndex + 1) + ' 部分'; image.onerror = () => { image.alt = '此历史题图读取失败，请检查会话后重试'; };
+          link.append(image); figure.append(link, node('figcaption', 'v' + version + ' · 第 ' + (cropIndex + 1) + ' 部分 · ' + sourceName(crop.sourceId) + ' · 来源 UUID ' + crop.sourceId), node('div', crop.path, 'mono')); crops.append(figure);
         }); article.append(crops);
       }
       root.append(article);
@@ -430,8 +435,8 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
   function beginDraft(views, version, fromHistory) {
     const existing = draftOf();
     if (existing && (existing.dirty || existing.pending) && !confirm('加载会替换现有本地草稿。确定放弃该草稿？')) return;
-    const questions = copy(views.map(view => view.question));
-    const draft = { expectedVersion:version, baseQuestions:copy(state.job.questions.map(view => view.question)), questions, reason:fromHistory ? '从历史 v' + fromHistory + ' 加载并人工复核' : '', dirty:!!fromHistory, pending:null, conflict:false, remote:null, selectedQuestion:questions[0] ? questions[0].id : null, selectedRegion:0, selectedSource:state.job.sources[0] ? state.job.sources[0].id : null, drawing:false };
+    const questions = copy(views.map(view => ({ ...view.question, questionNumber:view.question.questionNumber ?? null })));
+    const draft = { expectedVersion:version, baseQuestions:copy(state.job.questions.map(view => view.question)), questions, reason:fromHistory ? '从历史 v' + fromHistory + ' 加载并人工复核' : '', dirty:!!fromHistory, pending:null, conflict:false, remote:null, selectedQuestion:questions[0] ? questions[0].id : null, selectedRegion:0, splitRegions:new Set(), selectedSource:state.job.sources[0] ? state.job.sources[0].id : null, drawing:false };
     state.drafts.set(state.job.id, draft); renderJob(); if ($('draftHeading')) $('draftHeading').focus();
   }
   function changed(draft) {
@@ -442,7 +447,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
   function renderDraft(root, draft) {
     const form = node('form'); form.id = 'revisionForm'; form.onsubmit = event => { event.preventDefault(); saveDraft(); };
     const title = node('h3', '整组纠偏草稿 · 基于 v' + draft.expectedVersion); title.id = 'draftHeading'; title.tabIndex = -1;
-    form.append(title, node('p', '一次保存完整题目组集合。既有 UUID 不变；新增组使用新 UUID；移除组会撤回当前分组，不物理删除来源或历史。', 'muted'));
+    form.append(title, node('p', '一次保存完整题目组集合。列表位置不是印刷题号；印刷题号可重复、可未知，不用于自动合并。既有 UUID 不变；新增 / 拆分组使用新 UUID；移除组不物理删除来源或历史。', 'muted'));
     const draftState = node('p', draft.pending ? '上次保存尚未确认，载荷和请求键已冻结。先查询最新版本，或明确重发同一请求。' : draft.dirty ? '有未保存修改。' : '尚未修改。'); draftState.id = 'draftState'; draftState.className = 'notice'; form.append(draftState);
     if (draft.pending) {
       form.append(node('div', '保存请求键：' + draft.pending.requestKey, 'mono'), button('查询最新版本后，显式选择重新基线', async () => {
@@ -452,12 +457,12 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     if (draft.conflict) renderConflict(form, draft);
     const fields = node('fieldset'); fields.disabled = state.busy || !!draft.pending; fields.append(node('legend', '完整题目分组，最多 32 组'));
     const groupRow = node('div', null, 'row'); const chooser = node('select'); chooser.setAttribute('aria-label', '选择要编辑的题目组');
-    draft.questions.forEach((question, index) => { const option = node('option', '题目组 ' + (index + 1) + ' · ' + (outcomeNames[question.outcome] || question.outcome) + ' · ' + question.id.slice(0,8)); option.value = question.id; chooser.append(option); });
-    chooser.value = draft.selectedQuestion || ''; chooser.onchange = () => { draft.selectedQuestion = chooser.value; draft.selectedRegion = 0; draft.drawing = false; renderJob(); };
+    draft.questions.forEach((question, index) => { const option = node('option', groupLabel(question, index)); option.value = question.id; chooser.append(option); });
+    chooser.value = draft.selectedQuestion || ''; chooser.onchange = () => { draft.selectedQuestion = chooser.value; draft.selectedRegion = 0; draft.splitRegions.clear(); draft.drawing = false; renderJob(); };
     groupRow.append(chooser, button('新增题目组', () => {
       if (draft.questions.length >= 32) return;
-      const question = { id:uuid(), subject:1, statement:'', studentAnswer:null, referenceAnswer:'', explanation:'', outcome:'unknown', evidence:'', regions:[] };
-      draft.questions = [...draft.questions, question]; draft.selectedQuestion = question.id; draft.selectedRegion = 0; changed(draft); renderJob();
+      const question = { id:uuid(), questionNumber:null, subject:1, statement:'', studentAnswer:null, referenceAnswer:'', explanation:'', outcome:'unknown', evidence:'', regions:[] };
+      draft.questions = [...draft.questions, question]; draft.selectedQuestion = question.id; draft.selectedRegion = 0; draft.splitRegions.clear(); changed(draft); renderJob();
     })); fields.append(groupRow);
     const question = selectedQuestion(draft);
     if (question) {
@@ -469,8 +474,9 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
       const down = button('题目组下移', () => moveGroup(1)); down.disabled = index === draft.questions.length - 1;
       groupActions.append(up, down, button('移除此题目组', () => {
         if (!confirm('从当前分组中移除此组？保存后会撤回它的当前关联，历史不删除。')) return;
-        draft.questions = draft.questions.filter(item => item.id !== question.id); draft.selectedQuestion = draft.questions[0] ? draft.questions[0].id : null; draft.selectedRegion = 0; changed(draft); renderJob();
+        draft.questions = draft.questions.filter(item => item.id !== question.id); draft.selectedQuestion = draft.questions[0] ? draft.questions[0].id : null; draft.selectedRegion = 0; draft.splitRegions.clear(); changed(draft); renderJob();
       }, 'danger')); fields.append(groupActions);
+      renderMergeControls(fields, draft, question);
       const columns = node('div', null, 'editor-layout'), text = node('div'), geometry = node('div');
       renderQuestionFields(text, draft, question); renderRegions(geometry, draft, question); columns.append(text, geometry); fields.append(columns);
     } else fields.append(node('p', '当前草稿没有题目组。可以新增；保存空集合会撤回全部当前分组。', 'notice warning'));
@@ -483,7 +489,48 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     })); form.append(footer); root.append(form);
     const saved = node('details'); saved.append(node('summary', '对照当前已保存结果 · v' + state.job.version)); renderQuestions(saved, state.job.questions, state.job.version); root.append(saved);
   }
+  function renderMergeControls(root, draft, question) {
+    if (draft.questions.length < 2) return;
+    const label = node('label', '将当前题目组合并到目标组（按 UUID 选择，不按题号匹配）'), target = node('select');
+    draft.questions.forEach((item, index) => { if (item.id !== question.id) { const option = node('option', groupLabel(item, index)); option.value = item.id; target.append(option); } }); label.append(target);
+    const merge = button('明确合并到目标组', () => {
+      const destination = draft.questions.find(item => item.id === target.value);
+      if (!destination || destination.id === question.id || state.busy || draft.pending) return;
+      if (destination.regions.length + question.regions.length > 32) { notice('message', '合并后超过 32 个区域，未修改草稿。请先核对区域。', 'error'); return; }
+      const sourceIdentity = 'UUID ' + question.id + '，印刷题号：' + printedLabel(question);
+      const merged = { ...destination, outcome:'unknown', regions:[...destination.regions, ...question.regions] };
+      for (const field of ['statement','studentAnswer','referenceAnswer','explanation']) {
+        if (question[field]) merged[field] = (destination[field] ? destination[field] + '\n\n' : '') + '【合并来源：' + sourceIdentity + '】\n' + question[field];
+      }
+      merged.evidence = (destination.evidence ? destination.evidence + '\n\n' : '') + '【合并来源：' + sourceIdentity + '，学科 ' + question.subject + '，原判定：' + (outcomeNames[question.outcome] || question.outcome) + '】\n' + (question.evidence || '来源组未记录判断证据。');
+      if ((merged.statement || '').length > 8000 || (merged.studentAnswer || '').length > 8000 || [merged.referenceAnswer,merged.explanation,merged.evidence].some(value => (value || '').length > 16000)) { notice('message', '合并文字将超过字段长度限制，未修改草稿，也未截断内容。请先人工核对并整理文字。', 'error'); return; }
+      if (!confirm('将当前组 ' + sourceIdentity + ' 合并到目标 UUID ' + destination.id + '？目标 UUID、印刷题号和学科保留，判定重置为无法判断。当前组区域按原顺序追加在目标区域后，全部文字按字段追加，来源题号、学科与原判定保留在判断证据。来源组从当前集合移除；保存后历史仍保留。请重新核对合并后的作答与判断。此操作只改草稿。')) return;
+      draft.questions = draft.questions.filter(item => item.id !== question.id).map(item => item.id === destination.id ? merged : item);
+      draft.selectedQuestion = destination.id; draft.selectedRegion = 0; draft.selectedSource = merged.regions[0] ? merged.regions[0].sourceId : draft.selectedSource; draft.splitRegions.clear(); draft.drawing = false; changed(draft); renderJob();
+      notice('message', '已合并到目标 UUID ' + destination.id + '，尚未保存。请核对题号、文字、判定及第 1 部分起的阅读顺序，填写原因后原子保存完整分组。');
+    });
+    root.append(label, merge, node('p', '只在人工确认属于同一道题时合并；相同题号不会触发合并。目标区域在前、当前组区域在后，可再用区域上移 / 下移调整。', 'muted'));
+  }
+  function splitSelectedRegions(draft, question) {
+    const regions = question.regions.filter(region => draft.splitRegions.has(region));
+    if (!regions.length || regions.length === question.regions.length || draft.questions.length >= 32 || state.busy || draft.pending) return;
+    if (!confirm('将勾选的 ' + regions.length + ' 个部分按现有阅读顺序拆为新 UUID？原组保留 UUID、题号和未勾选部分，新组题号留空。全部文字、作答与证据会复制供复核，但两组判定均重置为无法判断，不能沿用拆分前的结论。此操作只改草稿，保存后才生成新版本。')) return;
+    const created = { ...question, id:uuid(), questionNumber:null, outcome:'unknown', regions:regions.map(region => ({ ...region })) };
+    const remaining = { ...question, outcome:'unknown', regions:question.regions.filter(region => !draft.splitRegions.has(region)) };
+    draft.questions = draft.questions.flatMap(item => item.id === question.id ? [remaining, created] : [item]);
+    draft.selectedQuestion = created.id; draft.selectedRegion = 0; draft.selectedSource = created.regions[0].sourceId; draft.splitRegions.clear(); draft.drawing = false; changed(draft); renderJob();
+    notice('message', '已拆为新 UUID ' + created.id + '，尚未保存。原组和新组保留全部文字，请分别核对题号、题干、作答、判定及部分顺序，再填写原因保存完整分组。');
+  }
   function renderQuestionFields(root, draft, question) {
+    const numberLabel = node('label', '印刷题号（可重复，未知请留空）'), numberInput = node('input');
+    numberInput.id = 'questionNumber'; numberInput.type = 'text'; numberInput.maxLength = 64; numberInput.value = question.questionNumber ?? ''; numberInput.autocomplete = 'off'; numberInput.setAttribute('aria-describedby', 'questionNumberHelp');
+    numberInput.oninput = () => {
+      question.questionNumber = normalizedQuestionNumber(numberInput.value);
+      const invalid = question.questionNumber !== null && (question.questionNumber.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(question.questionNumber));
+      numberInput.setCustomValidity(invalid ? '印刷题号最多 64 个字符，不能含控制字符。' : ''); numberInput.setAttribute('aria-invalid', String(invalid)); changed(draft);
+    };
+    numberInput.onblur = () => { numberInput.value = question.questionNumber ?? ''; };
+    numberLabel.append(numberInput); const numberHelp = node('p', '最多 64 个字符；自动去除首尾空白，空白保存为未知。印刷题号不是 UUID，也不是列表位置。', 'muted'); numberHelp.id = 'questionNumberHelp'; root.append(numberLabel, numberHelp);
     const pair = node('div', null, 'grid'), subjectLabel = node('label', '学科代码（1 至 9）'), subject = node('input');
     subject.type = 'number'; subject.min = '1'; subject.max = '9'; subject.step = '1'; subject.required = true; subject.value = question.subject;
     subject.oninput = () => { question.subject = Number(subject.value); changed(draft); }; subjectLabel.append(subject);
@@ -498,7 +545,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     root.append(node('p', '请对照原图核实实际作答、参考答案、区域与判断证据。正确 / 错误结论必须具备真实作答及参考依据；未作答、看不清或材料不足应选“无法判断”。裁剪调整不会自行清空已保存的作答和判断。', 'muted'));
   }
   function renderRegions(root, draft, question) {
-    root.append(node('h4', '原图区域与跨页顺序'), node('p', '坐标采用正向显示原图的 0 至 1 比例。可用数字输入完整操作，不必拖动。区域按下列顺序生成题图。', 'muted'));
+    root.append(node('h4', '原图区域与跨页顺序'), node('p', '坐标采用正向显示原图的 0 至 1 比例。可用数字输入完整操作，不必拖动。第 1 部分起的列表顺序就是阅读及题图生成顺序，与印刷题号无关。', 'muted'));
     const sources = node('label', '框选所用原图'), source = node('select');
     state.job.sources.forEach((item, index) => { const option = node('option', '原图 ' + (index + 1) + ' · ' + item.width + ' × ' + item.height); option.value = item.id; source.append(option); });
     const selected = question.regions[draft.selectedRegion]; if (selected) draft.selectedSource = selected.sourceId;
@@ -517,16 +564,27 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
       question.regions.forEach((region, index) => { if (region.sourceId === imageSource.id) stage.append(regionBox(region, index, index === draft.selectedRegion)); });
       wireRectangle(stage, image, draft, question); root.append(stage, node('p', draft.drawing ? '框选模式：从起点拖到终点。Esc 取消；触屏仅在本模式阻止页面滚动。' : '先选择“拖动新增 / 重画区域”再框选，或使用下方数字输入。', 'muted'));
     }
+    const splitHelp = node('p', '勾选要拆出的部分，至少保留 1 个部分在原组中。拆分保留原组 UUID，新组使用新 UUID；内容会完整复制，需人工复核。', 'muted'); splitHelp.id = 'splitHelp';
+    const split = button('将勾选部分拆为新题目组', () => splitSelectedRegions(draft, question)); split.setAttribute('aria-describedby', 'splitHelp');
+    const splitState = node('p', null, 'muted'); splitState.setAttribute('role', 'status');
+    const updateSplit = () => {
+      const count = question.regions.filter(region => draft.splitRegions.has(region)).length;
+      split.disabled = !count || count === question.regions.length || draft.questions.length >= 32;
+      splitState.textContent = '已勾选 ' + count + ' / ' + question.regions.length + ' 个部分。' + (draft.questions.length >= 32 ? '已有 32 组，不能再拆分。' : count === question.regions.length && count ? '必须保留至少 1 个部分在原组。' : '');
+    };
+    updateSplit(); root.append(splitHelp, split, splitState);
     const list = node('ol', null, 'region-list');
     question.regions.forEach((region, index) => {
       const li = node('li', null, 'region-row' + (index === draft.selectedRegion ? ' active' : ''));
-      li.append(button('选择区域 ' + (index + 1) + ' · ' + sourceName(region.sourceId), () => { draft.selectedRegion = index; draft.selectedSource = region.sourceId; draft.drawing = false; renderJob(); }));
-      const label = node('label', '区域 ' + (index + 1) + ' 来源'), selector = node('select');
-      state.job.sources.forEach((item, sourceIndex) => { const option = node('option', '原图 ' + (sourceIndex + 1)); option.value = item.id; selector.append(option); }); selector.value = region.sourceId;
+      const splitLabel = node('label', null, 'split-select'), checkbox = node('input'); checkbox.type = 'checkbox'; checkbox.checked = draft.splitRegions.has(region); checkbox.setAttribute('aria-describedby', 'splitHelp');
+      checkbox.onchange = () => { if (checkbox.checked) draft.splitRegions.add(region); else draft.splitRegions.delete(region); updateSplit(); }; splitLabel.append(checkbox, node('span', '拆出第 ' + (index + 1) + ' 部分')); li.append(splitLabel);
+      li.append(button('选择第 ' + (index + 1) + ' 部分 · ' + sourceName(region.sourceId), () => { draft.selectedRegion = index; draft.selectedSource = region.sourceId; draft.drawing = false; renderJob(); }), node('div', '来源 UUID：' + region.sourceId, 'mono'));
+      const label = node('label', '第 ' + (index + 1) + ' 部分来源'), selector = node('select');
+      state.job.sources.forEach((item, sourceIndex) => { const option = node('option', '原图 ' + (sourceIndex + 1) + ' · UUID ' + item.id); option.value = item.id; selector.append(option); }); selector.value = region.sourceId;
       selector.onchange = () => { region.sourceId = selector.value; draft.selectedRegion = index; draft.selectedSource = selector.value; changed(draft); renderJob(); }; label.append(selector); li.append(label);
       const coords = node('div', null, 'coordinates');
       ['x0','y0','x1','y1'].forEach(key => {
-        const coordinateLabel = node('label', key), input = node('input'); input.type = 'number'; input.min = '0'; input.max = '1'; input.step = 'any'; input.required = true; input.value = region[key]; input.setAttribute('aria-label', '区域 ' + (index + 1) + ' 的 ' + key);
+        const coordinateLabel = node('label', key), input = node('input'); input.type = 'number'; input.min = '0'; input.max = '1'; input.step = 'any'; input.required = true; input.value = region[key]; input.setAttribute('aria-label', '第 ' + (index + 1) + ' 部分的 ' + key);
         input.oninput = () => { region[key] = input.value === '' ? NaN : Number(input.value); changed(draft); };
         input.onchange = () => {
           root.querySelectorAll('.region-box').forEach(box => box.remove());
@@ -538,7 +596,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
         const next = [...question.regions]; [next[index],next[index + offset]] = [next[index + offset],next[index]]; question.regions = next; draft.selectedRegion = index + offset; changed(draft); renderJob();
       };
       const up = button('区域上移', () => move(-1)); up.disabled = index === 0; const down = button('区域下移', () => move(1)); down.disabled = index === question.regions.length - 1;
-      moves.append(up, down, button('移除区域', () => { question.regions = question.regions.filter((_, position) => position !== index); draft.selectedRegion = Math.min(index, question.regions.length - 1); changed(draft); renderJob(); }, 'danger')); li.append(moves); list.append(li);
+      moves.append(up, down, button('移除区域', () => { draft.splitRegions.delete(region); question.regions = question.regions.filter((_, position) => position !== index); draft.selectedRegion = Math.min(index, question.regions.length - 1); changed(draft); renderJob(); }, 'danger')); li.append(moves); list.append(li);
     }); root.append(list);
   }
   function regionBox(region, index, selected) {
@@ -580,6 +638,8 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     for (let index = 0; index < draft.questions.length; index++) {
       const question = draft.questions[index], prefix = '题目组 ' + (index + 1) + '：';
       if (ids.has(question.id)) return prefix + 'UUID 重复，不能保存。'; ids.add(question.id);
+      const questionNumber = normalizedQuestionNumber(question.questionNumber);
+      if (questionNumber !== null && (questionNumber.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(questionNumber))) return prefix + '印刷题号最多 64 个字符，不能含控制字符。';
       if (!Number.isInteger(question.subject) || question.subject < 1 || question.subject > 9) return prefix + '学科必须为 1 至 9。';
       if (!question.statement.trim() || question.statement.length > 8000) return prefix + '必须有实际题干，且不超过 8000 字。';
       if ((question.studentAnswer || '').length > 8000 || [question.referenceAnswer,question.explanation,question.evidence].some(text => text.length > 16000)) return prefix + '作答最多 8000 字，参考答案、过程、证据各最多 16000 字。';
@@ -600,7 +660,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     if (!draft.pending) {
       const validation = validateDraft(draft); if (validation) { notice('message', validation, 'error'); return; }
       if (!draft.questions.length && !confirm('将撤回全部当前题目组。来源、历史及错题既有日志保留。确认保存空集合？')) return;
-      draft.pending = { requestKey:uuid(), expectedVersion:draft.expectedVersion, reason:draft.reason.trim(), questions:copy(draft.questions) };
+      draft.pending = { requestKey:uuid(), expectedVersion:draft.expectedVersion, reason:draft.reason.trim(), questions:copy(draft.questions.map(question => ({ ...question, questionNumber:normalizedQuestionNumber(question.questionNumber) }))) };
     } else if (!confirm('仅重发相同 requestKey 和冻结的完整载荷，不创建新的保存请求。继续？')) return;
     state.busy = true; renderJob();
     state.loading++;

@@ -71,7 +71,9 @@ public sealed partial class ExtractionService
                 db.ExtractionQuestions.Add(row);
             }
             var old = prior?.Questions.SingleOrDefault(q => q.Question.Id == proposed.Question.Id);
-            var changed = old is null || ExtractionRules.Hash(old.Question) != ExtractionRules.Hash(proposed.Question) || !row.Active;
+            var changed = old is null ||
+                ExtractionRules.Hash(old.Question with { QuestionNumber = null }) !=
+                ExtractionRules.Hash(proposed.Question with { QuestionNumber = null }) || !row.Active;
             row.Active = true;
             MistakeItemEntity? item = row.ItemId.HasValue ? await db.MistakeItems.SingleOrDefaultAsync(i => i.Id == row.ItemId.Value, ct) : null;
             if (proposed.Question.Outcome == "incorrect" && row.ItemId is null)
