@@ -1,6 +1,8 @@
 # Mistake 版本化 HTTP 合同
 
-[mistake-http-v3.json](./mistake-http-v3.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
+v4 adds structured single-mistake analysis. See [Single-mistake analysis](../modules/SingleMistakeAnalysis.md) for the teacher workflow. Earlier contract artifacts remain available.
+
+[mistake-http-v4.json](./mistake-http-v4.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
 
 ## 取得发布版本
 

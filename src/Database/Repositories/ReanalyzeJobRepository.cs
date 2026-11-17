@@ -21,6 +21,8 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
     public async Task AddAsync(ReanalyzeJobModel model, CancellationToken ct = default)
     {
         await LegacyReturnWriteGuard.EnsureAsync(_db, model.ItemId, ct);
+        if (await _db.MistakeAnalyses.AnyAsync(a => a.MistakeItemId == model.ItemId, ct))
+            throw new AnalysisConflictException("structured_analysis_required");
         await _db.ReanalyzeJobs.AddAsync(ToEntity(model), ct);
     }
 
@@ -72,7 +74,7 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
                 await FailWithoutOwnerAsync(job, item, job.Attempt >= MaxAttempts ? "attempt_limit" : "input_unavailable", ct);
                 continue;
             }
-            if (job.Status == (int)ReanalyzeJobState.Running && job.ExecutionInputDigest != Digest(item))
+            if ((job.AnalysisInput is not null || job.Status == (int)ReanalyzeJobState.Running) && job.ExecutionInputDigest != JobDigest(job, item))
             {
                 await FailWithoutOwnerAsync(job, item, "input_changed", ct);
                 continue;
@@ -85,7 +87,7 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
             job.LeaseUntil = now.AddSeconds(LeaseSeconds);
             job.StartedAt = now;
             job.ExecutionRootCause = item.RootCause;
-            job.ExecutionInputDigest = Digest(item);
+            job.ExecutionInputDigest = JobDigest(job, item);
             await _db.SaveChangesAsync(ct);
             var model = ToModel(job);
             model.ExecutionStudentId = item.StudentId;
@@ -106,18 +108,39 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
             """, ct) == 1;
     }
 
-    public async Task<bool> CompleteAsync(Guid jobId, Guid ownerId, long version,
-        string rootCause, long durationMs, CancellationToken ct = default)
+    public Task<bool> CompleteAsync(Guid jobId, Guid ownerId, long version,
+        string rootCause, long durationMs, CancellationToken ct = default) =>
+        CompleteCoreAsync(jobId, ownerId, version, rootCause, null, durationMs, ct);
+
+    public Task<bool> CompleteAnalysisAsync(Guid jobId, Guid ownerId, long version,
+        StructuredAnalysisResult result, long durationMs, CancellationToken ct = default)
+    {
+        result.Report.Validate();
+        return CompleteCoreAsync(jobId, ownerId, version, result.Report.Summary, result, durationMs, ct);
+    }
+
+    private async Task<bool> CompleteCoreAsync(Guid jobId, Guid ownerId, long version,
+        string rootCause, StructuredAnalysisResult? result, long durationMs, CancellationToken ct)
     {
         _db.ChangeTracker.Clear();
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         var job = await LockedJobAsync(jobId, ct);
         if (!ValidOwner(job, ownerId, version, await ClockAsync(ct))) return false;
         var item = await LockedItemAsync(job!.ItemId, ct);
-        if (item is null || !Allowed(item) || job.ExecutionInputDigest != Digest(item))
+        if (item is null || !Allowed(item) || job.ExecutionInputDigest != JobDigest(job, item))
         {
             var reason = item is null ? "item_deleted" : !Allowed(item) ? "item_rejected" : "input_changed";
             await CommitFailureAsync(job, ownerId, version, item, reason, ct);
+            await transaction.CommitAsync(ct);
+            return false;
+        }
+        var analysis = await _db.MistakeAnalyses.FindAsync([item.Id], ct);
+        var input = job.AnalysisInput is null ? null : JsonSerializer.Deserialize<StructuredAnalysisInput>(job.AnalysisInput, MistakeAnalysisRepository.Json);
+        if ((input is null) != (result is null) ||
+            (input is not null && (analysis is null || analysis.Revision != input.Revision)) ||
+            (input is null && analysis is not null))
+        {
+            await CommitFailureAsync(job, ownerId, version, item, "input_changed", ct);
             await transaction.CommitAsync(ct);
             return false;
         }
@@ -128,8 +151,21 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
               AND status=2 AND lease_until>clock_timestamp()
             """, ct);
         if (rows != 1) return false;
-        item.RootCause = rootCause;
-        item.UpdatedAt = await ClockAsync(ct);
+        if (result is null)
+        {
+            item.RootCause = rootCause;
+            item.UpdatedAt = await ClockAsync(ct);
+        }
+        else
+        {
+            analysis!.DraftReport = JsonSerializer.Serialize(result.Report, MistakeAnalysisRepository.Json);
+            analysis.DraftJobId = job.Id;
+            analysis.InputDigest = job.ExecutionInputDigest;
+            analysis.GeneratedAt = await ClockAsync(ct);
+            analysis.Model = result.Model;
+            analysis.PromptVersion = result.PromptVersion;
+            analysis.Revision++;
+        }
         await AddLogAsync(job, item, rootCause, ct);
         await _db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -170,6 +206,9 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
     private static bool Allowed(MistakeItemEntity item) =>
         (item.ReviewStatus == (int)ReviewStatus.PendingReview || item.ReviewStatus == (int)ReviewStatus.Confirmed)
         && item.SourceRegions.Count > 0;
+
+    private static string JobDigest(ReanalyzeJobEntity job, MistakeItemEntity item) =>
+        job.AnalysisInput is null ? Digest(item) : MistakeAnalysisRepository.InputDigest(item);
 
     private static string Digest(MistakeItemEntity item)
     {
@@ -236,7 +275,8 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
         CreatedAt=m.CreatedAt, StartedAt=m.StartedAt, CompletedAt=m.CompletedAt,
         VlDurationMs=m.VlDurationMs, OwnerId=m.OwnerId, LeaseUntil=m.LeaseUntil,
         FencingVersion=m.FencingVersion, Attempt=m.Attempt,
-        ExecutionRootCause=m.ExecutionRootCause, ExecutionInputDigest=m.ExecutionInputDigest
+        ExecutionRootCause=m.ExecutionRootCause, ExecutionInputDigest=m.ExecutionInputDigest,
+        AnalysisInput=m.AnalysisInput is null ? null : JsonSerializer.Serialize(m.AnalysisInput, MistakeAnalysisRepository.Json)
     };
 
     private static ReanalyzeJobModel ToModel(ReanalyzeJobEntity e) => new()
@@ -247,6 +287,7 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
         CreatedAt=e.CreatedAt, StartedAt=e.StartedAt, CompletedAt=e.CompletedAt,
         VlDurationMs=e.VlDurationMs, OwnerId=e.OwnerId, LeaseUntil=e.LeaseUntil,
         FencingVersion=e.FencingVersion, Attempt=e.Attempt,
-        ExecutionRootCause=e.ExecutionRootCause, ExecutionInputDigest=e.ExecutionInputDigest
+        ExecutionRootCause=e.ExecutionRootCause, ExecutionInputDigest=e.ExecutionInputDigest,
+        AnalysisInput=e.AnalysisInput is null ? null : JsonSerializer.Deserialize<StructuredAnalysisInput>(e.AnalysisInput, MistakeAnalysisRepository.Json)
     };
 }

@@ -70,6 +70,8 @@ public static partial class MistakeHttpEndpoints
         group.MapPost("/mistakes/{id:guid}/review", ReviewMistakeItem);
         // 7. ReanalyzeMistakeItem — POST /api/mistakes/{id:guid}/reanalyze
         group.MapPost("/mistakes/{id:guid}/reanalyze", ReanalyzeMistakeItem);
+        group.MapGet("/mistakes/{id:guid}/analysis", GetMistakeAnalysis);
+        group.MapPost("/mistakes/{id:guid}/analysis/confirm", ConfirmMistakeAnalysis);
         // 8. GetReanalyzeJobs — POST /api/mistakes/reanalyze/jobs
         group.MapPost("/mistakes/reanalyze/jobs", GetReanalyzeJobs);
         // 9. GetActiveReanalyzeJobs — GET /api/mistakes/reanalyze/active
@@ -528,9 +530,12 @@ public static partial class MistakeHttpEndpoints
         IReanalyzeJobService reanalyzeJobService,
         IMistakeDomainService mistakeService,
         ILoggerFactory loggerFactory,
+        HttpContext http,
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
+        if (request.StructuredAnalysis)
+            return await StartStructuredAnalysis(id, request, user, resourceAuthz, mistakeService, http, ct);
         if (resourceAuthz.Enabled)
         {
             var roleDecision = resourceAuthz.DecideRoleGate(

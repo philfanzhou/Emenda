@@ -38,6 +38,7 @@ public class ReanalyzeJobModel
     public DateTimeOffset? LeaseUntil { get; set; }
     public long FencingVersion { get; set; }
     public int Attempt { get; set; }
+    public StructuredAnalysisInput? AnalysisInput { get; set; }
     public string? ExecutionRootCause { get; set; }
     public string? ExecutionInputDigest { get; set; }
     // Populated only when a worker claims the job. Never stored in the job table.

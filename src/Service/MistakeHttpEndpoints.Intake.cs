@@ -120,6 +120,12 @@ public static partial class MistakeHttpEndpoints
                     if(!access.Allowed) return access.ToHttpResponse();
                     foreach(var argument in context.Arguments)
                     {
+                        if (argument is ReanalyzeMistakeItemRequest { StructuredAnalysis: true } structured)
+                        {
+                            if (string.IsNullOrWhiteSpace(structured.ReviewerId))
+                                structured.ReviewerId = authorization.GetSubjectId(user)!;
+                            if (string.IsNullOrWhiteSpace(structured.StudentId)) structured.StudentId = student;
+                        }
                         var reviewer=argument switch {ReviewMistakeItemRequest request=>request.ReviewerId,ReanalyzeMistakeItemRequest request=>request.ReviewerId,_=>null};
                         if(argument is ReviewMistakeItemRequest or ReanalyzeMistakeItemRequest)
                         { var binding=authorization.DecideReviewerBinding(path,user,reviewer); if(!binding.Allowed) return binding.ToHttpResponse(); }
@@ -139,6 +145,8 @@ public static partial class MistakeHttpEndpoints
             }
             return await next(context);
         }
+        catch (Emenda.Domain.Models.AnalysisConflictException ex) { return IntakeError(ex.Message, 409); }
+        catch (KeyNotFoundException) { return IntakeError("mistake_not_found", 404); }
         catch (SourceIntakeException ex) { return Results.Json(new {success=false,errorKind=ex.ErrorKind,conflictingItemIds=ex.ConflictingItemIds},statusCode:ex.StatusCode); }
         catch (InvalidOperationException ex) when (ex.Message == "return_in_progress")
         {

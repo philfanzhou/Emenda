@@ -15,6 +15,7 @@ public interface IReanalyzeJobRepository
     Task<List<ReanalyzeJobModel>> ClaimAsync(int maxCount, CancellationToken ct = default);
     Task<bool> RenewAsync(Guid jobId, Guid ownerId, long version, CancellationToken ct = default);
     Task<bool> CompleteAsync(Guid jobId, Guid ownerId, long version, string rootCause, long durationMs, CancellationToken ct = default);
+    Task<bool> CompleteAnalysisAsync(Guid jobId, Guid ownerId, long version, StructuredAnalysisResult result, long durationMs, CancellationToken ct = default);
     Task<bool> FailAsync(Guid jobId, Guid ownerId, long version, string reasonCode, CancellationToken ct = default);
     Task<int> DeleteExpiredAsync(DateTimeOffset cutoff, CancellationToken ct = default);
 }

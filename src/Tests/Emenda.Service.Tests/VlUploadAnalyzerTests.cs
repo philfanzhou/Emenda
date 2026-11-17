@@ -27,6 +27,33 @@ namespace Emenda.Service.Tests;
 /// </summary>
 public class VlUploadAnalyzerTests
 {
+    [Fact]
+    public async Task StructuredAnalysisCarriesFeedbackAndRejectsFabricatedCatalogIds()
+    {
+        var handler = new CapturingHttpMessageHandler
+        {
+            ResponseContent = """{"summary":"漏解","errors":[{"location":"第二行","evidence":"两边除以 x","explanation":"遗漏零值分支"}],"causes":[{"description":"未检查除数条件","evidence":"直接除以 x","uncertainty":"无法区分理解问题和偶发遗漏"}],"knowledgePoints":[{"name":"等式性质","knowledgePointId":null}],"limitations":"没有题库参考答案"}"""
+        };
+        var input = new Emenda.Domain.Models.StructuredAnalysisInput
+        {
+            Subject = 2, Grade = 9,
+            SourceRegions = [new() { SourceImagePath = "question.png" }],
+            TeacherFeedback = ["符号是加号", "学生理解分配律"],
+            PreviousReport = new() { Summary = "原有分析" }
+        };
+        var result = await CreateCapturingAnalyzer(handler).AnalyzeMistakeAsync(input);
+        Assert.Equal("漏解", result.Report.Summary);
+        using var request = JsonDocument.Parse(handler.CapturedRequestBody!);
+        var context = request.RootElement.GetProperty("messages")[1].GetProperty("content")[0].GetProperty("text").GetString()!;
+        using var contextJson = JsonDocument.Parse(context["Analysis context:\n".Length..]);
+        Assert.Equal(2, contextJson.RootElement.GetProperty("teacherFeedback").GetArrayLength());
+        Assert.Equal("原有分析", contextJson.RootElement.GetProperty("previousReport").GetProperty("summary").GetString());
+        handler.ResponseContent = handler.ResponseContent.Replace("\"knowledgePointId\":null", "\"knowledgePointId\":\"invented\"");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCapturingAnalyzer(handler).AnalyzeMistakeAsync(input));
+        handler.ResponseContent = "{\"summary\":\"incomplete\"}";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateCapturingAnalyzer(handler).AnalyzeMistakeAsync(input));
+    }
+
     private readonly Mock<IOssService> _ossService;
     private readonly VlAnalyzerOptions _options;
     private readonly Mock<ILogger<VlUploadAnalyzer>> _logger;
@@ -535,6 +562,7 @@ public class VlUploadAnalyzerTests
     /// </summary>
     private class CapturingHttpMessageHandler : HttpMessageHandler
     {
+        public string ResponseContent { get; set; } = "[]";
         public string? CapturedRequestBody { get; private set; }
         public int Requests { get; private set; }
 
@@ -548,13 +576,11 @@ public class VlUploadAnalyzerTests
             }
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(@"{
-                    ""choices"": [{
-                        ""finish_reason"": ""stop"",
-                        ""index"": 0,
-                        ""message"": { ""role"": ""assistant"", ""content"": ""[]"" }
-                    }]
-                }", Encoding.UTF8, "application/json")
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    choices = new[] { new { finish_reason = "stop", index = 0,
+                        message = new { role = "assistant", content = ResponseContent } } }
+                }), Encoding.UTF8, "application/json")
             };
         }
     }

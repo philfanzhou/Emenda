@@ -768,6 +768,10 @@ namespace Emenda.Database.Migrations
 
             modelBuilder.Entity("Emenda.Database.Entities.ReanalyzeJobEntity", b =>
                 {
+                    b.Property<string>("AnalysisInput")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("analysis_input");
+
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
@@ -1656,6 +1660,75 @@ namespace Emenda.Database.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_source_target_object_intake");
+                });
+            modelBuilder.Entity("Emenda.Database.Entities.MistakeAnalysisEntity", b =>
+                {
+                    b.Property<Guid>("MistakeItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("mistake_item_id");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<string>("ConfirmedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("confirmed_by");
+
+                    b.Property<Guid?>("ConfirmedJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_job_id");
+
+                    b.Property<string>("ConfirmedReport")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("confirmed_report");
+
+                    b.Property<Guid?>("DraftJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("draft_job_id");
+
+                    b.Property<string>("DraftReport")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("draft_report");
+
+                    b.Property<DateTimeOffset?>("GeneratedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("generated_at");
+
+                    b.Property<string>("InputDigest")
+                        .HasColumnType("text")
+                        .HasColumnName("input_digest");
+
+                    b.Property<string>("Model")
+                        .HasColumnType("text")
+                        .HasColumnName("model");
+
+                    b.Property<string>("PromptVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("prompt_version");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("TeacherFeedback")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("teacher_feedback");
+
+                    b.HasKey("MistakeItemId");
+
+                    b.ToTable("mistake_analysis");
+                });
+
+            modelBuilder.Entity("Emenda.Database.Entities.MistakeAnalysisEntity", b =>
+                {
+                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", null)
+                        .WithOne()
+                        .HasForeignKey("Emenda.Database.Entities.MistakeAnalysisEntity", "MistakeItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_mistake_analysis_mistake_item");
                 });
 #pragma warning restore 612, 618
         }

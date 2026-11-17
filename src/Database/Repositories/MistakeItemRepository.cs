@@ -37,6 +37,13 @@ public class MistakeItemRepository : IMistakeItemRepository
         var entity = await _dbContext.MistakeItems.FindAsync(model.Id);
         if (entity == null) return false;
 
+        if (entity.RootCause != model.RootCause &&
+            await _dbContext.MistakeAnalyses.AnyAsync(a => a.MistakeItemId == model.Id))
+        {
+            if (model.ReviewStatus != (int)ReviewStatus.Rejected)
+                throw new AnalysisConflictException("structured_analysis_required");
+            model.RootCause = entity.RootCause;
+        }
         entity.StudentId = model.StudentId;
         entity.Subject = model.Subject;
         entity.Grade = model.Grade;
@@ -58,6 +65,8 @@ public class MistakeItemRepository : IMistakeItemRepository
         await LegacyReturnWriteGuard.EnsureAsync(_dbContext, itemId, ct);
         var entity = await _dbContext.MistakeItems.FindAsync(new object?[] { itemId }, ct);
         if (entity == null) return;
+        if (await _dbContext.MistakeAnalyses.AnyAsync(a => a.MistakeItemId == itemId))
+            throw new AnalysisConflictException("structured_analysis_required");
         entity.RootCause = newRootCause;
         entity.UpdatedAt = updatedAt;
         // Caller must invoke IUnitOfWork.SaveChangesAsync to commit.

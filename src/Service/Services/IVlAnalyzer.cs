@@ -1,3 +1,5 @@
+using Emenda.Domain.Models;
+
 namespace Emenda.Service.Services;
 
 // Defined in Service layer so gRPC implementations (e.g. MistakeServiceImpl) can inject this
@@ -5,6 +7,9 @@ namespace Emenda.Service.Services;
 // The concrete implementation lives in Host/Services/VlImageAnalysis/VlUploadAnalyzer.cs.
 public interface IVlAnalyzer
 {
+    Task<StructuredAnalysisResult> AnalyzeMistakeAsync(StructuredAnalysisInput input, CancellationToken ct = default) =>
+        throw new NotSupportedException("Structured analysis is unsupported by this adapter.");
+
     Task<VlAnalysisResult> AnalyzeAsync(string studentId, List<string> imagePaths, CancellationToken ct = default);
 
     Task<VlAnalysisResult> AnalyzeVerifiedAsync(string studentId, List<string> imagePaths,

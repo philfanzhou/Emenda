@@ -64,6 +64,18 @@ public class ReanalyzeJobHostedService : BackgroundService
             var analyzer = scope.ServiceProvider.GetRequiredService<IVlAnalyzer>();
             var service = scope.ServiceProvider.GetRequiredService<IReanalyzeJobService>();
             var watch = Stopwatch.StartNew();
+            if (job.AnalysisInput is not null)
+            {
+                var structured = await analyzer.AnalyzeMistakeAsync(job.AnalysisInput, leaseCts.Token);
+                watch.Stop();
+                if (!leaseCts.IsCancellationRequested)
+                {
+                    terminalStarted = true;
+                    await service.MarkAnalysisCompletedAsync(job.Id, owner, job.FencingVersion,
+                        structured, watch.ElapsedMilliseconds, stoppingToken);
+                }
+                return;
+            }
             var result = await analyzer.ReAnalyzeAsync(job.ExecutionStudentId ?? job.StudentId, job.ExecutionImagePaths.ToList(),
                 job.ExecutionRootCause ?? string.Empty, job.TeacherDescription, leaseCts.Token);
             watch.Stop();
