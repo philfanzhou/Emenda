@@ -84,9 +84,9 @@ public sealed partial class ExtractionService
         foreach (var draft in drafts)
         {
             var old = prior?.Questions.SingleOrDefault(q => q.Question.Id == draft.Id);
-            if (old is not null && ExtractionRules.Hash(old.Question) == ExtractionRules.Hash(draft))
+            if (old is not null && old.Question.Regions.SequenceEqual(draft.Regions))
             {
-                result.Add(old);
+                result.Add(old with { Question = draft });
                 continue;
             }
             var crops = new List<ExtractionCrop>();

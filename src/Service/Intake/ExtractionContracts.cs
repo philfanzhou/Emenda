@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Emenda.Service.Intake;
 
 /// <summary>Normalized regions always use the upright displayed image, not stored EXIF pixels.</summary>
@@ -7,6 +9,9 @@ public sealed record ExtractionSource(Guid Id, string Path, string ContentType, 
 public sealed record ExtractionQuestionDraft
 {
     public Guid Id { get; init; }
+    // Omit unknown labels so retained pre-numbering request hashes remain valid.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? QuestionNumber { get; init; }
     public int Subject { get; init; }
     public string Statement { get; init; } = "";
     public string? StudentAnswer { get; init; }
