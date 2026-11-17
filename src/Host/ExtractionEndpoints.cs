@@ -12,7 +12,7 @@ using Microsoft.Extensions.Options;
 
 namespace Emenda.Host;
 
-public static class ExtractionEndpoints
+public static partial class ExtractionEndpoints
 {
     private const long UploadBudget = 9L * 15 * 1024 * 1024 + 65536;
     private const int JsonBudget = 2 * 1024 * 1024;
@@ -85,6 +85,10 @@ public static class ExtractionEndpoints
                 var image = await service.ReadCropAsync(Access(http, administrator), id, questionId, version, index, ct);
                 return Results.File(image.Bytes, image.ContentType);
             });
+        group.MapPost("/{id:guid}/questions/{questionId:guid}/review",
+            async (HttpContext http, Guid id, Guid questionId, IExtractionService service,
+                Emenda.Database.MistakeDbContext db, Emenda.Domain.Services.IMistakeDomainService mistakes, CancellationToken ct) =>
+                await ReviewExtractionAsync(http, administrator, id, questionId, service, db, mistakes, ct));
         if (administrator)
             group.MapPut("/{id:guid}/questions", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
                 Ok(await service.ReviseAsync(Access(http, true), id, await BodyAsync<ExtractionRevisionRequest>(http, ct), ct)));
@@ -115,7 +119,7 @@ public static class ExtractionEndpoints
         var feature = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
         if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = UploadBudget;
         var reader = new FormFeature(http.Request, new FormOptions { MultipartBodyLengthLimit = UploadBudget,
-            ValueLengthLimit = 4096, ValueCountLimit = 10, MultipartHeadersLengthLimit = 16384 });
+            ValueLengthLimit = 4096, ValueCountLimit = 12, MultipartHeadersLengthLimit = 16384 });
         var form = await reader.ReadFormAsync(ct);
         if (form.Keys.Any(k => k is not ("studentId" or "grade" or "sourceKey")) ||
             form["studentId"].Count != 1 || form["grade"].Count != 1 || form["sourceKey"].Count != 1 ||

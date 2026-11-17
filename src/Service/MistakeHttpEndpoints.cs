@@ -402,6 +402,10 @@ public static partial class MistakeHttpEndpoints
         if (request.ReviewStatus != ReviewStatus.Confirmed && request.ReviewStatus != ReviewStatus.Rejected)
             return MistakeHttpResponse.BadRequest("审核结果只能是确认或退回");
 
+        var beforeReview = await mistakeService.GetMistakeItemAsync(id);
+        if (beforeReview?.SourceUploadId?.StartsWith("extract:", StringComparison.Ordinal) == true)
+            return IntakeError("extraction_review_endpoint_required", 409);
+
         // Product standalone mode has no Student service to return the rejected
         // item to: persist the rejection (status + process log) and keep the
         // images in place instead of delegating to the Student return flow.
@@ -436,7 +440,6 @@ public static partial class MistakeHttpEndpoints
             return Results.Json(new { success=true,data=response },statusCode:result.Success ? 200 : 202);
         }
 
-        var beforeReview=await mistakeService.GetMistakeItemAsync(id);
         if(beforeReview?.SourceRegions.Any(r=>ReservedSourceTargetPath.IsReserved(r.SourceImagePath))==true)
             return IntakeError("reserved_target",409);
         try
@@ -1173,6 +1176,22 @@ public static partial class MistakeHttpEndpoints
         return MistakeHttpResponse.Ok(response);
     }
 
+    private static bool IsExtractionObjectPath(string objectPath)
+    {
+        var segments = new List<string>();
+        foreach (var segment in objectPath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".") continue;
+            if (segment == "..")
+            {
+                if (segments.Count > 0) segments.RemoveAt(segments.Count - 1);
+            }
+            else segments.Add(segment);
+        }
+        return segments.Count >= 2 && string.Equals(segments[0], "mistakes", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(segments[1], "extractions", StringComparison.OrdinalIgnoreCase);
+    }
+
     // 18. POST /api/mistakes/presigned-url
     private static async Task<IResult> GetPresignedUrl(
         [FromBody] GetPresignedUrlRequest request,
@@ -1186,6 +1205,8 @@ public static partial class MistakeHttpEndpoints
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
             return MistakeHttpResponse.BadRequest("object_path is required");
+        if (request.ObjectPath.StartsWith("mistakes/extractions/", StringComparison.Ordinal) || IsExtractionObjectPath(request.ObjectPath))
+            return IntakeError("extraction_read_endpoint_required", 403);
         var managed = await intake.GetManagedObjectStudentAsync(request.ObjectPath, ct);
         var managedPractice = await intake.IsManagedPracticeObjectAsync(request.ObjectPath, ct);
         if (managed != null || managedPractice)

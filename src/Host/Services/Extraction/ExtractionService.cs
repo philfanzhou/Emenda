@@ -13,6 +13,9 @@ public sealed partial class ExtractionService(
     IQuestionAnalysisClient analysis, Layout.ILayoutDetectionClient layout,
     IOptions<ExtractionOptions> options, ILogger<ExtractionService> logger) : IExtractionService
 {
+    private const string AdministratorOwner = "admin:";
+    private static string Owner(ExtractionAccess access) => access.Administrator ? AdministratorOwner : "caller:" + access.Caller;
+
     private MistakeDbContext Open() => new(databaseOptions);
     private static Task LockAsync(MistakeDbContext db, string key, CancellationToken ct) =>
         db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({ExtractionRules.LockKey(key)})", ct);
@@ -25,7 +28,7 @@ public sealed partial class ExtractionService(
         Guid id, CancellationToken ct)
     {
         var job = await db.ExtractionJobs.SingleOrDefaultAsync(j => j.Id == id, ct);
-        if (job is null || !access.Administrator && job.Caller != access.Caller)
+        if (job is null || !access.Administrator && job.Caller != Owner(access))
             throw new ExtractionException("not_found", 404);
         return job;
     }
@@ -34,14 +37,15 @@ public sealed partial class ExtractionService(
     {
         ExtractionRules.ValidateUpload(upload);
         if (string.IsNullOrWhiteSpace(access.Caller)) throw new ExtractionException("caller_required", 401);
+        var owner = Owner(access);
         var identity = upload.Images.Select(i => new { i.ContentType, Hash = ExtractionRules.Hash(i.Content) }).ToList();
         var hash = ExtractionRules.Hash(new { upload.StudentId, upload.Grade, Images = identity });
         Guid jobId;
         await using (var db = Open())
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
-            await LockAsync(db, $"extraction-source:{access.Caller}:{upload.SourceKey}", ct);
-            var existing = await db.ExtractionJobs.SingleOrDefaultAsync(j => j.Caller == access.Caller && j.SourceKey == upload.SourceKey, ct);
+            await LockAsync(db, $"extraction-source:{owner}:{upload.SourceKey}", ct);
+            var existing = await db.ExtractionJobs.SingleOrDefaultAsync(j => j.Caller == owner && j.SourceKey == upload.SourceKey, ct);
             if (existing is not null)
             {
                 if (existing.PayloadHash != hash) throw new ExtractionException("source_conflict", 409);
@@ -67,7 +71,7 @@ public sealed partial class ExtractionService(
                         metadata.DisplayWidth, metadata.DisplayHeight, metadata.Orientation));
                 }
                 var now = await NowAsync(db, ct);
-                db.ExtractionJobs.Add(new() { Id = jobId, Caller = access.Caller, SourceKey = upload.SourceKey,
+                db.ExtractionJobs.Add(new() { Id = jobId, Caller = owner, SourceKey = upload.SourceKey,
                     PayloadHash = hash, StudentId = upload.StudentId, Grade = upload.Grade,
                     SourcesJson = ExtractionRules.Serialize(originals), CreatedAt = now, UpdatedAt = now, Status = "Staging" });
                 await db.SaveChangesAsync(ct);
@@ -101,7 +105,8 @@ public sealed partial class ExtractionService(
     {
         if (page is < 1 or > 100000 || studentId?.Length > 36) throw new ExtractionException("invalid_request");
         await using var db = Open();
-        var query = db.ExtractionJobs.Where(j => access.Administrator || j.Caller == access.Caller);
+        var owner = Owner(access);
+        var query = db.ExtractionJobs.Where(j => access.Administrator || j.Caller == owner);
         if (!string.IsNullOrWhiteSpace(studentId)) query = query.Where(j => j.StudentId == studentId);
         var jobs = await query.OrderByDescending(j => j.CreatedAt).ThenBy(j => j.Id).Skip((page - 1) * 20).Take(20).ToListAsync(ct);
         var views = new List<ExtractionJobView>();

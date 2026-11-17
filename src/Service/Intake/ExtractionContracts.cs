@@ -34,6 +34,8 @@ public sealed record ExtractionJobView(Guid Id, string StudentId, int Grade, str
 public sealed record ExtractionRevisionRequest(Guid RequestKey, int ExpectedVersion, string Reason,
     List<ExtractionQuestionDraft> Questions);
 public sealed record ExtractionRetryRequest(Guid RequestKey);
+public sealed record ExtractionReviewRequest(int ExpectedVersion, Guid ItemId, int ReviewStatus,
+    string ReviewerId, string? RootCause, string? ReturnReason);
 public sealed record ExtractionAccess(string Caller, string Actor, bool Administrator = false);
 public sealed record ExtractionUpload(string StudentId, int Grade, string SourceKey, List<ProductIntakeImage> Images);
 

@@ -126,7 +126,7 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
     private readonly string _root = Path.Combine(Path.GetTempPath(), "emenda-extraction-http-" + Guid.NewGuid().ToString("N"));
     private readonly Dictionary<string, string?> _previous = [];
 
-    public ExtractionHostFixture(string connection, bool runWorker = false)
+    public ExtractionHostFixture(string connection, bool runWorker = false, string callerName = "http-tests")
     {
         _connection = connection;
         _runWorker = runWorker;
@@ -135,7 +135,7 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
         var settings = new Dictionary<string, string?>
         {
             ["Emenda__Runtime__Mode"] = "Standalone", ["ConnectionStrings__Emenda"] = connection,
-            ["Emenda__Security__Callers__0__Name"] = "http-tests", ["Emenda__Security__Callers__0__ApiKey"] = CallerKey,
+            ["Emenda__Security__Callers__0__Name"] = callerName, ["Emenda__Security__Callers__0__ApiKey"] = CallerKey,
             ["Emenda__Security__DynamicCallers__Path"] = Path.Combine(_root, "callers.json"),
             ["Emenda__Admin__Oidc__Authority"] = "http://127.0.0.1:5111",
             ["Emenda__Admin__Oidc__ClientId"] = "emenda-tests", ["Emenda__Admin__Oidc__ClientSecret"] = "test-identity-secret",

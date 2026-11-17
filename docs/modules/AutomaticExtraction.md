@@ -90,3 +90,15 @@ AI Tutor 配套源码通过 [基线与完整补丁](../../integrations/ai-tutor/
 - 配套 AI Tutor 完整补丁在精确基线 `27c615a44049f668d0154d4f3b86eef283a061a2` 上应用检查、类型检查、构建及 10 项分析接口测试通过。模型使用受控测试适配器，不代表真实照片识别准确率。
 - 浏览器使用真实 Kestrel、独占 PostgreSQL 和合成管理员会话：两张合成原图归属一个题目，完成题号去空白保存、正反面片段重排、拆分再合并、历史 v1 题号和两幅裁图读取。UUID 不变；合并/拆分判定重置为未知。HTML 形式题号按文字显示，清空题号显示未知；375px 布局 `scrollWidth=375`，截图已检查，未发现横向溢出。
 - 浏览器的模型、版面分析和文件存储使用现有受控测试适配器；未调用真实 AI Tutor / StructaDoc / S3，也未走真实 SignaCore 登录。本次未升级服务器上已部署的 `emenda-biztest`，未提交或推送代码。
+
+### Pre-merge isolation and version-bound review
+
+Extraction upload ownership uses disjoint persisted namespaces: administrator uploads and named service callers cannot collide, even when a configured caller is named `admin` or includes a namespace delimiter. Source-key replay is scoped to this typed owner. This is the initial, unreleased extraction representation; no ambiguous legacy-owner alias is accepted.
+
+Originals and retained crops are read only through the authenticated extraction byte endpoints. The legacy `/api/mistakes/presigned-url` endpoint refuses extraction paths and normalized aliases, including derived thumbnails, before requesting an OSS signature. Existing non-extraction image signing remains unchanged.
+
+`POST /api/intake/extractions/{id}/questions/{questionId}/review` accepts `expectedVersion`, `itemId`, `reviewStatus`, `reviewerId`, `rootCause` and `returnReason`. The trusted BFF supplies the authenticated reviewer (maximum 36 characters, matching the existing schema) and inspected positive version; administrators use their session actor. A shared job advisory lock and the domain database transaction bind the version check, question/item membership and review mutation to one revision. Stale versions return `409 version_conflict`; only pending items may transition once to confirmed or rejected. Rejection reasons are retained in that transaction's review log. The route is also available under the existing admin session/CSRF boundary and returns the complete existing review response DTO. The legacy lifecycle review route refuses extraction-generated items, requiring the conditional route; other items keep their existing contract.
+
+Multipart parsing permits all three required text fields plus nine image parts. Ten images remain invalid.
+
+Pre-merge validation: all 60 focused extraction/client/HTTP tests passed against an owned disposable PostgreSQL 15 instance, with no skips or compiler warnings. Coverage includes arbitrary caller-name collisions, foreign/admin originals and crops, denied legacy signatures and aliases, valid eight/nine-image upload admission, rejected ten-image requests, stale-version review and legacy-route bypass refusal, terminal-state conflicts, reviewer schema limits, persisted rejection reasons and the complete response consumed by the Portal client. The instance was stopped and its data removed. No production database or service was changed.
