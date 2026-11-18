@@ -10,6 +10,9 @@ public class MistakeItemModel
     public int Subject { get; set; }
     public int Grade { get; set; }
     public string SourceUploadId { get; set; } = string.Empty;
+    public string? ConversationCaller { get; set; }
+    public string? ConversationSource { get; set; }
+    public bool ConversationActive { get; set; }
     public List<SourceRegionModel> SourceRegions { get; set; } = new();
     public int ReviewStatus { get; set; }
     public string? ReviewerId { get; set; }

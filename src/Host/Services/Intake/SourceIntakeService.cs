@@ -383,6 +383,16 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
         var handoff=await db.SourceHandoffs.AsNoTracking().SingleOrDefaultAsync(h=>h.SourceUploadId==sourceId && h.ContentRevision==revision,ct);
         return new(JsonSerializer.Deserialize<SourceManifest>(source.Manifest,IntakeCanonical.Json)!,source.Mode,source.Fence,source.LeaseUntil,source.Materialized,"SourceRetained",ids,targets,targets.Count>0 && targets.All(t=>t.State=="Verified"),handoff?.Phase=="Completed",(await db.SourceReturns.AsNoTracking().Where(o=>ids.Contains(o.ItemId)).ToListAsync(ct)).Select(ReturnView).ToList(),handoff==null ? null : HandoffView(handoff));
     }
+    public async Task<bool> CanReadConversationObjectAsync(string path, string caller, CancellationToken ct = default)
+    {
+        await using var db = Open();
+        return await db.Database.SqlQuery<bool>($"""
+            SELECT EXISTS(SELECT 1 FROM mistake_item WHERE conversation_source IS NOT NULL
+              AND conversation_caller={caller}
+              AND source_regions @> jsonb_build_array(jsonb_build_object('sourceImagePath', {path}))) AS "Value"
+            """).SingleAsync(ct);
+    }
+
     public async Task<string?> GetManagedObjectStudentAsync(string path,CancellationToken ct=default)
     {
         await using var db=Open();
@@ -458,6 +468,11 @@ public sealed partial class SourceIntakeService(DbContextOptions<MistakeDbContex
     {
         await using var db=Open();
         if (await db.LegacyReturns.AnyAsync(o => o.ItemId == item.Id, ct)) throw new SourceIntakeException("return_in_progress", 409);
+        var conversation = await db.MistakeItems.AsNoTracking().SingleOrDefaultAsync(i => i.Id == item.Id && i.ConversationSource != null, ct);
+        if (conversation != null && (item.StudentId != conversation.StudentId || item.SourceUploadId != conversation.SourceUploadId
+            || item.ConversationCaller != conversation.ConversationCaller || item.ConversationSource != conversation.ConversationSource
+            || item.ConversationActive != conversation.ConversationActive))
+            throw new SourceIntakeException("conversation_identity", 409);
         if (await db.ExtractionQuestions.AnyAsync(q => q.ItemId == item.Id, ct))
         {
             var stored = await db.MistakeItems.AsNoTracking().SingleAsync(i => i.Id == item.Id, ct);

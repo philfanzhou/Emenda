@@ -12,9 +12,14 @@ public class MistakeDbContext : DbContext
     {
     }
 
+    // Null is reserved for trusted background jobs; HTTP requests set an explicit caller scope.
+    public string? ConversationCallerScope { get; set; }
+
     public DbSet<MistakeItemEntity> MistakeItems { get; set; } = null!;
     public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
+    public DbSet<ConversationCollectionEntity> ConversationCollections => Set<ConversationCollectionEntity>();
+    public DbSet<ConversationMistakeReceiptEntity> ConversationMistakeReceipts => Set<ConversationMistakeReceiptEntity>();
     public DbSet<MistakeAnalysisEntity> MistakeAnalyses => Set<MistakeAnalysisEntity>();
     public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
     public DbSet<ProductIntakeRequestEntity> ProductIntakeRequests => Set<ProductIntakeRequestEntity>();
@@ -54,6 +59,16 @@ public class MistakeDbContext : DbContext
         base.OnModelCreating(modelBuilder);
         ProductIntakeSchema.Configure(modelBuilder);
         MistakeAnalysisSchema.Configure(modelBuilder);
+        ConversationCollectionModel.Configure(modelBuilder);
+        modelBuilder.Entity<MistakeItemEntity>().Property(e => e.ConversationActive).HasDefaultValue(false);
+        modelBuilder.Entity<MistakeItemEntity>().HasQueryFilter(e => ConversationCallerScope == null
+            || e.ConversationSource == null || e.ConversationCaller == ConversationCallerScope);
+        modelBuilder.Entity<MistakePracticeEntity>().HasQueryFilter(e => ConversationCallerScope == null
+            || e.MistakeItem.ConversationSource == null || e.MistakeItem.ConversationCaller == ConversationCallerScope);
+        modelBuilder.Entity<ProcessLogEntity>().HasQueryFilter(e => ConversationCallerScope == null
+            || e.MistakeItem.ConversationSource == null || e.MistakeItem.ConversationCaller == ConversationCallerScope);
+        modelBuilder.Entity<MistakeAnalysisEntity>().HasQueryFilter(e => ConversationCallerScope == null
+            || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         ExtractionModel.Configure(modelBuilder);
         SourceIntakeModel.Configure(modelBuilder);
         SourceTargetModel.Configure(modelBuilder);

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -12,7 +13,7 @@ namespace Emenda.HttpContracts;
 /// </summary>
 public static class MistakeHttpContract
 {
-    public const string Version = "mistake-http-v4";
+    public const string Version = "mistake-http-v5";
     private static readonly byte[] Bytes = ReadBytes();
     private static readonly JsonDocument Contract = JsonDocument.Parse(Bytes);
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Bytes)).ToLowerInvariant();
@@ -111,6 +112,12 @@ public static class MistakeHttpContract
             };
             if (!matches) throw new JsonException($"Wrong contract type at {path}.");
         }
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var numeric))
+        {
+            if (schema.TryGetProperty("minimum", out var minimum) && numeric < minimum.GetDecimal()
+                || schema.TryGetProperty("maximum", out var maximum) && numeric > maximum.GetDecimal())
+                throw new JsonException($"Wrong contract number bounds at {path}.");
+        }
         if (value.ValueKind == JsonValueKind.Object)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
@@ -124,12 +131,25 @@ public static class MistakeHttpContract
                 foreach (var property in value.EnumerateObject())
                     if (properties.TryGetProperty(property.Name, out var child))
                         Validate(property.Value, child, path + "." + property.Name, depth + 1);
+                    else if (schema.TryGetProperty("additionalProperties", out var additional) && additional.ValueKind == JsonValueKind.False)
+                        throw new JsonException($"Unknown contract field at {path}.{property.Name}.");
         }
-        if (value.ValueKind == JsonValueKind.Array && schema.TryGetProperty("items", out var items))
-            foreach (var item in value.EnumerateArray()) Validate(item, items, path + "[]", depth + 1);
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            var count = value.GetArrayLength();
+            if (schema.TryGetProperty("minItems", out var minimumItems) && count < minimumItems.GetInt32()
+                || schema.TryGetProperty("maxItems", out var maximumItems) && count > maximumItems.GetInt32())
+                throw new JsonException($"Wrong contract array size at {path}.");
+            if (schema.TryGetProperty("items", out var items))
+                foreach (var item in value.EnumerateArray()) Validate(item, items, path + "[]", depth + 1);
+        }
         if (value.ValueKind == JsonValueKind.String)
         {
             var text = value.GetString()!;
+            var length = text.EnumerateRunes().Count();
+            if (schema.TryGetProperty("minLength", out var minimumLength) && length < minimumLength.GetInt32()
+                || schema.TryGetProperty("maxLength", out var maximumLength) && length > maximumLength.GetInt32())
+                throw new JsonException($"Wrong contract string length at {path}.");
             if (schema.TryGetProperty("pattern", out var pattern)
                 && !Regex.IsMatch(text, pattern.GetString()!, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
                 throw new JsonException($"Wrong contract string format at {path}.");
@@ -160,7 +180,7 @@ public static class MistakeHttpContract
 
     private static byte[] ReadBytes()
     {
-        using var source = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream("mistake-http-v4.json")
+        using var source = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream("mistake-http-v5.json")
             ?? throw new InvalidOperationException("Missing pinned Mistake contract resource.");
         using var bytes = new MemoryStream();
         source.CopyTo(bytes);

@@ -22,7 +22,7 @@ public sealed class ExtractionSchemaPostgresTests
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now())");
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
         result.FromVersion.Should().Be(15);
-        result.ToVersion.Should().Be(17);
+        result.ToVersion.Should().Be(18);
         (await db.MistakeItems.SingleAsync()).Id.Should().Be(itemId);
         (await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded.Should().BeFalse();
         (await db.Database.GetAppliedMigrationsAsync()).Should().Contain("20261116000000_AddExtractions");
@@ -44,7 +44,7 @@ public sealed class ExtractionSchemaPostgresTests
         await db.Entry(job).ReloadAsync();
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         upgraded.FromVersion.Should().Be(16);
-        upgraded.ToVersion.Should().Be(17);
+        upgraded.ToVersion.Should().Be(18);
         db.ChangeTracker.Clear();
         (await db.ExtractionJobs.SingleAsync()).SourcesJson.Should().Be(job.SourcesJson);
         (await db.ExtractionRevisions.SingleAsync()).RequestKey.Should().Be(receipt.RequestKey);

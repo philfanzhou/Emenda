@@ -71,6 +71,29 @@ public sealed class DecodedImage : IDisposable
 
     public byte[] ToJpeg(int? quality = null) => FrameToJpeg(0, quality);
 
+    /// <summary>Crop a question in displayed orientation, in normalized 0–1000 coordinates.</summary>
+    public (byte[] Data, int Width, int Height) CropQuestion(int x1, int y1, int x2, int y2)
+    {
+        if (x1 < 0 || y1 < 0 || x2 > 1000 || y2 > 1000 || x1 >= x2 || y1 >= y2)
+            throw new ArgumentException("Invalid question region.");
+        using var image = _frames[0].Clone();
+        image.AutoOrient();
+        var left = (int)((long)x1 * image.Width / 1000);
+        var top = (int)((long)y1 * image.Height / 1000);
+        var right = (int)(((long)x2 * image.Width + 999) / 1000);
+        var bottom = (int)(((long)y2 * image.Height + 999) / 1000);
+        var width = right - left;
+        var height = bottom - top;
+        if (width <= 0 || height <= 0) throw new ArgumentException("Question region is empty.");
+        if (left != 0 || top != 0 || right != image.Width || bottom != image.Height)
+        {
+            image.Crop(new MagickGeometry(left, top, (uint)width, (uint)height));
+            image.ResetPage();
+        }
+        image.Quality = 85;
+        return (image.ToByteArray(MagickFormat.Jpeg), width, height);
+    }
+
     internal byte[] FrameToJpeg(int frame, int? quality = null)
     {
         if (quality is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(quality));

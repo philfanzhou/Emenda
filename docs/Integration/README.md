@@ -1,5 +1,7 @@
 # 集成索引
 
+- [Conversation collection](./ConversationCollection.md): default-off product authentication, current Portal authorization callback, durable receipts and independent snapshots (HTTP v5 / schema 18).
+
 | 外部系统 | 交互点入口 |
 |----------|------------|
 | Oss | [集成概览](./Oss/Oss.md)、[Local 模式配置](./Oss/LocalConfiguration.md) |
