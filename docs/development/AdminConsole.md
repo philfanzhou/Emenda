@@ -182,6 +182,22 @@ active; do not treat a failed rotate/disable/delete response as revocation.
 - The console page sends `Cache-Control: no-store`; created keys are shown
   once and never persisted in the browser.
 
+Both admin pages call logout with `fetch`. The host response writer returns
+`200 {"logoutUrl":"..."}` containing the SDK-verified prepared-logout destination;
+the browser must navigate to it at the top level. Returning the SDK's default
+302 here would redirect the fetch across origins instead of completing browser
+sign-out. If provider preparation is unavailable, the response is
+`200 {"outcome":"local_only","logoutUrl":null}` and the page explicitly reports
+that only the local session ended; it does not claim the SignaCore session ended.
+The registered post-logout callback remains `/admin/auth/oidc/logout/return`.
+After it consumes the one-time state, the SDK lands on
+`/admin?authResult=signedOut`, not on that callback again.
+
+The extraction workspace generates UUID v4 request keys with
+`crypto.getRandomValues`, which also works in the documented trusted-LAN HTTP
+deployment profile. No insecure random source is used.
+
+
 ## Testing
 
 `AdminConsoleEndpointTests`, `DynamicCallerStoreTests` and

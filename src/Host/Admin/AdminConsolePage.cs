@@ -115,6 +115,10 @@ internal static class AdminConsolePage
     authErrorBanner.textContent = '已退出登录。';
     authErrorBanner.className = 'notice info';
   }
+  if (params.get('authResult') === 'localOnly') {
+    authErrorBanner.textContent = '已退出本应用，统一登录退出未完成；再次登录可能自动恢复身份。';
+    authErrorBanner.className = 'notice info';
+  }
 
   function show(which) {
     document.getElementById('loginCard').classList.toggle('hidden', which !== 'login');
@@ -262,8 +266,11 @@ internal static class AdminConsolePage
   document.getElementById('logout').onclick = function () {
     withCsrf('POST', '/admin/auth/oidc/logout').then(function (body) {
       if (body && body.logoutUrl) { window.location.href = body.logoutUrl; return; }
-      window.location.href = '/admin?authResult=signedOut';
-    }).catch(function () { window.location.href = '/admin'; });
+      window.location.href = '/admin?authResult=localOnly';
+    }).catch(function () {
+      authErrorBanner.textContent = '退出未完成，请重试。';
+      authErrorBanner.className = 'notice error';
+    });
   };
 
   fetch('/admin/auth/oidc/session', { credentials: 'same-origin' }).then(function (r) {
