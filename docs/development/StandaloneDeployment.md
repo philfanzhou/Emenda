@@ -99,6 +99,24 @@ or absence of business writes. The current Ruoyu.Study migration chain has diver
 migration counts do not establish compatibility. Background reanalysis/cleanup workers are
 not disabled by `Shared`. This guide does not authorize or describe a platform cutover.
 
+### PostgreSQL 18 catalog compatibility
+
+PostgreSQL 18 records `NOT NULL` constraints in `pg_constraint` as type `n`.
+Startup validates their effective nullability through `pg_attribute.attnotnull`,
+and excludes only validated type-`n` entries from the separate key/check constraint
+comparison. Unvalidated entries, unexpected checks and nullability changes still
+fail closed. The regression suite `CatalogStartupPostgresTests` exercises current-schema
+restart without rewriting constraints, migration history or existing rows, plus
+rejection of changed nullability and additional checks. Run it against an isolated
+PostgreSQL instance using `MISTAKE_READONLY_TEST_CONNECTION`.
+
+Older images such as `0.1.1-rc.3` predate this catalog normalization and can refuse
+to restart after a PostgreSQL 18 upgrade. Deploy the compatibility fix; do not
+delete `NOT NULL` constraints, change migration history or select `Shared` merely
+to bypass the failure. This compatibility check does not establish support for
+every historical legacy-schema conversion on PostgreSQL 18.
+
+
 ## Intake and lifecycle
 
 Use `POST /api/intake/uploads` with `X-Emenda-Api-Key` and multipart fields:

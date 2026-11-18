@@ -517,6 +517,7 @@ public static class DatabaseInitializer
         mismatch = Compare("index", misstampedLowercaseIndex ? lowercaseIndexes : expectedIndexes, indexes);
         if (mismatch is not null) return Invalid(mismatch);
 
+        // PostgreSQL 18 also catalogs NOT NULL constraints; validated nullability is checked above via attnotnull.
         var constraints = await ReadSetAsync(connection, """
             SELECT c.conname || '|' || c.contype::text || '|' ||
                    array_to_string(ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord)
@@ -528,7 +529,8 @@ public static class DatabaseInitializer
                    CASE WHEN c.contype='f' THEN c.confdeltype::text ELSE '-' END || '|' ||
                    CASE WHEN c.convalidated THEN 'V' ELSE 'U' END
             FROM pg_constraint c LEFT JOIN pg_class ref ON ref.oid=c.confrelid
-            WHERE c.connamespace='public'::regnamespace ORDER BY c.conname
+            WHERE c.connamespace='public'::regnamespace AND (c.contype <> 'n' OR NOT c.convalidated)
+            ORDER BY c.conname
             """, cancellationToken).ConfigureAwait(false);
         var expectedConstraints = version >= 3 ? ExpectedConstraints :
             Without(ExpectedConstraints, "PK_reanalyze_job|p|id|-|-|-|V");
