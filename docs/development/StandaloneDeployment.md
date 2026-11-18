@@ -105,7 +105,7 @@ PostgreSQL 18 records `NOT NULL` constraints in `pg_constraint` as type `n`.
 Startup validates their effective nullability through `pg_attribute.attnotnull`,
 and excludes only validated type-`n` entries from the separate key/check constraint
 comparison. Unvalidated entries, unexpected checks and nullability changes still
-fail closed. The regression suite `PostgresCatalogStartupTests` exercises current-schema
+fail closed. The regression suite `CatalogStartupPostgresTests` exercises current-schema
 restart without rewriting constraints, migration history or existing rows, plus
 rejection of changed nullability and additional checks. Run it against an isolated
 PostgreSQL instance using `MISTAKE_READONLY_TEST_CONNECTION`.

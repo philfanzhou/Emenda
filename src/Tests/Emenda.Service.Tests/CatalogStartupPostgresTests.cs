@@ -4,7 +4,7 @@ using Npgsql;
 
 namespace Emenda.Service.Tests;
 
-public sealed class PostgresCatalogStartupTests
+public sealed class CatalogStartupPostgresTests
 {
     [Fact]
     public async Task CurrentSchemaRestartsWithoutRewritingConstraintsOrRowsAsync()
