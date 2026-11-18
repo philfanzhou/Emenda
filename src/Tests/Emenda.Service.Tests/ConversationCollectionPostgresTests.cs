@@ -10,7 +10,7 @@ using Emenda.HttpContracts;
 
 namespace Emenda.Service.Tests;
 
-public sealed class ConversationCollectionTests
+public sealed class ConversationCollectionPostgresTests
 {
     [Fact]
     public async Task TextEvidenceCollectsOnceAcrossOperationsAndDeletionCannotBeReplayed()
