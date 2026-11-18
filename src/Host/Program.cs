@@ -353,6 +353,17 @@ builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 builder.Services.AddScoped<IReanalyzeJobRepository, ReanalyzeJobRepository>();
 builder.Services.AddScoped<IMistakeAnalysisRepository, MistakeAnalysisRepository>();
+var conversationOptions = builder.Configuration.GetSection("Emenda:ConversationCollection")
+    .Get<Emenda.Host.Services.Conversation.ConversationCollectionOptions>() ?? new();
+conversationOptions.Validate();
+builder.Services.AddSingleton(conversationOptions);
+builder.Services.AddHttpClient("ConversationCollection", client => client.Timeout = TimeSpan.FromSeconds(60))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<Emenda.Host.Services.Conversation.IConversationAuthorization, Emenda.Host.Services.Conversation.ConversationAuthorizationClient>();
+builder.Services.AddScoped<Emenda.Host.Services.Conversation.ConversationCollectionStore>();
+builder.Services.AddScoped<Emenda.Host.Services.Conversation.ConversationAnalysisStore>();
+builder.Services.AddSingleton<Emenda.Host.Services.Conversation.IConversationExportReader, Emenda.Host.Services.Conversation.ConversationExportClient>();
+if (conversationOptions.Enabled) builder.Services.AddHostedService<Emenda.Host.Services.Conversation.ConversationCollectionWorker>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IMistakeDomainService, MistakeDomainService>();
 builder.Services.AddScoped<IReanalyzeJobService, ReanalyzeJobService>();
@@ -658,6 +669,13 @@ if (standalone)
     // Admin console session boundary (fixed 401/403 before the console API).
     app.UseMiddleware<AdminConsoleSessionMiddleware>();
 }
+app.Use(async (http, next) =>
+{
+    if (http.Request.Path.StartsWithSegments("/api"))
+        http.RequestServices.GetRequiredService<MistakeDbContext>().ConversationCallerScope =
+            http.Items[ProductCallerAuthenticationMiddleware.CallerNameItemKey] as string ?? "";
+    await next(http);
+});
 app.MapMistakeHttpEndpoints(requireAuthenticatedApi: !standalone && strictApiAuth);
 if (standalone)
 {
@@ -669,6 +687,7 @@ if (standalone)
     app.MapAdminConsole();
     app.MapExtractionEndpoints();
 }
+Emenda.Host.Services.Conversation.ConversationCollectionEndpoints.MapConversationCollectionEndpoints(app);
 app.MapMistakeContractEndpoints();
 // Health endpoints (IKJFIX): anonymous in both modes, outside the /api group.
 app.MapMistakeHealthEndpoints();

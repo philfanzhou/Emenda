@@ -21,6 +21,7 @@ namespace Emenda.Database.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            ConversationCollectionModel.Configure(modelBuilder);
             modelBuilder.Entity("Emenda.Database.Entities.ExtractionJobEntity", b =>
             {
                 b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
@@ -666,6 +667,9 @@ namespace Emenda.Database.Migrations
 
             modelBuilder.Entity("Emenda.Database.Entities.MistakeItemEntity", b =>
                 {
+                    b.Property<string>("ConversationSource").HasColumnType("jsonb").HasColumnName("conversation_source");
+                    b.Property<string>("ConversationCaller").HasColumnType("text").HasColumnName("conversation_caller");
+                    b.Property<bool>("ConversationActive").HasColumnType("boolean").HasColumnName("conversation_active").HasDefaultValue(false);
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");

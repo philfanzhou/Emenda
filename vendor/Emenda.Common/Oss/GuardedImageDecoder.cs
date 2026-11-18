@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using ImageMagick;
 
 namespace Emenda.Common.Oss;
 
@@ -8,6 +9,24 @@ namespace Emenda.Common.Oss;
 /// </summary>
 public static class GuardedImageDecoder
 {
+    /// <summary>Inspect bounded question-image headers before allocating decoded pixels.</summary>
+    public static DecodedImage LoadQuestion(byte[] bytes)
+    {
+        if (bytes.Length is 0 or > 4_500_000) throw new ArgumentException("Question image exceeds the byte budget.");
+        var png = bytes.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+        var jpeg = bytes.AsSpan().StartsWith(new byte[] { 255, 216, 255 });
+        var webp = bytes.Length >= 12 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8);
+        if (!png && !jpeg && !webp) throw new ArgumentException("Only JPEG, PNG and WebP question images are supported.");
+        ImageDecoderPolicy.EnsureInitialized();
+        using var headers = new MagickImageCollection();
+        headers.Ping(bytes, new MagickReadSettings { FrameCount = 2 });
+        if (headers.Count != 1) throw new ArgumentException("Question images must contain one frame.");
+        var frame = headers[0];
+        if (frame.Width > 8192 || frame.Height > 8192 || (long)frame.Width * frame.Height > 16_000_000)
+            throw new ArgumentException("Question image exceeds the pixel bounds.");
+        return Load(bytes);
+    }
+
     public static DecodedImage Load(byte[] bytes)
     {
         using var stream = new MemoryStream(bytes, writable: false);

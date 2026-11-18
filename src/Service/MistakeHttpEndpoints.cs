@@ -201,7 +201,8 @@ public static partial class MistakeHttpEndpoints
         if (item == null)
             return MistakeHttpResponse.NotFound("错题条目不存在");
 
-        if (resourceAuthz.Enabled)
+        if (item.ConversationSource != null && user.Identity?.IsAuthenticated != true) return IntakeError("authentication_required", 401);
+        if (resourceAuthz.Enabled || item.ConversationSource != null && !IsProductCaller(user))
         {
             var decision = await resourceAuthz.DecideItemOwnershipAsync(
                 "GET /api/mistakes/{id}", user, id.ToString(), item.StudentId, ct);
@@ -227,7 +228,7 @@ public static partial class MistakeHttpEndpoints
 
         var items = await mistakeService.GetMistakeItemsByUploadAsync(sourceUploadId);
 
-        if (resourceAuthz.Enabled || managedScope)
+        if (resourceAuthz.Enabled || managedScope && !IsProductCaller(user))
         {
             var decision = await resourceAuthz.DecideItemsOwnershipAsync(
                 "GET /api/mistakes/by-upload/{sourceUploadId}", user, sourceUploadId,
@@ -268,7 +269,7 @@ public static partial class MistakeHttpEndpoints
         // students so no cross-student row can leak (TotalCount included).
         List<MistakeItemModel> items;
         int totalCount;
-        if (resourceAuthz.Enabled || managedScope)
+        if (resourceAuthz.Enabled || managedScope && !IsProductCaller(user))
         {
             var scopeDecision = await resourceAuthz.DecideListScopeAsync(
                 "GET /api/mistakes", user, studentId, ct);
@@ -292,6 +293,8 @@ public static partial class MistakeHttpEndpoints
 
         return MistakeHttpResponse.Ok(BuildPageResult(items, totalCount, normalizedPage, normalizedSize));
     }
+
+    private static bool IsProductCaller(ClaimsPrincipal user) => user.Identities.Any(identity => identity.IsAuthenticated && identity.AuthenticationType == "ProductCaller");
 
     private static MistakeItemPageResult BuildPageResult(
         List<MistakeItemModel> items, int totalCount, int page, int size)
@@ -325,7 +328,7 @@ public static partial class MistakeHttpEndpoints
         if(managedScope && (user.Identity?.IsAuthenticated!=true || string.IsNullOrWhiteSpace(resourceAuthz.GetSubjectId(user))))
             return IntakeError("authentication_required",401);
 
-        if (resourceAuthz.Enabled || managedScope)
+        if (resourceAuthz.Enabled || managedScope && !IsProductCaller(user))
         {
             var decision = resourceAuthz.DecideRoleGate(
                 "GET /api/mistakes/pending-reviews", user, MistakeResourceAccessGate.StaffOrAdmin);
@@ -408,14 +411,25 @@ public static partial class MistakeHttpEndpoints
         if (beforeReview?.SourceUploadId?.StartsWith("extract:", StringComparison.Ordinal) == true)
             return IntakeError("extraction_review_endpoint_required", 409);
 
+        if (beforeReview?.ConversationSource != null)
+        {
+            if (!user.Identities.Any(identity => identity.AuthenticationType == "ProductCaller"))
+            {
+                var role = IntakeRole(user, resourceAuthz, MistakeResourceAccessGate.StaffOrAdmin);
+                if (role is not null) return role;
+                var binding = resourceAuthz.DecideReviewerBinding("conversation review", user, request.ReviewerId);
+                if (!binding.Allowed) return binding.ToHttpResponse();
+            }
+        }
+
         // Product standalone mode has no Student service to return the rejected
         // item to: persist the rejection (status + process log) and keep the
         // images in place instead of delegating to the Student return flow.
-        if (runtimeOptions.Standalone && request.ReviewStatus == ReviewStatus.Rejected)
+        if (runtimeOptions.Standalone && request.ReviewStatus == ReviewStatus.Rejected && beforeReview?.ConversationSource == null)
             return await RejectMistakeItemLocallyAsync(id, request, mistakeService, logger);
 
         var intake=http.RequestServices.GetService<ISourceIntakeService>();
-        if (request.ReviewStatus == ReviewStatus.Rejected)
+        if (request.ReviewStatus == ReviewStatus.Rejected && beforeReview?.ConversationSource == null)
         {
             var role = IntakeRole(user, resourceAuthz, MistakeResourceAccessGate.StaffOrAdmin);
             if (role is not null) return role;
@@ -452,9 +466,10 @@ public static partial class MistakeHttpEndpoints
                 id,
                 (int)request.ReviewStatus,
                 request.ReviewerId,
-                request.RootCause,
+                beforeReview?.ConversationSource != null ? request.RootCause ?? beforeReview.RootCause : request.RootCause,
                 grade,
-                subject);
+                subject,
+                beforeReview?.ConversationSource != null ? request.ReturnReason : null);
 
             if (item == null)
                 return MistakeHttpResponse.Ok(new ReviewMistakeItemResponse { Success = false, ErrorMessage = "错题不存在" });
@@ -1197,6 +1212,32 @@ public static partial class MistakeHttpEndpoints
             && string.Equals(segments[1], "extractions", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsConversationObjectPath(string path)
+    {
+        var segments = new List<string>();
+        foreach (var segment in Uri.UnescapeDataString(path).Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (segment == ".") continue;
+            if (segment == "..") { if (segments.Count > 0) segments.RemoveAt(segments.Count - 1); }
+            else segments.Add(segment);
+        }
+        return path.StartsWith("mistakes/conversation/", StringComparison.OrdinalIgnoreCase)
+            || segments.Count >= 2 && string.Equals(segments[0], "mistakes", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(segments[1], "conversation", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCanonicalConversationObjectPath(string path, string caller)
+    {
+        if (path.Length > 300) return false;
+        var parts = path.Split('/');
+        var callerHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(caller)));
+        if (parts.Length != 6 || parts[0] != "mistakes" || parts[1] != "conversation" || parts[2] != callerHash
+            || !Hash(parts[3]) || !Guid.TryParseExact(parts[4], "D", out var conversation) || conversation.ToString("D") != parts[4]) return false;
+        var image = parts[5].Split('.');
+        return image.Length == 2 && Hash(image[0]) && image[1] is "jpg" or "png" or "webp";
+        static bool Hash(string value) => value.Length == 64 && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+    }
+
     // 18. POST /api/mistakes/presigned-url
     private static async Task<IResult> GetPresignedUrl(
         [FromBody] GetPresignedUrlRequest request,
@@ -1210,6 +1251,26 @@ public static partial class MistakeHttpEndpoints
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
             return MistakeHttpResponse.BadRequest("object_path is required");
+        if (IsConversationObjectPath(request.ObjectPath))
+        {
+            var product = user.Identities.FirstOrDefault(identity => identity.IsAuthenticated && identity.AuthenticationType == "ProductCaller");
+            var caller = product?.FindFirst("emenda:caller")?.Value;
+            if (string.IsNullOrWhiteSpace(caller) || !IsCanonicalConversationObjectPath(request.ObjectPath, caller)
+                || !await intake.CanReadConversationObjectAsync(request.ObjectPath, caller, ct))
+                return IntakeError("conversation_image_forbidden", 403);
+            if (!string.IsNullOrWhiteSpace(request.Size) && !string.Equals(request.Size, "full", StringComparison.OrdinalIgnoreCase))
+                return IntakeError("conversation_full_only", 400);
+            var seconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
+            try
+            {
+                if (!await ossService.ObjectExistsAsync(request.ObjectPath).WaitAsync(ct))
+                    return MistakeHttpResponse.NotFound("Conversation image is unavailable");
+                var url = await ossService.GetPresignedUrlAsync(request.ObjectPath, seconds).WaitAsync(ct);
+                return MistakeHttpResponse.Ok(new PresignedUrlResponse { Url = url, ExpirySeconds = seconds });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception) { return IntakeError("conversation_image_unavailable", 503); }
+        }
         if (request.ObjectPath.StartsWith("mistakes/extractions/", StringComparison.Ordinal) || IsExtractionObjectPath(request.ObjectPath))
             return IntakeError("extraction_read_endpoint_required", 403);
         var managed = await intake.GetManagedObjectStudentAsync(request.ObjectPath, ct);
@@ -1284,6 +1345,8 @@ public static partial class MistakeHttpEndpoints
     {
         var dto = new MistakeItemDto
         {
+            ConversationSource = item.ConversationSource == null ? null : System.Text.Json.JsonSerializer.Deserialize<Emenda.HttpContracts.ConversationQuestionSnapshot>(item.ConversationSource, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
+            ConversationActive = item.ConversationActive,
             Id = item.Id.ToString(),
             StudentId = item.StudentId ?? string.Empty,
             Subject = item.Subject,

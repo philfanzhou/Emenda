@@ -13,6 +13,7 @@ public interface ISourceIntakeService
     Task<List<string>> GetManagedJobReviewersAsync(IReadOnlyList<Guid> jobIds, CancellationToken ct = default);
     Task<bool> HasManagedDataAsync(string? studentId = null, string? sourceId = null, CancellationToken ct = default);
     Task<IntakeView?> GetAsync(Guid sourceId, Guid revision, CancellationToken ct = default);
+    Task<bool> CanReadConversationObjectAsync(string path, string caller, CancellationToken ct = default);
     Task<string?> GetManagedObjectStudentAsync(string path, CancellationToken ct = default);
     Task<bool> IsManagedPracticeObjectAsync(string path, CancellationToken ct = default);
     Task VerifyManagedObjectAsync(string path, CancellationToken ct = default);

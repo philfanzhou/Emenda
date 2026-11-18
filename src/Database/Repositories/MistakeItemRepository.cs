@@ -48,6 +48,9 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.Subject = model.Subject;
         entity.Grade = model.Grade;
         entity.SourceUploadId = model.SourceUploadId;
+        entity.ConversationCaller = model.ConversationCaller;
+        entity.ConversationSource = model.ConversationSource;
+        entity.ConversationActive = model.ConversationActive;
         entity.SourceRegions = MapSourceRegions(model.SourceRegions);
         entity.ReviewStatus = model.ReviewStatus;
         entity.ReviewerId = model.ReviewerId;
@@ -104,7 +107,8 @@ public class MistakeItemRepository : IMistakeItemRepository
 
         if (subject > 0) query = query.Where(m => m.Subject == subject);
         if (grade > 0) query = query.Where(m => m.Grade == grade);
-        if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
+        if (reviewStatus == 4) query = query.Where(m => m.ReviewStatus == (int)ReviewStatus.Confirmed || m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationActive && m.ConversationSource != null);
+        else if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
         if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
 
         var totalCount = await query.CountAsync();
@@ -124,7 +128,8 @@ public class MistakeItemRepository : IMistakeItemRepository
 
         if (subject > 0) query = query.Where(m => m.Subject == subject);
         if (grade > 0) query = query.Where(m => m.Grade == grade);
-        if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
+        if (reviewStatus == 4) query = query.Where(m => m.ReviewStatus == (int)ReviewStatus.Confirmed || m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationActive && m.ConversationSource != null);
+        else if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
         if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
 
         var totalCount = await query.CountAsync();
@@ -164,7 +169,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
     {
         var query = _dbContext.MistakeItems
-            .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview);
+            .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationSource == null);
 
         if (subjects != null && subjects.Count > 0)
         {
@@ -232,6 +237,9 @@ public class MistakeItemRepository : IMistakeItemRepository
             Subject = model.Subject,
             Grade = model.Grade,
             SourceUploadId = model.SourceUploadId,
+            ConversationCaller = model.ConversationCaller,
+            ConversationSource = model.ConversationSource,
+            ConversationActive = model.ConversationActive,
             SourceRegions = MapSourceRegions(model.SourceRegions),
             ReviewStatus = model.ReviewStatus,
             ReviewerId = model.ReviewerId,
@@ -252,6 +260,9 @@ public class MistakeItemRepository : IMistakeItemRepository
             Subject = entity.Subject,
             Grade = entity.Grade,
             SourceUploadId = entity.SourceUploadId,
+            ConversationCaller = entity.ConversationCaller,
+            ConversationSource = entity.ConversationSource,
+            ConversationActive = entity.ConversationActive,
             SourceRegions = entity.SourceRegions?.Select(r => new SourceRegionModel
             {
                 SourceImagePath = r.SourceImagePath ?? string.Empty,

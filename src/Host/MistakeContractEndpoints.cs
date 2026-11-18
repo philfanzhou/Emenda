@@ -7,7 +7,7 @@ namespace Emenda.Host;
 /// <summary>Immutable release metadata, independent of every business dependency.</summary>
 public static class MistakeContractEndpoints
 {
-    public const string Version = "mistake-http-v4";
+    public const string Version = "mistake-http-v5";
     public const string ProductVersion = "emenda-intake-v1";
     private static readonly byte[] ProductDocument = ReadDocument(ProductVersion);
     private static readonly byte[] Document = ReadDocument(Version);
@@ -16,6 +16,7 @@ public static class MistakeContractEndpoints
         ["mistake-http-v1"] = ReadDocument("mistake-http-v1"),
         ["mistake-http-v2"] = ReadDocument("mistake-http-v2"),
         ["mistake-http-v3"] = ReadDocument("mistake-http-v3"),
+        ["mistake-http-v4"] = ReadDocument("mistake-http-v4"),
         ["emenda-extraction-v1"] = ReadDocument("emenda-extraction-v1")
     };
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Document)).ToLowerInvariant();

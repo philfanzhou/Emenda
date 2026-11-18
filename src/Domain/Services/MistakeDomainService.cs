@@ -128,7 +128,7 @@ public class MistakeDomainService : IMistakeDomainService
         return await _mistakeItemRepository.GetPendingReviewUploadsAsync(page, size, subjects, ct);
     }
 
-    public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null)
+    public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null, string? reviewReason = null)
     {
         var item = await _mistakeItemRepository.GetByIdAsync(id);
         if (item == null) return null;
@@ -145,6 +145,7 @@ public class MistakeDomainService : IMistakeDomainService
 
         if (reviewStatus == (int)ReviewStatus.Rejected && _sourceGuard != null)
             await _sourceGuard.EnsureDestructiveItemAsync(id);
+        if (reviewReason?.Length > 2000) throw new MistakeValidationException("审核说明最多2000个字符");
 
         item.ReviewStatus = reviewStatus;
         item.ReviewerId = reviewerId;
@@ -169,7 +170,7 @@ public class MistakeDomainService : IMistakeDomainService
             : ProcessAction.ReviewRejected;
         var detail = reviewStatus == (int)ReviewStatus.Confirmed
             ? "Mistake item confirmed"
-            : "Mistake item rejected";
+            : string.IsNullOrWhiteSpace(reviewReason) ? "Mistake item rejected" : "Mistake item rejected: " + reviewReason;
 
         await AddProcessLogAsync(item.Id, action, detail, item.StudentId);
         await _unitOfWork.SaveChangesAsync();

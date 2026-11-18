@@ -12,6 +12,10 @@ public class MistakeItemEntity
     [Column("id")]
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    [Column("conversation_source", TypeName = "jsonb")] public string? ConversationSource { get; set; }
+    [Column("conversation_active")] public bool ConversationActive { get; set; }
+    [Column("conversation_caller")] public string? ConversationCaller { get; set; }
+
     [Column("student_id")]
     [Required]
     [MaxLength(36)]

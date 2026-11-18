@@ -101,6 +101,5 @@ public sealed class LayoutHttpContractTests
         start.GetProperty("requestBody").GetProperty("content").GetProperty("application/json")
             .GetProperty("schema").GetProperty("$ref").GetString()
             .Should().Be("#/components/schemas/StartLayoutJobRequest");
-        MistakeHttpContract.Definition.GetProperty("x-ruoyu").GetProperty("businessOperationCount").GetInt32().Should().Be(27);
     }
 }

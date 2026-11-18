@@ -1,5 +1,7 @@
 # 数据库文档
 
+Schema 18 adds `20261118000000_AddConversationMistakes` after the preserved schema-17 structured-analysis migration. Conversation jobs persist caller/actor/student/owner scope and leases; permanent receipts prevent replay after deletion; mistake snapshots remain independent of chat history. See [Conversation collection](../Integration/ConversationCollection.md).
+
 > **本目录是 ruoyu.mistake 数据库结构的唯一事实源。**
 
 ## 表清单

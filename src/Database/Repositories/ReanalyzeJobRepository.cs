@@ -26,19 +26,31 @@ public class ReanalyzeJobRepository : IReanalyzeJobRepository
         await _db.ReanalyzeJobs.AddAsync(ToEntity(model), ct);
     }
 
+    // Jobs deliberately have no parent FK: retain deleted legacy history, but never
+    // expose orphaned conversation jobs whose permanent receipts retain provenance.
+    private IQueryable<ReanalyzeJobEntity> ReadableJobs()
+    {
+        var jobs = _db.ReanalyzeJobs.AsNoTracking();
+        if (_db.ConversationCallerScope == null) return jobs;
+        return jobs.Where(job => _db.MistakeItems.IgnoreQueryFilters().Any(item => item.Id == job.ItemId
+                && (item.ConversationSource == null || item.ConversationCaller == _db.ConversationCallerScope))
+            || !_db.MistakeItems.IgnoreQueryFilters().Any(item => item.Id == job.ItemId)
+                && !_db.ConversationMistakeReceipts.Any(receipt => receipt.ItemId == job.ItemId));
+    }
+
     public async Task<ReanalyzeJobModel?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-        (await _db.ReanalyzeJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct)) is { } job
+        (await ReadableJobs().FirstOrDefaultAsync(j => j.Id == id, ct)) is { } job
             ? ToModel(job) : null;
 
     public async Task<List<ReanalyzeJobModel>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
     {
         var keys = ids.Distinct().ToArray();
-        return (await _db.ReanalyzeJobs.AsNoTracking().Where(j => keys.Contains(j.Id)).ToListAsync(ct))
+        return (await ReadableJobs().Where(j => keys.Contains(j.Id)).ToListAsync(ct))
             .Select(ToModel).ToList();
     }
 
     public async Task<List<ReanalyzeJobModel>> GetActiveByReviewerAsync(string reviewerId, CancellationToken ct = default) =>
-        (await _db.ReanalyzeJobs.AsNoTracking().Where(j => j.ReviewerId == reviewerId &&
+        (await ReadableJobs().Where(j => j.ReviewerId == reviewerId &&
             (j.Status == 1 || j.Status == 2)).OrderBy(j => j.CreatedAt).ThenBy(j => j.Id).ToListAsync(ct))
             .Select(ToModel).ToList();
 
