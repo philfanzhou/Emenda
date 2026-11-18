@@ -162,7 +162,14 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
   const state = { authenticated:false, page:1, filter:'', list:[], job:null, selectedId:null, loading:0, pollEpoch:0, pollTimer:null, pollCount:0, polling:false, drafts:new Map(), history:null, historyEpoch:0, busy:false, uploadPending:null, retryKeys:new Map() };
   const $ = id => document.getElementById(id);
   const copy = value => JSON.parse(JSON.stringify(value));
-  const uuid = () => crypto.randomUUID();
+  function uuid() {
+    // getRandomValues remains available on the documented LAN HTTP profile.
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+  }
   function node(tag, text, className) {
     const element = document.createElement(tag);
     if (text !== undefined && text !== null) element.textContent = String(text);
@@ -228,7 +235,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
       state.drafts.clear(); stopPolling();
       const target = body.logoutUrl ? new URL(body.logoutUrl, location.origin) : null;
       if (target && ['https:','http:'].includes(target.protocol)) location.assign(target.href);
-      else location.assign('/admin?authResult=signedOut');
+      else location.assign('/admin?authResult=localOnly');
     } catch (error) { notice('message', '退出失败：' + error.message, 'error'); }
   };
   function hasUnsavedDraft() { return [...state.drafts.values()].some(draft => draft.dirty || draft.pending); }

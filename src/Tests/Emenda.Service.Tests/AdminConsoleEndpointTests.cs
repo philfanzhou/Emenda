@@ -67,6 +67,33 @@ public sealed class AdminConsoleEndpointTests
     // ---- configured console with a seeded session ----
 
     [Fact]
+    public async Task PreparedLogoutReturn_ConsumesStateAndLandsOnSignedOutConsole()
+    {
+        using var provider = new LogoutBackchannel();
+        using var factory = new AdminConsoleWebApplicationFactory(configured: true, backchannel: provider);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        await AuthenticateWithCsrfAsync(factory, client);
+        using var prepared = await client.PostAsync("/admin/auth/oidc/logout", null);
+        prepared.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var preparedBody = JsonDocument.Parse(await prepared.Content.ReadAsStringAsync());
+        provider.State.Should().NotBeNullOrEmpty("the controlled provider must receive logout preparation after " + string.Join(", ", provider.Paths));
+        preparedBody.RootElement.GetProperty("logoutUrl").GetString().Should().StartWith("http://127.0.0.1:5111/oauth2/logout?");
+        var correlationCookie = prepared.Headers.GetValues("Set-Cookie").Select(value => value.Split(';')[0])
+            .Single(value => value.StartsWith(AdminConsoleConstants.SessionCookie + "-logout-return=", StringComparison.Ordinal));
+        client.DefaultRequestHeaders.Remove("Cookie");
+        client.DefaultRequestHeaders.Add("Cookie", correlationCookie);
+        provider.State.Should().NotBeNullOrEmpty();
+        var callback = "/admin/auth/oidc/logout/return?state=" + Uri.EscapeDataString(provider.State!);
+
+        using var response = await client.GetAsync(callback);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().Be("/admin?authResult=signedOut");
+        using var replay = await client.GetAsync(callback);
+        replay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task ConfiguredConsole_ManagesCallersEndToEnd()
     {
         using var factory = new AdminConsoleWebApplicationFactory(configured: true);
@@ -338,16 +365,65 @@ public sealed class AdminConsoleEndpointTests
         "IdentityService__MistakeApiResourceAuth",
     ];
 
+    private sealed class LogoutBackchannel : HttpMessageHandler
+    {
+        public string? State { get; private set; }
+        public List<string> Paths { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            const string authority = "http://127.0.0.1:5111";
+            Paths.Add(request.RequestUri!.AbsolutePath);
+            if (request.RequestUri!.AbsolutePath == "/.well-known/openid-configuration")
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new
+                {
+                    issuer = authority, authorization_endpoint = authority + "/oauth2/authorize",
+                    token_endpoint = authority + "/oauth2/token", userinfo_endpoint = authority + "/oauth2/userinfo",
+                    jwks_uri = authority + "/.well-known/jwks.json", revocation_endpoint = authority + "/oauth2/revoke",
+                    end_session_endpoint = authority + "/oauth2/session/end",
+                    response_types_supported = new[] { "code" }, code_challenge_methods_supported = new[] { "S256" },
+                    scopes_supported = new[] { "openid", "profile" },
+                    id_token_signing_alg_values_supported = new[] { "RS256" },
+                    token_endpoint_auth_methods_supported = new[] { "client_secret_basic", "client_secret_post" },
+                    grant_types_supported = new[] { "authorization_code" }
+                }) };
+            if (request.RequestUri.AbsolutePath == "/.well-known/jwks.json")
+            {
+                using var rsa = System.Security.Cryptography.RSA.Create(2048);
+                var key = rsa.ExportParameters(false);
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new
+                {
+                    keys = new[] { new { kty = "RSA", kid = "logout-test", use = "sig", alg = "RS256",
+                        n = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(key.Modulus!),
+                        e = Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(key.Exponent!) } }
+                }) };
+            }
+            if (request.Method == HttpMethod.Post && request.RequestUri.AbsolutePath == "/oauth2/logout/requests")
+            {
+                var form = (await request.Content!.ReadAsStringAsync(cancellationToken)).Split('&')
+                    .Select(value => value.Split('=', 2)).ToDictionary(pair => pair[0], pair => Uri.UnescapeDataString(pair[1]));
+                State = form["state"];
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new
+                {
+                    logout_uri = authority + "/oauth2/logout?logout_handle=" + new string('a', 43)
+                }) };
+            }
+            throw new InvalidOperationException("Unexpected logout backchannel request");
+        }
+    }
+
     private sealed class AdminConsoleWebApplicationFactory : WebApplicationFactory<Program>
     {
         private readonly bool _configured;
+        private readonly HttpMessageHandler? _backchannel;
         private readonly string _dataRoot =
             Path.Combine(Path.GetTempPath(), $"emenda-admin-tests-{Guid.NewGuid():N}");
 
         public AdminConsoleWebApplicationFactory(
-            bool configured = false, bool initializeStore = true, string? callerState = null)
+            bool configured = false, bool initializeStore = true, string? callerState = null, HttpMessageHandler? backchannel = null)
         {
             _configured = configured;
+            _backchannel = backchannel;
             if (configured && initializeStore)
             {
                 Directory.CreateDirectory(_dataRoot);
@@ -419,7 +495,7 @@ public sealed class AdminConsoleEndpointTests
                     // seeded ticket path never performs discovery, but a stray call must
                     // not hang the test host.
                     services.AddHttpClient(SignaCoreHostedLoginDefaults.HttpClientName)
-                        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+                        .ConfigurePrimaryHttpMessageHandler(() => _backchannel ?? new SocketsHttpHandler
                         {
                             ConnectCallback = (_, _) => throw new InvalidOperationException("network disabled in tests")
                         });

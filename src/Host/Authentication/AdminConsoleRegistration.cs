@@ -67,7 +67,7 @@ public static class AdminConsoleRegistration
             options.PreSignInAuthorizationDecision = new AdminPreSignInRoleGate(settings.RequiredRole);
             options.ResponseWriter = AdminConsoleResponseWriter.Instance;
             options.PostLogoutRedirectUri = settings.PostLogoutRedirectUri;
-            options.PostLogoutReturnPath = AdminConsoleConstants.LogoutReturnPath;
+            options.PostLogoutReturnPath = AdminConsoleConstants.ConsolePath + "?authResult=signedOut";
         });
         // Keep the public cookie name; the package owns the Secure policy derived
         // from the configured callback scheme, independently of the environment.

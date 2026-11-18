@@ -84,6 +84,24 @@ public sealed class AdminConsoleResponseWriter : ISignaCoreHostedLoginResponseWr
         }, cancellationToken);
     }
 
+    public Task WriteLogoutPreparedAsync(HttpContext context, string logoutUri,
+        CancellationToken cancellationToken)
+    {
+        // Both admin pages fetch this endpoint, then navigate at the top level.
+        // Keep the SDK-verified URI unchanged instead of redirecting the fetch.
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        context.Response.Headers.CacheControl = "no-store";
+        return context.Response.WriteAsJsonAsync(new { logoutUrl = logoutUri }, cancellationToken);
+    }
+
+    public Task WriteLogoutLocalOnlyAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        context.Response.Headers.CacheControl = "no-store";
+        return context.Response.WriteAsJsonAsync(
+            new { outcome = "local_only", logoutUrl = (string?)null }, cancellationToken);
+    }
+
     internal static string RedirectTarget(SignaCoreSignInReason reason) => reason switch
     {
         SignaCoreSignInReason.AccessDenied or SignaCoreSignInReason.UserCanceled
