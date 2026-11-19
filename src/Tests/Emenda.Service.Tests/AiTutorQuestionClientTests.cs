@@ -19,13 +19,15 @@ public sealed class AiTutorQuestionClientTests
     public async Task SendsExactContractAndPreservesCrossImageUnknown()
     {
         var draft = Draft() with { QuestionNumber = "三、2（1）", Regions = [Region with { SourceId = Other }, Region] };
-        var request = Request() with { Images = [.. Request().Images, new(Other, "data:image/png;base64,iVBORw0KGgo=", 100, 100, [])] };
+        var page = Request().Images[0];
+        var middle = Enumerable.Range(0, 28).Select(_ => page with { SourceId = Guid.NewGuid(), Regions = [] });
+        var request = new QuestionAnalysisRequest(3, [page, .. middle, page with { SourceId = Other, Regions = [] }]);
         var client = Client(async (message, ct) =>
         {
             Assert.Equal("/api/v1/problems/analyze-images", message.RequestUri!.AbsolutePath);
             Assert.Equal(new string('k', 32), message.Headers.GetValues("X-Emenda-Analysis-Key").Single());
             var body = await message.Content!.ReadFromJsonAsync<QuestionAnalysisRequest>(ct);
-            Assert.Equal(2, body!.Images.Count);
+            Assert.Equal(request.Images.Select(i => i.SourceId), body!.Images.Select(i => i.SourceId));
             return new(HttpStatusCode.OK) { Content = JsonContent.Create(new QuestionAnalysisResult("vision", [draft])) };
         });
         var result = await client.AnalyzeAsync(request);

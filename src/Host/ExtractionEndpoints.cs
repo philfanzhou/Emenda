@@ -14,7 +14,7 @@ namespace Emenda.Host;
 
 public static partial class ExtractionEndpoints
 {
-    private const long UploadBudget = 9L * 15 * 1024 * 1024 + 65536;
+    private const long UploadBudget = (long)ExtractionRules.MaxSources * ExtractionRules.MaxImageBytes + 65536;
     private const int JsonBudget = 2 * 1024 * 1024;
 
     public static IServiceCollection AddExtraction(this IServiceCollection services, IConfiguration configuration)
@@ -118,23 +118,23 @@ public static partial class ExtractionEndpoints
             throw new ExtractionException("multipart_required", 415);
         var feature = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
         if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = UploadBudget;
-        var reader = new FormFeature(http.Request, new FormOptions { MultipartBodyLengthLimit = UploadBudget,
-            ValueLengthLimit = 4096, ValueCountLimit = 12, MultipartHeadersLengthLimit = 16384 });
+        var reader = new FormFeature(http.Request, new FormOptions { MultipartBodyLengthLimit = ExtractionRules.MaxImageBytes,
+            ValueLengthLimit = 4096, ValueCountLimit = 3 + ExtractionRules.MaxSources, MultipartHeadersLengthLimit = 16384 });
         var form = await reader.ReadFormAsync(ct);
         if (form.Keys.Any(k => k is not ("studentId" or "grade" or "sourceKey")) ||
             form["studentId"].Count != 1 || form["grade"].Count != 1 || form["sourceKey"].Count != 1 ||
             !int.TryParse(form["grade"], NumberStyles.None, CultureInfo.InvariantCulture, out var grade) ||
-            form.Files.Count is < 1 or > 9 || form.Files.Any(f => f.Name is not ("images" or "images[]") ||
+            form.Files.Count is < 1 or > ExtractionRules.MaxSources || form.Files.Any(f => f.Name is not ("images" or "images[]") ||
                 f.Length is 0 or > ExtractionRules.MaxImageBytes || f.ContentType is not ("image/jpeg" or "image/png")))
             throw new ExtractionException("invalid_request");
         var images = new List<ProductIntakeImage>();
         foreach (var file in form.Files)
         {
             await using var stream = file.OpenReadStream();
-            using var buffer = new MemoryStream(checked((int)file.Length));
-            await stream.CopyToAsync(buffer, ct);
-            if (buffer.Length != file.Length) throw new ExtractionException("invalid_request");
-            images.Add(new() { Content = buffer.ToArray(), ContentType = file.ContentType, FileName = "original" });
+            var content = new byte[checked((int)file.Length)];
+            try { await stream.ReadExactlyAsync(content, ct); }
+            catch (EndOfStreamException) { throw new ExtractionException("invalid_request"); }
+            images.Add(new() { Content = content, ContentType = file.ContentType, FileName = "original" });
         }
         var upload = new ExtractionUpload(form["studentId"].ToString(), grade, form["sourceKey"].ToString(), images);
         ExtractionRules.ValidateUpload(upload);

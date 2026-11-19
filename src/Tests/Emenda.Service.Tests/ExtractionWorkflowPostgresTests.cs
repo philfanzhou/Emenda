@@ -62,17 +62,18 @@ public sealed class ExtractionWorkflowPostgresTests
         var analyzer = DefaultAnalyzer();
         var first = Service(database, analyzer);
         var second = Service(database, analyzer);
-        var receipts = await Task.WhenAll(first.SubmitAsync(Caller, Upload()), second.SubmitAsync(Caller, Upload()));
+        var upload = Upload();
+        var receipts = await Task.WhenAll(first.SubmitAsync(Caller, upload), second.SubmitAsync(Caller, upload));
         receipts[0].Id.Should().Be(receipts[1].Id);
         await Task.WhenAll(first.RunQueuedAsync(default), second.RunQueuedAsync(default));
-        var replay = await second.SubmitAsync(Caller, Upload());
+        var replay = await second.SubmitAsync(Caller, upload);
         replay.Version.Should().Be(1);
         analyzer.Calls.Should().Be(1);
         await using var db = database.CreateContext();
         (await db.ExtractionJobs.CountAsync()).Should().Be(1);
         (await db.ExtractionRevisions.CountAsync()).Should().Be(1);
         (await db.MistakeItems.CountAsync()).Should().Be(1);
-        var conflict = await Assert.ThrowsAsync<ExtractionException>(() => first.SubmitAsync(Caller, Upload() with { StudentId = "different" }));
+        var conflict = await Assert.ThrowsAsync<ExtractionException>(() => first.SubmitAsync(Caller, upload with { StudentId = "different" }));
         conflict.Code.Should().Be("source_conflict");
     }
 
@@ -82,12 +83,13 @@ public sealed class ExtractionWorkflowPostgresTests
         await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
         database.FailAfterPut = true;
-        await Assert.ThrowsAsync<IOException>(() => service.SubmitAsync(Caller, Upload()));
+        var upload = Upload();
+        await Assert.ThrowsAsync<IOException>(() => service.SubmitAsync(Caller, upload));
         (await service.ListAsync(Caller, null)).Single().Status.Should().Be("Staging");
-        var conflict = await Assert.ThrowsAsync<ExtractionException>(() => service.SubmitAsync(Caller, Upload() with { Grade = 9 }));
+        var conflict = await Assert.ThrowsAsync<ExtractionException>(() => service.SubmitAsync(Caller, upload with { Grade = 9 }));
         conflict.Code.Should().Be("source_conflict");
         database.FailAfterPut = false;
-        var queued = await service.SubmitAsync(Caller, Upload());
+        var queued = await service.SubmitAsync(Caller, upload);
         await service.RunQueuedAsync(default);
         (await service.GetAsync(Caller, queued.Id)).Status.Should().Be("Succeeded");
     }

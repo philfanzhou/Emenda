@@ -8,7 +8,7 @@ namespace Emenda.Host.Services.Extraction;
 
 public sealed class AiTutorQuestionClient(HttpClient client, IOptions<ExtractionOptions> options) : IQuestionAnalysisClient
 {
-    private const int RequestLimit = 8 * 1024 * 1024;
+    internal const int RequestLimit = 8 * 1024 * 1024;
     private const int ResponseLimit = 2 * 1024 * 1024;
     // Serialized bytes are sent only as HTTP JSON, never embedded in HTML.
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -98,7 +98,7 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
 
     private static void ValidateRequest(QuestionAnalysisRequest request)
     {
-        if (request is null || request.Grade is < 1 or > 12 || request.Images is null || request.Images.Count is < 1 or > 9)
+        if (request is null || request.Grade is < 1 or > 12 || request.Images is null || request.Images.Count is < 1 or > ExtractionRules.MaxSources)
             throw new ExtractionException("invalid_analysis_request");
         var sources = request.Images.Where(i => i is not null).Select(i => i.SourceId).ToHashSet();
         if (sources.Contains(Guid.Empty) || sources.Count != request.Images.Count || request.Images.Any(i => i is null

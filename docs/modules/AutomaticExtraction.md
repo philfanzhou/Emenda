@@ -5,15 +5,15 @@
 ## 默认规则
 
 - 以完整题目组为粒度，支持一图多题、多图一题和公共题干引用。
-- 每批最多 9 张 JPEG/PNG，每张 15 MiB、单维 8192 像素、总像素 1600 万、单帧。重复字节照片保留第一次的来源，不重复传输推理。
+- 每批按卷面顺序上传，最多 30 张 JPEG/PNG，每张 15 MiB、单维 8192 像素、总像素 1600 万、单帧。重复字节照片保留第一次的来源，不重复传输推理。
 - 缺实际作答、读不清、材料不足或无法判断时，不自动创建错题。
 - 原图不修改；所有框使用 EXIF 转正后的显示帧 `[0,1]` 坐标。裁剪保留完整像素，不通过生成式模型重绘。
 - 对错、分组、区域和来源快照按版本保留，不做自动清理。错题删除后保留题目映射墓碑，不通过重放或历史恢复重新创建它。
 - 管理员纠偏修改的是当前内容版本；已有练习不删除，旧审核/错因/图片写入过程日志。内容变化后的错误题重新待审核，改判正确、无法判断或撤回的既有错题标为退回。
 
-### 跨正反面题目与编号
+### 跨页题目与编号
 
-同一题可同时引用试卷正反面照片中的多个区域。模型依据题干、图形和作答的连续性组题，不按相同题号强行合并；无法确认的内容保留为 `unknown`，由管理员合并或拆分。
+同一题可同时引用任意试卷页面中的多个区域。模型依据题干、图形和作答的连续性组题，不按相同题号强行合并；无法确认的内容保留为 `unknown`，由管理员合并或拆分。
 
 - `questionNumber` 保存原卷面题号，例如 `12`、`三、2（1）`；缺失或无法辨认时为 `null` / 省略，不用列表位置补号。题号允许重复，不承担唯一身份。非空值最多 64 字符，不允许首尾空白或控制字符；管理界面会去除首尾空白并将空白转为未知。
 - `question.id` 是稳定 UUID；修正题号或调整片段顺序不会改变它，也不会新建同一条错题。题号是提取结果及版本快照的元数据，通过已有 `itemId` / `questionId` 关联错题，不重复新增一套数据库编号列。
@@ -38,6 +38,14 @@
 AI Tutor 配套实现新增 `POST /api/v1/problems/analyze-images`。需配置 `EMENDA_ANALYSIS_KEY` 和 `QUESTION_INTAKE_MODEL`，后者必须是已有启用模型配置，不硬编码供应商或模型名称。运行在来源受限后端网络，浏览器不得持有服务密钥。部署顺序为先升级 AI Tutor 并验证能力，再启用 Emenda；不对旧供应商回退，不把聊天自由文本解析为判错合同。
 
 AI Tutor 配套源码通过 [基线与完整补丁](../../integrations/ai-tutor/README.md) 持久交付，已经在任务自有 checkout 实现并检查；Emenda 镜像不会包含或自动部署它。
+
+### Portal 的 30 页接入条件
+
+Emenda 已发布的 `v0.1.1-rc.5` 仍限 9 页。首个兼容版本应同时包含本次 Emenda 上传改动，并搭配接受 30 张图的 AI Tutor。发布后以实际 Git 标签和镜像摘要锁定版本。
+
+- 30 张满额原图共 450 MiB，Emenda 再允许 64 KiB 表单开销。上传路径每层反向代理应允许至少 451 MiB。ASP.NET Core 会把大表单分片暂存到磁盘，服务受理时还会持有全部原图字节；按并发上传数预留临时空间和内存。
+- 上传完成即返回任务，Portal 轮询结果。版面检测逐页执行并保存进度；AI 分析的默认 300 秒从整卷分析调用开始计算。部署时按慢速上传、逐页版面检测和模型响应分别验证超时。
+- 同一次分析携带全部有序预览，JSON 请求最多 8 MiB。页数越多，每页预览可用字节越少；原图和审核裁图保留原始分辨率。响应上限 2 MiB，每卷最多 32 个完整题组，每组最多 32 个区域。上线前用目标模型核验密集小字和跨页题。
 
 ## 接口
 
@@ -99,6 +107,6 @@ Originals and retained crops are read only through the authenticated extraction 
 
 `POST /api/intake/extractions/{id}/questions/{questionId}/review` accepts `expectedVersion`, `itemId`, `reviewStatus`, `reviewerId`, `rootCause` and `returnReason`. The trusted BFF supplies the authenticated reviewer (maximum 36 characters, matching the existing schema) and inspected positive version; administrators use their session actor. A shared job advisory lock and the domain database transaction bind the version check, question/item membership and review mutation to one revision. Stale versions return `409 version_conflict`; only pending items may transition once to confirmed or rejected. Rejection reasons are retained in that transaction's review log. The route is also available under the existing admin session/CSRF boundary and returns the complete existing review response DTO. The legacy lifecycle review route refuses extraction-generated items, requiring the conditional route; other items keep their existing contract.
 
-Multipart parsing permits all three required text fields plus nine image parts. Ten images remain invalid.
+Multipart parsing permits three required text fields plus 30 ordered image parts. A 31st image is rejected before a job is created.
 
 Pre-merge validation: all 60 focused extraction/client/HTTP tests passed against an owned disposable PostgreSQL 15 instance, with no skips or compiler warnings. Coverage includes arbitrary caller-name collisions, foreign/admin originals and crops, denied legacy signatures and aliases, valid eight/nine-image upload admission, rejected ten-image requests, stale-version review and legacy-route bypass refusal, terminal-state conflicts, reviewer schema limits, persisted rejection reasons and the complete response consumed by the Portal client. The instance was stopped and its data removed. No production database or service was changed.

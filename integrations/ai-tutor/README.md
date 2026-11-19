@@ -30,7 +30,7 @@ cd apps/server
 npx tsx --test test/image-analysis.test.ts
 ```
 
-These are local apply/check commands only: no deployment, commit, or push is included. On 2026-11-17 the question-number update passed `git apply --check` against the exact baseline, provider typecheck, build, and all 10 focused image-analysis tests. The tests use controlled models and do not establish real educational or image-recognition quality.
+The 30-page update passed the baseline apply check, typecheck, build and all 12 focused image-analysis tests using controlled models. Real exam recognition quality requires validation with the configured vision model.
 
 ## Runtime configuration
 
@@ -60,10 +60,10 @@ Enable only when the operator has configured the paired service and injected the
 
 ## Wire contract and behavior
 
-`POST /api/v1/problems/analyze-images` accepts up to 8 MiB JSON: grade 1–12 and 1–9 unique upright JPEG/PNG data-URL images, each with source UUID, display width/height, and normalized proposed regions. Dimensions are at most 8192 on each axis and 16 million pixels. Boxes must be nonzero, finite, within `[0,1]`, and belong to their enclosing source.
+`POST /api/v1/problems/analyze-images` accepts up to 8 MiB JSON: grade 1–12 and 1–30 ordered, unique upright JPEG/PNG data-URL images, each with source UUID, display width/height, and normalized proposed regions. Dimensions are at most 8192 on each axis and 16 million pixels. Boxes must be nonzero, finite, within `[0,1]`, and belong to their enclosing source.
 
 The response is `{model,questions:[draft]}`, at most 2 MiB. Each draft accepts optional nullable `questionNumber`: a printed label of 1–64 characters, with no leading/trailing whitespace or Unicode control characters. Missing/null means unknown; unreadable or absent labels should be returned as null, never inferred from array position. Preserve composite labels such as `三、2（1）`. Repeated labels are allowed: they are neither unique identities nor sufficient evidence for grouping. Emenda assigns stable question UUIDs distinct from printed labels after accepting the complete response.
 
-Whole questions may span front/back photos when wording, layout, diagrams or answer continuity establish they are the same question. At most 32 groups and 32 source-bound regions per group are accepted. `regions` is authoritative reading order across photos, not source UUID or label order; Emenda crops/Images must follow it. UI part numbers are 1-based; API indices are zero-based. Subjects are 1–9 and outcomes are `correct|incorrect|unknown`. Correct/incorrect requires a visible actual student attempt, independently solved reference, and comparison evidence. Missing attempts, missing reliable references, unclear content or uncertain continuity remain unknown; no synthetic fallback fills those fields. Malformed labels or foreign-source output fail rather than being repaired.
+Whole questions may span any supplied pages when wording, layout, diagrams or answer continuity establish they are the same question. At most 32 groups and 32 source-bound regions per group are accepted. `regions` is authoritative reading order across photos, not source UUID or label order; Emenda crops/Images must follow it. UI part numbers are 1-based; API indices are zero-based. Subjects are 1–9 and outcomes are `correct|incorrect|unknown`. Correct/incorrect requires a visible actual student attempt, independently solved reference, and comparison evidence. Missing attempts, missing reliable references, unclear content or uncertain continuity remain unknown; no synthetic fallback fills those fields. Malformed labels or foreign-source output fail rather than being repaired.
 
 The endpoint forwards cancellation into the existing model call and disables SDK automatic retries. The Emenda client likewise does not retry requests and bounds both request and response bodies. Tests cover front/back grouping with composite labels and exact region order, missing/null/repeated labels without merging, invalid labels, unknown, missing attempt for confident judgment, foreign sources, malformed provider responses, auth/browser boundaries, disabled configuration, rate limits, and cancellation. No real student images or production model calls are needed for the focused tests.
