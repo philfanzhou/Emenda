@@ -106,7 +106,7 @@ index 0000000..60a2097
 +export const ANALYSIS_MAX_BYTES = 8 * 1024 * 1024;
 +const uuid = z.string().uuid().transform(value => value.toLowerCase());
 +const region = z.object({ sourceId: uuid, x0: z.number().min(0).max(1), y0: z.number().min(0).max(1), x1: z.number().min(0).max(1), y1: z.number().min(0).max(1) }).strict().refine(r => r.x0 < r.x1 && r.y0 < r.y1);
-+const image = z.object({ sourceId: uuid, dataUrl: z.string().regex(/^data:image\/(?:jpeg|png);base64,(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/).refine(value => value.length > value.indexOf(',') + 1), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192), regions: z.array(region).max(256) }).strict().refine(i => i.width * i.height <= 16000000 && i.regions.every(r => r.sourceId === i.sourceId));
++const image = z.object({ sourceId: uuid, dataUrl: z.string().regex(/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/).refine(value => value === value.trim() && (value.length - value.indexOf(',') - 1) % 4 === 0), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192), regions: z.array(region).max(256) }).strict().refine(i => i.width * i.height <= 16000000 && i.regions.every(r => r.sourceId === i.sourceId));
 +export const analysisRequestSchema = z.object({ grade: z.number().int().min(1).max(12), images: z.array(image).min(1).max(9) }).strict().refine(r => new Set(r.images.map(i => i.sourceId)).size === r.images.length);
 +export const questionNumberSchema = z.string().min(1).max(64).refine(value => value === value.trim() && !/\p{Cc}/u.test(value)).nullable().optional();
 +const draft = z.object({ id: uuid.optional(), questionNumber: questionNumberSchema, subject: z.number().int().min(1).max(9), statement: z.string().trim().min(1).max(8000), studentAnswer: z.string().max(8000).nullable(), referenceAnswer: z.string().max(16000), explanation: z.string().max(16000), outcome: z.enum(["correct", "incorrect", "unknown"]), evidence: z.string().max(16000), regions: z.array(region).min(1).max(32) }).strict().refine(q => q.outcome === "unknown" || Boolean(q.studentAnswer?.trim() && q.referenceAnswer.trim() && q.evidence.trim()));
@@ -155,7 +155,7 @@ new file mode 100644
 index 0000000..5b92929
 --- /dev/null
 +++ b/apps/server/test/image-analysis.test.ts
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,100 @@
 +import assert from "node:assert/strict";
 +import { test } from "node:test";
 +import { MockLanguageModelV4 } from "ai/test";
@@ -200,6 +200,12 @@ index 0000000..5b92929
 +test("validates grade, image count, coordinates and source proposals", () => {
 +  for (const value of [{ ...request, grade: 13 }, { ...request, images: [] }, { ...request, images: Array(10).fill(request.images[0]) }, { ...request, images: [{ ...request.images[0], regions: [{ ...region, x1: 0 }] }] }, { ...request, images: [{ ...request.images[0], regions: [{ ...region, sourceId: other }] }] }])
 +    assert.equal(analysisRequestSchema.safeParse(value).success, false);
++});
++test("validates large base64 images without stack overflow and rejects malformed padding", () => {
++  const validate = (dataUrl: string) => analysisRequestSchema.safeParse({ ...request, images: [{ ...request.images[0], dataUrl }] }).success;
++  assert.equal(validate("data:image/png;base64," + "AAAA".repeat(1600000)), true);
++  for (const body of ["", "A", "AAA", "A===", "AA=", "AAA==", "AA==AAAA", "AAAA\n", "!!!!"]) assert.equal(validate("data:image/png;base64," + body), false);
++  for (const body of ["AAAA", "AA==", "AAA="]) assert.equal(validate("data:image/png;base64," + body), true);
 +});
 +test("requires service key, rejects browser access and oversized payloads without a model call", async () => {
 +  const { app, model } = setup();
