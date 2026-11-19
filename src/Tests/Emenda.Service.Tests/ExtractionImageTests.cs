@@ -9,7 +9,7 @@ namespace Emenda.Service.Tests;
 public sealed class ExtractionImageTests
 {
     [Fact]
-    public void DetailedNineImageBatch_FitsProviderBudgetWithoutDroppingSources()
+    public void DetailedThirtyImageBatch_FitsProviderBudgetWithoutDroppingSources()
     {
         var header = Encoding.ASCII.GetBytes("P6\n1600 1600\n255\n");
         var raster = new byte[header.Length + 1600 * 1600 * 3];
@@ -17,20 +17,20 @@ public sealed class ExtractionImageTests
         header.CopyTo(raster, 0);
         using var original = new MagickImage(raster);
         var bytes = original.ToByteArray(MagickFormat.Png);
-        var budget = (7 * 1024 * 1024 / 9) * 3 / 4;
+        var budget = ((8 * 1024 * 1024 - 30 * 64 * 1024) / 30) * 3 / 4;
         var preview = QuestionImage.Preview(bytes, budget);
         Assert.True(preview.Length <= budget);
-        var inputs = Enumerable.Range(0, 9).Select(_ =>
+        var inputs = Enumerable.Range(0, 30).Select(_ =>
         {
             var source = Guid.NewGuid();
             return new QuestionAnalysisImage(source, "data:image/jpeg;base64," + Convert.ToBase64String(preview),
-                1600, 1600, [new(source, 0, 0, 1, 1)]);
+                1600, 1600, Enumerable.Repeat(new ExtractionRegion(source, 1.0 / 7, 1.0 / 3, 5.0 / 7, 2.0 / 3), 256).ToList());
         }).ToList();
         var payload = JsonSerializer.SerializeToUtf8Bytes(new QuestionAnalysisRequest(4, inputs), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.True(payload.Length < 8 * 1024 * 1024, "the complete wire payload, not merely each image, must fit");
         using var decoded = new MagickImage(preview);
         Assert.True(decoded.Width > 0 && decoded.Height > 0);
-        Assert.Equal(9, inputs.Select(i => i.SourceId).Distinct().Count());
+        Assert.Equal(30, inputs.Select(i => i.SourceId).Distinct().Count());
     }
     [Fact]
     public void RotatedOriginal_CropsInUprightFrame_AndOriginalBytesRemainIntact()

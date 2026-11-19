@@ -8,6 +8,7 @@ namespace Emenda.Host.Services.Extraction;
 internal static class ExtractionRules
 {
     internal const int MaxAttempts = 5;
+    internal const int MaxSources = 30;
     internal const int MaxImageBytes = 15 * 1024 * 1024;
     internal const int MaxCropBytes = 64 * 1024 * 1024;
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -26,7 +27,7 @@ internal static class ExtractionRules
         if (upload is null || string.IsNullOrWhiteSpace(upload.StudentId) || upload.StudentId.Length > 36 ||
             upload.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(upload.SourceKey) || upload.SourceKey.Length > 64 ||
             upload.SourceKey.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-')) ||
-            upload.Images is null || upload.Images.Count is < 1 or > 9 ||
+            upload.Images is null || upload.Images.Count is < 1 or > MaxSources ||
             upload.Images.Any(i => i is null || i.Content is null || i.Content.Length is 0 or > MaxImageBytes ||
                 i.ContentType is not ("image/jpeg" or "image/png")))
             throw new ExtractionException("invalid_request");

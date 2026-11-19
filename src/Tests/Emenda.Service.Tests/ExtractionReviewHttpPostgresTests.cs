@@ -19,7 +19,7 @@ public sealed class ExtractionReviewHttpPostgresTests
         using var factory = new ExtractionHostFixture(database.Connection);
         using var caller = factory.CreateClient();
         caller.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
-        using var upload = Upload(1, "versioned-review", ExtractionHttpPostgresTests.TestPng());
+        using var upload = Upload("versioned-review", [ExtractionHttpPostgresTests.TestPng()]);
         var job = await Data<ExtractionJobView>(await caller.PostAsync("/api/intake/extractions", upload));
         using (var scope = factory.Services.CreateScope())
             await scope.ServiceProvider.GetRequiredService<ExtractionService>().RunQueuedAsync(default);
@@ -70,40 +70,57 @@ public sealed class ExtractionReviewHttpPostgresTests
     }
 
     [Theory]
-    [InlineData(8, HttpStatusCode.Accepted)]
-    [InlineData(9, HttpStatusCode.Accepted)]
-    [InlineData(10, HttpStatusCode.BadRequest)]
-    public async Task MultipartAdmissionAcceptsAllNineImagesButRejectsATenth(int count, HttpStatusCode expected)
+    [InlineData(30, HttpStatusCode.Accepted)]
+    [InlineData(31, HttpStatusCode.BadRequest)]
+    public async Task FullExamPreservesPageOrderThroughRecognitionReviewAndReplay(int count, HttpStatusCode expected)
     {
         await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection);
         using var caller = factory.CreateClient();
         caller.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
-        var bytes = ExtractionHttpPostgresTests.TestPng();
-        using var upload = Upload(count, "image-count", bytes);
+        var pages = Enumerable.Range(0, count).Select(index =>
+        {
+            byte[] pixels = [.. "P6\n2 1\n255\n"u8.ToArray(), (byte)index, 0, 0, 0, 0, 255];
+            using var page = new ImageMagick.MagickImage(pixels);
+            return page.ToByteArray(ImageMagick.MagickFormat.Png);
+        }).ToArray();
+        using var upload = Upload("image-count", pages);
         using var response = await caller.PostAsync("/api/intake/extractions", upload);
         Assert.Equal(expected, response.StatusCode);
         if (expected == HttpStatusCode.Accepted)
         {
             var job = await Data<ExtractionJobView>(response);
-            Assert.Equal("student-review", job.StudentId);
-            Assert.Equal("Queued", job.Status);
-            using var original = await caller.GetAsync($"/api/intake/extractions/{job.Id}/sources/{job.Sources[0].Id}");
-            Assert.Equal(bytes, await original.Content.ReadAsByteArrayAsync());
+            Assert.Equal(pages.Select(page => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(page))),
+                job.Sources.Select(s => s.Sha256));
+            using (var scope = factory.Services.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<ExtractionService>().RunQueuedAsync(default);
+            var result = await Data<ExtractionJobView>(await caller.GetAsync($"/api/intake/extractions/{job.Id}"));
+            Assert.Equal("Succeeded", result.Status);
+            var question = Assert.Single(result.Questions);
+            Assert.Equal(job.Sources.Select(s => s.Id), question.Question.Regions.Select(r => r.SourceId));
+            using var review = await caller.PostAsJsonAsync($"/api/intake/extractions/{job.Id}/questions/{question.Question.Id}/review",
+                new ExtractionReviewRequest(result.Version, question.ItemId!.Value, 2, "teacher", "Verified all pages", null));
+            Assert.Equal(HttpStatusCode.OK, review.StatusCode);
+            using var retry = Upload("image-count", pages);
+            var replay = await Data<ExtractionJobView>(await caller.PostAsync("/api/intake/extractions", retry));
+            Assert.Equal(job.Id, replay.Id);
+            Assert.Equal(result.Version, replay.Version);
+            Assert.Equal(question.ItemId, Assert.Single(replay.Questions).ItemId);
+            Assert.Single(await Data<List<ExtractionJobView>>(await caller.GetAsync("/api/intake/extractions")));
         }
         else
             Assert.Empty(await Data<List<ExtractionJobView>>(await caller.GetAsync("/api/intake/extractions")));
     }
 
-    private static MultipartFormDataContent Upload(int count, string key, byte[] bytes)
+    private static MultipartFormDataContent Upload(string key, byte[][] pages)
     {
         var form = new MultipartFormDataContent();
         form.Add(new StringContent("student-review"), "studentId");
         form.Add(new StringContent("4"), "grade");
         form.Add(new StringContent(key), "sourceKey");
-        for (var index = 0; index < count; index++)
+        for (var index = 0; index < pages.Length; index++)
         {
-            var image = new ByteArrayContent(bytes);
+            var image = new ByteArrayContent(pages[index]);
             image.Headers.ContentType = new MediaTypeHeaderValue("image/png");
             form.Add(image, "images", $"page-{index}.png");
         }

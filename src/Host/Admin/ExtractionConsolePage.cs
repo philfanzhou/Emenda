@@ -5,7 +5,7 @@ internal static class ExtractionConsolePage
 {
     public const string MediaType = "text/html; charset=utf-8";
 
-    public static string Render() => """
+    public static string Render() => $$"""
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -132,7 +132,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
             <label>来源幂等键 sourceKey<input name="sourceKey" id="sourceKey" required maxlength="64" pattern="[A-Za-z0-9._-]{1,64}" aria-describedby="sourceKeyHelp"></label>
           </div>
           <p id="sourceKeyHelp" class="muted">同一批照片始终使用同一来源键。超时后先查询任务，不自动重复提交；换一批内容必须使用新键。</p>
-          <label>原始照片，1 至 9 张 JPEG / PNG，每张不超过 15 MiB<input id="images" name="images" type="file" accept="image/jpeg,image/png" multiple required aria-describedby="fileSummary"></label>
+          <label>原始照片，1 至 {{{Services.Extraction.ExtractionRules.MaxSources}}} 张 JPEG / PNG，每张不超过 15 MiB<input id="images" name="images" type="file" accept="image/jpeg,image/png" multiple required aria-describedby="fileSummary"></label>
           <p id="fileSummary" class="muted">尚未选择照片。</p>
         </fieldset>
         <div class="row"><button id="upload" class="primary" type="submit">上传并创建任务</button><button id="newSourceKey" type="button">为新一批生成来源键</button></div>
@@ -156,7 +156,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
   'use strict';
   // No write is retried by request(), polling, session restoration or list refresh.
   const ROOT = '/admin/api/extractions';
-  const MAX_FILES = 9, MAX_FILE_BYTES = 15 * 1024 * 1024, MAX_POLLS = 60;
+  const MAX_FILES = {{{Services.Extraction.ExtractionRules.MaxSources}}}, MAX_FILE_BYTES = 15 * 1024 * 1024, MAX_POLLS = 60;
   const statusNames = { Staging:'原图校验中', Queued:'排队中', Running:'识别与判错中', Succeeded:'处理完成', Failed:'处理失败' };
   const outcomeNames = { correct:'正确', incorrect:'错误', unknown:'无法判断' };
   const state = { authenticated:false, page:1, filter:'', list:[], job:null, selectedId:null, loading:0, pollEpoch:0, pollTimer:null, pollCount:0, polling:false, drafts:new Map(), history:null, historyEpoch:0, busy:false, uploadPending:null, retryKeys:new Map() };
@@ -256,7 +256,7 @@ summary { cursor:pointer; min-height:42px; padding:8px 0; font-weight:600; color
     if (!studentId || studentId.length > 36) throw new Error('学生 ID 必须为 1 至 36 个字符。');
     if (!Number.isInteger(grade) || grade < 1 || grade > 12) throw new Error('年级必须为 1 至 12 的整数。');
     if (!/^[A-Za-z0-9._-]{1,64}$/.test(sourceKey)) throw new Error('来源键仅可使用 1 至 64 位字母、数字、点、下划线和连字符。');
-    if (!files.length || files.length > MAX_FILES) throw new Error('请选择 1 至 9 张原图。');
+    if (!files.length || files.length > MAX_FILES) throw new Error(`请选择 1 至 ${MAX_FILES} 张原图。`);
     for (const file of files) {
       if (!['image/jpeg','image/png'].includes(file.type)) throw new Error(file.name + ' 不是 JPEG / PNG。');
       if (file.size < 1 || file.size > MAX_FILE_BYTES) throw new Error(file.name + ' 为空或超过 15 MiB。');

@@ -117,6 +117,9 @@ public sealed partial class ExtractionService
         {
             var accepted = ExtractionRules.Read<List<AcceptedLayout>>(job.LayoutJson);
             var inputs = new List<QuestionAnalysisImage>();
+            // Allow 64 KiB per page for up to 256 layout boxes and JSON overhead.
+            var metadataBudget = Math.Max(1024 * 1024, sources.Count * 64 * 1024);
+            var previewBudget = (AiTutorQuestionClient.RequestLimit - metadataBudget) / sources.Count * 3 / 4;
             foreach (var source in sources)
             {
                 var bytes = await VerifiedSourceAsync(source, ct);
@@ -134,8 +137,8 @@ public sealed partial class ExtractionService
                 }
                 var regions = retained.Result.Regions.Where(r => r.Box.X0 < r.Box.X1 && r.Box.Y0 < r.Box.Y1)
                     .Select(r => ToDisplayRegion(source, r)).ToList();
-                // Reserve 1 MiB for JSON/layout metadata; Base64 expands each preview by 4/3.
-                var preview = QuestionImage.Preview(bytes, (7 * 1024 * 1024 / sources.Count) * 3 / 4);
+
+                var preview = QuestionImage.Preview(bytes, previewBudget);
                 inputs.Add(new(source.Id, "data:image/jpeg;base64," + Convert.ToBase64String(preview), source.Width, source.Height, regions));
             }
             analyzed = await analysis.AnalyzeAsync(new(job.Grade, inputs), ct);
