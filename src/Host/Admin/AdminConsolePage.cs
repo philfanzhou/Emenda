@@ -20,81 +20,53 @@ internal static class AdminConsolePage
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Emenda 管理控制台</title>
 <style>
-  :root { color-scheme: light; }
-  * { box-sizing: border-box; }
-  body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; margin: 0; background: #f4f6f9; color: #1c2733; }
-  header { background: #16324f; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
-  header h1 { font-size: 18px; margin: 0; flex: 1; }
-  header .who { font-size: 13px; opacity: .9; }
-  main { max-width: 860px; margin: 24px auto; padding: 0 16px; }
-  .card { background: #fff; border: 1px solid #dde4ec; border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(16,32,48,.05); }
-  .card h2 { font-size: 15px; margin: 0 0 12px; color: #16324f; }
-  .notice { border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
-  .notice.error { background: #fdecea; color: #8a1f18; border: 1px solid #f3c1bc; }
-  .notice.info { background: #e8f1fb; color: #1c4d8c; border: 1px solid #bcd6f0; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #edf1f5; vertical-align: middle; }
-  th { color: #5a6b7d; font-weight: 600; background: #fafbfc; }
-  td .mono { font-family: Consolas, monospace; font-size: 12px; }
-  .pill { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 12px; }
-  .pill.on { background: #e3f4e8; color: #1d6b33; }
-  .pill.off { background: #fdecea; color: #8a1f18; }
-  .pill.src { background: #eef0f3; color: #4a5a6a; margin-left: 6px; }
-  button { border: 1px solid #b9c6d4; background: #fff; color: #1c2733; border-radius: 6px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
-  button:hover { background: #f2f6fa; }
-  button.primary { background: #1654a0; border-color: #1654a0; color: #fff; }
-  button.primary:hover { background: #12478a; }
-  button.danger { color: #8a1f18; border-color: #e3b6b1; }
-  button:disabled { opacity: .5; cursor: default; }
-  input[type=text] { border: 1px solid #b9c6d4; border-radius: 6px; padding: 6px 10px; font-size: 13px; width: 240px; }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .keybox { background: #0f1e2e; color: #7ee2a8; font-family: Consolas, monospace; font-size: 13px; border-radius: 6px; padding: 10px 12px; word-break: break-all; margin-top: 10px; }
-  .muted { color: #6b7a89; font-size: 12px; }
-  .hidden { display: none; }
-  .login-hero { text-align: center; padding: 44px 16px; }
-  .login-hero h2 { font-size: 20px; margin-bottom: 6px; }
-  .login-hero p { color: #5a6b7d; font-size: 14px; margin-bottom: 22px; }
-  .login-hero button { font-size: 15px; padding: 9px 22px; }
+{{AdminConsoleLayout.Styles}}
+.toolbar,.table-foot,.config { padding:14px 22px; }
+.toolbar,.table-foot { border-bottom:1px solid var(--line); }
+.filters { display:flex; border-radius:7px; background:#f0f1f5; padding:3px; }
+.filters button { border:0; color:var(--muted); background:transparent; }
+.filters button[aria-pressed=true] { color:var(--accent); background:white; box-shadow:0 1px 3px #20203920; }
+table { width:100%; border-collapse:collapse; text-align:left; }
+th { background:#f8f9fb; color:var(--muted); font-size:12px; }
+th,td { padding:12px 17px; border-bottom:1px solid #e9ecf2; }
+td { font-size:14px; overflow-wrap:anywhere; } td:first-child { max-width:260px; } td:last-child { white-space:nowrap; }
+td code { background:#f3f4f8; border-radius:4px; padding:3px 7px; }
+.link { color:var(--accent); border-color:transparent; }
+.table-foot { border:0; } .config { margin-top:15px; } .config p { margin-top:10px; }
+dialog { width:min(480px,90vw); border:1px solid var(--line); border-radius:12px; color:var(--ink); padding:23px; }
+dialog::backdrop { background:#21264055; }
+dialog input { display:block; width:100%; margin:5px 0 14px; }
+dialog label { font-size:14px; font-weight:600; }
+dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
+#newKey { display:block; padding:12px; border-radius:6px; background:var(--tint); margin:10px 0; user-select:all; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Emenda 管理控制台</h1>
-  <a href="/admin/extractions" style="color:inherit;font-size:13px">图片提取与纠偏</a>
-  <span class="who" id="who"></span>
-  <button id="logout" class="hidden" type="button">退出登录</button>
-</header>
-<main>
-  <div id="authError" class="notice error hidden"></div>
-
+{{AdminConsoleLayout.Header(intake: false)}}
+<main id="main-content">
+  <div id="authError" class="notice error hidden" role="status"></div>
   <section id="loginCard" class="card login-hero hidden">
     <h2>管理员登录</h2>
     <p>请使用 SignaCore 管理员账户继续。</p>
     <button id="signIn" class="primary" type="button">使用 SignaCore 登录</button>
   </section>
-
   <section id="console" class="hidden">
-    <div class="card">
-      <h2>调用方凭据（X-Emenda-Api-Key）</h2>
-      <div class="notice info">
-        静态配置（<code>Emenda:Security:Callers</code>）与动态凭据文件
-        （<code>{{state.DynamicPath}}</code>）按名称合并，动态条目覆盖同名静态条目。
-        新建或轮换后的密钥只显示一次。
-      </div>
-      <div class="row" style="margin-bottom:12px">
-        <input type="text" id="newName" placeholder="调用方名称，如 study-platform" maxlength="128">
-        <input type="text" id="newNote" placeholder="备注（可选）" style="width:220px">
-        <button id="create" class="primary" type="button">新建调用方</button>
-      </div>
-      <div id="createResult" class="hidden">
-        <div class="keybox" id="newKey"></div>
-        <div class="muted" style="margin:6px 0 12px">请立即复制保存，此密钥不会再次显示。</div>
-      </div>
-      <table>
-        <thead><tr><th>名称</th><th>密钥</th><th>来源</th><th>状态</th><th>备注 / 更新时间</th><th style="width:230px">操作</th></tr></thead>
-        <tbody id="callerRows"><tr><td colspan="6" class="muted">加载中…</td></tr></tbody>
-      </table>
-    </div>
+    <div class="page-title"><div><h1>调用方凭据</h1><p class="muted">管理各接入服务使用的 <code>X-Emenda-Api-Key</code>。</p></div>
+      <button id="openCreate" class="primary" type="button">＋ 新建调用方</button></div>
+    <div class="card"><div class="toolbar spread">
+      <div class="filters" aria-label="按状态筛选"><button data-filter="all">全部</button><button data-filter="on">已启用</button><button data-filter="off">已停用</button></div>
+      <input type="search" id="search" aria-label="搜索调用方名称或备注" placeholder="搜索调用方名称或备注">
+    </div><table><thead><tr><th>调用方 / 备注</th><th>密钥</th><th>来源</th><th>状态</th><th>更新时间（本地）</th><th>操作</th></tr></thead>
+      <tbody id="callerRows"><tr><td colspan="6">正在读取调用方…</td></tr></tbody></table>
+      <div id="count" class="table-foot muted" role="status"></div></div>
+    <details class="card config"><summary>凭据来源说明</summary><p>动态凭据覆盖同名部署配置。静态条目由部署配置管理。</p>
+      <p class="muted">部署配置 <code>Emenda:Security:Callers</code> · 动态文件 <code>{{System.Net.WebUtility.HtmlEncode(state.DynamicPath)}}</code></p></details>
+    <dialog id="createDialog" aria-labelledby="createTitle"><form id="createForm">
+      <h2 id="createTitle">新建调用方</h2><label>调用方名称<input id="newName" maxlength="128" placeholder="例如 study-platform" required></label>
+      <label>备注（可选）<input id="newNote"></label><div class="row"><button class="primary" id="create">创建凭据</button><button type="button" data-close>取消</button></div>
+    </form></dialog>
+    <dialog id="actionDialog" aria-labelledby="actionTitle"><h2 id="actionTitle"></h2><div id="actions" class="row"></div></dialog>
+    <dialog id="keyDialog" aria-labelledby="keyTitle"><h2 id="keyTitle"></h2><p class="muted">请复制并妥善保存密钥。</p><code id="newKey"></code><button type="button" data-close>关闭</button></dialog>
   </section>
 </main>
 <script>
@@ -121,6 +93,11 @@ internal static class AdminConsolePage
   }
 
   function show(which) {
+    if (which === 'login') {
+      document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+      document.getElementById('logout').hidden = true;
+      document.getElementById('who').textContent = '';
+    }
     document.getElementById('loginCard').classList.toggle('hidden', which !== 'login');
     document.getElementById('console').classList.toggle('hidden', which !== 'console');
   }
@@ -157,109 +134,119 @@ internal static class AdminConsolePage
     });
   }
 
-  function mask(key) {
-    if (!key) return '';
-    if (key.length <= 8) return '****';
-    return key.slice(0, 4) + '****' + key.slice(-4);
+  const $ = id => document.getElementById(id);
+  const labels = { all:'全部', on:'已启用', off:'已停用' };
+  let lastCallers = [], filter = 'all', loading = true;
+  function element(tag, text, style) {
+    const el = document.createElement(tag);
+    el.textContent = text;
+    if (style) el.className = style;
+    return el;
   }
-  function esc(value) {
-    var div = document.createElement('div');
-    div.textContent = value == null ? '' : String(value);
-    return div.innerHTML;
+  function action(label, handler, style) {
+    const btn = element('button', label, style);
+    btn.type = 'button';
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try { await handler(); }
+      catch (error) { if (error.message !== 'unauthenticated') alert(error.message); }
+      finally { btn.disabled = false; }
+    };
+    return btn;
   }
-
-  var revealed = {};
-  function renderCallers(callers) {
-    var tbody = document.getElementById('callerRows');
-    tbody.innerHTML = '';
-    if (!callers.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="muted">尚无调用方。</td></tr>';
-      return;
-    }
-    callers.forEach(function (caller) {
-      var tr = document.createElement('tr');
-      var keyText = caller.source === 'configuration' ? '<span class="muted">配置文件管理，请查看部署配置</span>'
-        : '<span class="mono" data-key="' + esc(caller.name) + '">' + esc(revealed[caller.name] || mask(caller.maskedKey)) + '</span>';
-      tr.innerHTML =
-        '<td>' + esc(caller.name) + '</td>' +
-        '<td>' + keyText + '</td>' +
-        '<td>' + (caller.source === 'configuration' ? '配置' : '动态文件') + '</td>' +
-        '<td><span class="pill ' + (caller.enabled ? 'on' : 'off') + '">' + (caller.enabled ? '启用' : '停用') + '</span></td>' +
-        '<td class="muted">' + esc(caller.note || '') + (caller.updatedAtUtc ? '<br>' + esc(caller.updatedAtUtc) : '') + '</td>' +
-        '<td class="row"></td>';
-      var actions = tr.lastElementChild;
-      if (caller.source === 'dynamic') {
-        var reveal = document.createElement('button');
-        reveal.type = 'button'; reveal.textContent = '显示';
-        reveal.onclick = function () {
-          fetchJson('/admin/api/callers/' + encodeURIComponent(caller.name) + '/secret')
-            .then(function (body) {
-              revealed[caller.name] = body.data.apiKey;
-              renderCallers(lastCallers);
-            }).catch(function () {});
-        };
-        actions.appendChild(reveal);
-        var rotate = document.createElement('button');
-        rotate.type = 'button'; rotate.textContent = '轮换';
-        rotate.onclick = function () {
-          if (!window.confirm('轮换将立即生成新密钥并替换 ' + caller.name + ' 的旧密钥，调用方需同步更新。继续？')) return;
-          withCsrf('POST', '/admin/api/callers/' + encodeURIComponent(caller.name) + '/rotate')
-            .then(function (body) { showNewKey('已轮换 ' + caller.name, body.data.apiKey); reload(); })
-            .catch(function (error) { alert('轮换失败：' + error.message); });
-        };
-        actions.appendChild(rotate);
-        var toggle = document.createElement('button');
-        toggle.type = 'button'; toggle.textContent = caller.enabled ? '停用' : '启用';
-        toggle.onclick = function () {
-          withCsrf('PUT', '/admin/api/callers/' + encodeURIComponent(caller.name), { enabled: !caller.enabled })
-            .then(reload).catch(function (error) { alert('操作失败：' + error.message); });
-        };
-        actions.appendChild(toggle);
-        var remove = document.createElement('button');
-        remove.type = 'button'; remove.textContent = '删除'; remove.className = 'danger';
-        remove.onclick = function () {
-          if (!window.confirm('删除调用方 ' + caller.name + '？使用该密钥的调用将立即失效。')) return;
-          withCsrf('DELETE', '/admin/api/callers/' + encodeURIComponent(caller.name))
-            .then(reload).catch(function (error) { alert('删除失败：' + error.message); });
-        };
-        actions.appendChild(remove);
-      } else {
-        var note = document.createElement('span');
-        note.className = 'muted';
-        note.textContent = '静态条目：请修改部署配置或用同名动态条目覆盖';
-        actions.appendChild(note);
-      }
-      tbody.appendChild(tr);
+  function renderCallers() {
+    const term = $('search').value.trim().toLowerCase();
+    const visible = lastCallers.filter(c => (filter === 'all' || c.enabled === (filter === 'on'))
+      && (c.name + ' ' + (c.note || '')).toLowerCase().includes(term));
+    const counts = { all:lastCallers.length, on:lastCallers.filter(c => c.enabled).length };
+    counts.off = counts.all - counts.on;
+    document.querySelectorAll('[data-filter]').forEach(b => {
+      const key = b.dataset.filter;
+      b.textContent = labels[key] + ' ' + counts[key];
+      b.setAttribute('aria-pressed', String(key === filter));
     });
+    const rows = $('callerRows');
+    rows.replaceChildren();
+    visible.forEach(c => {
+      const row = rows.insertRow(), name = row.insertCell();
+      name.append(element('strong', c.name), element('div', c.note || '—', 'muted'));
+      const dynamic = c.source === 'dynamic';
+      row.insertCell().append(element(dynamic ? 'code' : 'span', dynamic ? c.maskedKey : '由部署配置保管'));
+      row.insertCell().textContent = dynamic ? '动态文件' : '部署配置';
+      row.insertCell().append(element('span', c.enabled ? '已启用' : '已停用', c.enabled ? 'pill correct' : 'pill'));
+      row.insertCell().textContent = c.updatedAtUtc ? new Date(c.updatedAtUtc).toLocaleString('zh-CN', {hour12:false}) : '—';
+      const actions = row.insertCell();
+      if (dynamic) {
+        actions.append(action('查看密钥', async () => {
+          const body = await fetchJson(callerUrl(c) + '/secret');
+          showKey(c.name, body.data.apiKey);
+        }, 'link'), action('更多', () => openActions(c)));
+      } else actions.textContent = '配置管理';
+    });
+    if (!visible.length) {
+      const cell = rows.insertRow().insertCell(); cell.colSpan = 6;
+      cell.textContent = loading ? '读取中…' : lastCallers.length ? '没有匹配的调用方。' : '暂无调用方。';
+    }
+    $('count').textContent = '显示 ' + visible.length + ' / ' + lastCallers.length + ' 个调用方';
   }
-
-  var lastCallers = [];
-  function reload() {
-    fetchJson('/admin/api/callers').then(function (body) {
-      lastCallers = body.data;
-      renderCallers(body.data);
-    }).catch(function () {});
+  function callerUrl(c) { return '/admin/api/callers/' + encodeURIComponent(c.name); }
+  function openActions(c) {
+    const dialog = $('actionDialog');
+    $('actionTitle').textContent = c.name;
+    $('actions').replaceChildren(
+      action('轮换密钥', async () => {
+        if (!confirm('轮换 ' + c.name + ' 的密钥？旧密钥会立即失效。')) return;
+        dialog.close();
+        const result = await withCsrf('POST', callerUrl(c) + '/rotate');
+        showKey('已轮换 ' + c.name, result.data.apiKey); await reload();
+      }),
+      action(c.enabled ? '停用' : '启用', async () => {
+        if (c.enabled && !confirm('停用 ' + c.name + '？使用其密钥的请求将被拒绝。')) return;
+        dialog.close(); await withCsrf('PUT', callerUrl(c), {enabled:!c.enabled}); await reload();
+      }),
+      action('删除', async () => {
+        if (!confirm('删除 ' + c.name + '？使用其密钥的请求将被拒绝。')) return;
+        dialog.close(); await withCsrf('DELETE', callerUrl(c)); await reload();
+      }, 'danger'), action('取消', () => dialog.close()));
+    dialog.showModal();
   }
-
-  function showNewKey(title, key) {
-    var box = document.getElementById('createResult');
-    document.getElementById('newKey').textContent = title + '：' + key;
-    box.classList.remove('hidden');
+  function showKey(title, key) {
+    $('keyTitle').textContent = title; $('newKey').textContent = key; $('keyDialog').showModal();
   }
-
-  document.getElementById('create').onclick = function () {
-    var name = document.getElementById('newName').value.trim();
-    var note = document.getElementById('newNote').value.trim();
-    if (!name) { alert('请输入调用方名称（不含空格）。'); return; }
-    withCsrf('POST', '/admin/api/callers', { name: name, note: note })
-      .then(function (body) {
-        document.getElementById('newName').value = '';
-        document.getElementById('newNote').value = '';
-        showNewKey('已创建 ' + name, body.data.apiKey);
-        reload();
-      }).catch(function (error) { alert('创建失败：' + error.message); });
+  $('keyDialog').onclose = () => { $('newKey').textContent = ''; };
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
+  document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { filter = b.dataset.filter; renderCallers(); });
+  $('search').oninput = renderCallers;
+  let requestNumber = 0;
+  async function reload() {
+    const generation = ++requestNumber;
+    loading = true;
+    try {
+      const body = await fetchJson('/admin/api/callers');
+      if (generation !== requestNumber) return;
+      lastCallers = body.data; loading = false; renderCallers();
+    } catch (error) {
+      if (generation !== requestNumber || error.message === 'unauthenticated') return;
+      $('callerRows').replaceChildren();
+      const cell = $('callerRows').insertRow().insertCell(); cell.colSpan = 6;
+      cell.append('读取失败：' + error.message + ' ', action('重试', reload)); $('count').textContent = '';
+      lastCallers = []; loading = false;
+    }
+  }
+  $('openCreate').onclick = () => $('createDialog').showModal();
+  $('createForm').onsubmit = async event => {
+    event.preventDefault();
+    const name = $('newName').value.trim(), note = $('newNote').value.trim();
+    if (!name) { $('newName').focus(); return; }
+    const existing = lastCallers.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (existing && !confirm('已存在调用方 ' + existing.name + '。继续将生成新密钥并覆盖同名凭据，旧密钥立即失效。')) return;
+    $('create').disabled = true;
+    try {
+      const result = await withCsrf('POST', '/admin/api/callers', {name, note});
+      $('createDialog').close(); $('createForm').reset(); showKey('已创建 ' + name, result.data.apiKey); await reload();
+    } catch (error) { if (error.message !== 'unauthenticated') alert('创建失败：' + error.message); }
+    finally { $('create').disabled = false; }
   };
-
   document.getElementById('signIn').onclick = function () {
     window.location.href = '/admin/auth/oidc/start?returnUrl=%2Fadmin';
   };
@@ -274,13 +261,13 @@ internal static class AdminConsolePage
   };
 
   fetch('/admin/auth/oidc/session', { credentials: 'same-origin' }).then(function (r) {
-    if (r.status === 503) { document.querySelector('.login-hero p').textContent = '管理端未配置（Emenda:Admin:Oidc 缺少必要配置）。'; show('login'); return null; }
+    if (r.status === 503) { $('signIn').disabled = true; document.querySelector('.login-hero p').textContent = '管理端未配置（Emenda:Admin:Oidc 缺少必要配置）。'; show('login'); return null; }
     if (!r.ok) { show('login'); return null; }
     return r.json();
   }).then(function (body) {
-    if (!body || !body.data || !body.data.authenticated) return;
-    document.getElementById('who').textContent = body.data.username || '';
-    document.getElementById('logout').classList.remove('hidden');
+    if (!body || !body.data || !body.data.authenticated) { show('login'); return; }
+    document.getElementById('who').textContent = body.data.username || '管理员';
+    document.getElementById('logout').hidden = false;
     show('console');
     reload();
   }).catch(function () { show('login'); });

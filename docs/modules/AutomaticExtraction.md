@@ -61,7 +61,7 @@ Emenda 已发布的 `v0.1.1-rc.5` 仍限 9 页。首个兼容版本应同时包�
 | GET | `/{id}/versions/{version}` | 只读历史快照 |
 | GET | `/{id}/questions/{questionId}/images/{version}/{index}` | 零基 index 的历史 PNG 裁图 |
 
-管理端 `/admin/extractions` 提供上传、查询、三态结果、原图框选、数值坐标、多图区域重排、整组修订和历史读取。`/admin/api/extractions` 提供同一读取/上传/重试操作，以及仅管理员可用的：
+PC 管理页「错题入库」（`/admin/extractions`）展示客户端提交的任务，可按学生筛选并对照原图查看判题结果、整组纠偏和历史版本。图片通过客户端 `POST /api/intake/extractions` 提交。管理接口 `/admin/api/extractions` 支持读取、失败重试及版本绑定审核，并提供整组修订：
 
 `PUT /{id}/questions`
 

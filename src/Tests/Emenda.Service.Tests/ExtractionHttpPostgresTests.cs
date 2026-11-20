@@ -64,6 +64,8 @@ public sealed class ExtractionHttpPostgresTests
         Assert.Equal(HttpStatusCode.Forbidden,
             (await admin.PutAsJsonAsync($"/admin/api/extractions/{job.Id}/questions", request)).StatusCode);
         await factory.AddCsrfAsync(admin, sessionKey);
+        using var removedUpload = await admin.PostAsync("/admin/api/extractions", new MultipartFormDataContent());
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, removedUpload.StatusCode);
         var revised = await Data<ExtractionJobView>(await admin.PutAsJsonAsync($"/admin/api/extractions/{job.Id}/questions", request));
         Assert.Equal(2, revised.Version);
         Assert.Equal("correct", revised.Questions.Single().Question.Outcome);
@@ -76,6 +78,9 @@ public sealed class ExtractionHttpPostgresTests
         Assert.Equal(originalBytes, await original.Content.ReadAsByteArrayAsync());
         using var page = await admin.GetAsync("/admin/extractions");
         var html = await page.Content.ReadAsStringAsync();
+        Assert.Contains("错题入库", html);
+        Assert.DoesNotContain("type=\"file\"", html);
+        Assert.DoesNotContain("uploadForm", html);
         Assert.DoesNotContain(ExtractionHostFixture.CallerKey, html);
         await using var db = database.CreateContext();
         Assert.Equal(3, (await db.MistakeItems.SingleAsync()).ReviewStatus);

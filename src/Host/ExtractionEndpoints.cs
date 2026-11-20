@@ -60,12 +60,15 @@ public static partial class ExtractionEndpoints
             catch (DbException) { return Error("database_unavailable", 503); }
             catch (IOException) { return Error("storage_unavailable", 503); }
         });
-        group.MapPost("", async (HttpContext http, IExtractionService service, CancellationToken ct) =>
+        if (!administrator)
         {
-            var upload = await UploadAsync(http, ct);
-            var result = await service.SubmitAsync(Access(http, administrator), upload, ct);
-            return Results.Json(new { success = true, data = result }, statusCode: StatusCodes.Status202Accepted);
-        }).WithMetadata(new RequestSizeLimitAttribute(UploadBudget));
+            group.MapPost("", async (HttpContext http, IExtractionService service, CancellationToken ct) =>
+            {
+                var upload = await UploadAsync(http, ct);
+                var result = await service.SubmitAsync(Access(http, false), upload, ct);
+                return Results.Json(new { success = true, data = result }, statusCode: StatusCodes.Status202Accepted);
+            }).WithMetadata(new RequestSizeLimitAttribute(UploadBudget));
+        }
         group.MapGet("", async (HttpContext http, string? studentId, int? page, IExtractionService service, CancellationToken ct) =>
             Ok(await service.ListAsync(Access(http, administrator), studentId, page ?? 1, ct)));
         group.MapGet("/{id:guid}", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
