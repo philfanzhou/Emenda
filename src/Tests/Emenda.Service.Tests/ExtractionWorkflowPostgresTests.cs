@@ -95,7 +95,7 @@ public sealed class ExtractionWorkflowPostgresTests
     }
 
     [Fact]
-    public async Task Correction_IsAtomicVersionedAdminOnly_AndPreservesPracticeAndOldImages()
+    public async Task CallerCorrection_IsAtomicAndVersioned_AndPreservesPracticeAndOldImages()
     {
         await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
@@ -113,14 +113,13 @@ public sealed class ExtractionWorkflowPostgresTests
         var oldBytes = (await service.ReadCropAsync(Admin, job.Id, q.Question.Id, 1, 0)).Bytes;
         var changed = q.Question with { Regions = [new(job.Sources[0].Id, .5, 0, 1, 1)] };
         var request = new ExtractionRevisionRequest(Guid.NewGuid(), 1, "Fix truncated diagram", [changed]);
-        (await Assert.ThrowsAsync<ExtractionException>(() => service.ReviseAsync(Caller, job.Id, request))).Status.Should().Be(403);
-        var corrected = await service.ReviseAsync(Admin, job.Id, request);
+        var corrected = await service.ReviseAsync(Caller, job.Id, request);
         corrected.Version.Should().Be(2);
         corrected.Questions.Single().ItemId.Should().Be(itemId);
-        (await service.ReviseAsync(Admin, job.Id, request)).Version.Should().Be(2);
+        (await service.ReviseAsync(Caller, job.Id, request)).Version.Should().Be(2);
         (await service.ReadCropAsync(Admin, job.Id, q.Question.Id, 1, 0)).Bytes.Should().Equal(oldBytes);
         (await service.ReadCropAsync(Admin, job.Id, q.Question.Id, 2, 0)).Bytes.Should().NotEqual(oldBytes);
-        (await Assert.ThrowsAsync<ExtractionException>(() => service.ReviseAsync(Admin, job.Id, request with { RequestKey = Guid.NewGuid() }))).Code.Should().Be("version_conflict");
+        (await Assert.ThrowsAsync<ExtractionException>(() => service.ReviseAsync(Caller, job.Id, request with { RequestKey = Guid.NewGuid() }))).Code.Should().Be("version_conflict");
         await using (var db = database.CreateContext())
         {
             var item = await db.MistakeItems.SingleAsync();
