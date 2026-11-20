@@ -92,7 +92,7 @@ textarea { min-height:60px; resize:vertical; }
       <p id="pageHelp" class="muted">核对客户端提交的作业。有实际作答和错误证据的题目会生成待审核错题。</p>
     </div><button id="returnToTask" type="button" hidden>返回任务详情</button></div>
     <div class="workspace" id="workspace">
-      <aside class="panel" aria-labelledby="listTitle">
+      <aside id="taskList" class="panel" aria-labelledby="listTitle">
         <form id="filterForm" class="queue-head">
           <div class="spread"><h2 id="listTitle">入库任务</h2><button type="submit">查询 / 刷新</button></div>
           <input id="filterStudent" type="search" placeholder="按学生 ID 筛选" aria-label="按学生 ID 筛选" maxlength="36" autocomplete="off">
@@ -197,7 +197,9 @@ textarea { min-height:60px; resize:vertical; }
   });
   let listEpoch = 0;
   async function loadList(refreshDetail = true) {
+    if (state.busy) return;
     const epoch = ++listEpoch;
+    $('detail').inert = true;
     $('listMessage').textContent = '读取中…'; $('previous').disabled = true; $('next').disabled = true;
     try {
       const query = new URLSearchParams({ page:String(state.page) }); if (state.filter) query.set('studentId', state.filter);
@@ -210,11 +212,12 @@ textarea { min-height:60px; resize:vertical; }
         if (state.list.length) await selectJob(state.list[0].id);
         else {
           stopPolling(); state.loading++; state.historyEpoch++; state.selectedId = null; state.job = null;
-          $('detail').replaceChildren(node('p', '本页没有入库任务。', 'empty'));
+          state.history = null; state.editing = false; renderJob();
         }
       } else if (!state.job || state.job.id !== state.selectedId) await selectJob(state.selectedId);
       else if (refreshDetail) await refreshCurrent(false);
     } catch (error) { if (epoch === listEpoch) { $('listMessage').textContent = '列表读取失败：' + error.message; $('previous').disabled = state.page <= 1; } }
+    finally { if (epoch === listEpoch) $('detail').inert = false; }
   }
   function renderList() {
     $('jobs').replaceChildren();
@@ -302,9 +305,14 @@ textarea { min-height:60px; resize:vertical; }
     $('workspace').classList.toggle('editing', editing);
     $('returnToTask').hidden = !editing;
     $('returnToTask').disabled = state.busy;
+    $('taskList').inert = state.busy;
     $('pageTitle').textContent = editing ? '整组纠偏' : '错题入库';
     $('pageHelp').textContent = editing ? job.studentId + ' · ' + job.grade + ' 年级 · 基于已保存版本 v' + draft.expectedVersion
       : '核对客户端提交的作业。有实际作答和错误证据的题目会生成待审核错题。';
+    if (!job) {
+      root.append(node('p', '本页没有入库任务。', 'empty'));
+      return;
+    }
     if (editing) {
       const body = node('div', null, 'section-body'); renderDraft(body, draft); root.append(body);
     } else {

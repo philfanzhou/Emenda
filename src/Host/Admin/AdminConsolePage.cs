@@ -52,7 +52,7 @@ dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
   </section>
   <section id="console" class="hidden">
     <div class="page-title"><div><h1>调用方凭据</h1><p class="muted">管理各接入服务使用的 <code>X-Emenda-Api-Key</code>。</p></div>
-      <button id="openCreate" class="primary" type="button">＋ 新建调用方</button></div>
+      <button id="openCreate" disabled class="primary" type="button">＋ 新建调用方</button></div>
     <div class="card"><div class="toolbar spread">
       <div class="filters" aria-label="按状态筛选"><button data-filter="all">全部</button><button data-filter="on">已启用</button><button data-filter="off">已停用</button></div>
       <input type="search" id="search" aria-label="搜索调用方名称或备注" placeholder="搜索调用方名称或备注">
@@ -136,7 +136,7 @@ dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
 
   const $ = id => document.getElementById(id);
   const labels = { all:'全部', on:'已启用', off:'已停用' };
-  let lastCallers = [], filter = 'all', loading = true;
+  let lastCallers = [], filter = 'all', loading = true, loadError = '';
   function element(tag, text, style) {
     const el = document.createElement(tag);
     el.textContent = text;
@@ -155,6 +155,16 @@ dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
     return btn;
   }
   function renderCallers() {
+    const rows = $('callerRows');
+    rows.replaceChildren();
+    $('openCreate').disabled = loading || !!loadError;
+    if (loading || loadError) {
+      const cell = rows.insertRow().insertCell(); cell.colSpan = 6;
+      if (loading) cell.textContent = '正在读取调用方…';
+      else cell.append('读取失败：' + loadError + ' ', action('重试', reload));
+      $('count').textContent = '';
+      return;
+    }
     const term = $('search').value.trim().toLowerCase();
     const visible = lastCallers.filter(c => (filter === 'all' || c.enabled === (filter === 'on'))
       && (c.name + ' ' + (c.note || '')).toLowerCase().includes(term));
@@ -165,8 +175,6 @@ dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
       b.textContent = labels[key] + ' ' + counts[key];
       b.setAttribute('aria-pressed', String(key === filter));
     });
-    const rows = $('callerRows');
-    rows.replaceChildren();
     visible.forEach(c => {
       const row = rows.insertRow(), name = row.insertCell();
       name.append(element('strong', c.name), element('div', c.note || '—', 'muted'));
@@ -185,7 +193,7 @@ dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
     });
     if (!visible.length) {
       const cell = rows.insertRow().insertCell(); cell.colSpan = 6;
-      cell.textContent = loading ? '读取中…' : lastCallers.length ? '没有匹配的调用方。' : '暂无调用方。';
+      cell.textContent = lastCallers.length ? '没有匹配的调用方。' : '暂无调用方。';
     }
     $('count').textContent = '显示 ' + visible.length + ' / ' + lastCallers.length + ' 个调用方';
   }
@@ -220,22 +228,20 @@ dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
   let requestNumber = 0;
   async function reload() {
     const generation = ++requestNumber;
-    loading = true;
+    loading = true; loadError = ''; renderCallers();
     try {
       const body = await fetchJson('/admin/api/callers');
       if (generation !== requestNumber) return;
       lastCallers = body.data; loading = false; renderCallers();
     } catch (error) {
       if (generation !== requestNumber || error.message === 'unauthenticated') return;
-      $('callerRows').replaceChildren();
-      const cell = $('callerRows').insertRow().insertCell(); cell.colSpan = 6;
-      cell.append('读取失败：' + error.message + ' ', action('重试', reload)); $('count').textContent = '';
-      lastCallers = []; loading = false;
+      loading = false; loadError = error.message || '未知错误'; renderCallers();
     }
   }
   $('openCreate').onclick = () => $('createDialog').showModal();
   $('createForm').onsubmit = async event => {
     event.preventDefault();
+    if (loading || loadError || $('create').disabled) return;
     const name = $('newName').value.trim(), note = $('newNote').value.trim();
     if (!name) { $('newName').focus(); return; }
     const existing = lastCallers.find(c => c.name.toLowerCase() === name.toLowerCase());
