@@ -24,7 +24,7 @@ public sealed class ExtractionIsolationHttpPostgresTests
         using var admin = factory.CreateClient(new() { AllowAutoRedirect = false });
         await factory.AddCsrfAsync(admin, await factory.SeedSessionAsync(admin));
         var bytes = ExtractionHttpPostgresTests.TestPng();
-        var adminJob = await SubmitAsync(admin, "/admin/api/extractions", "same-source", bytes);
+        var adminJob = await SeedHistoricalAdminJobAsync(factory, "same-source", bytes);
 
         Assert.Empty(await DataAsync<List<ExtractionJobView>>(await caller.GetAsync("/api/intake/extractions")));
         using (var scope = factory.Services.CreateScope())
@@ -50,7 +50,7 @@ public sealed class ExtractionIsolationHttpPostgresTests
         var ownJob = receipts[0];
         Assert.NotEqual(adminJob.Id, ownJob.Id);
         Assert.Equal(ownJob.Id, receipts[1].Id);
-        Assert.Equal(adminJob.Id, (await SubmitAsync(admin, "/admin/api/extractions", "same-source", bytes)).Id);
+        Assert.Equal(adminJob.Id, (await SeedHistoricalAdminJobAsync(factory, "same-source", bytes)).Id);
         Assert.Equal(ownJob.Id, Assert.Single(await DataAsync<List<ExtractionJobView>>(
             await caller.GetAsync("/api/intake/extractions"))).Id);
         Assert.Equal(2, (await DataAsync<List<ExtractionJobView>>(await admin.GetAsync("/admin/api/extractions"))).Count);
@@ -74,7 +74,7 @@ public sealed class ExtractionIsolationHttpPostgresTests
         var bytes = ExtractionHttpPostgresTests.TestPng();
         var ownJob = await SubmitAsync(caller, "/api/intake/extractions", "own-source", bytes);
         var foreignJob = await SubmitAsync(foreign, "/api/intake/extractions", "foreign-source", bytes);
-        var adminJob = await SubmitAsync(admin, "/admin/api/extractions", "admin-source", bytes);
+        var adminJob = await SeedHistoricalAdminJobAsync(factory, "admin-source", bytes);
         using (var scope = factory.Services.CreateScope())
             for (var i = 0; i < 3; i++)
                 await scope.ServiceProvider.GetRequiredService<ExtractionService>().RunQueuedAsync(default);
@@ -122,6 +122,15 @@ public sealed class ExtractionIsolationHttpPostgresTests
             using var allowed = await caller.PostAsJsonAsync("/api/mistakes/presigned-url", new { objectPath = legacyPath, size });
             await DataAsync<JsonElement>(allowed);
         }
+    }
+
+    private static async Task<ExtractionJobView> SeedHistoricalAdminJobAsync(ExtractionHostFixture factory, string sourceKey, byte[] bytes)
+    {
+        using var scope = factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IExtractionService>();
+        var image = new ProductIntakeImage { FileName = "page.png", ContentType = "image/png", Content = bytes };
+        return await service.SubmitAsync(new ExtractionAccess("admin", "admin", Administrator: true),
+            new ExtractionUpload("student-isolation", 4, sourceKey, [image]), default);
     }
 
     private static async Task<ExtractionJobView> SubmitAsync(HttpClient client, string endpoint, string sourceKey, byte[] bytes)
