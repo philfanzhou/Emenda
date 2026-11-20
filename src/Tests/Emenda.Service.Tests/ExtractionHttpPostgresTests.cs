@@ -48,11 +48,21 @@ public sealed class ExtractionHttpPostgresTests
         Assert.Equal("Succeeded", result.Status);
         Assert.Equal("12", result.Questions.Single().Question.QuestionNumber);
         Assert.NotNull(result.Questions.Single().ItemId);
-        var request = new ExtractionRevisionRequest(Guid.NewGuid(), result.Version, "Correct hand-written answer",
-            [result.Questions.Single().Question with { QuestionNumber = "三、2（1）", Outcome = "correct", StudentAnswer = "2", Evidence = "The actual answer is 2" }]);
-        Assert.Equal(HttpStatusCode.NotFound,
-            (await caller.PutAsJsonAsync($"/api/intake/extractions/{job.Id}/questions", request)).StatusCode);
+        var question = result.Questions.Single().Question;
+        var crop = new ExtractionRevisionRequest(Guid.NewGuid(), result.Version, "Narrow the crop",
+            [question with { Regions = [question.Regions.Single() with { X1 = .5 }] }]);
+        var route = $"/api/intake/extractions/{job.Id}/questions";
         using var anonymousAdmin = factory.CreateClient(new() { AllowAutoRedirect = false });
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymousAdmin.PutAsJsonAsync(route, crop)).StatusCode);
+        var cropped = await Data<ExtractionJobView>(await caller.PutAsJsonAsync(route, crop));
+        Assert.Equal(2, cropped.Version);
+        Assert.Equal(1, cropped.Questions.Single().Images.Single().Width);
+        Assert.Equal(result.Questions.Single().ItemId, cropped.Questions.Single().ItemId);
+        await using (var check = database.CreateContext())
+            Assert.Equal((int)ReviewStatus.PendingReview, (await check.MistakeItems.SingleAsync()).ReviewStatus);
+        Assert.Equal(HttpStatusCode.Conflict, (await caller.PutAsJsonAsync(route, crop with { RequestKey = Guid.NewGuid() })).StatusCode);
+        var request = new ExtractionRevisionRequest(Guid.NewGuid(), cropped.Version, "Correct hand-written answer",
+            [cropped.Questions.Single().Question with { QuestionNumber = "三、2（1）", Outcome = "correct", StudentAnswer = "2", Evidence = "The actual answer is 2" }]);
         var anonymousResponse = await anonymousAdmin.GetAsync("/admin/api/extractions");
         Assert.NotEqual(HttpStatusCode.OK, anonymousResponse.StatusCode);
         using var admin = factory.CreateClient(new() { AllowAutoRedirect = false });
@@ -67,7 +77,7 @@ public sealed class ExtractionHttpPostgresTests
         using var removedUpload = await admin.PostAsync("/admin/api/extractions", new MultipartFormDataContent());
         Assert.Equal(HttpStatusCode.MethodNotAllowed, removedUpload.StatusCode);
         var revised = await Data<ExtractionJobView>(await admin.PutAsJsonAsync($"/admin/api/extractions/{job.Id}/questions", request));
-        Assert.Equal(2, revised.Version);
+        Assert.Equal(3, revised.Version);
         Assert.Equal("correct", revised.Questions.Single().Question.Outcome);
         Assert.Equal("三、2（1）", revised.Questions.Single().Question.QuestionNumber);
         Assert.Equal(result.Questions.Single().ItemId, revised.Questions.Single().ItemId);

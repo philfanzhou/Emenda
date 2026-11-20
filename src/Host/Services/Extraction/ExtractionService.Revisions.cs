@@ -11,7 +11,6 @@ public sealed partial class ExtractionService
     public async Task<ExtractionJobView> ReviseAsync(ExtractionAccess access, Guid id,
         ExtractionRevisionRequest request, CancellationToken ct = default)
     {
-        if (!access.Administrator) throw new ExtractionException("administrator_required", 403);
         if (request is null || request.RequestKey == Guid.Empty || request.ExpectedVersion < 0 ||
             string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 2000)
             throw new ExtractionException("invalid_request");
