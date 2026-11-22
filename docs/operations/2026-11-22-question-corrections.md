@@ -1,6 +1,6 @@
 # Emenda #18–#22 交付记录
 
-状态：五项代码已实现并完成本地验证。AI Tutor [PR #31](https://github.com/kingus188/ai-tutor/pull/31) 已创建；Emenda 正在提交 PR。未部署、未执行存量几何迁移或对象删除，Issue 不因本地通过而提前全部关闭。
+状态：五项代码已实现并完成本地验证，已推送为 Emenda [PR #24](https://github.com/philfanzhou/Emenda/pull/24) 与 AI Tutor [PR #31](https://github.com/kingus188/ai-tutor/pull/31)，等待远程检查和合并。Emenda 实现提交为 `0de4f72`，AI Tutor 实现提交为 `3ca52e6`。未发布 RC、未部署、未执行存量几何迁移或对象删除，五个 Issue 暂未关闭。
 
 ## 实现与验收
 
