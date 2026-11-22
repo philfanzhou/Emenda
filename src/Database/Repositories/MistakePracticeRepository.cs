@@ -20,7 +20,6 @@ public class MistakePracticeRepository : IMistakePracticeRepository
 
     public async Task AddAsync(MistakePracticeModel model)
     {
-        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, model.MistakeItemId);
         var entity = new MistakePracticeEntity
         {
             Id = model.Id,
@@ -56,7 +55,6 @@ public class MistakePracticeRepository : IMistakePracticeRepository
 
     public async Task RemoveByMistakeItemIdAsync(Guid mistakeItemId)
     {
-        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, mistakeItemId);
         var entities = await _dbContext.MistakePractices
             .Where(p => p.MistakeItemId == mistakeItemId)
             .ToListAsync();
@@ -67,19 +65,4 @@ public class MistakePracticeRepository : IMistakePracticeRepository
         }
     }
 
-    public async Task<List<MistakePracticeModel>> GetAllAsync()
-    {
-        var entities = await _dbContext.MistakePractices.ToListAsync();
-        return entities.Select(e => new MistakePracticeModel
-        {
-            Id = e.Id,
-            MistakeItemId = e.MistakeItemId,
-            StudentId = e.StudentId,
-            PracticeDate = e.PracticeDate,
-            ImagePaths = e.ImagePaths,
-            StudentAnswer = e.StudentAnswer,
-            IsCorrect = e.IsCorrect,
-            Comments = e.Comments
-        }).ToList();
-    }
 }

@@ -26,7 +26,7 @@ public sealed class ExtractionHttpPostgresTests
     [Fact]
     public async Task RealHost_AuthenticatesCallersAndCsrf_AndCorrectsWithoutLeakingServiceCredentials()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection);
         using var caller = factory.CreateClient(new() { AllowAutoRedirect = false });
         Assert.Equal(HttpStatusCode.Unauthorized, (await caller.GetAsync("/api/intake/extractions")).StatusCode);
@@ -99,7 +99,7 @@ public sealed class ExtractionHttpPostgresTests
     [Fact]
     public async Task RealHost_RejectsMalformedEnvelopesAndImageMismatchBeforeCreatingTask()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection);
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
@@ -149,21 +149,14 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
         File.WriteAllText(Path.Combine(_root, "callers.json"), "{\"version\":1,\"callers\":[]}");
         var settings = new Dictionary<string, string?>
         {
-            ["Emenda__Runtime__Mode"] = "Standalone", ["ConnectionStrings__Emenda"] = connection,
+            ["ConnectionStrings__Emenda"] = connection, ["Mistake__Layout__Enabled"] = "false",
             ["Emenda__Security__Callers__0__Name"] = callerName, ["Emenda__Security__Callers__0__ApiKey"] = CallerKey,
             ["Emenda__Security__DynamicCallers__Path"] = Path.Combine(_root, "callers.json"),
             ["Emenda__Admin__Oidc__Authority"] = "http://127.0.0.1:5111",
             ["Emenda__Admin__Oidc__ClientId"] = "emenda-tests", ["Emenda__Admin__Oidc__ClientSecret"] = "test-identity-secret",
             ["Emenda__Admin__Oidc__RedirectUri"] = "http://127.0.0.1:5010/admin/auth/oidc/callback",
             ["Emenda__Admin__Oidc__PostLogoutRedirectUri"] = "http://127.0.0.1:5010/admin/auth/oidc/logout/return",
-            ["Emenda__Extraction__Enabled"] = "false", ["Emenda__Database__SchemaOwnership"] = "Own",
-            ["Mistake__Student__Enabled"] = "false", ["Mistake__Layout__Enabled"] = "false",
-            ["Mistake__SourceIntake__Enabled"] = "false", ["Mistake__SourceTargets__Enabled"] = "false",
-            ["Mistake__SourceReturns__Enabled"] = "false", ["Mistake__SourceHandoffs__Enabled"] = "false",
-            ["Mistake__Workers__UploadPollingWorker__Enabled"] = "false",
-            ["Mistake__Workers__ReanalyzeJobHostedService__Enabled"] = "false",
-            ["Mistake__Workers__ReanalyzeJobCleanupService__Enabled"] = "false",
-            ["IdentityService__MistakeApiStrictAuth"] = "false", ["IdentityService__MistakeApiResourceAuth"] = "false"
+            ["Emenda__Extraction__Enabled"] = "false"
         };
         foreach (var pair in settings)
         {

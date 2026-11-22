@@ -13,18 +13,18 @@
 
 ### 启动时自动升级
 
-Host 在 `Own` 模式正常启动时自动把数据库升级到当前目标结构（17 条 EF 历史，最后一条为 `20261117000000_AddMistakeAnalysis`；第 16 条为自动提取迁移）。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。已部署实例升级前应备份完整数据库、对象和凭据卷；备份不是由 Host 自动完成。
+Host 正常启动时自动把数据库升级到当前目标结构（19 条 EF 历史，最后一条为 `20261122000000_DropManagedSourceTables`；第 16 条为自动提取迁移）。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。已部署实例升级前应备份完整数据库、对象和凭据卷；备份不是由 Host 自动完成。
 
 | 启动时数据库状态 | 结果 |
 |---|---|
 | 空库（public 下无对象） | 应用全部迁移并核验，继续启动 |
-| 已知 1–16 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源／提取相关表的行与 ID 保留，继续启动 |
+| 已知 1–18 条历史，含下述两种三历史误盖章形态和旧运行时已改名的 `root_cause` | 按历史升级到目标，条目、练习、日志、重分析任务及来源／提取相关表的行与 ID 保留，继续启动 |
 | 2026-05-14 至 2026-09-29 版本自动维护留下的旧结构（见[旧版自动维护结构的收敛](#旧版自动维护结构的收敛)） | 同一事务内先收敛到已知形态，被移除或改写的旧数据写入 `legacy_archive`，再升级到目标，继续启动 |
-| 已是精确目标（17 条历史及完整结构） | 不写入，继续启动；只读账号也可启动 |
+| 已是精确目标（19 条历史及完整结构） | 不写入，继续启动；只读账号也可启动 |
 | 2026-04-19 至 2026-05-13 版本留下的精确 `public.mistake`（见[旧表转换](#旧表-mistake-的转换)） | 保留旧条目与关系，同事务转换、归档并升级，继续启动 |
 | 其他未知或矛盾结构 | 拒绝启动，数据库原样保留 |
 
-空库或已知旧版本升级需要相应的 DDL 与迁移历史写入权限；旧结构收敛还需要其数据写入权限。13 条历史的库仍须删除 StorageReferences 快照表；14 条历史的 Emenda 库还须创建产品入库请求表；15 条再增加提取表，16 条再增加结构化分析表和作业输入列。只有历史和完整结构均精确符合版本 17 时，启动才保持零写入。
+空库或已知旧版本升级需要相应的 DDL 与迁移历史写入权限；旧结构收敛还需要其数据写入权限。13 条历史的库仍须删除 StorageReferences 快照表；14 条历史的 Emenda 库还须创建产品入库请求表；15 条再增加提取表，16 条再增加结构化分析表和作业输入列。18 条历史再删除已退役的受管来源结构（见版本 19）。只有历史和完整结构均精确符合版本 19 时，启动才保持零写入。
 
 For the recognized migration chain, `ProductVersion` accepts the original `8.0.11` stamp and the current EF Core `10.0.13` stamp, including a mixture after upgrading an existing database. Existing stamps are preserved; only newly applied migrations receive the current EF version. Other versions remain unsupported, and the complete schema checks still apply. The provider-defined history table is created inside the advisory-lock transaction before EF 10 probes applied migrations; rollback and final catalog verification cover the whole upgrade.
 
@@ -32,7 +32,7 @@ For the recognized migration chain, `ProductVersion` accepts the original `8.0.1
 
 升级失败、取消、连接中断或权限不足时整个事务回滚，数据库保持升级前状态，启动失败；诊断只给出版本、本服务自身的核验结论或 SQLSTATE，不输出连接串、密码或业务行内容。下次启动重新分类再试；COMMIT 确认丢失时，下次启动看到已提交的目标结构直接启动。多个实例同时启动时共用同一把锁：一个升级，其余等锁后看到目标结构直接启动，不重复写历史。日志记录升级前版本、执行步骤和目标版本。
 
-已知历史的升级路径：InitialCreate（1 条）、前两条历史及前三条历史的 `review_comment` 先迁移到第四条（列重命名），再迁移到目标；前三条历史但已由旧运行时重命名为 `root_cause` 的库，在 catalog 精确核验后补第四条历史再迁移到目标；4–16 条历史直接迁移到目标版本 17。此处的版本 14 特指 Emenda 的删除引用快照迁移链，不包括相邻 Ruoyu.Study 已分叉的会话错题迁移链。
+已知历史的升级路径：InitialCreate（1 条）、前两条历史及前三条历史的 `review_comment` 先迁移到第四条（列重命名），再迁移到目标；前三条历史但已由旧运行时重命名为 `root_cause` 的库，在 catalog 精确核验后补第四条历史再迁移到目标；4–18 条历史直接迁移到目标版本 19。此处的版本 14 特指 Emenda 的删除引用快照迁移链，不包括相邻 Ruoyu.Study 已分叉的会话错题迁移链。
 
 **精确三历史误盖章形态**：`root_cause` 已重命名，`process_log.student_id` 及索引和 `reanalyze_job` 已存在，但 `mistake_practice.image_paths` 仍为 `text`，其余完整指纹与该历史运行时一致。升级先锁定练习表并核验每行均为 JSON 字符串数组，保存 ID 与路径序列清单，在同一事务中用 `USING image_paths::jsonb` 转换、复核每行语义，再补第四条历史并迁移到目标。空数组、中文、大小写、顺序与重复字符串保留。
 
@@ -63,7 +63,7 @@ For the recognized migration chain, `ProductVersion` accepts the original `8.0.1
 
 重复启动零写入，并发启动只转换、归档一次。SQL 失败、核验失败、取消、断连、只读或无 DDL 权限均整体回滚，旧表及其数据、索引、约束、历史原样；诊断不含行内容或连接串。归档按业务数据保护，不通过 HTTP 暴露。转换后与普通目标库使用同一结构，无新增迁移；归档非空不能 Down 到第十条。
 
-转换条目没有来源记录，不进入受管入库或受管退回，教师退回走既有旧退回流程，见[来源退回](../modules/SourceReturns.md)；该流程的恢复保证由 [IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3) 决定。已经由 05-14 及以后版本转换过的库中，旧、新编号可能混在一起，动作不再改号。04-19 之前模型、旧代码已经删除的数据及旧实例仍写入时的滚动升级不在保证范围。首次转换需 DDL 与写历史权限，大库启动等待按[部署说明](../development/Deployment.md)放宽。
+转换条目没有来源记录，不进入受管入库或受管退回，教师退回走既有旧退回流程，见来源退回；该流程的恢复保证由 [IKIZY3](https://gitee.com/philfanzhou/Ruoyu.Study/issues/IKIZY3) 决定。已经由 05-14 及以后版本转换过的库中，旧、新编号可能混在一起，动作不再改号。04-19 之前模型、旧代码已经删除的数据及旧实例仍写入时的滚动升级不在保证范围。首次转换需 DDL 与写历史权限，大库启动等待按部署说明放宽。
 
 ### 旧版自动维护结构的收敛
 
@@ -106,7 +106,7 @@ For the recognized migration chain, `ProductVersion` accepts the original `8.0.1
 
 并发启动时 advisory lock 保证只收敛和归档一次。业务代码不读归档表。
 
-`--upgrade-empty-db` 与 `--upgrade-known-db` 两个命令为兼容现有脚本保留：执行与启动相同的升级后退出 0。`--writes-stopped`、`--backup-verified` 仍可传但不再必需；显式传了 `--database` 且与实际库名不同则拒绝。备份恢复演练是建议做法，不是升级前置，见[演练说明](../development/BackupRestoreDrill.md)。操作和故障恢复见[部署说明](../development/Deployment.md)。
+`--upgrade-empty-db` 与 `--upgrade-known-db` 两个命令为兼容现有脚本保留：执行与启动相同的升级后退出 0。`--writes-stopped`、`--backup-verified` 仍可传但不再必需；显式传了 `--database` 且与实际库名不同则拒绝。备份恢复演练是建议做法，不是升级前置，见[演练说明](../development/BackupRestoreDrill.md)。操作和故障恢复见部署说明。
 
 ### 列重命名
 
@@ -169,27 +169,27 @@ For the recognized migration chain, `ProductVersion` accepts the original `8.0.1
 
 ## 20260930000001_LeaseReanalyzeJobs
 
-第五条版本化迁移在 `reanalyze_job` 添加 `owner_id`、`lease_until`、`fencing_version`、`attempt`、`execution_root_cause`、`execution_input_digest`。旧无租约 Running 在同一事务转 Failed，原因码为 `upgrade_interrupted`；关联 Item 存在时写一条 jobId 日志。Pending 与已有终态不变。升级前应先停掉旧实例（单实例替换即可满足），否则旧 worker 仍可能写入；这不是启动校验项。未知形态拒绝且不写。升级与回退操作见[部署说明](../development/Deployment.md)。
+第五条版本化迁移在 `reanalyze_job` 添加 `owner_id`、`lease_until`、`fencing_version`、`attempt`、`execution_root_cause`、`execution_input_digest`。旧无租约 Running 在同一事务转 Failed，原因码为 `upgrade_interrupted`；关联 Item 存在时写一条 jobId 日志。Pending 与已有终态不变。升级前应先停掉旧实例（单实例替换即可满足），否则旧 worker 仍可能写入；这不是启动校验项。未知形态拒绝且不写。升级与回退操作见部署说明。
 
 ## 20261002120000_AddSourceIntake
 
-第六条迁移新增[来源入库数据](./tables/source_intake.md)及同来源序列化、immutable/result完整性 guards。五历史目标现在是已知可升级状态；此前正规历史及支持的 misstamp 先沿已有修复收敛再继续迁移，整个升级同事务，最后严格核验目标完整 catalog；未知 public.mistake/额外对象/坏函数或 trigger 一律拒绝。
+第六条迁移新增来源入库数据及同来源序列化、immutable/result完整性 guards。五历史目标现在是已知可升级状态；此前正规历史及支持的 misstamp 先沿已有修复收敛再继续迁移，整个升级同事务，最后严格核验目标完整 catalog；未知 public.mistake/额外对象/坏函数或 trigger 一律拒绝。
 
 允许所有 intake 表无数据时受控 Down；只要来源 intake 非空就禁止 Down 或旧二进制回退，不删除已创建结果或 Student pins。回退只能停新领取并保留新 binary/schema/guards，或停写后按真实备份恢复流程恢复隔离验证过的完整数据库。pg_dump/restore 验证 manifest、模式、fence/lease、item/practice/log/refs、请求 ID 重放及数据库保护；来源提供方数据库和 pin 也须保留。
 
 ## 20261003000001_AddSourceTargets
 
-在当前已知六历史（AddSourceIntake）后增加来源目标 object/attempt、restrict 关系、每图唯一映射/每尝试独立键与永久 guards，保留已有 item/practice/log/source/group/replay 的 ID 和数据。启动时升级后核验目标精确 catalog；未知 schema、函数/trigger/FK 变化保持失败关闭。目标数据结构见[来源表](./tables/source_intake.md)。非空目标关系 Down 拒绝；恢复须使用包含来源、候选、选定映射及所有 guards 的完整备份。启动升级与两个兼容命令复用同一全局升级锁与事务。
+在当前已知六历史（AddSourceIntake）后增加来源目标 object/attempt、restrict 关系、每图唯一映射/每尝试独立键与永久 guards，保留已有 item/practice/log/source/group/replay 的 ID 和数据。启动时升级后核验目标精确 catalog；未知 schema、函数/trigger/FK 变化保持失败关闭。目标数据结构见来源表。非空目标关系 Down 拒绝；恢复须使用包含来源、候选、选定映射及所有 guards 的完整备份。启动升级与两个兼容命令复用同一全局升级锁与事务。
 
 ## 20261003010000_AddSourceReturns
 
-第八条版本化迁移新增持久 item 操作、按 group 原顺序去重的 object 与每次独立随机键 attempt，显式 CopySettled 与选定证明、固定 callback payload/digest、原历史receipt和原子 Completed/Rejected/单条日志。新增 writer 与 deferred integrity guards 同时保护 item/practice/log/job；事实永久保留、非空 Down 拒绝。数据关系见[来源表](./tables/source_intake.md)，业务与可信回执模型见[SourceReturns](../modules/SourceReturns.md)。
+第八条版本化迁移新增持久 item 操作、按 group 原顺序去重的 object 与每次独立随机键 attempt，显式 CopySettled 与选定证明、固定 callback payload/digest、原历史receipt和原子 Completed/Rejected/单条日志。新增 writer 与 deferred integrity guards 同时保护 item/practice/log/job；事实永久保留、非空 Down 拒绝。数据关系见来源表，业务与可信回执模型见SourceReturns。
 
 空库与精确 known 1–8（含此前明确支持的 misstamp）在启动时同一事务/锁内升级，最后核验完整目标 catalog；不修复漂移。恢复必须含 source_return/source_return_object/source_return_attempt、所有既有业务/来源/目标表与函数/trigger/FK。真实 dump/restore 后核对稳定 ID/载荷/选定/lease/阶段，再续同 operation；来源提供方历史receipt、snapshot/pins与对象均须保留。
 
 ## 20261003020001_AddSourceHandoffs
 
-第九条正规迁移新增[source_handoff](./tables/source_handoff.md)固定完整group/target/payload与原历史receipt；替换source/newrevision、group/seal、request/pending materialization、item/terminal和handoff最终guards。known1–8保持精确catalog识别，version8仍验证原returns对象/完整函数和guards；启动时不修复漂移，也不宽松stamp。未知/缺失/额外表、函数、trigger、FK/history原状拒绝。
+第九条正规迁移新增source_handoff固定完整group/target/payload与原历史receipt；替换source/newrevision、group/seal、request/pending materialization、item/terminal和handoff最终guards。known1–8保持精确catalog识别，version8仍验证原returns对象/完整函数和guards；启动时不修复漂移，也不宽松stamp。未知/缺失/额外表、函数、trigger、FK/history原状拒绝。
 
 空库与已知历史在启动时同一advisory事务内升级；原rows/requests/targets/return candidates/IDs不可改。非空handoff禁止Down/旧binary回退；恢复完整全部业务/来源/目标/退回/交接表与guards，核对原op/state/receipt后同fixedpayload继续。两服务与原对象桶一并保留。
 
@@ -199,11 +199,11 @@ For the recognized migration chain, `ProductVersion` accepts the original `8.0.1
 
 ## 20261010000001_AddLegacyReturns
 
-第十二条迁移完整增加[旧错题退回日志](./tables/legacy_return.md)、条件租约和同条目最后写入/延期完成保护。原来源真实外键和原业务数据不放宽、不迁改；新表不回填旧操作。完整引用快照覆盖新原图与全部候选，保持 v1 合同。空库和精确已知1–11版本同锁同事务升级，坏或部分结构拒绝；已有操作时 Down 拒绝，使用当前 binary/schema 停止推进。整库备份恢复须包含全部新状态、历史和 guards。
+第十二条迁移完整增加旧错题退回日志、条件租约和同条目最后写入/延期完成保护。原来源真实外键和原业务数据不放宽、不迁改；新表不回填旧操作。完整引用快照覆盖新原图与全部候选，保持 v1 合同。空库和精确已知1–11版本同锁同事务升级，坏或部分结构拒绝；已有操作时 Down 拒绝，使用当前 binary/schema 停止推进。整库备份恢复须包含全部新状态、历史和 guards。
 
 ## 20261025000000_AddLayoutJobs
 
-第十三条迁移完整增加[版面检测作业数据](./tables/layout_job.md)：`layout_job`（租约/fence/attempt、retained manifest、非秘密处理配置与 credential 引用）、`layout_job_image`（保留字节身份与每图有界进度）、`layout_result`/`layout_result_region`（每代每图唯一接受结果，自包含绑定来源/版本/快照/字节身份/相关旋转/attempt/配置）与 `layout_request`（请求键重放）。结果、区域与重放记录由 `guard_layout_immutable`/`guard_layout_truncate` 触发器保护为只插入事实。数据语义、安全停用与恢复见该表文档与[部署说明](../development/Deployment.md#版面检测作业持久化与安全停用)。
+第十三条迁移完整增加版面检测作业数据：`layout_job`（租约/fence/attempt、retained manifest、非秘密处理配置与 credential 引用）、`layout_job_image`（保留字节身份与每图有界进度）、`layout_result`/`layout_result_region`（每代每图唯一接受结果，自包含绑定来源/版本/快照/字节身份/相关旋转/attempt/配置）与 `layout_request`（请求键重放）。结果、区域与重放记录由 `guard_layout_immutable`/`guard_layout_truncate` 触发器保护为只插入事实。数据语义、安全停用与恢复见该表文档与部署说明。
 
 空库和精确已知 1–12 版本同锁同事务升级并核验完整 catalog（含新表/列/索引/RESTRICT FK/函数体/触发器条件）；未知结构拒绝不修。任意 layout 表非空时 Down 拒绝；空 layout 集可 Down 干净移除全部五表与两个保护函数。回退保留认识当前 schema 的 binary 或按完整备份恢复流程处理。
 
@@ -227,4 +227,41 @@ Schema version 16 adds `extraction_job`, `extraction_question` and immutable `ex
 
 Schema version 17 appends `mistake_analysis` and nullable `reanalyze_job.analysis_input` after extraction version 16. It retains the latest draft, last confirmed report and ordered teacher feedback; existing jobs with null input continue through the text-analysis path. `DatabaseInitializer` recognizes exact version 15 and 16 catalogs before upgrading, then verifies the combined version-17 model. No released extraction migration is renumbered or replaced.
 
-Analysis rows reference their mistake through a cascading foreign key. Down refuses while analysis rows exist, preserving teacher work. Shared/read-only startup requires the complete target schema and performs no migration. See [Structured analysis](../modules/SingleMistakeAnalysis.md).
+Analysis rows reference their mistake through a cascading foreign key. Down refuses while analysis rows exist, preserving teacher work. Shared/read-only startup requires the complete target schema and performs no migration. See Structured analysis.
+
+## 20261122000000_DropManagedSourceTables
+
+Schema version 19 retires the platform-era managed source structures after Emenda became a
+standalone-only product. In one statement batch inside the startup upgrade transaction it:
+
+1. takes `ACCESS EXCLUSIVE` locks on `source_intake`, `source_intake_group`,
+   `source_intake_request`, `source_target_object`, `source_target_attempt`, `source_return`,
+   `source_return_object`, `source_return_attempt`, `source_handoff`, `legacy_return`,
+   `legacy_return_object`, `legacy_return_attempt`, `layout_job`, `layout_job_image`,
+   `layout_request`, `layout_result` and `layout_result_region`;
+2. raises `retired_source_table_not_empty: <table>` if any of them holds a row — the whole
+   upgrade rolls back and the database stays at its previous version;
+3. drops the guard triggers those structures had installed on `mistake_item`,
+   `mistake_practice`, `process_log` and `reanalyze_job`, then the 17 tables, then their
+   guard/helper functions (without `CASCADE`, so an unexpected dependent object fails the
+   upgrade instead of being dropped).
+
+Mistakes, practices, process logs, extraction jobs/questions/revisions, conversation data,
+`legacy_archive`, `mistake_analysis`, `reanalyze_job` and `product_intake_request` are not
+touched. The remaining public routines are `guard_extraction_retention`,
+`guard_extraction_revision` and `guard_legacy_archive`.
+
+In a standalone deployment these tables could not be written (they required the removed
+platform strict/resource authorization), so they are expected to be empty. A database that
+still carries platform-era managed source data must not be upgraded: keep the previous
+release and export that data first.
+
+`mistake_analysis` and `reanalyze_job` are kept as data only: the VL structured analysis and
+reanalysis features were removed with v19, so no code reads or writes them. Reports stay
+queryable in the database but are no longer served, a review may now set `root_cause` freely
+even where an analysis report exists, and jobs left Pending/Running stay in that state
+(they are not resumed or cleaned up). Export or drop them deliberately in a later release.
+
+Down raises `retired_source_schema_irreversible`; v19 is forward-only. Downgrade tests of
+earlier migrations therefore start from an explicit v18 migration instead of the target.
+Regression coverage: `RetiredSourceSchemaPostgresTests`.

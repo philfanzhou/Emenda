@@ -38,7 +38,7 @@ public sealed class AdminPreSignInRoleGate(string requiredRole)
 /// flow, the server-side session tickets and the CSRF boundary; this host adds
 /// only the availability precheck, the role gate, the fixed response shapes
 /// and the console authorization policy. Emenda has no Bearer/JwtBearer
-/// surface in standalone mode, so the package's forwarding scheme always
+/// surface, so the package's forwarding scheme always
 /// resolves to its session scheme.
 /// </summary>
 public static class AdminConsoleRegistration

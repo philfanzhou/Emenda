@@ -1,21 +1,14 @@
 # 功能索引
 
+错题只通过 AI Tutor 自动提取（[AutomaticExtraction](./AutomaticExtraction.md)）或 AI Tutor 对话采集（[Conversation collection](../Integration/ConversationCollection.md)）进入 Emenda；以下是入库之后的生命周期功能。
+
 | 业务域 | 功能点入口 |
 |--------|------------|
+| Intake | [AutomaticExtraction](./AutomaticExtraction.md) |
 | ImagePathQuery | [GetAllReferencedImagePaths](./ImagePathQuery/GetAllReferencedImagePaths/01-FEATURE.md) |
-| MistakeDispatch | [SubmitMistakeUpload](./SourceIntake.md) — 由 UploadPollingWorker 内部调用 |
-| MistakeManagement | [AddMistakeItem](./SourceIntake.md), [DeleteMistakeItem](./MistakeManagement/DeleteMistakeItem/01-FEATURE.md), [GetMistakeItem](./MistakeManagement/GetMistakeItem/01-FEATURE.md), [GetMistakeItemList](./MistakeManagement/GetMistakeItemList/01-FEATURE.md), [GetMistakeItemsByUpload](./MistakeManagement/GetMistakeItemsByUpload/01-FEATURE.md), [UpdateMistakeItem](./MistakeManagement/UpdateMistakeItem/01-FEATURE.md) |
+| MistakeManagement | [DeleteMistakeItem](./MistakeManagement/DeleteMistakeItem/01-FEATURE.md), [GetMistakeItem](./MistakeManagement/GetMistakeItem/01-FEATURE.md), [GetMistakeItemList](./MistakeManagement/GetMistakeItemList/01-FEATURE.md), [GetMistakeItemsByUpload](./MistakeManagement/GetMistakeItemsByUpload/01-FEATURE.md), [UpdateMistakeItem](./MistakeManagement/UpdateMistakeItem/01-FEATURE.md) |
 | MistakePractice | [AddMistakePractice](./MistakePractice/AddMistakePractice/01-FEATURE.md), [GetMistakePractices](./MistakePractice/GetMistakePractices/01-FEATURE.md) |
 | MistakeProcessLogging | [GetMistakeProcessHistory](./MistakeProcessLogging/GetMistakeProcessHistory/01-FEATURE.md), [LogMistakeProcess](./MistakeProcessLogging/LogMistakeProcess/01-FEATURE.md) |
-| MistakeReview | ~~[CompleteUploadReview]~~ (已废弃), [GetPendingReviewUploads](./MistakeReview/GetPendingReviewUploads/01-FEATURE.md), [ReviewMistakeItem](./MistakeReview/ReviewMistakeItem.md), [ReanalyzeMistakeItem](./MistakeReview/ReanalyzeMistakeItem/README.md) |
-| UploadPolling | UploadPollingWorker — 轮询 Student 的 Processing 记录，VL 分析，创建错题，OSS 迁移 |
-| VlImageAnalysis | VlUploadAnalyzer — OpenAI 兼容 VL 视觉语言图片分析，按学科/年级分组 |
+| MistakeReview | [GetPendingReviewUploads](./MistakeReview/GetPendingReviewUploads/01-FEATURE.md), [ReviewMistakeItem](./MistakeReview/ReviewMistakeItem.md) |
 
-- [不可变来源幂等入库](./SourceIntake.md)
-
-- [LayoutJobs](./LayoutJobs.md) — 版面检测作业受管 start/status 操作（受管 Admin 身份，additive 机器合同登记）。
-- [SourceTargets](./SourceTargets.md) — 保留来源、持久候选与核验目标恢复性物化。
-
-- [受管持久退回](./SourceReturns.md)
-- [完整来源交接与永久归档](./SourceHandoffs.md)
-- [遗留异常只读对账报告](./SourceReconciliation.md)
+旧的上传入口（`/api/mistakes/upload`、`POST /api/mistakes`、`/api/intake/uploads`）、UploadPollingWorker、VL 分组与结构化重分析、CompleteUploadReview 以及受管来源入库/目标/退回/交接/对账/版面作业均已移除（schema v19）。

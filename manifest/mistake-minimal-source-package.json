@@ -4,7 +4,7 @@
   "description": "Emenda 服务最小源码包清单：固定可独立构建/测试/镜像化的最小闭包成员、直接依赖与导出规则，供仓库外发布预演使用。由 script/build-script/06-mistake.minimal-source-rehearsal.sh 消费。",
   "source_commit": "921cebc84644ec36d6251a93ce303a79b68a12a1",
   "source_commit_note": "历史来源审计基线，非当前闭包发布提交。预演默认导出已提交 HEAD；指定 --commit <sha> 与此基线不同时用 --allow-commit-drift。未提交工作不属于 git archive 产物。",
-  "service_identity_note": "Host 本地 RS256 signer/config 随递归成员导出，无 Student 编译依赖。portable Service.Tests 不含 Student 或 Portal BFF 引用；真实跨域 provider 回归由 Ruoyu.Study 平台仓库持有（ADR-0031 决策 11），不属于产品发布闭包。secret 只进入任务自有外部受限环境，不导出或 COPY。",
+  "service_identity_note": "产品只以独立模式运行：调用方以 X-Emenda-Api-Key 认证，无 Student、Consul 或平台身份依赖。secret 只进入任务自有外部受限环境，不导出或 COPY。",
   "solution": "src/Emenda.sln",
   "members": {
     "mistake_projects": [
@@ -12,14 +12,11 @@
       "src/Domain",
       "src/Service",
       "src/Host",
-      "src/StudentClient",
       "src/Tests/Emenda.Domain.Tests",
       "src/Tests/Emenda.Service.Tests"
     ],
     "shared_projects": [
-      "vendor/Emenda.Common",
-      "vendor/Emenda.Ai",
-      "vendor/Emenda.Consul"
+      "vendor/Emenda.Common"
     ],
     "context_files": [
       ".dockerignore",
@@ -28,6 +25,7 @@
       "docs/Integration/mistake-http-v3.json",
       "docs/Integration/mistake-http-v4.json",
       "docs/Integration/mistake-http-v5.json",
+      "docs/Integration/mistake-http-v6.json",
       "docs/Integration/emenda-intake-v1.json",
       "docs/Integration/emenda-extraction-v1.json"
     ]
@@ -102,18 +100,16 @@
         "id": "SignaCore.Client.AspNetCore",
         "version": "0.1.21",
         "license": "MIT"
-      }
-    ],
-    "src/StudentClient/Emenda.StudentClient.csproj": [
-      {
-        "id": "Microsoft.Extensions.Http",
-        "version": "10.0.13",
-        "license": "MIT"
       },
       {
-        "id": "Microsoft.Extensions.Logging.Abstractions",
-        "version": "10.0.13",
-        "license": "MIT"
+        "id": "Serilog.AspNetCore",
+        "version": "8.0.0",
+        "license": "Apache-2.0"
+      },
+      {
+        "id": "Serilog.Sinks.Console",
+        "version": "6.0.0",
+        "license": "Apache-2.0"
       }
     ],
     "src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj": [
@@ -230,102 +226,6 @@
         "id": "Microsoft.Extensions.Logging.Abstractions",
         "version": "10.0.13",
         "license": "MIT"
-      },
-      {
-        "id": "Microsoft.AspNetCore.Authentication.JwtBearer",
-        "version": "10.0.13",
-        "license": "MIT"
-      }
-    ],
-    "vendor/Emenda.Ai/Emenda.Ai.csproj": [
-      {
-        "id": "Microsoft.Extensions.Http",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.Logging.Abstractions",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.Options",
-        "version": "10.0.13",
-        "license": "MIT"
-      }
-    ],
-    "vendor/Emenda.Consul/Emenda.Consul.csproj": [
-      {
-        "id": "Microsoft.Extensions.Configuration",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.Configuration.Binder",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.Configuration.CommandLine",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.Configuration.EnvironmentVariables",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.DependencyInjection.Abstractions",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.Hosting.Abstractions",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Microsoft.Extensions.Logging.Abstractions",
-        "version": "10.0.13",
-        "license": "MIT"
-      },
-      {
-        "id": "Serilog.AspNetCore",
-        "version": "8.0.0",
-        "license": "Apache-2.0"
-      },
-      {
-        "id": "Serilog.Enrichers.Environment",
-        "version": "3.0.0",
-        "license": "Apache-2.0"
-      },
-      {
-        "id": "Serilog.Enrichers.Thread",
-        "version": "4.0.0",
-        "license": "Apache-2.0"
-      },
-      {
-        "id": "Serilog.Settings.Configuration",
-        "version": "8.0.0",
-        "license": "Apache-2.0"
-      },
-      {
-        "id": "Serilog.Sinks.Console",
-        "version": "6.0.0",
-        "license": "Apache-2.0"
-      },
-      {
-        "id": "Serilog.Sinks.Grafana.Loki",
-        "version": "8.3.2",
-        "license": null,
-        "license_url": "https://aka.ms/deprecateLicenseUrl",
-        "license_note": "nuspec 未提供 license expression"
-      },
-      {
-        "id": "Steeltoe.Discovery.Consul",
-        "version": "4.3.0",
-        "license": "Apache-2.0"
       }
     ]
   },

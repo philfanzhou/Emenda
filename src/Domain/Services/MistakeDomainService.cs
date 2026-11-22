@@ -1,4 +1,3 @@
-using Emenda.Common.Oss;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -13,13 +12,11 @@ public class MistakeValidationException : Exception
     public MistakeValidationException(string message) : base(message) { }
 }
 
-public class CompleteUploadReviewResult
+/// <summary>A write that would change the identity of a source-backed item (HTTP 409 with <see cref="Code"/>).</summary>
+public class MistakeConflictException : Exception
 {
-    public bool Success { get; set; }
-    public string? ErrorMessage { get; set; }
-    public string? SourceUploadId { get; set; }
-    public string? StudentId { get; set; }
-    public List<MistakeItemModel> Items { get; set; } = new();
+    public MistakeConflictException(string code) : base(code) => Code = code;
+    public string Code { get; }
 }
 
 public class MistakeDomainService : IMistakeDomainService
@@ -29,64 +26,28 @@ public class MistakeDomainService : IMistakeDomainService
     private readonly IProcessLogRepository _processLogRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<MistakeDomainService> _logger;
-    private readonly IMistakeSourceGuard? _sourceGuard;
 
     public MistakeDomainService(
         IMistakeItemRepository mistakeItemRepository,
         IMistakePracticeRepository mistakePracticeRepository,
         IProcessLogRepository processLogRepository,
         IUnitOfWork unitOfWork,
-        ILogger<MistakeDomainService> logger,
-        IMistakeSourceGuard? sourceGuard = null)
+        ILogger<MistakeDomainService> logger)
     {
         _mistakeItemRepository = mistakeItemRepository;
         _mistakePracticeRepository = mistakePracticeRepository;
         _processLogRepository = processLogRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _sourceGuard = sourceGuard;
-    }
-
-    public async Task<List<MistakeItemModel>> SubmitMistakeUploadAsync(
-        string studentId, int subject, int grade, List<string> imagePaths, string? rootCause, string sourceUploadId)
-    {
-        ValidateSubmitData(studentId, subject, grade, imagePaths, rootCause, sourceUploadId);
-        EnsureLegacyPaths(imagePaths);
-        if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(sourceUploadId);
-
-        var item = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            StudentId = studentId,
-            Subject = subject,
-            Grade = grade,
-            SourceUploadId = sourceUploadId,
-            SourceRegions = imagePaths.ConvertAll(p => new SourceRegionModel
-            {
-                SourceImagePath = p,
-                BoundingBox = null
-            }),
-            RootCause = rootCause,
-            ReviewStatus = (int)ReviewStatus.PendingReview,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-
-        _logger.LogDebug("SubmitMistakeUploadAsync: Creating item with Id={ItemId}, studentId={StudentId}, subject={Subject}, grade={Grade}, sourceUploadId={SourceUploadId}, imagePaths={ImagePaths}",
-            item.Id, studentId, subject, grade, sourceUploadId, string.Join(" | ", imagePaths));
-
-        await _mistakeItemRepository.AddAsync(item);
-        await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item created from upload", studentId);
-        await _unitOfWork.SaveChangesAsync();
-
-        _logger.LogDebug("SubmitMistakeUploadAsync: Saved item with Id={ItemId}", item.Id);
-
-        return new List<MistakeItemModel> { item };
     }
 
     public async Task<MistakeItemModel?> GetMistakeItemAsync(Guid id)
     {
         return await _mistakeItemRepository.GetByIdAsync(id);
     }
+
+    public Task<bool> IsConversationObjectReferencedAsync(string objectPath, string caller, CancellationToken ct = default) =>
+        _mistakeItemRepository.IsConversationObjectReferencedAsync(objectPath, caller, ct);
 
     public async Task<List<MistakeItemModel>> GetMistakeItemsByUploadAsync(string sourceUploadId)
     {
@@ -101,22 +62,6 @@ public class MistakeDomainService : IMistakeDomainService
         if (size > 100) size = 100;
 
         return await _mistakeItemRepository.GetListAsync(studentId, subject, grade, reviewStatus, page, size);
-    }
-
-    public async Task<(List<MistakeItemModel> Items, int TotalCount)> GetMistakeItemListByStudentsAsync(
-        IReadOnlyCollection<string> studentIds, int subject, int grade, int reviewStatus, int page, int size)
-    {
-        if (page <= 0) page = 1;
-        if (size <= 0) size = 10;
-        if (size > 100) size = 100;
-
-        return await _mistakeItemRepository.GetListByStudentIdsAsync(studentIds, subject, grade, reviewStatus, page, size);
-    }
-
-    public Task<bool> IsObjectPathOwnedByStudentsAsync(
-        string objectPath, IReadOnlyCollection<string> studentIds, CancellationToken ct = default)
-    {
-        return _mistakeItemRepository.IsObjectPathReferencedByStudentsAsync(objectPath, studentIds, ct);
     }
 
     public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
@@ -143,8 +88,6 @@ public class MistakeDomainService : IMistakeDomainService
             throw new MistakeValidationException("审核结果只能是确认或退回");
         }
 
-        if (reviewStatus == (int)ReviewStatus.Rejected && _sourceGuard != null)
-            await _sourceGuard.EnsureDestructiveItemAsync(id);
         if (reviewReason?.Length > 2000) throw new MistakeValidationException("审核说明最多2000个字符");
 
         item.ReviewStatus = reviewStatus;
@@ -178,132 +121,11 @@ public class MistakeDomainService : IMistakeDomainService
         return item;
     }
 
-    public async Task<MistakeReanalysisResult> ReanalyzeMistakeItemAsync(
-        Guid id, string? reviewerId, string? teacherDescription, CancellationToken ct = default)
-    {
-        // This method performs validation and persistence only.
-        // VL API call is performed in MistakeServiceImpl (Service layer) to avoid
-        // a circular reference between Domain and Host/Services.
-        // Callers MUST pass `newRootCause` (already VL-analyzed) and the method will
-        // update the item + write ProcessLog atomically.
-        if (id == Guid.Empty)
-        {
-            return new MistakeReanalysisResult { Success = false, ErrorMessage = "错题 ID 不能为空" };
-        }
-
-        var item = await _mistakeItemRepository.GetByIdAsync(id);
-        if (item == null)
-        {
-            return new MistakeReanalysisResult { Success = false, ErrorMessage = "错题不存在" };
-        }
-
-        if (item.ReviewStatus != (int)ReviewStatus.PendingReview &&
-            item.ReviewStatus != (int)ReviewStatus.Confirmed)
-        {
-            return new MistakeReanalysisResult
-            {
-                Success = false,
-                ErrorMessage = "只能对 PendingReview 或 Confirmed 状态的错题重新分析"
-            };
-        }
-
-        if (item.SourceRegions == null || item.SourceRegions.Count == 0)
-        {
-            return new MistakeReanalysisResult
-            {
-                Success = false,
-                ErrorMessage = "错题无图片，无法重新分析"
-            };
-        }
-
-        // item is the entity to be updated by MistakeServiceImpl after VL succeeds.
-        // The actual update + ProcessLog write happens in the orchestrating caller.
-        return new MistakeReanalysisResult
-        {
-            Success = true,
-            Item = item
-        };
-    }
-
-    // Persist a successful re-analysis: update root_cause, log audit, save.
-    public async Task PersistReanalyzedRootCauseAsync(
-        MistakeItemModel item,
-        string previousRootCause,
-        string? reviewerId,
-        string? teacherDescription,
-        string newRootCause,
-        CancellationToken ct = default)
-    {
-        if (item == null) throw new ArgumentNullException(nameof(item));
-        if (newRootCause == null) throw new ArgumentNullException(nameof(newRootCause));
-
-        var details = BuildProcessLogDetails(previousRootCause, teacherDescription, newRootCause);
-
-        item.RootCause = newRootCause;
-        item.UpdatedAt = DateTimeOffset.UtcNow;
-
-        await _mistakeItemRepository.UpdateAsync(item);
-        await AddProcessLogAsync(item.Id, ProcessAction.Reanalyzed, details, item.StudentId);
-        await _unitOfWork.SaveChangesAsync();
-    }
-
-    // Persist a failed re-analysis: only log the failure, do NOT modify root_cause.
-    public async Task LogReanalyzeFailureAsync(
-        MistakeItemModel item,
-        string? reviewerId,
-        string? teacherDescription,
-        string failureReason,
-        CancellationToken ct = default)
-    {
-        if (item == null) throw new ArgumentNullException(nameof(item));
-
-        var details = BuildProcessLogDetails(
-            item.RootCause ?? string.Empty,
-            teacherDescription,
-            $"FAILED: {failureReason}");
-
-        await AddProcessLogAsync(item.Id, ProcessAction.Reanalyzed, details, item.StudentId);
-        await _unitOfWork.SaveChangesAsync();
-    }
-
-    public async Task<MistakeItemModel> AddMistakeItemAsync(MistakeItemModel item)
-    {
-        ValidateMistakeItemData(item);
-        EnsureLegacyPaths(item.SourceRegions.Select(r=>r.SourceImagePath));
-        if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(item.SourceUploadId);
-
-        item.Id = Guid.NewGuid();
-        item.ReviewStatus = (int)ReviewStatus.PendingReview;
-        item.CreatedAt = DateTimeOffset.UtcNow;
-
-        await _mistakeItemRepository.AddAsync(item);
-        await AddProcessLogAsync(item.Id, ProcessAction.Created, "Mistake item manually added by teacher", item.StudentId);
-        await _unitOfWork.SaveChangesAsync();
-
-        return item;
-    }
-
-    private static string BuildProcessLogDetails(
-        string previousRootCause, string? teacherDescription, string newRootCauseOrFailure)
-    {
-        // PII-safe: store only that teacher note was provided + length buckets, not the full text.
-        var noteProvided = !string.IsNullOrWhiteSpace(teacherDescription);
-        var noteLength = noteProvided ? teacherDescription!.Length : 0;
-        return System.Text.Json.JsonSerializer.Serialize(new
-        {
-            previous_root_cause = previousRootCause,
-            teacher_description_provided = noteProvided,
-            teacher_description_length = noteLength,
-            new_root_cause = newRootCauseOrFailure
-        });
-    }
-
     public async Task<bool> DeleteMistakeItemAsync(Guid id)
     {
         var item = await _mistakeItemRepository.GetByIdAsync(id);
         if (item == null) return false;
 
-        if (_sourceGuard != null) await _sourceGuard.EnsureDestructiveItemAsync(id);
         await _mistakePracticeRepository.RemoveByMistakeItemIdAsync(id);
         await _processLogRepository.RemoveByMistakeItemIdAsync(id);
         await _mistakeItemRepository.DeleteAsync(id);
@@ -326,8 +148,6 @@ public class MistakeDomainService : IMistakeDomainService
         if (sourceRegions != null && sourceRegions.Count > 0)
             item.SourceRegions = sourceRegions;
 
-        EnsureLegacyPaths(item.SourceRegions.Select(r=>r.SourceImagePath));
-        if (_sourceGuard != null) await _sourceGuard.EnsureIdentityAsync(item);
         item.UpdatedAt = DateTimeOffset.UtcNow;
 
         var result = await _mistakeItemRepository.UpdateAsync(item);
@@ -335,50 +155,6 @@ public class MistakeDomainService : IMistakeDomainService
             await _unitOfWork.SaveChangesAsync();
 
         return result ? item : null;
-    }
-
-    public async Task<bool> UpdateMistakeItemAsync(MistakeItemModel model)
-    {
-        EnsureLegacyPaths(model.SourceRegions.Select(r=>r.SourceImagePath));
-        if (_sourceGuard != null) await _sourceGuard.EnsureIdentityAsync(model);
-        var result = await _mistakeItemRepository.UpdateAsync(model);
-        if (result)
-            await _unitOfWork.SaveChangesAsync();
-        return result;
-    }
-
-    [Obsolete("目标流程中不存在独立的 CompleteUploadReview 步骤。仅保留供 LegacyClean 运维兜底使用。")]
-    public async Task<CompleteUploadReviewResult> CompleteUploadReviewAsync(
-        string sourceUploadId, string? reviewerId)
-    {
-        if (_sourceGuard != null) await _sourceGuard.EnsureLegacySourceAsync(sourceUploadId);
-        var pendingCount = await _mistakeItemRepository.CountPendingBySourceUploadIdAsync(sourceUploadId);
-        if (pendingCount > 0)
-        {
-            return new CompleteUploadReviewResult
-            {
-                Success = false,
-                ErrorMessage = $"还有 {pendingCount} 条错题待审核，请先完成所有审核"
-            };
-        }
-
-        var items = await _mistakeItemRepository.GetBySourceUploadIdAsync(sourceUploadId);
-        if (items.Count == 0)
-        {
-            return new CompleteUploadReviewResult
-            {
-                Success = false,
-                ErrorMessage = "未找到该上传记录的错题"
-            };
-        }
-
-        return new CompleteUploadReviewResult
-        {
-            Success = true,
-            SourceUploadId = sourceUploadId,
-            StudentId = items[0].StudentId,
-            Items = items
-        };
     }
 
     public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null)
@@ -394,7 +170,6 @@ public class MistakeDomainService : IMistakeDomainService
             throw new MistakeValidationException("只能对已确认的错题进行练习");
         }
 
-        EnsureLegacyPaths(imagePaths ?? practice.ImagePaths);
         practice.Id = Guid.NewGuid();
         practice.PracticeDate = DateTimeOffset.UtcNow;
 
@@ -444,54 +219,5 @@ public class MistakeDomainService : IMistakeDomainService
         await _processLogRepository.AddAsync(processLog);
     }
 
-    private static void ValidateSubmitData(
-        string studentId, int subject, int grade, List<string> imagePaths, string? rootCause, string sourceUploadId)
-    {
-        var errors = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(studentId))
-            errors.Add("缺少学生ID");
-
-        if (subject <= 0 || subject > 9)
-            errors.Add("学科值无效（有效范围：1-9）");
-
-        if (grade <= 0 || grade > 12)
-            errors.Add("年级值无效（有效范围：1-12）");
-
-        if (string.IsNullOrWhiteSpace(sourceUploadId))
-            errors.Add("缺少上传记录ID");
-
-        if (imagePaths == null || imagePaths.Count == 0)
-            errors.Add("至少需要提供一张图片");
-
-        if (errors.Count > 0)
-            throw new MistakeValidationException(string.Join("; ", errors));
-    }
-
-    private static void ValidateMistakeItemData(MistakeItemModel item)
-    {
-        var errors = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(item.StudentId))
-            errors.Add("缺少学生ID");
-
-        if (item.Subject <= 0 || item.Subject > 9)
-            errors.Add("学科值无效（有效范围：1-9）");
-
-        if (item.Grade <= 0 || item.Grade > 12)
-            errors.Add("年级值无效（有效范围：1-12）");
-
-        if (string.IsNullOrWhiteSpace(item.SourceUploadId))
-            errors.Add("缺少上传记录ID");
-
-        if (item.SourceRegions == null || item.SourceRegions.Count == 0)
-            errors.Add("至少需要一个图片区域");
-
-        if (errors.Count > 0)
-            throw new MistakeValidationException(string.Join("; ", errors));
-    }
-    private static void EnsureLegacyPaths(IEnumerable<string> paths)
-    {
-        if(paths.Any(ReservedSourceTargetPath.IsReserved)) throw new SourceIntakeException("reserved_target",409);
-    }
 }

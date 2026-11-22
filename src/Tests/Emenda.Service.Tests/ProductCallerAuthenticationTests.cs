@@ -15,10 +15,8 @@ using Xunit;
 namespace Emenda.Service.Tests;
 
 /// <summary>
-/// Product standalone mode (Emenda:Runtime:Mode=Standalone): callers must
-/// present a per-caller credential on the business /api surface, while health,
-/// contract and root endpoints stay anonymous. No platform identity provider
-/// or Consul/Loki path is involved.
+/// Callers must present a per-caller credential on the business /api surface,
+/// while health, contract and root endpoints stay anonymous.
 /// </summary>
 public sealed class ProductCallerAuthenticationTests
 {
@@ -81,24 +79,24 @@ public sealed class ProductCallerAuthenticationTests
     }
 
     [Fact]
-    public async Task StandaloneMode_ProtectsProductIntakeEndpointAsync()
+    public async Task StandaloneMode_ProtectsExtractionIntakeEndpointAsync()
     {
         using var factory = new StandaloneWebApplicationFactory();
         using var client = factory.CreateClient();
 
         using var anonymous = await client.PostAsync(
-            "/api/intake/uploads",
+            "/api/intake/extractions",
             new StringContent("{}", Encoding.UTF8, "application/json"));
         anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/intake/uploads");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/intake/extractions");
         request.Headers.Add(ProductCallerAuthenticationOptions.ApiKeyHeaderName, CallerKey);
         request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
         using var response = await client.SendAsync(request);
 
         // Authenticated but not multipart: the intake API rejects the request
         // shape, proving the endpoint is wired behind the caller credential.
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.UnsupportedMediaType);
     }
 
     [Theory]
@@ -141,28 +139,16 @@ public sealed class ProductCallerAuthenticationTests
 
         private static readonly string[] OwnedEnvironmentKeys =
         [
-            "Emenda__Runtime__Mode",
             "Emenda__Security__Callers__0__Name",
             "Emenda__Security__Callers__0__ApiKey",
             "Emenda__Security__DynamicCallers__Path",
             "ConnectionStrings__Emenda",
-            "Mistake__ConfigMode",
-            "Mistake__Student__Enabled",
-            "Mistake__Workers__UploadPollingWorker__Enabled",
-            "Mistake__Workers__ReanalyzeJobHostedService__Enabled",
-            "Mistake__Workers__ReanalyzeJobCleanupService__Enabled",
             "Oss__InternalEndpoint",
             "Oss__InternalSecure",
             "Oss__AccessKey",
             "Oss__SecretKey",
             "Oss__BucketName",
             "Oss__PublicBaseUrl",
-            "IdentityService__Authority",
-            "IdentityService__Issuer",
-            "IdentityService__Audience",
-            "IdentityService__AdminAudience",
-            "IdentityService__MistakeApiStrictAuth",
-            "IdentityService__MistakeApiResourceAuth",
         ];
 
         public StandaloneWebApplicationFactory(bool configureDynamicStore = false, string? callerState = null)
@@ -174,29 +160,17 @@ public sealed class ProductCallerAuthenticationTests
                 File.WriteAllText(path, callerState);
             }
             Environment.SetEnvironmentVariable("Emenda__Security__DynamicCallers__Path", configureDynamicStore ? path : null);
-            Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__Emenda",
                 "Host=127.0.0.1;Port=5432;Database=emenda_standalone_tests;Username=emenda;Password=standalone-tests-only");
-            Environment.SetEnvironmentVariable("Mistake__ConfigMode", null);
-            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__UploadPollingWorker__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobHostedService__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobCleanupService__Enabled", "false");
             Environment.SetEnvironmentVariable("Oss__InternalEndpoint", "127.0.0.1:19031");
             Environment.SetEnvironmentVariable("Oss__InternalSecure", "false");
             Environment.SetEnvironmentVariable("Oss__AccessKey", "standalone-test-access");
             Environment.SetEnvironmentVariable("Oss__SecretKey", "standalone-test-secret");
             Environment.SetEnvironmentVariable("Oss__BucketName", "emenda-standalone-tests");
             Environment.SetEnvironmentVariable("Oss__PublicBaseUrl", "http://127.0.0.1/oss");
-            Environment.SetEnvironmentVariable("IdentityService__Authority", null);
-            Environment.SetEnvironmentVariable("IdentityService__Issuer", null);
-            Environment.SetEnvironmentVariable("IdentityService__Audience", null);
-            Environment.SetEnvironmentVariable("IdentityService__AdminAudience", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiStrictAuth", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", null);
         }
 
         protected override void Dispose(bool disposing)

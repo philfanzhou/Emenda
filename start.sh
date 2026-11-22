@@ -1,9 +1,8 @@
 #!/bin/bash
-# Emenda standalone deployment entry point.
+# Emenda deployment entry point.
 #
-# The product reads standard appsettings/environment configuration only: it
-# does not read Consul, does not require Loki and does not depend on the
-# Ruoyu.Study platform identity or Student services. Callers authenticate with
+# The product reads standard appsettings/environment configuration only and
+# owns a dedicated PostgreSQL database and S3 bucket. Callers authenticate with
 # a per-caller credential header (X-Emenda-Api-Key).
 set -e
 
@@ -33,6 +32,11 @@ require_env() {
     fi
 }
 
+if [ -n "${EMENDA_SCHEMA_OWNERSHIP:-}" ] && [ "${EMENDA_SCHEMA_OWNERSHIP}" != "Own" ]; then
+    echo "Error: EMENDA_SCHEMA_OWNERSHIP=${EMENDA_SCHEMA_OWNERSHIP} is no longer supported; Emenda requires a dedicated database it owns. Unset it." >&2
+    exit 1
+fi
+
 require_env EMENDA_DB_CONNECTION
 require_env EMENDA_API_KEY
 require_env OSS_INTERNAL_ENDPOINT
@@ -46,10 +50,6 @@ OSS_ACCESS_KEY="${OSS_ACCESS_KEY}"
 OSS_SECRET_KEY="${OSS_SECRET_KEY}"
 OSS_BUCKET_NAME="${OSS_BUCKET_NAME:-emenda}"
 OSS_PUBLIC_BASE_URL="${OSS_PUBLIC_BASE_URL}"
-
-VL_API_KEY="${VL_API_KEY:-}"
-VL_API_BASE_URL="${VL_API_BASE_URL:-https://api.siliconflow.cn/v1}"
-VL_MODEL="${VL_MODEL:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
 
 if ! docker run --rm --entrypoint /bin/sh -v "$DATA_MOUNT" "$IMAGE_NAME" \
     -c 'test -s /app/data/emenda-callers.json'; then
@@ -72,9 +72,7 @@ docker run -d \
   -p "${PORT}:5007" \
   -v "$DATA_MOUNT" \
   -e TZ="${TZ:-Asia/Shanghai}" \
-  -e Emenda__Runtime__Mode=Standalone \
   -e ConnectionStrings__Emenda="${EMENDA_DB_CONNECTION}" \
-  -e Emenda__Database__SchemaOwnership="${EMENDA_SCHEMA_OWNERSHIP:-Own}" \
   -e Emenda__Security__DynamicCallers__Path="/app/data/emenda-callers.json" \
   -e Emenda__Admin__RequiredRole="${EMENDA_ADMIN_REQUIRED_ROLE:-admin}" \
   -e Emenda__Admin__Oidc__Authority="${EMENDA_ADMIN_AUTHORITY:-}" \
@@ -90,7 +88,4 @@ docker run -d \
   -e Oss__SecretKey="${OSS_SECRET_KEY}" \
   -e Oss__BucketName="${OSS_BUCKET_NAME}" \
   -e Oss__PublicBaseUrl="${OSS_PUBLIC_BASE_URL}" \
-  -e VlAnalyzer__ApiKey="${VL_API_KEY}" \
-  -e VlAnalyzer__BaseUrl="${VL_API_BASE_URL}" \
-  -e VlAnalyzer__Model="${VL_MODEL}" \
   "$IMAGE_NAME"

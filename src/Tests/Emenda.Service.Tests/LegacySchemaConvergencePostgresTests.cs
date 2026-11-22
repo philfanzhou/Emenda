@@ -121,7 +121,7 @@ public sealed class LegacySchemaConvergencePostgresTests
     [InlineData("F2", "33333333-3333-3333-3333-333333333333", "mistakes/s1/c.jpg|1,2,30,40")]
     [InlineData("F3", "33333333-3333-3333-3333-333333333333", "mistakes/s1/c.jpg|-")]
     [InlineData("Fs", "33333333-3333-3333-3333-333333333333", "mistakes/s1/c.jpg|-")]
-    public async Task LegacyItemImagesAreVisibleThroughItemReadsAndPresignedOwnership(string shape, string item, string regions)
+    public async Task LegacyItemImagesAreVisibleThroughItemReads(string shape, string item, string regions)
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await BuildShapeAsync(database, shape);
@@ -134,9 +134,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.NotNull(model);
         Assert.Equal(regions, string.Join(',', model!.SourceRegions.Select(region => region.SourceImagePath + "|" +
             (region.BoundingBox is { } box ? $"{box.X1},{box.Y1},{box.X2},{box.Y2}" : "-"))));
-        foreach (var region in model.SourceRegions)
-            Assert.True(await repository.IsObjectPathReferencedByStudentsAsync(region.SourceImagePath, ["s1"]));
-        Assert.False(await repository.IsObjectPathReferencedByStudentsAsync("mistakes/s1/a.jpg", ["s2"]));
     }
 
     [Theory]
@@ -341,10 +338,10 @@ public sealed class LegacySchemaConvergencePostgresTests
         foreach (var statement in new[] { "UPDATE legacy_archive SET reason='x'", "DELETE FROM legacy_archive", "TRUNCATE legacy_archive" })
             Assert.Contains("legacy_archive_append_only",
                 (await Assert.ThrowsAsync<PostgresException>(() => database.ExecuteAsync(statement))).MessageText);
-        // Test the archive migration's own atomic downgrade; EF commits separate migrations independently.
-        await context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration);
+        // Schema v19 (retired managed sources) is forward-only: no downgrade can reach the archive migration.
         var before = await database.SnapshotAsync();
-        await Assert.ThrowsAnyAsync<Exception>(() => context.GetService<IMigrator>().MigrateAsync(StorageReferenceRemovalSchema.Added));
+        Assert.Contains("retired_source_schema_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
+            context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration))).MessageText);
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(3, (await database.ArchiveAsync()).Count);
     }
@@ -354,7 +351,8 @@ public sealed class LegacySchemaConvergencePostgresTests
     {
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
+        // Downgrades stop at v18; the v19 retirement of managed sources is forward-only.
+        await context.GetService<IMigrator>().MigrateAsync(ConversationMistakeSchema.Migration);
         await context.GetService<IMigrator>().MigrateAsync(StorageReferenceRemovalSchema.Added);
         Assert.Equal(10, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.legacy_archive') IS NOT NULL"));
@@ -381,9 +379,13 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.storage_reference_snapshot') IS NOT NULL"));
         Assert.Equal(0L, await database.ScalarAsync<long>("SELECT count(*) FROM pg_proc WHERE proname='guard_storage_reference_snapshot'"));
 
-        await context.GetService<IMigrator>().MigrateAsync(LayoutJobSchema.Migration);
-        Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('public.storage_reference_snapshot') IS NOT NULL"));
-        Assert.Equal(13, (await DatabaseInitializer.UpgradeToTargetAsync(context)).FromVersion);
+        // The v14 drop itself stays reversible below the forward-only v19 boundary.
+        await using var downgraded = await IsolatedDatabase.CreateAsync();
+        await using var older = downgraded.CreateContext();
+        await older.GetService<IMigrator>().MigrateAsync(StorageReferenceRemovalSchema.Migration);
+        await older.GetService<IMigrator>().MigrateAsync(LayoutJobSchema.Migration);
+        Assert.True(await downgraded.ScalarAsync<bool>("SELECT to_regclass('public.storage_reference_snapshot') IS NOT NULL"));
+        Assert.Equal(13, (await DatabaseInitializer.UpgradeToTargetAsync(older)).FromVersion);
     }
 
     private static string[] StringArrayOrEmpty(string value)
@@ -456,11 +458,6 @@ public sealed class LegacySchemaConvergencePostgresTests
             Assert.Equal((1, 2, 30, 40), (box.X1, box.Y1, box.X2, box.Y2));
         }
         else Assert.All(item.SourceRegions, region => Assert.Null(region.BoundingBox));
-        foreach (var region in item.SourceRegions)
-        {
-            Assert.True(await repository.IsObjectPathReferencedByStudentsAsync(region.SourceImagePath, ["s1"]));
-            Assert.False(await repository.IsObjectPathReferencedByStudentsAsync(region.SourceImagePath, ["s2"]));
-        }
         var snapshot = await database.SnapshotAsync();
         await using var again = database.CreateContext();
         Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(again)).Upgraded);

@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Emenda.Database.Entities;
 using Emenda.Domain.Models;
 using Emenda.Domain.Repositories;
+using Emenda.Domain.Services;
 
 namespace Emenda.Database.Repositories;
 
@@ -33,17 +34,10 @@ public class MistakeItemRepository : IMistakeItemRepository
 
     public async Task<bool> UpdateAsync(MistakeItemModel model, CancellationToken ct = default)
     {
-        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, model.Id, ct);
         var entity = await _dbContext.MistakeItems.FindAsync(model.Id);
         if (entity == null) return false;
+        await EnsureIdentityAsync(entity, model, ct);
 
-        if (entity.RootCause != model.RootCause &&
-            await _dbContext.MistakeAnalyses.AnyAsync(a => a.MistakeItemId == model.Id))
-        {
-            if (model.ReviewStatus != (int)ReviewStatus.Rejected)
-                throw new AnalysisConflictException("structured_analysis_required");
-            model.RootCause = entity.RootCause;
-        }
         entity.StudentId = model.StudentId;
         entity.Subject = model.Subject;
         entity.Grade = model.Grade;
@@ -63,21 +57,36 @@ public class MistakeItemRepository : IMistakeItemRepository
         return true;
     }
 
-    public async Task SetRootCauseDeferredAsync(Guid itemId, string newRootCause, DateTimeOffset updatedAt, CancellationToken ct = default)
+    /// <summary>
+    /// Source-backed items keep the identity their source assigned: conversation items keep
+    /// their student, source and conversation evidence; items created by an extraction
+    /// question keep their student, source and image regions (corrections go through the
+    /// extraction revision API, which rewrites the item together with its question).
+    /// </summary>
+    private async Task EnsureIdentityAsync(MistakeItemEntity stored, MistakeItemModel proposed, CancellationToken ct)
     {
-        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, itemId, ct);
-        var entity = await _dbContext.MistakeItems.FindAsync(new object?[] { itemId }, ct);
-        if (entity == null) return;
-        if (await _dbContext.MistakeAnalyses.AnyAsync(a => a.MistakeItemId == itemId))
-            throw new AnalysisConflictException("structured_analysis_required");
-        entity.RootCause = newRootCause;
-        entity.UpdatedAt = updatedAt;
-        // Caller must invoke IUnitOfWork.SaveChangesAsync to commit.
+        if (stored.ConversationSource != null && (proposed.StudentId != stored.StudentId
+            || proposed.SourceUploadId != stored.SourceUploadId || proposed.ConversationCaller != stored.ConversationCaller
+            || proposed.ConversationSource != stored.ConversationSource || proposed.ConversationActive != stored.ConversationActive))
+            throw new MistakeConflictException("conversation_identity");
+        if ((proposed.StudentId != stored.StudentId || proposed.SourceUploadId != stored.SourceUploadId
+             || !SameRegions(MapSourceRegions(proposed.SourceRegions), stored.SourceRegions))
+            && await _dbContext.ExtractionQuestions.AnyAsync(q => q.ItemId == stored.Id, ct))
+            throw new MistakeConflictException("source_managed");
     }
+
+    private static bool SameRegions(List<SourceRegionEntry> left, List<SourceRegionEntry> right) =>
+        left.Count == right.Count && left.Zip(right).All(pair =>
+            pair.First.SourceImagePath == pair.Second.SourceImagePath
+            && (pair.First.BoundingBox, pair.Second.BoundingBox) switch
+            {
+                (null, null) => true,
+                ({ } a, { } b) => a.X1 == b.X1 && a.Y1 == b.Y1 && a.X2 == b.X2 && a.Y2 == b.Y2,
+                _ => false
+            });
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {
-        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, id, ct);
         var entity = await _dbContext.MistakeItems.FindAsync(id);
         if (entity == null) return false;
 
@@ -88,7 +97,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<List<MistakeItemModel>> GetBySourceUploadIdAsync(string sourceUploadId)
     {
         var entities = await _dbContext.MistakeItems
-            .Where(m => m.SourceUploadId == sourceUploadId && !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"))
+            .Where(m => m.SourceUploadId == sourceUploadId)
             .ToListAsync();
         // Sort on client side to ensure consistent ordering
         return entities.OrderBy(m => m.CreatedAt).Select(MapToModel).ToList();
@@ -109,7 +118,6 @@ public class MistakeItemRepository : IMistakeItemRepository
         if (grade > 0) query = query.Where(m => m.Grade == grade);
         if (reviewStatus == 4) query = query.Where(m => m.ReviewStatus == (int)ReviewStatus.Confirmed || m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationActive && m.ConversationSource != null);
         else if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
-        if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
 
         var totalCount = await query.CountAsync();
         var items = await query
@@ -119,51 +127,6 @@ public class MistakeItemRepository : IMistakeItemRepository
             .ToListAsync();
 
         return (items.Select(MapToModel).ToList(), totalCount);
-    }
-
-    public async Task<(List<MistakeItemModel> Items, int TotalCount)> GetListByStudentIdsAsync(
-        IReadOnlyCollection<string> studentIds, int subject, int grade, int reviewStatus, int page, int size)
-    {
-        var query = _dbContext.MistakeItems.Where(m => studentIds.Contains(m.StudentId));
-
-        if (subject > 0) query = query.Where(m => m.Subject == subject);
-        if (grade > 0) query = query.Where(m => m.Grade == grade);
-        if (reviewStatus == 4) query = query.Where(m => m.ReviewStatus == (int)ReviewStatus.Confirmed || m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationActive && m.ConversationSource != null);
-        else if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
-        if (reviewStatus != (int)ReviewStatus.Rejected) query = query.Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"));
-
-        var totalCount = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(m => m.CreatedAt)
-            .Skip((page - 1) * size)
-            .Take(size)
-            .ToListAsync();
-
-        return (items.Select(MapToModel).ToList(), totalCount);
-    }
-
-    public async Task<bool> IsObjectPathReferencedByStudentsAsync(
-        string objectPath, IReadOnlyCollection<string> studentIds, CancellationToken ct = default)
-    {
-        // SourceRegions and practice ImagePaths are jsonb columns materialized
-        // through value converters, so the Ordinal-exact reference check runs
-        // in memory over the owning students' rows only.
-        var itemRegions = await _dbContext.MistakeItems
-            .Where(m => studentIds.Contains(m.StudentId))
-            .Select(m => m.SourceRegions)
-            .ToListAsync(ct);
-        if (itemRegions.Any(regions => regions.Any(r =>
-                string.Equals(r.SourceImagePath, objectPath, StringComparison.Ordinal))))
-        {
-            return true;
-        }
-
-        var practicePaths = await _dbContext.MistakePractices
-            .Where(p => studentIds.Contains(p.StudentId))
-            .Select(p => p.ImagePaths)
-            .ToListAsync(ct);
-        return practicePaths.Any(paths => paths.Any(path =>
-            string.Equals(path, objectPath, StringComparison.Ordinal)));
     }
 
     public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
@@ -197,35 +160,6 @@ public class MistakeItemRepository : IMistakeItemRepository
             .Skip((int)offset).Take(size).ToListAsync(ct);
 
         return (paged, totalCount);
-    }
-
-    public async Task<int> CountPendingBySourceUploadIdAsync(string sourceUploadId)
-    {
-        return await _dbContext.MistakeItems
-            .CountAsync(m => m.SourceUploadId == sourceUploadId
-                          && m.ReviewStatus == (int)ReviewStatus.PendingReview);
-    }
-
-    public async Task<List<SourceUploadSummary>> GetSourceUploadSummariesAsync()
-    {
-        return await _dbContext.MistakeItems
-            .Where(m => !_dbContext.SourceReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed") && !_dbContext.LegacyReturns.Any(o => o.ItemId == m.Id && o.Phase == "Completed"))
-            .GroupBy(m => new { m.SourceUploadId, m.StudentId })
-            .Select(g => new SourceUploadSummary
-            {
-                SourceUploadId = g.Key.SourceUploadId,
-                StudentId = g.Key.StudentId,
-                HasPendingReview = g.Any(x => x.ReviewStatus == (int)ReviewStatus.PendingReview),
-                HasConfirmedOrRejected = g.Any(x => x.ReviewStatus == (int)ReviewStatus.Confirmed
-                                                  || x.ReviewStatus == (int)ReviewStatus.Rejected)
-            })
-            .ToListAsync();
-    }
-
-    public async Task<List<MistakeItemModel>> GetAllAsync()
-    {
-        var entities = await _dbContext.MistakeItems.ToListAsync();
-        return entities.Select(MapToModel).ToList();
     }
 
     private static MistakeItemEntity MapToEntity(MistakeItemModel model)
@@ -301,5 +235,14 @@ public class MistakeItemRepository : IMistakeItemRepository
                 }
                 : null
         }).ToList() ?? new();
+    }
+
+    public async Task<bool> IsConversationObjectReferencedAsync(string objectPath, string caller, CancellationToken ct = default)
+    {
+        return await _dbContext.Database.SqlQuery<bool>($"""
+            SELECT EXISTS(SELECT 1 FROM mistake_item WHERE conversation_source IS NOT NULL
+              AND conversation_caller={caller}
+              AND source_regions @> jsonb_build_array(jsonb_build_object('sourceImagePath', {objectPath}))) AS "Value"
+            """).SingleAsync(ct);
     }
 }

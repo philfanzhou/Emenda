@@ -24,6 +24,5 @@ dotnet test Ruoyu.Study.Mistake.sln --configuration Release --filter FullyQualif
 4. 恢复库匹配后，才可把**该次备份**记为已验证。可在隔离恢复库用新版本正常启动做一次升级预演，随后核对迁移历史、全部业务/source/group/request/target object/attempt/return operation/object/attempt 表、行/ID/引用和函数/trigger/FK保护。测试结果不能自动授权生产操作。
 5. 若升级后行为异常或提交结果不明，继续停写，先查询当前库实际 schema、历史和业务行；从原备份**再建新库**恢复并校验，再决定实际恢复或重试。不要把 EF Down 当作生产恢复保证。
 
-适用范围及兼容命令详见[部署说明](./Deployment.md)与[迁移历史](../database/migrations.md)。旧 `public.mistake` 的映射由隔离 PostgreSQL 重放夹具核验，见[验证入口](./IntegrationVerification.md#tc-17-数据库启动时自动升级-postgresql)。本演练不证明生产灾备能力。
+适用范围及兼容命令详见[部署说明](./StandaloneDeployment.md)与[迁移历史](../database/migrations.md)。旧 `public.mistake` 的映射由隔离 PostgreSQL 重放夹具核验（`LegacySchemaConvergencePostgresTests`）。本演练不证明生产灾备能力。
 
-受管退回阶段恢复另由 `SourceReturnRecoveryPostgresTests.RealDumpRestoreAllReturnStatesAndCandidatesRetainsFactsAndResumesAsync` 通过实际 PG dump/restore 校验 Prepared、未知 Copy、持久 CopySettled、Sending、Conflict、Completed 的操作/候选完整行。恢复后正常启动核验目标结构，非 Conflict 同 operation 恢复；Conflict 永久保留且不重复发布。该组沿[SourceReturns](../modules/SourceReturns.md)的 owned fixture 配置运行，不能省略 Student 历史receipt和来源 pins。

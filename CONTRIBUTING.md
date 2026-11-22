@@ -18,14 +18,16 @@ dotnet test src/Tests/Emenda.Domain.Tests/Emenda.Domain.Tests.csproj -c Release
 dotnet test src/Tests/Emenda.Service.Tests/Emenda.Service.Tests.csproj -c Release --filter "FullyQualifiedName!~PostgresTests"
 ```
 
-`ProductIntakePostgresTests` and `StandaloneIntakePostgresTests` require a task-owned
-PostgreSQL admin connection in `MISTAKE_MIGRATION_TEST_CONNECTION`. They exercise durable
-payload binding, concurrent Hosts, transaction rollback, cancellation and replay; do not
-point this variable at a business database. Other inherited PostgreSQL suites have their
-own `MISTAKE_*_TEST_CONNECTION` gates. Excluded/gated tests are not a full database pass.
+The extraction, conversation and schema suites (including `RetiredSourceSchemaPostgresTests`)
+require a task-owned PostgreSQL admin connection in `MISTAKE_MIGRATION_TEST_CONNECTION`; do
+not point this variable at a business database. Other PostgreSQL suites have their own
+`MISTAKE_*_TEST_CONNECTION` gates. Excluded/gated tests are not a full database pass. Host
+factories pass configuration through process environment variables, so the service test
+assembly runs sequentially.
 
 For real Host + PostgreSQL + S3 acceptance, use
-[Standalone Verification](docs/development/StandaloneVerification.md). Build once before
+[Standalone Verification](docs/development/StandaloneVerification.md) (it still targets the
+removed `/api/intake/uploads` path and needs porting to extraction). Build once before
 running its acceptance phase; the script does not compile or publish the service itself.
 
 ## Pull requests

@@ -129,7 +129,7 @@ public static partial class ExtractionEndpoints
             form.Files.Count is < 1 or > ExtractionRules.MaxSources || form.Files.Any(f => f.Name is not ("images" or "images[]") ||
                 f.Length is 0 or > ExtractionRules.MaxImageBytes || f.ContentType is not ("image/jpeg" or "image/png")))
             throw new ExtractionException("invalid_request");
-        var images = new List<ProductIntakeImage>();
+        var images = new List<ExtractionImage>();
         foreach (var file in form.Files)
         {
             await using var stream = file.OpenReadStream();

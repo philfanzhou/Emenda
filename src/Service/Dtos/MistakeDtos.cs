@@ -2,23 +2,8 @@ using Emenda.Domain.Models;
 
 namespace Emenda.Service.Dtos;
 
-// ===== Enums =====
 // ReviewStatus and ProcessAction are defined in Emenda.Domain.Models
 // (see Domain/Models/MistakeEnums.cs) and reused by DTOs here.
-// ReanalyzeJobStatus is DTO-specific (Domain uses ReanalyzeJobState with the same values).
-
-/// <summary>
-/// Reanalyze job lifecycle status. Migrated from proto ReanalyzeJobStatus enum.
-/// Values match Domain.Models.ReanalyzeJobState.
-/// </summary>
-public enum ReanalyzeJobStatus
-{
-    Unspecified = 0,
-    Pending = 1,
-    Running = 2,
-    Completed = 3,
-    Failed = 4,
-}
 
 // ===== Shared DTOs =====
 
@@ -69,41 +54,6 @@ public class MistakeItemDto
 
 // ===== Request DTOs =====
 
-public class StartLayoutJobRequest
-{
-    public Guid? RequestKey { get; set; }
-}
-
-public class SubmitMistakeUploadRequest
-{
-    public Guid? ExpectedContentRevision { get; set; }
-    public Guid? RequestKey { get; set; }
-    public string StudentId { get; set; } = string.Empty;
-    public int Subject { get; set; }
-    public int Grade { get; set; }
-    public List<string> ImagePaths { get; set; } = new();
-    public List<SourceRegionDto?>? SourceRegions { get; set; }
-    public string? RootCause { get; set; }
-    public string SourceUploadId { get; set; } = string.Empty;
-}
-
-public class SubmitMistakeUploadResponse
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public List<string> CreatedItemIds { get; set; } = new();
-}
-
-public class GetMistakeItemListRequest
-{
-    public string StudentId { get; set; } = string.Empty;
-    public int Subject { get; set; }
-    public int Grade { get; set; }
-    public ReviewStatus ReviewStatus { get; set; }
-    public int Page { get; set; }
-    public int Size { get; set; }
-}
-
 public class MistakeItemPageResult
 {
     public List<MistakeItemDto> Items { get; set; } = new();
@@ -140,76 +90,11 @@ public class ReviewMistakeItemRequest
 
 public class ReviewMistakeItemResponse
 {
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    public string? OperationId { get; set; }
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    public string? ReturnState { get; set; }
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    public Guid? ConfirmedRecordId { get; set; }
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    public string? ErrorKind { get; set; }
     public bool Success { get; set; }
     public string ErrorMessage { get; set; } = string.Empty;
     public string SourceUploadId { get; set; } = string.Empty;
     public string StudentId { get; set; } = string.Empty;
     public List<string> RemovedImagePaths { get; set; } = new();
-}
-
-public class ReanalyzeMistakeItemRequest
-{
-    public bool StructuredAnalysis { get; set; }
-    public Guid? RequestId { get; set; }
-    public long? ExpectedRevision { get; set; }
-    public string Id { get; set; } = string.Empty;
-    public string ReviewerId { get; set; } = string.Empty;
-    public string? TeacherDescription { get; set; }
-    public string StudentId { get; set; } = string.Empty;
-}
-
-public class ReanalyzeMistakeItemResponse
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public string JobId { get; set; } = string.Empty;
-}
-
-public class ReanalyzeJobDto
-{
-    public string JobId { get; set; } = string.Empty;
-    public string ItemId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public ReanalyzeJobStatus Status { get; set; }
-    public string NewRootCause { get; set; } = string.Empty;
-    public string ErrorMessage { get; set; } = string.Empty;
-    public string CreatedAt { get; set; } = string.Empty;
-    public string StartedAt { get; set; } = string.Empty;
-    public string CompletedAt { get; set; } = string.Empty;
-    public long VlDurationMs { get; set; }
-}
-
-public class GetReanalyzeJobsRequest
-{
-    public string ReviewerId { get; set; } = string.Empty;
-    public List<string> JobIds { get; set; } = new();
-}
-
-public class GetReanalyzeJobsResponse
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public List<ReanalyzeJobDto> Jobs { get; set; } = new();
-}
-
-public class AddMistakeItemRequest
-{
-    public Guid? ExpectedContentRevision { get; set; }
-    public Guid? RequestKey { get; set; }
-    public string StudentId { get; set; } = string.Empty;
-    public int Subject { get; set; }
-    public int Grade { get; set; }
-    public string SourceUploadId { get; set; } = string.Empty;
-    public List<SourceRegionDto> SourceRegions { get; set; } = new();
-    public string? RootCause { get; set; }
 }
 
 public class UpdateMistakeItemRequest
@@ -219,20 +104,6 @@ public class UpdateMistakeItemRequest
     public int Subject { get; set; }
     public int Grade { get; set; }
     public List<SourceRegionDto> SourceRegions { get; set; } = new();
-}
-
-public class CompleteUploadReviewRequest
-{
-    public string SourceUploadId { get; set; } = string.Empty;
-    public string ReviewerId { get; set; } = string.Empty;
-}
-
-public class CompleteUploadReviewResponse
-{
-    public bool Success { get; set; }
-    public string ErrorMessage { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public List<string> RemovedImagePaths { get; set; } = new();
 }
 
 public class AddMistakePracticeRequest

@@ -9,10 +9,8 @@ public sealed class ConversationContractTests
     [Fact]
     public void V5RetainsEveryV4SchemaAndOperationOutsideThePreciselyDeclaredAdditions()
     {
-        using var stream = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream("mistake-http-v4.json")!;
-        var previous = JsonNode.Parse(stream)!;
-        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
-        Assert.Equal("mistake-http-v5", MistakeHttpContract.Version);
+        var previous = Resource("mistake-http-v4");
+        var current = Resource("mistake-http-v5");
         foreach (var path in previous["paths"]!.AsObject())
         foreach (var operation in path.Value!.AsObject())
         {
@@ -32,6 +30,48 @@ public sealed class ConversationContractTests
             }
             Assert.True(JsonNode.DeepEquals(schema.Value, actual), schema.Key);
         }
+    }
+
+    [Fact]
+    public void V6RetainsEveryUnremovedV5OperationAndSchemaWithOnlyDeclaredAuthorizationChanges()
+    {
+        var previous = Resource("mistake-http-v5");
+        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
+        Assert.Equal("mistake-http-v6", MistakeHttpContract.Version);
+        var removed = current["x-ruoyu"]!["versionChange"]!["changedLocations"]!.AsArray()
+            .Select(value => value!.GetValue<string>()).Where(value => value.StartsWith('/') || value.Contains(" /")).ToHashSet();
+        var retained = 0;
+        foreach (var path in previous["paths"]!.AsObject())
+        foreach (var operation in path.Value!.AsObject())
+        {
+            var key = operation.Key + " " + path.Key;
+            var actual = current["paths"]![path.Key]?[operation.Key];
+            if (removed.Contains(key)) { Assert.Null(actual); continue; }
+            Assert.NotNull(actual);
+            retained++;
+            var expected = operation.Value!.DeepClone().AsObject();
+            var candidate = actual!.DeepClone().AsObject();
+            foreach (var node in new[] { expected, candidate })
+            {
+                node.Remove("security");
+                node["x-ruoyu"]!.AsObject().Remove("authorization");
+                var responses = node["responses"]!.AsObject();
+                responses.Remove("202");
+                foreach (var status in new[] { "401", "403" })
+                    responses[status]?.AsObject().Remove("description");
+            }
+            Assert.True(JsonNode.DeepEquals(expected, candidate), key);
+        }
+        Assert.Equal(16, retained);
+        Assert.Equal(15, removed.Count);
+        foreach (var schema in current["components"]!["schemas"]!.AsObject())
+            Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"]![schema.Key], schema.Value), schema.Key);
+    }
+
+    private static JsonNode Resource(string version)
+    {
+        using var stream = typeof(MistakeHttpContract).Assembly.GetManifestResourceStream(version + ".json")!;
+        return JsonNode.Parse(stream)!;
     }
 
     [Fact]
