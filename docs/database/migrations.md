@@ -256,6 +256,12 @@ platform strict/resource authorization), so they are expected to be empty. A dat
 still carries platform-era managed source data must not be upgraded: keep the previous
 release and export that data first.
 
+`mistake_analysis` and `reanalyze_job` are kept as data only: the VL structured analysis and
+reanalysis features were removed with v19, so no code reads or writes them. Reports stay
+queryable in the database but are no longer served, a review may now set `root_cause` freely
+even where an analysis report exists, and jobs left Pending/Running stay in that state
+(they are not resumed or cleaned up). Export or drop them deliberately in a later release.
+
 Down raises `retired_source_schema_irreversible`; v19 is forward-only. Downgrade tests of
 earlier migrations therefore start from an explicit v18 migration instead of the target.
 Regression coverage: `RetiredSourceSchemaPostgresTests`.

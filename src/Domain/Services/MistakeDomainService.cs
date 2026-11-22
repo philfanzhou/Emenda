@@ -12,6 +12,13 @@ public class MistakeValidationException : Exception
     public MistakeValidationException(string message) : base(message) { }
 }
 
+/// <summary>A write that would change the identity of a source-backed item (HTTP 409 with <see cref="Code"/>).</summary>
+public class MistakeConflictException : Exception
+{
+    public MistakeConflictException(string code) : base(code) => Code = code;
+    public string Code { get; }
+}
+
 public class MistakeDomainService : IMistakeDomainService
 {
     private readonly IMistakeItemRepository _mistakeItemRepository;

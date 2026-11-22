@@ -40,8 +40,11 @@ with `./start.sh` (or the same environment variables):
 | `EMENDA_ADMIN_AUTHORITY` / `EMENDA_ADMIN_CLIENT_ID` / `EMENDA_ADMIN_CLIENT_SECRET` / `EMENDA_ADMIN_REDIRECT_URI` / `EMENDA_ADMIN_POST_LOGOUT_REDIRECT_URI` | no | SignaCore hosted login for the admin console (`Emenda__Admin__Oidc__*`) |
 
 The removed settings `Mistake:ConfigMode`, `Emenda:Runtime:Mode` (other than `Standalone`) and
-`Emenda:Database:SchemaOwnership=Shared` fail startup instead of being ignored; remove them
-from existing deployments.
+`Emenda:Database:SchemaOwnership` (other than `Own`) fail startup, because ignoring them could
+act on the wrong database. Other retired platform sections (`Mistake:Student`,
+`Mistake:Workers`, `Mistake:Source*`, `Mistake:LegacyReturns`, `IdentityService`,
+`VlAnalyzer`, `StudentService`, `Consul`, `Loki`) are ignored with a startup warning; remove
+them from existing deployments.
 
 The optional **admin console** at `GET /admin` uses SignaCore administrator login and
 manages dynamic credentials. Before a **new installation**, explicitly initialize the

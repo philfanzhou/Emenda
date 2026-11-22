@@ -260,6 +260,10 @@ public static partial class MistakeHttpEndpoints
 
             return MistakeHttpResponse.Ok(MapMistakeItemDto(updatedItem));
         }
+        catch (MistakeConflictException ex)
+        {
+            return ErrorKind(ex.Code, 409);
+        }
         catch (MistakeValidationException ex)
         {
             return MistakeHttpResponse.BadRequest(ex.Message);

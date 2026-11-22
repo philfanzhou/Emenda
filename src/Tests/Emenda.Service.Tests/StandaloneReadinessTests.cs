@@ -103,6 +103,7 @@ public sealed class StandaloneReadinessTests
     [InlineData("Mistake__ConfigMode", "Platform", "*Mistake:ConfigMode (Local/Platform) was removed*")]
     [InlineData("Emenda__Runtime__Mode", "Platform", "*Emenda:Runtime:Mode only accepts Standalone*")]
     [InlineData("Emenda__Database__SchemaOwnership", "Shared", "*SchemaOwnership=Shared was removed*")]
+    [InlineData("Emenda__Database__SchemaOwnership", "Owned", "*must be Own (found 'Owned')*")]
     public void RemovedRuntimeSettings_FailStartup(string key, string value, string message)
     {
         using var factory = new StandaloneStartupFailureWebApplicationFactory(

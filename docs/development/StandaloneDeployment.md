@@ -7,7 +7,9 @@ defaults to the `Standalone` ASP.NET Core environment (`appsettings.Standalone.j
 
 The platform-era settings `Mistake:ConfigMode`, `Emenda:Runtime:Mode` (other than
 `Standalone`) and `Emenda:Database:SchemaOwnership=Shared` fail startup; `start.sh` also
-refuses `EMENDA_SCHEMA_OWNERSHIP` values other than `Own`. Remove them when upgrading.
+refuses `EMENDA_SCHEMA_OWNERSHIP` values other than `Own`. Other retired platform sections
+(Student, workers, managed sources, `IdentityService`, `VlAnalyzer`, Consul, Loki) are ignored
+and named in a startup warning. Remove them when upgrading.
 
 ## Configuration
 

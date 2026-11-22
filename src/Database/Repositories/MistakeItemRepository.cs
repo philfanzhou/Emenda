@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Emenda.Database.Entities;
 using Emenda.Domain.Models;
 using Emenda.Domain.Repositories;
+using Emenda.Domain.Services;
 
 namespace Emenda.Database.Repositories;
 
@@ -35,6 +36,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     {
         var entity = await _dbContext.MistakeItems.FindAsync(model.Id);
         if (entity == null) return false;
+        await EnsureIdentityAsync(entity, model, ct);
 
         entity.StudentId = model.StudentId;
         entity.Subject = model.Subject;
@@ -54,6 +56,34 @@ public class MistakeItemRepository : IMistakeItemRepository
         _dbContext.MistakeItems.Update(entity);
         return true;
     }
+
+    /// <summary>
+    /// Source-backed items keep the identity their source assigned: conversation items keep
+    /// their student, source and conversation evidence; items created by an extraction
+    /// question keep their student, source and image regions (corrections go through the
+    /// extraction revision API, which rewrites the item together with its question).
+    /// </summary>
+    private async Task EnsureIdentityAsync(MistakeItemEntity stored, MistakeItemModel proposed, CancellationToken ct)
+    {
+        if (stored.ConversationSource != null && (proposed.StudentId != stored.StudentId
+            || proposed.SourceUploadId != stored.SourceUploadId || proposed.ConversationCaller != stored.ConversationCaller
+            || proposed.ConversationSource != stored.ConversationSource || proposed.ConversationActive != stored.ConversationActive))
+            throw new MistakeConflictException("conversation_identity");
+        if ((proposed.StudentId != stored.StudentId || proposed.SourceUploadId != stored.SourceUploadId
+             || !SameRegions(MapSourceRegions(proposed.SourceRegions), stored.SourceRegions))
+            && await _dbContext.ExtractionQuestions.AnyAsync(q => q.ItemId == stored.Id, ct))
+            throw new MistakeConflictException("source_managed");
+    }
+
+    private static bool SameRegions(List<SourceRegionEntry> left, List<SourceRegionEntry> right) =>
+        left.Count == right.Count && left.Zip(right).All(pair =>
+            pair.First.SourceImagePath == pair.Second.SourceImagePath
+            && (pair.First.BoundingBox, pair.Second.BoundingBox) switch
+            {
+                (null, null) => true,
+                ({ } a, { } b) => a.X1 == b.X1 && a.Y1 == b.Y1 && a.X2 == b.X2 && a.Y2 == b.Y2,
+                _ => false
+            });
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {
