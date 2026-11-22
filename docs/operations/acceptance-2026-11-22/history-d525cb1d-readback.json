@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-22",
+  "source": "d525cb1dd07f9a57ea214f682e3464d95c34bd03",
+  "deployment": "test 192.168.31.5, only user/teacher web; APIs remain947aa1c5",
+  "userV1": {
+    "errors": [],
+    "questions": 0,
+    "record": "版本 1 · 变更记录\n时间\n2026/11/22 15:59:17\n操作者\nautomatic\n变更原因\ninitial_extraction\n模型\nastra\n请求编号\n2fc62cea-4cc0-60c4-5cce-8b67a37566fa\n返回当前版本",
+    "requests": [],
+    "writes": 0
+  },
+  "userV2": {
+    "questions": 0,
+    "record": "版本 2 · 变更记录\n时间\n2026/11/22 20:08:56\n操作者\nplatform-test\n变更原因\nAuthorized synthetic acceptance: deliberately remove eight recognized questions to seed 32-to-33 manual recovery; not natural model omission\n模型\nmanual\n请求编号\nd396e1ff-ea7a-4f45-bdf5-fea715b530f3\n返回当前版本",
+    "requests": []
+  },
+  "userOriginal": {
+    "errors": [],
+    "originalLoaded": true,
+    "requests": [
+      {
+        "method": "GET",
+        "status": 200,
+        "url": "/api/emenda/extractions/36e962f1-4feb-48d6-8254-6198e0fe870d/sources/743995a2-38ff-4310-9c71-4a17bfbb17e9?studentId=ce3a41f8-f809-4dc9-85bf-26ef0d793fd7"
+      }
+    ]
+  },
+  "userCurrent": {
+    "confirmed": true,
+    "errors": [],
+    "questions": 33,
+    "retiredRequests": [],
+    "siblingConfirmed": true,
+    "writes": []
+  },
+  "teacherV1": {
+    "errors": [],
+    "questions": 0,
+    "record": "版本 1 · 变更记录\n时间\n2026/11/22 15:59:17\n操作者\nautomatic\n变更原因\ninitial_extraction\n模型\nastra\n请求编号\n2fc62cea-4cc0-60c4-5cce-8b67a37566fa\n返回当前版本",
+    "requests": [],
+    "writes": 0
+  },
+  "teacherV2": {
+    "questions": 0,
+    "record": "版本 2 · 变更记录\n时间\n2026/11/22 20:08:56\n操作者\nplatform-test\n变更原因\nAuthorized synthetic acceptance: deliberately remove eight recognized questions to seed 32-to-33 manual recovery; not natural model omission\n模型\nmanual\n请求编号\nd396e1ff-ea7a-4f45-bdf5-fea715b530f3\n返回当前版本",
+    "requests": []
+  },
+  "teacherCurrent": {
+    "confirmed": true,
+    "errors": [],
+    "questions": 33,
+    "retiredRequests": [],
+    "writes": []
+  },
+  "screenshot": "/Users/haifeng/.t3/userdata/browser-artifacts/browser-screenshot-192-168-31-5-mwru0xmj-a5b38f31.png",
+  "database": [
+    "36e962f1-4feb-48d6-8254-6198e0fe870d|Succeeded|3",
+    "33|33",
+    "18a0abf2-0219-4331-876d-180dd1a5bcd1|b9a9c0b6-6f60-4c81-9145-7a0f66b40ae7|2",
+    "b10717a0-d2c0-4a0b-a9f1-cfbacf50bfe7|2f788e27-83d2-e65b-d7af-a63f9812fa2e|2"
+  ],
+  "tests": 29,
+  "builds": [
+    "user frontend passed",
+    "teacher frontend passed"
+  ],
+  "review": "independent code review found no actionable defects",
+  "sourceArchiveSha256": "dedab7a6a0ef23202d2a38f5356128d3257416d4e9d2886011aa489a175114d7",
+  "imageArchiveSha256": "7c8a7851160e2b6176802efe338849f8cb7bcfa421bef47a9be3c76534018362"
+}

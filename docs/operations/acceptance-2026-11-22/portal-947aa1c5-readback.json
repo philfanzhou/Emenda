@@ -1,0 +1,25 @@
+{
+  "revision": "947aa1c5ff1fb319efd6183f42f77dd309e4a728",
+  "jobId": "36e962f1-4feb-48d6-8254-6198e0fe870d",
+  "studentId": "ce3a41f8-f809-4dc9-85bf-26ef0d793fd7",
+  "initialBrowserRead": {"version": 1, "questions": 40, "incorrect": 10, "correct": 30},
+  "syntheticSetup": {"version": 2, "questions": 32, "removedPrintedNumbers": ["2", "33", "34", "35", "36", "38", "39", "40"], "naturalModelOmission": false},
+  "final": {
+    "version": 3, "questions": 33,
+    "addedQuestionId": "b9a9c0b6-6f60-4c81-9145-7a0f66b40ae7",
+    "addedItemId": "18a0abf2-0219-4331-876d-180dd1a5bcd1",
+    "sourceId": "6228a5de-3c6e-46fc-bf47-ecf197b24bfd",
+    "region": {"x0": 0.04730279744815858, "y0": 0.6095391969815185, "x1": 0.47231538350766195, "y1": 0.6735485901155703},
+    "unchangedSiblingIdsItemIdsAndQuestionPayloads": 32,
+    "focusedAddedQuestionAfterSave": true,
+    "pendingAfterSave": true,
+    "teacherConfirmationClicks": 1,
+    "reviewStatusAfterConfirmation": 2,
+    "remainingConfirmationButtons": 0,
+    "studentReloadConfirmed": true, "postgresConfirmed": true
+  },
+  "preservedConfirmedSibling": {"questionId": "2f788e27-83d2-e65b-d7af-a63f9812fa2e", "itemId": "b10717a0-d2c0-4a0b-a9f1-cfbacf50bfe7", "reviewStatus": 2},
+  "imageArchiveSha256": "b2e45f3cfe6790767bca0f22609d713158eec6d8e332fc880067f6c367adf44a",
+  "configDelta": {"EmendaService__CallerRevisionsEnabled": true},
+  "additionalObservation": "Historical v1 retrieval after deliberate removal returned unavailable; historical snapshot compatibility is not claimed."
+}
