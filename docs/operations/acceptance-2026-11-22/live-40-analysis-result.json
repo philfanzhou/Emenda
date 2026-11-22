@@ -1,0 +1,306 @@
+{
+  "date": "2026-11-22",
+  "environment": "test",
+  "host": "192.168.31.5",
+  "studentId": "ce3a41f8-f809-4dc9-85bf-26ef0d793fd7",
+  "studentDisplayName": "Emenda UI 验收学生 52b010",
+  "fixture": "synthetic printed worksheet, two PNG pages, submitted through authenticated Portal to the real deployed analyzer",
+  "emendaRelease": "v0.1.1-rc.8",
+  "aiTutorRelease": "v0.1.9-rc.3",
+  "jobId": "36e962f1-4feb-48d6-8254-6198e0fe870d",
+  "questionCount": 40,
+  "uniqueQuestionNumbers": 40,
+  "mismatches": [],
+  "rows": [
+    {
+      "number": 1,
+      "outcome": "incorrect",
+      "answer": "1",
+      "reference": "3",
+      "crops": 1
+    },
+    {
+      "number": 2,
+      "outcome": "correct",
+      "answer": "5",
+      "reference": "5",
+      "crops": 0
+    },
+    {
+      "number": 3,
+      "outcome": "correct",
+      "answer": "7",
+      "reference": "7",
+      "crops": 0
+    },
+    {
+      "number": 4,
+      "outcome": "correct",
+      "answer": "9",
+      "reference": "9",
+      "crops": 0
+    },
+    {
+      "number": 5,
+      "outcome": "incorrect",
+      "answer": "9",
+      "reference": "11",
+      "crops": 1
+    },
+    {
+      "number": 6,
+      "outcome": "correct",
+      "answer": "13",
+      "reference": "13",
+      "crops": 0
+    },
+    {
+      "number": 7,
+      "outcome": "correct",
+      "answer": "15",
+      "reference": "15",
+      "crops": 0
+    },
+    {
+      "number": 8,
+      "outcome": "correct",
+      "answer": "17",
+      "reference": "17",
+      "crops": 0
+    },
+    {
+      "number": 9,
+      "outcome": "incorrect",
+      "answer": "17",
+      "reference": "19",
+      "crops": 1
+    },
+    {
+      "number": 10,
+      "outcome": "correct",
+      "answer": "21",
+      "reference": "21",
+      "crops": 0
+    },
+    {
+      "number": 11,
+      "outcome": "correct",
+      "answer": "23",
+      "reference": "23",
+      "crops": 0
+    },
+    {
+      "number": 12,
+      "outcome": "correct",
+      "answer": "25",
+      "reference": "25",
+      "crops": 0
+    },
+    {
+      "number": 13,
+      "outcome": "incorrect",
+      "answer": "25",
+      "reference": "27",
+      "crops": 1
+    },
+    {
+      "number": 14,
+      "outcome": "correct",
+      "answer": "29",
+      "reference": "29",
+      "crops": 0
+    },
+    {
+      "number": 15,
+      "outcome": "correct",
+      "answer": "31",
+      "reference": "31",
+      "crops": 0
+    },
+    {
+      "number": 16,
+      "outcome": "correct",
+      "answer": "33",
+      "reference": "33",
+      "crops": 0
+    },
+    {
+      "number": 17,
+      "outcome": "incorrect",
+      "answer": "33",
+      "reference": "35",
+      "crops": 1
+    },
+    {
+      "number": 18,
+      "outcome": "correct",
+      "answer": "37",
+      "reference": "37",
+      "crops": 0
+    },
+    {
+      "number": 19,
+      "outcome": "correct",
+      "answer": "39",
+      "reference": "39",
+      "crops": 0
+    },
+    {
+      "number": 20,
+      "outcome": "correct",
+      "answer": "41",
+      "reference": "41",
+      "crops": 0
+    },
+    {
+      "number": 21,
+      "outcome": "incorrect",
+      "answer": "41",
+      "reference": "43",
+      "crops": 1
+    },
+    {
+      "number": 22,
+      "outcome": "correct",
+      "answer": "45",
+      "reference": "45",
+      "crops": 0
+    },
+    {
+      "number": 23,
+      "outcome": "correct",
+      "answer": "47",
+      "reference": "47",
+      "crops": 0
+    },
+    {
+      "number": 24,
+      "outcome": "correct",
+      "answer": "49",
+      "reference": "49",
+      "crops": 0
+    },
+    {
+      "number": 25,
+      "outcome": "incorrect",
+      "answer": "49",
+      "reference": "51",
+      "crops": 1
+    },
+    {
+      "number": 26,
+      "outcome": "correct",
+      "answer": "53",
+      "reference": "53",
+      "crops": 0
+    },
+    {
+      "number": 27,
+      "outcome": "correct",
+      "answer": "55",
+      "reference": "55",
+      "crops": 0
+    },
+    {
+      "number": 28,
+      "outcome": "correct",
+      "answer": "57",
+      "reference": "57",
+      "crops": 0
+    },
+    {
+      "number": 29,
+      "outcome": "incorrect",
+      "answer": "57",
+      "reference": "59",
+      "crops": 1
+    },
+    {
+      "number": 30,
+      "outcome": "correct",
+      "answer": "61",
+      "reference": "61",
+      "crops": 0
+    },
+    {
+      "number": 31,
+      "outcome": "correct",
+      "answer": "63",
+      "reference": "63",
+      "crops": 0
+    },
+    {
+      "number": 32,
+      "outcome": "correct",
+      "answer": "65",
+      "reference": "65",
+      "crops": 0
+    },
+    {
+      "number": 33,
+      "outcome": "incorrect",
+      "answer": "65",
+      "reference": "67",
+      "crops": 1
+    },
+    {
+      "number": 34,
+      "outcome": "correct",
+      "answer": "69",
+      "reference": "69",
+      "crops": 0
+    },
+    {
+      "number": 35,
+      "outcome": "correct",
+      "answer": "71",
+      "reference": "71",
+      "crops": 0
+    },
+    {
+      "number": 36,
+      "outcome": "correct",
+      "answer": "73",
+      "reference": "73",
+      "crops": 0
+    },
+    {
+      "number": 37,
+      "outcome": "incorrect",
+      "answer": "73",
+      "reference": "75",
+      "crops": 1
+    },
+    {
+      "number": 38,
+      "outcome": "correct",
+      "answer": "77",
+      "reference": "77",
+      "crops": 0
+    },
+    {
+      "number": 39,
+      "outcome": "correct",
+      "answer": "79",
+      "reference": "79",
+      "crops": 0
+    },
+    {
+      "number": 40,
+      "outcome": "correct",
+      "answer": "81",
+      "reference": "81",
+      "crops": 0
+    }
+  ],
+  "incorrectQuestions": 10,
+  "correctQuestions": 30,
+  "currentMistakeCrops": 10,
+  "correctQuestionCrops": 0,
+  "portalSubmissionStatus": 202,
+  "portalReadStatus": 502,
+  "portalReadErrorCode": "EMENDA_INVALID_RESPONSE",
+  "portalReadAccepted": false,
+  "manual32To33Accepted": false,
+  "confirmationPerformed": false
+}

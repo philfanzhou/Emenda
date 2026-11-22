@@ -1,0 +1,526 @@
+{
+  "synthetic": true,
+  "mockedModel": false,
+  "questions": [
+    {
+      "number": 1,
+      "answer": 1,
+      "expected": 3,
+      "outcome": "incorrect",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.07833333333333334,
+        "x1": 0.47,
+        "y1": 0.14166666666666666
+      }
+    },
+    {
+      "number": 2,
+      "answer": 5,
+      "expected": 5,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.07833333333333334,
+        "x1": 0.95,
+        "y1": 0.14166666666666666
+      }
+    },
+    {
+      "number": 3,
+      "answer": 7,
+      "expected": 7,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.16666666666666666,
+        "x1": 0.47,
+        "y1": 0.23
+      }
+    },
+    {
+      "number": 4,
+      "answer": 9,
+      "expected": 9,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.16666666666666666,
+        "x1": 0.95,
+        "y1": 0.23
+      }
+    },
+    {
+      "number": 5,
+      "answer": 9,
+      "expected": 11,
+      "outcome": "incorrect",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.255,
+        "x1": 0.47,
+        "y1": 0.31833333333333336
+      }
+    },
+    {
+      "number": 6,
+      "answer": 13,
+      "expected": 13,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.255,
+        "x1": 0.95,
+        "y1": 0.31833333333333336
+      }
+    },
+    {
+      "number": 7,
+      "answer": 15,
+      "expected": 15,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.3433333333333333,
+        "x1": 0.47,
+        "y1": 0.4066666666666667
+      }
+    },
+    {
+      "number": 8,
+      "answer": 17,
+      "expected": 17,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.3433333333333333,
+        "x1": 0.95,
+        "y1": 0.4066666666666667
+      }
+    },
+    {
+      "number": 9,
+      "answer": 17,
+      "expected": 19,
+      "outcome": "incorrect",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.43166666666666664,
+        "x1": 0.47,
+        "y1": 0.495
+      }
+    },
+    {
+      "number": 10,
+      "answer": 21,
+      "expected": 21,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.43166666666666664,
+        "x1": 0.95,
+        "y1": 0.495
+      }
+    },
+    {
+      "number": 11,
+      "answer": 23,
+      "expected": 23,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.52,
+        "x1": 0.47,
+        "y1": 0.5833333333333334
+      }
+    },
+    {
+      "number": 12,
+      "answer": 25,
+      "expected": 25,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.52,
+        "x1": 0.95,
+        "y1": 0.5833333333333334
+      }
+    },
+    {
+      "number": 13,
+      "answer": 25,
+      "expected": 27,
+      "outcome": "incorrect",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.6083333333333333,
+        "x1": 0.47,
+        "y1": 0.6716666666666666
+      }
+    },
+    {
+      "number": 14,
+      "answer": 29,
+      "expected": 29,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.6083333333333333,
+        "x1": 0.95,
+        "y1": 0.6716666666666666
+      }
+    },
+    {
+      "number": 15,
+      "answer": 31,
+      "expected": 31,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.6966666666666667,
+        "x1": 0.47,
+        "y1": 0.76
+      }
+    },
+    {
+      "number": 16,
+      "answer": 33,
+      "expected": 33,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.6966666666666667,
+        "x1": 0.95,
+        "y1": 0.76
+      }
+    },
+    {
+      "number": 17,
+      "answer": 33,
+      "expected": 35,
+      "outcome": "incorrect",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.785,
+        "x1": 0.47,
+        "y1": 0.8483333333333334
+      }
+    },
+    {
+      "number": 18,
+      "answer": 37,
+      "expected": 37,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.785,
+        "x1": 0.95,
+        "y1": 0.8483333333333334
+      }
+    },
+    {
+      "number": 19,
+      "answer": 39,
+      "expected": 39,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.8733333333333333,
+        "x1": 0.47,
+        "y1": 0.9366666666666666
+      }
+    },
+    {
+      "number": 20,
+      "answer": 41,
+      "expected": 41,
+      "outcome": "correct",
+      "page": 1,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.8733333333333333,
+        "x1": 0.95,
+        "y1": 0.9366666666666666
+      }
+    },
+    {
+      "number": 21,
+      "answer": 41,
+      "expected": 43,
+      "outcome": "incorrect",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.07833333333333334,
+        "x1": 0.47,
+        "y1": 0.14166666666666666
+      }
+    },
+    {
+      "number": 22,
+      "answer": 45,
+      "expected": 45,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.07833333333333334,
+        "x1": 0.95,
+        "y1": 0.14166666666666666
+      }
+    },
+    {
+      "number": 23,
+      "answer": 47,
+      "expected": 47,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.16666666666666666,
+        "x1": 0.47,
+        "y1": 0.23
+      }
+    },
+    {
+      "number": 24,
+      "answer": 49,
+      "expected": 49,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.16666666666666666,
+        "x1": 0.95,
+        "y1": 0.23
+      }
+    },
+    {
+      "number": 25,
+      "answer": 49,
+      "expected": 51,
+      "outcome": "incorrect",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.255,
+        "x1": 0.47,
+        "y1": 0.31833333333333336
+      }
+    },
+    {
+      "number": 26,
+      "answer": 53,
+      "expected": 53,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.255,
+        "x1": 0.95,
+        "y1": 0.31833333333333336
+      }
+    },
+    {
+      "number": 27,
+      "answer": 55,
+      "expected": 55,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.3433333333333333,
+        "x1": 0.47,
+        "y1": 0.4066666666666667
+      }
+    },
+    {
+      "number": 28,
+      "answer": 57,
+      "expected": 57,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.3433333333333333,
+        "x1": 0.95,
+        "y1": 0.4066666666666667
+      }
+    },
+    {
+      "number": 29,
+      "answer": 57,
+      "expected": 59,
+      "outcome": "incorrect",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.43166666666666664,
+        "x1": 0.47,
+        "y1": 0.495
+      }
+    },
+    {
+      "number": 30,
+      "answer": 61,
+      "expected": 61,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.43166666666666664,
+        "x1": 0.95,
+        "y1": 0.495
+      }
+    },
+    {
+      "number": 31,
+      "answer": 63,
+      "expected": 63,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.52,
+        "x1": 0.47,
+        "y1": 0.5833333333333334
+      }
+    },
+    {
+      "number": 32,
+      "answer": 65,
+      "expected": 65,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.52,
+        "x1": 0.95,
+        "y1": 0.5833333333333334
+      }
+    },
+    {
+      "number": 33,
+      "answer": 65,
+      "expected": 67,
+      "outcome": "incorrect",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.6083333333333333,
+        "x1": 0.47,
+        "y1": 0.6716666666666666
+      }
+    },
+    {
+      "number": 34,
+      "answer": 69,
+      "expected": 69,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.6083333333333333,
+        "x1": 0.95,
+        "y1": 0.6716666666666666
+      }
+    },
+    {
+      "number": 35,
+      "answer": 71,
+      "expected": 71,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.6966666666666667,
+        "x1": 0.47,
+        "y1": 0.76
+      }
+    },
+    {
+      "number": 36,
+      "answer": 73,
+      "expected": 73,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.6966666666666667,
+        "x1": 0.95,
+        "y1": 0.76
+      }
+    },
+    {
+      "number": 37,
+      "answer": 73,
+      "expected": 75,
+      "outcome": "incorrect",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.785,
+        "x1": 0.47,
+        "y1": 0.8483333333333334
+      }
+    },
+    {
+      "number": 38,
+      "answer": 77,
+      "expected": 77,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.785,
+        "x1": 0.95,
+        "y1": 0.8483333333333334
+      }
+    },
+    {
+      "number": 39,
+      "answer": 79,
+      "expected": 79,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.045,
+        "y0": 0.8733333333333333,
+        "x1": 0.47,
+        "y1": 0.9366666666666666
+      }
+    },
+    {
+      "number": 40,
+      "answer": 81,
+      "expected": 81,
+      "outcome": "correct",
+      "page": 2,
+      "region": {
+        "x0": 0.525,
+        "y0": 0.8733333333333333,
+        "x1": 0.95,
+        "y1": 0.9366666666666666
+      }
+    }
+  ]
+}
