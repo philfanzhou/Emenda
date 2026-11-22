@@ -91,6 +91,9 @@ public sealed class ExtractionIsolationHttpPostgresTests
                 Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
                 using var deniedCrop = await caller.GetAsync($"/api/intake/extractions/{job.Id}/questions/{job.Questions.Single().Question.Id}/images/1/0");
                 Assert.Equal(HttpStatusCode.NotFound, deniedCrop.StatusCode);
+                var revision = new ExtractionRevisionRequest(Guid.NewGuid(), job.Version, "Adjust crop", [job.Questions.Single().Question]);
+                using var deniedRevision = await caller.PutAsJsonAsync($"/api/intake/extractions/{job.Id}/questions", revision);
+                Assert.Equal(HttpStatusCode.NotFound, deniedRevision.StatusCode);
             }
             if (job.Id == foreignJob.Id) await AssertReadableAsync(foreign, "/api/intake/extractions", job, bytes);
             foreach (var objectPath in new[] { job.Sources.Single().Path, job.Questions.Single().Images.Single().Path })

@@ -92,9 +92,8 @@ public static partial class ExtractionEndpoints
             async (HttpContext http, Guid id, Guid questionId, IExtractionService service,
                 Emenda.Database.MistakeDbContext db, Emenda.Domain.Services.IMistakeDomainService mistakes, CancellationToken ct) =>
                 await ReviewExtractionAsync(http, administrator, id, questionId, service, db, mistakes, ct));
-        if (administrator)
-            group.MapPut("/{id:guid}/questions", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
-                Ok(await service.ReviseAsync(Access(http, true), id, await BodyAsync<ExtractionRevisionRequest>(http, ct), ct)));
+        group.MapPut("/{id:guid}/questions", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
+            Ok(await service.ReviseAsync(Access(http, administrator), id, await BodyAsync<ExtractionRevisionRequest>(http, ct), ct)));
     }
 
     private static ExtractionAccess Access(HttpContext http, bool administrator)
