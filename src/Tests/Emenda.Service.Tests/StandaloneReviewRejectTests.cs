@@ -15,17 +15,14 @@ using Emenda.Database;
 using Emenda.Database.Entities;
 using Emenda.Domain.Models;
 using Emenda.Domain.Services;
-using Emenda.Service.StudentIntegration;
 using Xunit;
 
 namespace Emenda.Service.Tests;
 
 /// <summary>
-/// Product standalone mode (<c>Emenda:Runtime:Mode=Standalone</c>) has no
-/// Student service. A review rejection must still work: persist the Rejected
-/// status and its ProcessLog, keep the source images where they are, and return
-/// the normal success response. The legacy Local/Platform return behaviour is
-/// covered by <see cref="ReviewRejectCallbackTests"/> and must stay untouched.
+/// Emenda has no Student service. A review rejection persists the Rejected
+/// status and its ProcessLog, keeps the source images where they are, and
+/// returns the normal success response.
 /// </summary>
 public sealed class StandaloneReviewRejectTests
 {
@@ -70,9 +67,6 @@ public sealed class StandaloneReviewRejectTests
         var logActions = await factory.ReadProcessLogActionsAsync(itemId);
         logActions.Should().Contain((int)ProcessAction.Created);
         logActions.Should().Contain((int)ProcessAction.ReviewRejected);
-
-        // No Student-backed return record/callback may run in standalone mode.
-        factory.Student.Calls.Should().BeEmpty();
     }
 
     [Fact]
@@ -89,7 +83,6 @@ public sealed class StandaloneReviewRejectTests
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await factory.ReadItemAsync(itemId)).ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
-        factory.Student.Calls.Should().BeEmpty();
     }
 
     [Fact]
@@ -131,7 +124,6 @@ public sealed class StandaloneReviewRejectTests
         item.ReviewStatus.Should().Be((int)ReviewStatus.Confirmed);
         var logActions = await factory.ReadProcessLogActionsAsync(itemId);
         logActions.Should().Contain((int)ProcessAction.ReviewConfirmed);
-        factory.Student.Calls.Should().BeEmpty();
         factory.Oss.Copies.Should().BeEmpty();
         factory.Oss.Deletes.Should().BeEmpty();
     }
@@ -148,67 +140,40 @@ public sealed class StandaloneReviewRejectTests
     }
 
     /// <summary>
-    /// Standalone deployment shaped exactly like the production one: product
-    /// caller credentials only, no IdentityService, Student capability off, all
-    /// background workers off, in-memory database. Student and OSS are replaced
-    /// with recorders so an accidental Student return/callback or OSS write
-    /// fails the assertion instead of passing silently.
+    /// Deployment shaped like the production one: product caller credentials
+    /// only and an in-memory database. OSS is replaced with a recorder so an
+    /// accidental OSS copy/delete fails the assertion instead of passing silently.
     /// </summary>
     private sealed class StandaloneRejectWebApplicationFactory : WebApplicationFactory<Program>
     {
         private static readonly string[] OwnedEnvironmentKeys =
         [
-            "Emenda__Runtime__Mode",
             "Emenda__Security__Callers__0__Name",
             "Emenda__Security__Callers__0__ApiKey",
             "ConnectionStrings__Emenda",
-            "Mistake__ConfigMode",
-            "Mistake__Student__Enabled",
-            "Mistake__Workers__UploadPollingWorker__Enabled",
-            "Mistake__Workers__ReanalyzeJobHostedService__Enabled",
-            "Mistake__Workers__ReanalyzeJobCleanupService__Enabled",
             "Oss__InternalEndpoint",
             "Oss__InternalSecure",
             "Oss__AccessKey",
             "Oss__SecretKey",
             "Oss__BucketName",
             "Oss__PublicBaseUrl",
-            "IdentityService__Authority",
-            "IdentityService__Issuer",
-            "IdentityService__Audience",
-            "IdentityService__AdminAudience",
-            "IdentityService__MistakeApiStrictAuth",
-            "IdentityService__MistakeApiResourceAuth",
         ];
 
-        public RecordingStudentGateway Student { get; } = new();
         public RecordingOssService Oss { get; } = new();
 
         public StandaloneRejectWebApplicationFactory()
         {
-            Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__Emenda",
                 "Host=127.0.0.1;Port=5432;Database=emenda_standalone_reject_tests;Username=emenda;Password=standalone-reject-tests-only");
-            Environment.SetEnvironmentVariable("Mistake__ConfigMode", null);
-            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__UploadPollingWorker__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobHostedService__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobCleanupService__Enabled", "false");
             Environment.SetEnvironmentVariable("Oss__InternalEndpoint", "127.0.0.1:19033");
             Environment.SetEnvironmentVariable("Oss__InternalSecure", "false");
             Environment.SetEnvironmentVariable("Oss__AccessKey", "standalone-reject-access");
             Environment.SetEnvironmentVariable("Oss__SecretKey", "standalone-reject-secret");
             Environment.SetEnvironmentVariable("Oss__BucketName", "emenda-standalone-reject-tests");
             Environment.SetEnvironmentVariable("Oss__PublicBaseUrl", "http://127.0.0.1/oss");
-            Environment.SetEnvironmentVariable("IdentityService__Authority", null);
-            Environment.SetEnvironmentVariable("IdentityService__Issuer", null);
-            Environment.SetEnvironmentVariable("IdentityService__Audience", null);
-            Environment.SetEnvironmentVariable("IdentityService__AdminAudience", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiStrictAuth", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", null);
         }
 
         protected override void Dispose(bool disposing)
@@ -229,9 +194,6 @@ public sealed class StandaloneReviewRejectTests
                 services.RemoveAll<IDbContextOptionsConfiguration<MistakeDbContext>>();
                 services.AddDbContext<MistakeDbContext>(options => options.UseInMemoryDatabase(databaseName));
 
-                services.RemoveAll<IUploadSourceGateway>();
-                services.AddSingleton<IUploadSourceGateway>(Student);
-
                 services.RemoveAll<IOssService>();
                 services.AddSingleton<IOssService>(Oss);
             });
@@ -240,17 +202,27 @@ public sealed class StandaloneReviewRejectTests
         public async Task<(Guid ItemId, string SourceImagePath)> SeedPendingReviewItemAsync()
         {
             using var scope = Services.CreateScope();
-            var domain = scope.ServiceProvider.GetRequiredService<IMistakeDomainService>();
-            var item = await domain.AddMistakeItemAsync(new MistakeItemModel
+            var db = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
+            var id = Guid.NewGuid();
+            db.MistakeItems.Add(new MistakeItemEntity
             {
+                Id = id,
                 StudentId = StudentId,
                 Subject = 2,
                 Grade = 3,
                 SourceUploadId = "upload-standalone-1",
-                SourceRegions = [new SourceRegionModel { SourceImagePath = SourceImagePath }],
-                RootCause = "初始原因"
+                SourceRegions = [new SourceRegionEntry { SourceImagePath = SourceImagePath }],
+                RootCause = "初始原因",
+                ReviewStatus = (int)ReviewStatus.PendingReview,
+                CreatedAt = DateTimeOffset.UtcNow
             });
-            return (item.Id, SourceImagePath);
+            db.ProcessLogs.Add(new ProcessLogEntity
+            {
+                Id = Guid.NewGuid(), MistakeItemId = id, StudentId = StudentId,
+                Action = (int)ProcessAction.Created, Details = "seeded", CreatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+            return (id, SourceImagePath);
         }
 
         public async Task<MistakeItemEntity> ReadItemAsync(Guid itemId)
@@ -269,47 +241,6 @@ public sealed class StandaloneReviewRejectTests
                 .OrderBy(log => log.CreatedAt)
                 .Select(log => log.Action)
                 .ToListAsync();
-        }
-    }
-
-    /// <summary>
-    /// Any call proves the standalone rejection path still depends on the
-    /// Student service; the test asserts none happened.
-    /// </summary>
-    internal sealed class RecordingStudentGateway : IUploadSourceGateway
-    {
-        public List<string> Calls { get; } = new();
-
-        public Task<ProcessingUploadsPage> GetProcessingUploadsAsync(
-            string? cursor, int pageSize, CancellationToken cancellationToken = default)
-        {
-            Calls.Add(nameof(GetProcessingUploadsAsync));
-            return Task.FromResult(new ProcessingUploadsPage());
-        }
-
-        public Task<RemoveProcessedUploadImagesResult> RemoveProcessedImagesAsync(
-            string recordId, List<string> imagePaths, CancellationToken cancellationToken = default)
-        {
-            Calls.Add(nameof(RemoveProcessedImagesAsync));
-            return Task.FromResult(new RemoveProcessedUploadImagesResult());
-        }
-
-        public Task<CreateReturnedUploadRecordResult> CreateReturnedRecordAsync(
-            string studentId, List<UploadImageEntry> imageEntries, string? comments, string? returnReason,
-            string? operationId, CancellationToken cancellationToken = default)
-        {
-            Calls.Add(nameof(CreateReturnedRecordAsync));
-            return Task.FromResult(new CreateReturnedUploadRecordResult
-            {
-                Status = CreateReturnedUploadRecordStatus.Succeeded
-            });
-        }
-
-        public Task<AllowedStudentsResolution> GetAllowedStudentIdsAsync(
-            string identityAccountId, CancellationToken cancellationToken = default)
-        {
-            Calls.Add(nameof(GetAllowedStudentIdsAsync));
-            return Task.FromResult(AllowedStudentsResolution.Unavailable);
         }
     }
 

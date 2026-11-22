@@ -1,5 +1,7 @@
 # 数据库文档
 
+Schema 19 (`20261122000000_DropManagedSourceTables`) removes the platform-era managed source tables (`source_*`, `legacy_return*`, `layout_job*`) and their guard triggers; the upgrade refuses to run while any of them holds a row. `mistake_analysis`, `reanalyze_job` and `product_intake_request` are retained as data although no current code path writes them. See [migration history](./migrations.md).
+
 Schema 18 adds `20261118000000_AddConversationMistakes` after the preserved schema-17 structured-analysis migration. Conversation jobs persist caller/actor/student/owner scope and leases; permanent receipts prevent replay after deletion; mistake snapshots remain independent of chat history. See [Conversation collection](../Integration/ConversationCollection.md).
 
 > **本目录是 ruoyu.mistake 数据库结构的唯一事实源。**
@@ -11,11 +13,8 @@ Schema 18 adds `20261118000000_AddConversationMistakes` after the preserved sche
 | `mistake_item` | 错题条目，核心业务表 | [tables/mistake_item.md](./tables/mistake_item.md) |
 | `mistake_practice` | 错题练习记录 | [tables/mistake_practice.md](./tables/mistake_practice.md) |
 | `process_log` | 处理日志，记录错题生命周期 | [tables/process_log.md](./tables/process_log.md) |
-| `reanalyze_job` | 错题再分析任务 | [tables/reanalyze_job.md](./tables/reanalyze_job.md) |
-| `source_handoff` | 完整来源交接固定意图与原回执 | [tables/source_handoff.md](./tables/source_handoff.md) |
-| `legacy_return` / `legacy_return_object` / `legacy_return_attempt` | 旧条目未来退回的持久日志与全部图片保护 | [tables/legacy_return.md](./tables/legacy_return.md) |
+| `reanalyze_job` | 已移除的 VL 再分析任务（仅保留历史数据） | [tables/reanalyze_job.md](./tables/reanalyze_job.md) |
 | `legacy_archive` | 旧结构收敛时被移除或改写数据的只追加归档 | [tables/legacy_archive.md](./tables/legacy_archive.md) |
-| `layout_job` / `layout_job_image` / `layout_result` / `layout_result_region` / `layout_request` | 版面检测作业、每图进度、接受结果与请求键重放 | [tables/layout_job.md](./tables/layout_job.md) |
 
 ## 实体关系
 
@@ -58,12 +57,11 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 - `20260930000001_LeaseReanalyzeJobs`：全局领取租约与终态栅栏
 - `20261008000001_AddLegacyArchive`：旧结构收敛归档表（其余迁移见[迁移历史](./migrations.md)）
 
-服务启动时自动把空库、已知 EF 历史的旧库和旧版自动维护留下的已知结构升级到当前结构，已是目标时不写入；不支持的结构拒绝启动且不修改。详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
+服务启动时自动把空库、已知 EF 历史的旧库和旧版自动维护留下的已知结构升级到当前结构，已是目标时不写入；不支持的结构拒绝启动且不修改。详见[迁移历史](./migrations.md)和[部署说明](../development/StandaloneDeployment.md)。
 
 ## 数据库类型
 
 PostgreSQL（Npgsql 提供程序）。
 
-- [来源入库数据](./tables/source_intake.md)
 
 StorageReferences v1 已按 [ADR-0030](../../../../../docs/adr/0030-portal-hosted-administration.md) 第 4 步删除：迁移 `20261107000001_DropStorageReferenceSnapshots` 删除 `storage_reference_snapshot` 表与 `guard_storage_reference_snapshot` 函数（快照会过期、不是业务数据，非空也直接删除；Down 重建空表），它是 schema 版本 14；版本 10–13 的精确 schema 检查仍要求该表。

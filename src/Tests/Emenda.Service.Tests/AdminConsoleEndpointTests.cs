@@ -341,7 +341,6 @@ public sealed class AdminConsoleEndpointTests
 
     private static readonly string[] OwnedEnvironmentKeys =
     [
-        "Emenda__Runtime__Mode",
         "Emenda__Security__Callers__0__Name",
         "Emenda__Security__Callers__0__ApiKey",
         "Emenda__Security__DynamicCallers__Path",
@@ -351,18 +350,6 @@ public sealed class AdminConsoleEndpointTests
         "Emenda__Admin__Oidc__RedirectUri",
         "Emenda__Admin__Oidc__PostLogoutRedirectUri",
         "ConnectionStrings__Emenda",
-        "Mistake__ConfigMode",
-        "Mistake__Student__Enabled",
-        "Mistake__Workers__UploadPollingWorker__Enabled",
-        "Mistake__Workers__ReanalyzeJobHostedService__Enabled",
-        "Mistake__Workers__ReanalyzeJobCleanupService__Enabled",
-        "VlAnalyzer__ApiKey",
-        "IdentityService__Authority",
-        "IdentityService__Issuer",
-        "IdentityService__Audience",
-        "IdentityService__AdminAudience",
-        "IdentityService__MistakeApiStrictAuth",
-        "IdentityService__MistakeApiResourceAuth",
     ];
 
     private sealed class LogoutBackchannel : HttpMessageHandler
@@ -429,7 +416,6 @@ public sealed class AdminConsoleEndpointTests
                 Directory.CreateDirectory(_dataRoot);
                 File.WriteAllText(Path.Combine(_dataRoot, "emenda-callers.json"), callerState ?? "{\"version\":1,\"callers\":[]}");
             }
-            Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);
             Environment.SetEnvironmentVariable("Emenda__Security__DynamicCallers__Path",
@@ -447,18 +433,6 @@ public sealed class AdminConsoleEndpointTests
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__Emenda",
                 "Host=127.0.0.1;Port=5432;Database=emenda_admin_tests;Username=emenda;Password=admin-tests-only");
-            Environment.SetEnvironmentVariable("Mistake__ConfigMode", null);
-            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__UploadPollingWorker__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobHostedService__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobCleanupService__Enabled", "false");
-            Environment.SetEnvironmentVariable("VlAnalyzer__ApiKey", null);
-            Environment.SetEnvironmentVariable("IdentityService__Authority", null);
-            Environment.SetEnvironmentVariable("IdentityService__Issuer", null);
-            Environment.SetEnvironmentVariable("IdentityService__Audience", null);
-            Environment.SetEnvironmentVariable("IdentityService__AdminAudience", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiStrictAuth", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", null);
         }
 
         protected override void Dispose(bool disposing)

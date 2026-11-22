@@ -25,7 +25,7 @@
 
 ## 启用
 
-现有 `/api/intake/uploads` 同步合同不变。新能力默认关闭，独立版通过以下配置启用：
+这是唯一的图片入库入口（旧的 `/api/intake/uploads` 同步入口已移除）。能力默认关闭，通过以下配置启用：
 
 | 配置 | 要求 |
 |---|---|
@@ -76,7 +76,7 @@ PC 管理页「错题入库」（`/admin/extractions`）展示客户端提交的
 
 ## 持久化与恢复
 
-迁移 `20261116000000_AddExtractions` 为 schema v16，新增 `extraction_job`、`extraction_question`、`extraction_revision`。独立 Own 模式按现有严格升级器升级；Shared 模式不执行 DDL，未具备迁移时拒绝启动。非空 Down 拒绝，备份包含三表及原图和历史裁图。
+迁移 `20261116000000_AddExtractions` 为 schema v16，新增 `extraction_job`、`extraction_question`、`extraction_revision`。启动时由严格升级器升级。非空 Down 拒绝，备份包含三表及原图和历史裁图。
 
 先持久绑定上传载荷，再写入并回读校验原图；存储失败可以用原 sourceKey 和原字节重新提交。后台以数据库时钟、租约、心跳、owner 和 fence 领取任务；进程中断后过期任务可重新领取，迟到 worker 不能发布。已接受布局与模型结果保存为检查点，裁剪或入库失败后重试不重新调用已经接受的模型。上游响应丢失仍可能重复推理，不承诺跨服务 exactly-once。
 

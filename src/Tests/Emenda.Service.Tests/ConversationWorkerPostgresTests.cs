@@ -15,7 +15,7 @@ public sealed class ConversationWorkerPostgresTests
     [Fact]
     public async Task ActualWorkerClaimsAdmittedEvidenceAndCommitsOneIndependentMistake()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         const string student = "worker-learner", actor = "worker-account", owner = "worker-owner";
         var conversation = Guid.NewGuid();
         var question = Guid.NewGuid();

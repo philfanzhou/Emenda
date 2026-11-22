@@ -8,8 +8,8 @@ in with an account that carries the configured role (default `admin`), the
 console displays and manages the caller credentials
 (`X-Emenda-Api-Key`) that calling systems use against `/api/*`.
 
-The console exists only in standalone mode; legacy Local/Platform deployments
-keep the platform's own administration surface unchanged.
+The console is part of every Emenda deployment; it becomes usable once the SignaCore
+hosted-login settings are configured.
 
 ## Configuration
 

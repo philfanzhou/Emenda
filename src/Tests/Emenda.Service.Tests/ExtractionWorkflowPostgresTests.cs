@@ -21,7 +21,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task MultiImageQuestionAndSingleImageQuestions_OnlyActualMistakesAreMaterialized()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer(request => new("test-model", [
             Question("incorrect", [new(request.Images[0].SourceId, 0, 0, .5, 1), new(request.Images[1].SourceId, 0, 0, 1, 1)]) with { QuestionNumber = "三、2（1）" },
             Question("correct", [new(request.Images[0].SourceId, .5, 0, 1, 1)]) with { QuestionNumber = "三、2（1）", Statement = "2+2", StudentAnswer = "4", ReferenceAnswer = "4" },
@@ -58,7 +58,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task ConcurrentHostsAndReplay_DoNotDuplicateJobsQuestionsOrItems()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var analyzer = DefaultAnalyzer();
         var first = Service(database, analyzer);
         var second = Service(database, analyzer);
@@ -80,7 +80,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task LostOriginalPut_RetainsBindingAndUnchangedRetryRecovers()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
         database.FailAfterPut = true;
         var upload = Upload();
@@ -97,7 +97,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task CallerCorrection_IsAtomicAndVersioned_AndPreservesPracticeAndOldImages()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
         var job = await Completed(service);
         var q = job.Questions.Single();
@@ -137,7 +137,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task DeletedItemIsNotRecreatedByCorrectionOrHistoricalRestore()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
         var job = await Completed(service);
         var q = job.Questions.Single();
@@ -156,7 +156,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task FailedCropResume_ReusesAcceptedLayoutAndModelResult_AndRetryKeyIsIdempotent()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var analyzer = DefaultAnalyzer();
         var layout = new LayoutClient();
         var service = Service(database, analyzer, layout);
@@ -182,7 +182,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task LateWorkerCannotPublishAfterItsLeaseWasReplaced()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
@@ -215,7 +215,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task CrossPageNumberAndReadingOrder_AreVersionedWithoutChangingQuestionIdentity()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer(request => new("test-model", [Question("incorrect",
             [new(request.Images[1].SourceId, .5, 0, 1, 1), new(request.Images[0].SourceId, .5, 0, 1, 1)])
             with { QuestionNumber = "12" }]));
@@ -274,7 +274,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task ManualMergeAndSplit_KeepPrintedLabelsSeparateFromStableIdentity()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer(request => new("test-model", request.Images.Select((image, index) =>
             Question("unknown", [new(image.SourceId, .5, 0, 1, 1)]) with
             { QuestionNumber = "12", Statement = "Uncertain page " + index, StudentAnswer = null }).ToList()));
@@ -305,7 +305,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task InvalidManualNumbers_DoNotPublishOrMutateHistory_AndUnknownRemainsNull()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
         var job = await Completed(service);
         var draft = job.Questions.Single().Question;
@@ -326,7 +326,7 @@ public sealed class ExtractionWorkflowPostgresTests
     [Fact]
     public async Task NumberlessLegacyRevisionReceipt_KeepsItsPayloadHashAndCanReplayAfterNumbering()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
         var job = await Completed(service);
         var q = job.Questions.Single().Question;
@@ -354,7 +354,7 @@ public sealed class ExtractionWorkflowPostgresTests
         (await service.GetAsync(Caller, job.Id)).Questions.Single().Question.QuestionNumber.Should().Be("12");
     }
 
-    private static ExtractionService Service(ProductIntakePostgresTests.TestDatabase database, Analyzer analyzer, LayoutClient? layout = null) =>
+    private static ExtractionService Service(PostgresTestDatabase database, Analyzer analyzer, LayoutClient? layout = null) =>
         new(new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(database.Connection).Options,
             database.Oss.Object, analyzer, layout ?? new(), Options.Create(new ExtractionOptions { Enabled = true }), NullLogger<ExtractionService>.Instance);
     private static async Task<ExtractionJobView> Completed(ExtractionService service)
@@ -384,7 +384,7 @@ public sealed class ExtractionWorkflowPostgresTests
             else raster[offset + (i == 0 ? 2 : 1)] = 255;
         }
         using var image = new MagickImage(raster);
-        return new ProductIntakeImage { FileName = "page.png", ContentType = "image/png", Content = image.ToByteArray(MagickFormat.Png) };
+        return new ExtractionImage { FileName = "page.png", ContentType = "image/png", Content = image.ToByteArray(MagickFormat.Png) };
     }).ToList());
     private sealed class Analyzer : IQuestionAnalysisClient
     {

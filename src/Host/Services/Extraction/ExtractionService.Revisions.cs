@@ -94,7 +94,6 @@ public sealed partial class ExtractionService
             else if (item is not null && changed)
             {
                 RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
-                await InvalidateAnalysisAsync(db, item.Id, ct);
                 item.Subject = proposed.Question.Subject;
                 item.SourceRegions = proposed.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).ToList();
                 item.ReviewStatus = proposed.Question.Outcome == "incorrect" ? (int)ReviewStatus.PendingReview : (int)ReviewStatus.Rejected;
@@ -112,7 +111,6 @@ public sealed partial class ExtractionService
             var item = items.GetValueOrDefault(id);
             if (item is null) continue;
             RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
-            await InvalidateAnalysisAsync(db, item.Id, ct);
             item.ReviewStatus = (int)ReviewStatus.Rejected;
             item.ReviewerId = null;
             item.ReviewedAt = null;
@@ -129,14 +127,6 @@ public sealed partial class ExtractionService
         job.LeaseUntil = null;
         job.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
-    }
-
-    private static async Task InvalidateAnalysisAsync(MistakeDbContext db, Guid itemId, CancellationToken ct)
-    {
-        var analysis = await db.MistakeAnalyses.FindAsync([itemId], ct);
-        if (analysis is null) return;
-        analysis.Revision++;
-        analysis.InputDigest = string.Empty;
     }
 
     private static void RetainBeforeCorrection(MistakeDbContext db, MistakeItemEntity item, string actor,

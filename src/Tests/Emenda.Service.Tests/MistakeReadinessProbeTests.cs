@@ -11,7 +11,7 @@ namespace Emenda.Service.Tests;
 
 /// <summary>
 /// IKJFIX unit tests for the readiness dependency matrix: component set is the
-/// startup capability snapshot (student/vl only when wired), oss probe has
+/// startup capability snapshot (structadoc only when wired), oss probe has
 /// success/failure states, HTTP probes treat any response as reachable and
 /// time out independently, and concurrent probes are safe.
 /// </summary>
@@ -59,7 +59,7 @@ public sealed class MistakeReadinessProbeTests
             context ?? CreateContext(),
             oss ?? Mock.Of<IOssService>(),
             (httpClientFactory ?? new Mock<IHttpClientFactory>()).Object,
-            snapshot ?? new MistakeReadinessSnapshot(false, string.Empty, false, string.Empty),
+            snapshot ?? new MistakeReadinessSnapshot(),
             NullLogger<MistakeReadinessProbe>.Instance);
     }
 
@@ -68,7 +68,7 @@ public sealed class MistakeReadinessProbeTests
     {
         var oss = new Mock<IOssService>();
         oss.Setup(x => x.CheckConnectivityAsync()).ReturnsAsync(true);
-        var probe = CreateProbe(oss: oss.Object, snapshot: new MistakeReadinessSnapshot(false, string.Empty, false, string.Empty));
+        var probe = CreateProbe(oss: oss.Object, snapshot: new MistakeReadinessSnapshot());
 
         var components = await probe.ProbeAsync(CancellationToken.None);
 
@@ -77,7 +77,7 @@ public sealed class MistakeReadinessProbeTests
     }
 
     [Fact]
-    public async Task Matrix_ShouldIncludeStudentAndVlWhenWiredAsync()
+    public async Task Matrix_ShouldIncludeStructaDocWhenWiredAsync()
     {
         var oss = new Mock<IOssService>();
         oss.Setup(x => x.CheckConnectivityAsync()).ReturnsAsync(true);
@@ -85,12 +85,11 @@ public sealed class MistakeReadinessProbeTests
         var probe = CreateProbe(
             oss: oss.Object,
             httpClientFactory: factory,
-            snapshot: new MistakeReadinessSnapshot(
-                true, "http://student.local:5005", true, "http://vl.local/v1"));
+            snapshot: new MistakeReadinessSnapshot(true, "http://structadoc.local/"));
 
         var components = await probe.ProbeAsync(CancellationToken.None);
 
-        components.Select(c => c.Name).Should().Equal("db", "oss", "student", "vl");
+        components.Select(c => c.Name).Should().Equal("db", "oss", "structadoc");
         components.Should().OnlyContain(c => c.Ok);
     }
 
@@ -127,14 +126,13 @@ public sealed class MistakeReadinessProbeTests
     public async Task HttpProbe_ShouldTreatAnyResponseAsReachableAsync()
     {
         var factory = ImmediateResponseFactory(HttpStatusCode.ServiceUnavailable);
-        var probe = CreateProbe(httpClientFactory: factory, snapshot: new MistakeReadinessSnapshot(
-            true, "http://student.local:5005", false, string.Empty));
+        var probe = CreateProbe(httpClientFactory: factory, snapshot: new MistakeReadinessSnapshot(true, "http://structadoc.local/"));
 
         var components = await probe.ProbeAsync(CancellationToken.None);
 
-        var student = components.Single(c => c.Name == "student");
-        student.Ok.Should().BeTrue();
-        student.Reason.Should().BeNull();
+        var structadoc = components.Single(c => c.Name == "structadoc");
+        structadoc.Ok.Should().BeTrue();
+        structadoc.Reason.Should().BeNull();
     }
 
     [Fact]
@@ -142,14 +140,13 @@ public sealed class MistakeReadinessProbeTests
     {
         var factory = CreateHttpClientFactory((_, _) =>
             throw new HttpRequestException("connection refused"));
-        var probe = CreateProbe(httpClientFactory: factory, snapshot: new MistakeReadinessSnapshot(
-            true, "http://student.local:5005", false, string.Empty));
+        var probe = CreateProbe(httpClientFactory: factory, snapshot: new MistakeReadinessSnapshot(true, "http://structadoc.local/"));
 
         var components = await probe.ProbeAsync(CancellationToken.None);
 
-        var student = components.Single(c => c.Name == "student");
-        student.Ok.Should().BeFalse();
-        student.Reason.Should().Be("connect failed");
+        var structadoc = components.Single(c => c.Name == "structadoc");
+        structadoc.Ok.Should().BeFalse();
+        structadoc.Reason.Should().Be("connect failed");
     }
 
     [Fact]
@@ -162,15 +159,14 @@ public sealed class MistakeReadinessProbeTests
             await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
-        var probe = CreateProbe(httpClientFactory: factory, snapshot: new MistakeReadinessSnapshot(
-            false, string.Empty, true, "http://vl.local/v1"));
+        var probe = CreateProbe(httpClientFactory: factory, snapshot: new MistakeReadinessSnapshot(true, "http://structadoc.local/"));
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var components = await probe.ProbeAsync(timeout.Token);
 
-        var vl = components.Single(c => c.Name == "vl");
-        vl.Ok.Should().BeFalse();
-        vl.Reason.Should().Be("timeout");
+        var structadoc = components.Single(c => c.Name == "structadoc");
+        structadoc.Ok.Should().BeFalse();
+        structadoc.Reason.Should().Be("timeout");
     }
 
     [Fact]
@@ -178,8 +174,7 @@ public sealed class MistakeReadinessProbeTests
     {
         var oss = new Mock<IOssService>();
         oss.Setup(x => x.CheckConnectivityAsync()).ReturnsAsync(true);
-        var probe = CreateProbe(oss: oss.Object, snapshot: new MistakeReadinessSnapshot(
-            false, string.Empty, false, string.Empty));
+        var probe = CreateProbe(oss: oss.Object, snapshot: new MistakeReadinessSnapshot());
 
         var first = await probe.ProbeAsync(CancellationToken.None);
         var second = await probe.ProbeAsync(CancellationToken.None);
@@ -194,7 +189,7 @@ public sealed class MistakeReadinessProbeTests
         // PostgreSQL context pointed at a closed port: EF Core's CanConnectAsync
         // opens a connection and reports false on connection failure, so the
         // failed-db component path is exercised without a live server.
-        var closedPort = LocalBootstrapPostgresTests.GetAvailablePort();
+        var closedPort = HostProcess.GetAvailablePort();
         var context = new MistakeDbContext(new DbContextOptionsBuilder<MistakeDbContext>()
             .UseNpgsql($"Host=127.0.0.1;Port={closedPort};Database=readiness_probe_unreachable;Username=none;Password=none")
             .Options);
@@ -207,62 +202,5 @@ public sealed class MistakeReadinessProbeTests
         db.Reason.Should().BeOneOf("connect failed", "timeout");
     }
 
-    [Theory]
-    [InlineData("valid", true, 2)]
-    [InlineData("wrong-issuer", false, 1)]
-    [InlineData("wrong-origin", false, 1)]
-    [InlineData("unavailable", false, 1)]
-    [InlineData("bad-json", false, 1)]
-    [InlineData("empty-keys", false, 2)]
-    public async Task StrictIdentityProbe_ShouldRequireActualDiscoveryAndKeysAsync(
-        string scenario, bool expected, int expectedRequests)
-    {
-        var requests = 0;
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(x => x.CreateClient(MistakeReadinessProbe.IdentityHttpClientName))
-            .Returns(() => new HttpClient(new StubHttpMessageHandler((request, _) =>
-            {
-                requests++;
-                var discovery = request.RequestUri!.AbsolutePath.Contains("openid-configuration");
-                var body = discovery
-                    ? "{\"issuer\":\"https://identity.test\",\"jwks_uri\":\"https://identity.test/.well-known/jwks\"}"
-                    : "{\"keys\":[{\"kty\":\"RSA\"}]}";
-                if (scenario == "wrong-issuer") body = body.Replace("\"issuer\":\"https://identity.test\"", "\"issuer\":\"https://other.test\"");
-                if (scenario == "wrong-origin") body = body.Replace("identity.test/.well-known", "other.test/.well-known");
-                if (scenario == "bad-json") body = "not-json";
-                if (scenario == "empty-keys" && !discovery) body = "{\"keys\":[]}";
-                return Task.FromResult(new HttpResponseMessage(scenario == "unavailable"
-                    ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK) { Content = new StringContent(body) });
-            })));
-        var probe = CreateProbe(httpClientFactory: factory,
-            snapshot: new MistakeReadinessSnapshot(false, "", false, "", true, "https://identity.test", "https://identity.test"));
 
-        var components = await probe.ProbeAsync(CancellationToken.None);
-
-        var issuer = components.Single(x => x.Name == "issuer");
-        issuer.Ok.Should().Be(expected);
-        issuer.Reason.Should().Be(expected ? null : "probe failed");
-        requests.Should().Be(expectedRequests);
-    }
-
-    [Fact]
-    public async Task StrictIdentityProbe_ShouldBoundTimeoutAndPropagateCallerCancellationAsync()
-    {
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(x => x.CreateClient(MistakeReadinessProbe.IdentityHttpClientName))
-            .Returns(() => new HttpClient(new StubHttpMessageHandler(async (_, cancellationToken) =>
-            {
-                await Task.Delay(Timeout.Infinite, cancellationToken);
-                return new HttpResponseMessage(HttpStatusCode.OK);
-            })) { Timeout = TimeSpan.FromMilliseconds(50) });
-        var probe = CreateProbe(httpClientFactory: factory,
-            snapshot: new MistakeReadinessSnapshot(false, "", false, "", true, "https://identity.test", "https://identity.test"));
-
-        (await probe.ProbeAsync(CancellationToken.None)).Single(x => x.Name == "issuer")
-            .Should().Be(new MistakeReadinessComponent("issuer", false, "timeout"));
-        using var cancelled = new CancellationTokenSource();
-        cancelled.Cancel();
-        await FluentActions.Awaiting(() => probe.ProbeAsync(cancelled.Token))
-            .Should().ThrowAsync<OperationCanceledException>();
-    }
 }

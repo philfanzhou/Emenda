@@ -9,7 +9,7 @@ Mistake Learning 定义学习者特定错题的审核、练习和掌握过程。
 _Avoid_: Question、Upload Record
 
 **Source Upload**:
-Mistake Item 所依据的 Learner Upload Record 引用。
+Mistake Item 所依据的来源引用（自动提取为 `extract:{jobId}`）。
 _Avoid_: Upload Record Ownership、Document File
 
 **Review**:
@@ -24,19 +24,8 @@ _Avoid_: Question、Homework Submission
 对 Student 产生该 Mistake Item 原因的领域描述。
 _Avoid_: Error Type、Process Log
 
-**Source Intake**:
-对一份不可变 Source Upload 内容取得的持久处理归属与题目分组结果。来源仍保留，物化错题不等于完成跨上下文交接。
+**Extraction Job**:
+调用方提交的一组有序原图经 StructaDoc 版面分析与 AI Tutor 判错后的持久任务；只有判为 incorrect 的题目生成待审核 Mistake Item，原图与每个修订版本均保留。
 
-**Source Group**:
-同一不可变来源中，归属于一题的合法原图或整数区域集合。集合顺序不改变业务身份，同一区域不能被重新分配到另一题。
-
-**Source Return**:
-对一项受管错题取得的持久退回归属，以原学生提交证明与保留历史的本域退回事实共同确认完成。它不代表来源释放或当前退回图片仍未被学生消费。
-
-**Legacy Return**:
-对没有真实 Source Group 的既有待审核错题取得的独立持久退回归属，覆盖空来源和旧来源 ID。先保存原题与完整原图、固定字节和载荷，再以 Student 原历史提交证明与本域完成共同确认；不伪造来源组，不补历史缺失，不释放任何图片或历史。
-_Avoid_: Source Intake、Source Release
-
-**Source Handoff**:
-完整封口来源的所有错题组终结、目标持久且Learner已条件消费后，由原提交证明与本域永久完成事实共同确认的交接。来源历史仍保留，不授予物理对象释放。
-_Avoid_: Target Ready、Source Release
+**Conversation Collection**:
+从 AI Tutor 对话中采集错题的持久作业；生成的 Mistake Item 携带独立的证据快照，不依赖对话历史。

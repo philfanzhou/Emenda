@@ -7,14 +7,13 @@ extracted from the Ruoyu.Study platform and now an independent open-source produ
 
 | Document | Purpose |
 |---|---|
-| [README.md](../README.md) | Product overview, standalone deployment, configuration and the intake API |
+| [README.md](../README.md) | Product overview, configuration, intake paths, contracts and schema |
 | [SECURITY.md](../SECURITY.md) | Reporting a vulnerability and deployment security expectations |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Local build/test workflow and pull-request expectations |
 | [Standalone deployment](./development/StandaloneDeployment.md) | Container deployment, required configuration, health checks and API examples |
 | [Automation and releases](./development/Automation.md) | CI/CodeQL/Dependabot workflows, GHCR image tags and the release process |
-| [Product intake contract](./Integration/emenda-intake-v1.json) | Caller authentication, input limits, immutable replay and error handling for standalone intake |
-| [Lifecycle contract](./Integration/mistake-http-v3.json) | Inherited lifecycle transport; Standalone authentication and rejection semantics are defined by the deployment guide |
-| [Standalone verification](./development/StandaloneVerification.md) | Task-owned PostgreSQL/S3 acceptance entry point, without the platform |
+| [Lifecycle contract](./Integration/mistake-http-v6.json) | Current `/api/mistakes` lifecycle wire (review, practice, process logs, presigned reads, conversation collection) |
+| [Standalone verification](./development/StandaloneVerification.md) | Task-owned PostgreSQL/S3 acceptance entry point (still targets the removed `/api/intake/uploads`; needs porting to extraction) |
 | [Local acceptance record](./development/StandaloneVerificationResult.md) | Observed checks, runtime versions, tested binary hashes and unverified boundaries |
 | [Automatic extraction](./modules/AutomaticExtraction.md) | Multi-image grouping, AI judgment, asynchronous intake, admin correction and retained history |
 | [Extraction HTTP contract](./Integration/emenda-extraction-v1.json) | Asynchronous intake, caller-scoped revisions, and administrative review |

@@ -44,15 +44,15 @@ public sealed class CatalogStartupPostgresTests
         Assert.Equal(before, await ConstraintsAsync(context));
     }
 
-    private static async Task<LocalBootstrapPostgresTests.TestDatabase> CreateDatabaseAsync()
+    private static async Task<HostProcess.ScratchDatabase> CreateDatabaseAsync()
     {
         var connection = Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION");
         if (string.IsNullOrWhiteSpace(connection))
             throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to an isolated PostgreSQL test admin connection.");
-        return await LocalBootstrapPostgresTests.TestDatabase.CreateAsync(connection);
+        return await HostProcess.ScratchDatabase.CreateAsync(connection);
     }
 
-    private static MistakeDbContext CreateContext(LocalBootstrapPostgresTests.TestDatabase database)
+    private static MistakeDbContext CreateContext(HostProcess.ScratchDatabase database)
     {
         var connection = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("MISTAKE_READONLY_TEST_CONNECTION")!)
             { Database = database.Name }.ConnectionString;

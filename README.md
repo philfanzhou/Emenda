@@ -13,33 +13,35 @@ in this repository.
 
 ## Status
 
-**Standalone baseline (product v0.1).** The service is extracted from Ruoyu.Study, moved to
-its own product layout, renamed to Emenda, and can be deployed independently: it runs from
-standard appsettings/environment configuration, requires no Consul, Loki, SignaCore or
-Student service, authenticates callers with a per-caller credential and serves a
-product-owned intake API. This product targets new, trusted backend callers with its own
-database and object store; it is not a drop-in replacement for the current Ruoyu.Study service.
+Emenda runs only as a standalone product: it is configured from standard
+appsettings/environment configuration, owns a dedicated PostgreSQL database and S3 bucket,
+and authenticates trusted backend callers with a per-caller credential. The platform-era
+Local/Platform runtime modes, Consul/Loki, platform JWT authorization, the Student service
+integration and the managed source intake/return/handoff workflow were removed (schema v19).
 
-The product intake contract is [emenda-intake-v1](docs/Integration/emenda-intake-v1.json).
-AI-autonomy roadmap work and platform-side cutover are outside this baseline. Legacy
-Local/Platform modes and Student integration remain compatibility code, not deployment
-prerequisites for new callers.
+Mistakes enter through two paths, both backed by the paired AI Tutor service:
 
-## Standalone mode
+- **Automatic extraction** (`POST /api/intake/extractions`): StructaDoc layout plus AI Tutor
+  multi-image recognition and judgement; only incorrect attempts become pending-review mistakes.
+- **Conversation collection** (`/api/mistakes/conversation-collections`): mistakes collected
+  from AI Tutor conversations.
 
-Configuration comes from `appsettings*.json` and environment variables; the product reads
-no Consul KV and writes no Loki sink. Start the container with `./start.sh` (or the same
-environment variables):
+## Configuration
+
+Configuration comes from `appsettings*.json` and environment variables. Start the container
+with `./start.sh` (or the same environment variables):
 
 | Environment variable | Required | Purpose |
 |---|---|---|
-| `EMENDA_DB_CONNECTION` | yes | PostgreSQL connection string (`ConnectionStrings__Emenda`) |
-| `EMENDA_SCHEMA_OWNERSHIP` | no | `Own` (default, product owns/migrates its dedicated schema); `Shared` is an advanced compatibility mode, not a new installation path |
+| `EMENDA_DB_CONNECTION` | yes | PostgreSQL connection string of a dedicated Emenda database (`ConnectionStrings__Emenda`) |
 | `EMENDA_API_KEY` | yes | Per-caller credential value (`Emenda__Security__Callers__0__ApiKey`) |
 | `EMENDA_CALLER_NAME` | no | Stable caller name for audit and the intake idempotency namespace (default `platform`) |
 | `OSS_INTERNAL_ENDPOINT` / `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` / `OSS_BUCKET_NAME` / `OSS_PUBLIC_BASE_URL` | yes | S3-compatible object storage (`Oss__*`) |
-| `VL_API_KEY` / `VL_API_BASE_URL` / `VL_MODEL` | no | OpenAI-compatible vision-language provider (`VlAnalyzer__*`) |
 | `EMENDA_ADMIN_AUTHORITY` / `EMENDA_ADMIN_CLIENT_ID` / `EMENDA_ADMIN_CLIENT_SECRET` / `EMENDA_ADMIN_REDIRECT_URI` / `EMENDA_ADMIN_POST_LOGOUT_REDIRECT_URI` | no | SignaCore hosted login for the admin console (`Emenda__Admin__Oidc__*`) |
+
+The removed settings `Mistake:ConfigMode`, `Emenda:Runtime:Mode` (other than `Standalone`) and
+`Emenda:Database:SchemaOwnership=Shared` fail startup instead of being ignored; remove them
+from existing deployments.
 
 The optional **admin console** at `GET /admin` uses SignaCore administrator login and
 manages dynamic credentials. Before a **new installation**, explicitly initialize the
@@ -51,59 +53,42 @@ direct file edits require a restart. See [Admin Console](docs/development/AdminC
 
 Business requests under `/api/*` must carry `X-Emenda-Api-Key`. Health (`/health/live`,
 `/health/ready`), the contract endpoint (`/contracts/*`) and the root endpoint stay
-anonymous. Use an explicit connection to a **dedicated Emenda database**, with its own
-private S3 bucket. Callers own student authorization; API keys identify trusted backends,
-not isolated tenants. Standalone review rejection changes local state and preserves images;
-it does not create a Student returned-upload record. See
+anonymous. Callers own student authorization; API keys identify trusted backends, not
+isolated tenants. Review rejection changes local state and preserves images. See
 [Standalone deployment](docs/development/StandaloneDeployment.md).
 
-### Intake API
+### Automatic extraction
 
-`POST /api/intake/uploads` (multipart/form-data) is the product-owned mistake intake
-entry point. Images are stored and verified directly under the product-owned
-`mistakes/intake/` prefix, without copying or deleting legacy source images. The optional
-vision-language analyzer groups the images (one group when not configured). Every group,
-Created log and completion receipt commits in one PostgreSQL transaction.
-
-| Field | Required | Notes |
-|---|---|---|
-| `studentId` | yes | Opaque external student reference, at most 36 characters; the caller owns its authorization |
-| `sourceKey` | no | Caller-scoped key matching `^[A-Za-z0-9._-]{1,64}$`; bound to the student and ordered image bytes/media types |
-| `images` or `images[]` | yes | 1 to 20 files, `image/jpeg` or `image/png`, at most 15 MiB each |
-
-Success returns `{"success":true,"sourceId":"...","items":[{"id":"...","subject":1,"grade":7,"reviewStatus":1,"imagePaths":["mistakes/..."]}]}`.
-`sourceId` is opaque and is not `sourceKey`. A completed replay returns the original receipt,
-not the current review state. Invalid input returns 400. Reusing a key for different content
-returns 409 `source_conflict`; active processing returns 409 `source_in_progress`.
-Storage/processing failures return 500, never partial success: retry the **unchanged** keyed
-request after the dependency recovers. Product objects remain available for recovery.
-Without `sourceKey`, automatic retries are not idempotent. The machine-readable contract is
-served anonymously at `GET /contracts/emenda-intake-v1.json`.
-
-### Single-mistake analysis
-
-Mathematics reports now support natural-language teacher feedback, asynchronous
-reanalysis and explicit confirmation. See [the API workflow](docs/modules/SingleMistakeAnalysis.md)
-and [mistake-http-v4](docs/Integration/mistake-http-v4.json).
-
-### Automatic extraction and correction
-
-The optional asynchronous intake at `POST /api/intake/extractions` preserves originals,
-uses StructaDoc layout plus a paired AI Tutor multi-image analysis API, and creates
+The asynchronous intake at `POST /api/intake/extractions` preserves originals, uses
+StructaDoc layout plus a paired AI Tutor multi-image analysis API, and creates
 pending-review items only for source-backed incorrect attempts. It supports one image
 with multiple questions and one question spanning multiple images. Correct and unknown
-results remain available without creating mistakes. The existing synchronous intake is unchanged.
+results remain available without creating mistakes.
 
 The desktop SignaCore workspace **错题入库** at `/admin/extractions` lists client-submitted jobs and provides original-image region
 editing, grouping and judgment correction, version history and explicit failed-job retry.
 The feature defaults off; see [Automatic extraction](docs/modules/AutomaticExtraction.md)
 and the [paired AI Tutor implementation](integrations/ai-tutor/README.md) before enabling it.
-Schema v16 is additive; retained extraction history cannot be destructively downgraded.
+
+### HTTP contracts
+
+The lifecycle contract is [mistake-http-v6](docs/Integration/mistake-http-v6.json) and the
+extraction contract is [emenda-extraction-v1](docs/Integration/emenda-extraction-v1.json);
+both are served anonymously under `GET /contracts/{version}.json`. Earlier published
+documents (`mistake-http-v1`…`v5`, `emenda-intake-v1`) stay available as historical versions.
+
+### Database schema v19
+
+Schema v19 drops the managed source tables (`source_*`, `legacy_return*`, `layout_job*`)
+and their guard triggers. The upgrade locks those tables and refuses to run, leaving the
+database unchanged, if any of them holds a row; mistakes, practices, logs, extraction,
+conversation and analysis data are untouched. v19 is forward-only. See
+[migration history](docs/database/migrations.md).
 
 
 ## Layout
 
-- `src/` — service solution (`Host`, `Service`, `Domain`, `Database`, `StudentClient`, `Tests`)
+- `src/` — service solution (`Host`, `Service`, `Domain`, `Database`, `Tests`)
 - `docs/` — versioned HTTP contract and documentation
 - `manifest/` — minimal source package manifest used by the build rehearsal
 - `vendor/` — shared components vendored from Ruoyu.Study and maintained independently here

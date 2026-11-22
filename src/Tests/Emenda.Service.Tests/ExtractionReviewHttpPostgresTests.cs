@@ -15,7 +15,7 @@ public sealed class ExtractionReviewHttpPostgresTests
     [InlineData(3)]
     public async Task ReviewOfInspectedVersionCannotConfirmRevisedContentOrRepeatTerminalTransition(int reviewStatus)
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection);
         using var caller = factory.CreateClient();
         caller.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
@@ -74,7 +74,7 @@ public sealed class ExtractionReviewHttpPostgresTests
     [InlineData(31, HttpStatusCode.BadRequest)]
     public async Task FullExamPreservesPageOrderThroughRecognitionReviewAndReplay(int count, HttpStatusCode expected)
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection);
         using var caller = factory.CreateClient();
         caller.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);

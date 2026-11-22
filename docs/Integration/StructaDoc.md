@@ -11,7 +11,7 @@ Mistake 通过专用非归档端点 `POST /api/v1/layout/detect` 调用外部仓
 - `Mistake:Layout:MaxConcurrentExchanges`：进程内并发交换上限，默认 4（1–16），与已部署云适配端的四路并发一致。
 - `Mistake:Layout:MaxResponseBytes`：单响应体上限，默认 4 MiB（4096–67108864）。
 
-启用时上述校验在任何数据库访问前以键名失败；修改任一值须重启进程。配置与回退步骤见[部署说明](../development/Deployment.md)的「版面检测启用与回退」。
+启用时上述校验在任何数据库访问前以键名失败；修改任一值须重启进程。自动提取要求启用本能力，配置见[自动提取](../modules/AutomaticExtraction.md)。
 
 ## 请求契约
 
@@ -78,4 +78,4 @@ curl --cacert '<CA-file>' -H "Authorization: ApiKey <layout-scoped-key>" \
 
 ## 边界
 
-不调用 StructaDoc Document/Parse Run 端点、不需要文档库权限、不静默切换商业 API；所选 MinerU Cloud 后端内部的完整抽取是允许且预期的。作业/结果持久化（迁移 13）与受管 start/status 操作（[LayoutJobs](../modules/LayoutJobs.md)，additive 登记于[版本化机器合同](./MachineHttpContract.md)）已交付；本集成在 Mistake 进程内，不新建服务，不部署本地 layout worker，不持有重复 MinerU 凭据。
+不调用 StructaDoc Document/Parse Run 端点、不需要文档库权限、不静默切换商业 API；所选 MinerU Cloud 后端内部的完整抽取是允许且预期的。版面检测只由自动提取任务在进程内调用（迁移 13 的受管版面作业表已在 schema v19 删除）；本集成在 Mistake 进程内，不新建服务，不部署本地 layout worker，不持有重复 MinerU 凭据。

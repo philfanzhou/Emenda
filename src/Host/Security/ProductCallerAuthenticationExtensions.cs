@@ -6,15 +6,6 @@ namespace Emenda.Host.Security;
 
 public static class ProductCallerAuthenticationExtensions
 {
-    public const string RuntimeModeKey = "Emenda:Runtime:Mode";
-    public const string StandaloneMode = "Standalone";
-
-    public static bool IsStandaloneProductMode(this IConfiguration configuration) =>
-        string.Equals(
-            configuration[RuntimeModeKey],
-            StandaloneMode,
-            StringComparison.OrdinalIgnoreCase);
-
     /// <summary>
     /// Registers product caller authentication and fails startup when a
     /// standalone deployment has no caller credential and anonymous access is
@@ -34,7 +25,7 @@ public static class ProductCallerAuthenticationExtensions
         if (options.Enabled && !options.AllowAnonymous && options.ValidCallers.Count == 0)
         {
             throw new InvalidOperationException(
-                "Standalone mode requires at least one caller credential under " +
+                "Emenda requires at least one caller credential under " +
                 $"{ProductCallerAuthenticationOptions.SectionName}:Callers (Name + ApiKey). " +
                 "Set " +
                 $"{ProductCallerAuthenticationOptions.SectionName}:AllowAnonymous=true only for local development.");

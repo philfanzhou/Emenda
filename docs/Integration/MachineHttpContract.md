@@ -1,12 +1,14 @@
 # Mistake 版本化 HTTP 合同
 
-v5 adds caller-scoped conversation collection and independent evidence snapshots on top of the current v4 structured single-mistake analysis. See [Conversation collection](./ConversationCollection.md) and [Single-mistake analysis](../modules/SingleMistakeAnalysis.md). Historical v1–v4 artifacts retain their exact bytes.
+v6 is the standalone-only surface: it removes the legacy upload/manual-add intake, the obsolete complete-review step, VL reanalysis and structured analysis, and the managed source intake/target/handoff/layout/reconciliation/return routes, and replaces platform Bearer authorization with the product caller key (`X-Emenda-Api-Key`). Its `x-ruoyu.versionChange` lists every removed operation. v5 added caller-scoped conversation collection ([Conversation collection](./ConversationCollection.md)). Historical v1–v5 artifacts retain their exact bytes.
 
-[mistake-http-v5.json](./mistake-http-v5.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 [Portals 文档](./Portals/01-FEATURE.md) 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
+> The sections below were written for v3–v5 and still describe platform-era strict/resource authorization and managed-source behaviour; for v6 the published JSON is authoritative.
+
+[mistake-http-v6.json](./mistake-http-v6.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 Portals 文档 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
 
 ## 取得发布版本
 
-匿名 `GET /contracts/mistake-http-v5.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。Historical v1–v4 continue to publish their exact bytes; latest-version links point to v5.`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。
+匿名 `GET /contracts/mistake-http-v6.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。Historical v1–v5 (and `emenda-intake-v1`) continue to publish their exact bytes; latest-version links point to v6 (`emenda-extraction-v1` for the intake contract).`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。
 
 规格嵌入 `Mistake.Service` 发布程序集；Host 从该资源返回内容，Dockerfile 显式带入源 artifact。运行时无需 checkout、文档目录或特定工作目录。共享客户端也嵌入同一源 artifact，并仅 source-link 不依赖 Domain/Database 的纯 schema 校验器；它不引用服务 DTO 或服务项目。
 
@@ -65,4 +67,4 @@ dotnet test src/assistant_portal/backend/Tests/AssistantWebApi.Tests.csproj --co
 
 `pre-commit.sh` 接入 vocabulary/diff/独立 CLI mutation 检查；它要求可读的 `origin/master` 基线；新版本当前 artifact 不存在时，先比较声明的上一已发布 artifact，并检查历史 bytes 原样保留。仅真正没有当前/上一 artifact 才记录 initial_version。版本升级必须声明真实 previousVersion 和逐项 changedLocations；同版本 breaking 永远拒绝。已批准的 additive 变更可给验证脚本设置 `MISTAKE_HTTP_ALLOW_ADDITIVE=true`；同版本 breaking 仍拒绝；新版本仅允许已登记的破坏性位置，其它漂移拒绝。v3 后续已审查的 additive 演进（版面受管 start/status，IKQA2P）沿用同一门禁；对历史 v2→v3 注册转换的重构等值检查在 `--allow-additive` 下只豁免纯 additive 漂移（`differences` 全量分类，无 breaking 项），转换外壳——paths、schemas、派生操作计数与转换元数据之外的一切——仍须逐成员相等。runtime EndpointDataSource 与 spec path/method 集合 exact 对比发现新增/删除业务路由，其他公开 namespace 必须登记主责。发布 bytes/hash、匿名/conditional GET、无业务注册的取消、实际 provider binding/serialization 及 14 concrete consumer 方法分别测试；独立 mutation 对 route、required、type、enum、security、error 缩减必须以 exit 1 失败。
 
-本地 InMemory/OSS doubles 的 wire 测试与真实 PG/S3/正常 CA/提供方 token 验收分开记录。协议业务演练同时覆盖当前来源同 key 重放/异 payload、lease/fence、封口、新 revision、受管退回与交接响应未知及历史恢复、reanalysis Pending/Running；沿现 [SourceIntake](../modules/SourceIntake.md)、[SourceReturns](../modules/SourceReturns.md)、[SourceHandoffs](../modules/SourceHandoffs.md) 验证入口。总数、schema 语法或 spec 可获取都不能单独证明业务验收通过。
+本地 InMemory/OSS doubles 的 wire 测试与真实 PG/S3/正常 CA/提供方 token 验收分开记录。协议业务演练同时覆盖当前来源同 key 重放/异 payload、lease/fence、封口、新 revision、受管退回与交接响应未知及历史恢复、reanalysis Pending/Running；沿现 SourceIntake、SourceReturns、SourceHandoffs 验证入口。总数、schema 语法或 spec 可获取都不能单独证明业务验收通过。

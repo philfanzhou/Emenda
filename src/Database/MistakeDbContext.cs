@@ -27,28 +27,6 @@ public class MistakeDbContext : DbContext
     public DbSet<ExtractionQuestionEntity> ExtractionQuestions => Set<ExtractionQuestionEntity>();
     public DbSet<ExtractionRevisionEntity> ExtractionRevisions => Set<ExtractionRevisionEntity>();
 
-    public DbSet<SourceIntakeEntity> SourceIntakes => Set<SourceIntakeEntity>();
-    public DbSet<SourceIntakeGroupEntity> SourceIntakeGroups => Set<SourceIntakeGroupEntity>();
-    public DbSet<SourceIntakeRequestEntity> SourceIntakeRequests => Set<SourceIntakeRequestEntity>();
-
-    public DbSet<SourceTargetObjectEntity> SourceTargetObjects => Set<SourceTargetObjectEntity>();
-    public DbSet<SourceTargetAttemptEntity> SourceTargetAttempts => Set<SourceTargetAttemptEntity>();
-
-    public DbSet<SourceHandoffEntity> SourceHandoffs => Set<SourceHandoffEntity>();
-    public DbSet<SourceReturnEntity> SourceReturns => Set<SourceReturnEntity>();
-    public DbSet<SourceReturnObjectEntity> SourceReturnObjects => Set<SourceReturnObjectEntity>();
-    public DbSet<SourceReturnAttemptEntity> SourceReturnAttempts => Set<SourceReturnAttemptEntity>();
-
-    public DbSet<LegacyReturnEntity> LegacyReturns => Set<LegacyReturnEntity>();
-    public DbSet<LegacyReturnObjectEntity> LegacyReturnObjects => Set<LegacyReturnObjectEntity>();
-    public DbSet<LegacyReturnAttemptEntity> LegacyReturnAttempts => Set<LegacyReturnAttemptEntity>();
-
-    public DbSet<LayoutJobEntity> LayoutJobs => Set<LayoutJobEntity>();
-    public DbSet<LayoutJobImageEntity> LayoutJobImages => Set<LayoutJobImageEntity>();
-    public DbSet<LayoutResultEntity> LayoutResults => Set<LayoutResultEntity>();
-    public DbSet<LayoutResultRegionEntity> LayoutResultRegions => Set<LayoutResultRegionEntity>();
-    public DbSet<LayoutRequestEntity> LayoutRequests => Set<LayoutRequestEntity>();
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -70,12 +48,6 @@ public class MistakeDbContext : DbContext
         modelBuilder.Entity<MistakeAnalysisEntity>().HasQueryFilter(e => ConversationCallerScope == null
             || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         ExtractionModel.Configure(modelBuilder);
-        SourceIntakeModel.Configure(modelBuilder);
-        SourceTargetModel.Configure(modelBuilder);
-        SourceReturnModel.Configure(modelBuilder);
-            LegacyReturnModel.Configure(modelBuilder);
-            SourceHandoffModel.Configure(modelBuilder);
-            LayoutJobModel.Configure(modelBuilder);
 
         var sourceRegionComparer = new ValueComparer<List<SourceRegionEntry>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),

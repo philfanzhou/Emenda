@@ -56,8 +56,6 @@ public sealed class ConversationIsolationHttpPostgresTests
             Assert.Single((await Data(own, $"/api/mistakes/{f.ItemId:D}/{route}")).GetProperty(field).EnumerateArray());
             Assert.Empty((await Data(foreign, $"/api/mistakes/{f.ItemId:D}/{route}")).GetProperty(field).EnumerateArray());
         }
-        using var foreignAnalysis = await foreign.GetAsync($"/api/mistakes/{f.ItemId:D}/analysis");
-        Assert.Equal(HttpStatusCode.NotFound, foreignAnalysis.StatusCode);
 
         // Null scope is the trusted background path; nonconversation rows retain legacy visibility.
         await using var legacyDb = f.Database.CreateContext();
@@ -72,38 +70,6 @@ public sealed class ConversationIsolationHttpPostgresTests
         Assert.Single(await legacyDb.ProcessLogs.Include(p => p.MistakeItem).ToListAsync());
     }
 
-    [Fact]
-    public async Task ReanalysisReadsHideForeignAndDeletedConversationProvenanceButRetainDeletedLegacyHistory()
-    {
-        await using var f = await Fixture.CreateAsync();
-        var conversationJob = new ReanalyzeJobEntity { ItemId = f.ItemId, StudentId = Student, ReviewerId = "teacher", NewRootCause = "private conversation report" };
-        var legacyJob = new ReanalyzeJobEntity { ItemId = Guid.NewGuid(), StudentId = Student, ReviewerId = "teacher", NewRootCause = "retained legacy report" };
-        await using (var db = f.Database.CreateContext())
-        {
-            db.ReanalyzeJobs.AddRange(conversationJob, legacyJob); await db.SaveChangesAsync();
-            db.ConversationCallerScope = OtherCaller;
-            Assert.Null(await new ReanalyzeJobRepository(db).GetByIdAsync(conversationJob.Id));
-            Assert.NotNull(await new ReanalyzeJobRepository(db).GetByIdAsync(legacyJob.Id));
-        }
-        using var own = f.Client(CallerKey); using var foreign = f.Client(OtherKey);
-        var jobsPath = "/api/mistakes/reanalyze/jobs";
-        var request = new { reviewerId = "teacher", jobIds = new[] { conversationJob.Id.ToString("D"), legacyJob.Id.ToString("D") } };
-        Assert.Equal(2, (await PostData(own, jobsPath, request)).GetProperty("jobs").GetArrayLength());
-        var foreignJobs = (await PostData(foreign, jobsPath, request)).GetProperty("jobs");
-        Assert.Single(foreignJobs.EnumerateArray());
-        Assert.Equal(legacyJob.Id.ToString("D"), foreignJobs[0].GetProperty("jobId").GetString());
-        Assert.Single((await Data(foreign, "/api/mistakes/reanalyze/active?reviewerId=teacher")).GetProperty("jobs").EnumerateArray());
-        await using (var db = f.Database.CreateContext())
-        {
-            db.MistakeItems.Remove(await db.MistakeItems.SingleAsync()); await db.SaveChangesAsync();
-            Assert.NotNull(await new ReanalyzeJobRepository(db).GetByIdAsync(conversationJob.Id));
-            db.ConversationCallerScope = Caller;
-            Assert.Null(await new ReanalyzeJobRepository(db).GetByIdAsync(conversationJob.Id));
-            Assert.NotNull(await new ReanalyzeJobRepository(db).GetByIdAsync(legacyJob.Id));
-        }
-        Assert.Single((await PostData(own, jobsPath, request)).GetProperty("jobs").EnumerateArray());
-        Assert.Single((await Data(own, "/api/mistakes/reanalyze/active?reviewerId=teacher")).GetProperty("jobs").EnumerateArray());
-    }
 
     [Fact]
     public async Task PresigningRequiresCanonicalLiveCallerOwnedOriginalOrCropReference()
@@ -159,8 +125,8 @@ public sealed class ConversationIsolationHttpPostgresTests
 
     private sealed class Fixture : IAsyncDisposable
     {
-        public required ProductIntakePostgresTests.TestDatabase Database { get; init; }
-        private StandaloneIntakePostgresTests.StandaloneIntakeWebApplicationFactory BaseFactory { get; init; } = null!;
+        public required PostgresTestDatabase Database { get; init; }
+        private StandaloneWebApplicationFactory BaseFactory { get; init; } = null!;
         private WebApplicationFactory<Program> Factory { get; init; } = null!;
         public ConcurrentBag<string> Signed { get; } = [];
         public Guid ItemId { get; private set; }
@@ -171,8 +137,8 @@ public sealed class ConversationIsolationHttpPostgresTests
         }
         public static async Task<Fixture> CreateAsync()
         {
-            var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
-            var baseFactory = new StandaloneIntakePostgresTests.StandaloneIntakeWebApplicationFactory(database.Connection);
+            var database = await PostgresTestDatabase.CreateAsync();
+            var baseFactory = new StandaloneWebApplicationFactory(database.Connection);
             var authorization = new Mock<IConversationAuthorization>();
             authorization.Setup(a => a.AllowedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
             var owner = "portal-owned-context"; var conversation = Guid.NewGuid(); var question = Guid.NewGuid(); var assetId = Guid.NewGuid();

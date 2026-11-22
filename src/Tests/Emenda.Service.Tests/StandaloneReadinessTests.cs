@@ -17,11 +17,10 @@ using Xunit;
 namespace Emenda.Service.Tests;
 
 /// <summary>
-/// Standalone product readiness: a deployment with no Consul, no Loki, no
-/// SignaCore identity and no Student service must report ready with exactly
-/// the components it actually wired (database and object storage), and the
+/// Product readiness: a deployment must report ready with exactly the
+/// components it actually wired (database and object storage), and the
 /// caller-credential configuration must fail startup when it has no usable
-/// credential.
+/// credential. Removed platform settings fail startup instead of being ignored.
 /// </summary>
 public sealed class StandaloneReadinessTests
 {
@@ -96,24 +95,22 @@ public sealed class StandaloneReadinessTests
         Action act = () => factory.CreateClient();
 
         act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*requires ConnectionStrings:Emenda*");
+            .WithMessage("*ConnectionStrings:Emenda is required*");
     }
 
-    [Fact]
-    public void SharedSchemaOwnership_IsAStandaloneOnlySetting()
+    [Theory]
+    [InlineData("Mistake__ConfigMode", "Local", "*Mistake:ConfigMode (Local/Platform) was removed*")]
+    [InlineData("Mistake__ConfigMode", "Platform", "*Mistake:ConfigMode (Local/Platform) was removed*")]
+    [InlineData("Emenda__Runtime__Mode", "Platform", "*Emenda:Runtime:Mode only accepts Standalone*")]
+    [InlineData("Emenda__Database__SchemaOwnership", "Shared", "*SchemaOwnership=Shared was removed*")]
+    public void RemovedRuntimeSettings_FailStartup(string key, string value, string message)
     {
         using var factory = new StandaloneStartupFailureWebApplicationFactory(
-            standalone: false,
-            extraEnvironment: new Dictionary<string, string?>
-            {
-                ["Mistake__ConfigMode"] = "Local",
-                ["Emenda__Database__SchemaOwnership"] = "Shared"
-            });
+            extraEnvironment: new Dictionary<string, string?> { [key] = value });
 
         Action act = () => factory.CreateClient();
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*SchemaOwnership=Shared is a standalone-mode setting*");
+        act.Should().Throw<InvalidOperationException>().WithMessage(message);
     }
 
     private sealed class StandaloneStartupFailureWebApplicationFactory : WebApplicationFactory<Program>
@@ -124,26 +121,14 @@ public sealed class StandaloneReadinessTests
         private static readonly string[] OwnedEnvironmentKeys =
         [
             "Emenda__Runtime__Mode",
+            "Mistake__ConfigMode",
             "Emenda__Database__SchemaOwnership",
             "Emenda__Security__Callers__0__Name",
             "Emenda__Security__Callers__0__ApiKey",
             "ConnectionStrings__Emenda",
-            "Mistake__ConfigMode",
-            "Mistake__Student__Enabled",
-            "Mistake__Workers__UploadPollingWorker__Enabled",
-            "Mistake__Workers__ReanalyzeJobHostedService__Enabled",
-            "Mistake__Workers__ReanalyzeJobCleanupService__Enabled",
-            "VlAnalyzer__ApiKey",
-            "IdentityService__Authority",
-            "IdentityService__Issuer",
-            "IdentityService__Audience",
-            "IdentityService__AdminAudience",
-            "IdentityService__MistakeApiStrictAuth",
-            "IdentityService__MistakeApiResourceAuth",
         ];
 
         public StandaloneStartupFailureWebApplicationFactory(
-            bool standalone = true,
             IReadOnlyDictionary<string, string?>? extraEnvironment = null,
             Action<Dictionary<string, string?>>? environmentOverrides = null)
         {
@@ -152,24 +137,11 @@ public sealed class StandaloneReadinessTests
 
             var settings = new Dictionary<string, string?>
             {
-                ["Emenda__Runtime__Mode"] = standalone ? "Standalone" : null,
                 ["Emenda__Database__SchemaOwnership"] = null,
                 ["Emenda__Security__Callers__0__Name"] = CallerName,
                 ["Emenda__Security__Callers__0__ApiKey"] = CallerKey,
                 ["ConnectionStrings__Emenda"] =
                     "Host=127.0.0.1;Port=5432;Database=emenda_startup_failure_tests;Username=emenda;Password=startup-failure-tests-only",
-                ["Mistake__ConfigMode"] = null,
-                ["Mistake__Student__Enabled"] = "false",
-                ["Mistake__Workers__UploadPollingWorker__Enabled"] = "false",
-                ["Mistake__Workers__ReanalyzeJobHostedService__Enabled"] = "false",
-                ["Mistake__Workers__ReanalyzeJobCleanupService__Enabled"] = "false",
-                ["VlAnalyzer__ApiKey"] = null,
-                ["IdentityService__Authority"] = null,
-                ["IdentityService__Issuer"] = null,
-                ["IdentityService__Audience"] = null,
-                ["IdentityService__AdminAudience"] = null,
-                ["IdentityService__MistakeApiStrictAuth"] = null,
-                ["IdentityService__MistakeApiResourceAuth"] = null,
             };
             foreach (var pair in _extraEnvironment)
                 settings[pair.Key] = pair.Value;
@@ -205,56 +177,30 @@ public sealed class StandaloneReadinessTests
 
         private static readonly string[] OwnedEnvironmentKeys =
         [
-            "Emenda__Runtime__Mode",
             "Emenda__Security__Callers__0__Name",
             "Emenda__Security__Callers__0__ApiKey",
             "ConnectionStrings__Emenda",
-            "Mistake__ConfigMode",
-            "Mistake__Student__Enabled",
-            "Mistake__Workers__UploadPollingWorker__Enabled",
-            "Mistake__Workers__ReanalyzeJobHostedService__Enabled",
-            "Mistake__Workers__ReanalyzeJobCleanupService__Enabled",
             "Oss__InternalEndpoint",
             "Oss__InternalSecure",
             "Oss__AccessKey",
             "Oss__SecretKey",
             "Oss__BucketName",
             "Oss__PublicBaseUrl",
-            "VlAnalyzer__ApiKey",
-            "IdentityService__Authority",
-            "IdentityService__Issuer",
-            "IdentityService__Audience",
-            "IdentityService__AdminAudience",
-            "IdentityService__MistakeApiStrictAuth",
-            "IdentityService__MistakeApiResourceAuth",
         ];
 
         public StandaloneReadinessWebApplicationFactory()
         {
-            Environment.SetEnvironmentVariable("Emenda__Runtime__Mode", "Standalone");
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);
             Environment.SetEnvironmentVariable(
                 "ConnectionStrings__Emenda",
                 "Host=127.0.0.1;Port=5432;Database=emenda_readiness_tests;Username=emenda;Password=readiness-tests-only");
-            Environment.SetEnvironmentVariable("Mistake__ConfigMode", null);
-            Environment.SetEnvironmentVariable("Mistake__Student__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__UploadPollingWorker__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobHostedService__Enabled", "false");
-            Environment.SetEnvironmentVariable("Mistake__Workers__ReanalyzeJobCleanupService__Enabled", "false");
             Environment.SetEnvironmentVariable("Oss__InternalEndpoint", "127.0.0.1:19051");
             Environment.SetEnvironmentVariable("Oss__InternalSecure", "false");
             Environment.SetEnvironmentVariable("Oss__AccessKey", "readiness-test-access");
             Environment.SetEnvironmentVariable("Oss__SecretKey", "readiness-test-secret");
             Environment.SetEnvironmentVariable("Oss__BucketName", "emenda-readiness-tests");
             Environment.SetEnvironmentVariable("Oss__PublicBaseUrl", "http://127.0.0.1/oss");
-            Environment.SetEnvironmentVariable("VlAnalyzer__ApiKey", null);
-            Environment.SetEnvironmentVariable("IdentityService__Authority", null);
-            Environment.SetEnvironmentVariable("IdentityService__Issuer", null);
-            Environment.SetEnvironmentVariable("IdentityService__Audience", null);
-            Environment.SetEnvironmentVariable("IdentityService__AdminAudience", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiStrictAuth", null);
-            Environment.SetEnvironmentVariable("IdentityService__MistakeApiResourceAuth", null);
         }
 
         protected override void Dispose(bool disposing)

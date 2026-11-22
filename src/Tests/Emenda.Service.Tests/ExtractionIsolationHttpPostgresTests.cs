@@ -17,7 +17,7 @@ public sealed class ExtractionIsolationHttpPostgresTests
     [InlineData("caller:admin:")]
     public async Task CallerNamesCannotImpersonateAdministratorOwnerOrReplayItsSourceKey(string callerName)
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection, callerName: callerName);
         using var caller = factory.CreateClient(new() { AllowAutoRedirect = false });
         caller.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
@@ -61,7 +61,7 @@ public sealed class ExtractionIsolationHttpPostgresTests
     [Fact]
     public async Task LegacySigningRejectsOwnForeignAndAdminExtractionObjectsAndAliasesWhileDedicatedReadsWork()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection);
         using var caller = factory.CreateClient(new() { AllowAutoRedirect = false });
         caller.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
@@ -131,7 +131,7 @@ public sealed class ExtractionIsolationHttpPostgresTests
     {
         using var scope = factory.Services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IExtractionService>();
-        var image = new ProductIntakeImage { FileName = "page.png", ContentType = "image/png", Content = bytes };
+        var image = new ExtractionImage { FileName = "page.png", ContentType = "image/png", Content = bytes };
         return await service.SubmitAsync(new ExtractionAccess("admin", "admin", Administrator: true),
             new ExtractionUpload("student-isolation", 4, sourceKey, [image]), default);
     }

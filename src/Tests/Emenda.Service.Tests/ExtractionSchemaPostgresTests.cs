@@ -15,14 +15,14 @@ public sealed class ExtractionSchemaPostgresTests
     [Fact]
     public async Task Version15Upgrade_PreservesRows_AndVerifiesExactTargetAsync()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync(initialize: false);
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
         await db.GetService<IMigrator>().MigrateAsync(ProductIntakeSchema.Migration);
         var itemId = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now())");
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
         result.FromVersion.Should().Be(15);
-        result.ToVersion.Should().Be(18);
+        result.ToVersion.Should().Be(19);
         (await db.MistakeItems.SingleAsync()).Id.Should().Be(itemId);
         (await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded.Should().BeFalse();
         (await db.Database.GetAppliedMigrationsAsync()).Should().Contain("20261116000000_AddExtractions");
@@ -31,7 +31,7 @@ public sealed class ExtractionSchemaPostgresTests
     [Fact]
     public async Task Version16AnalysisUpgradePreservesExtractionReceiptAndOriginalManifestAsync()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync(initialize: false);
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
         await db.GetService<IMigrator>().MigrateAsync(ExtractionSchema.Migration);
         var job = NewJob();
@@ -44,7 +44,7 @@ public sealed class ExtractionSchemaPostgresTests
         await db.Entry(job).ReloadAsync();
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         upgraded.FromVersion.Should().Be(16);
-        upgraded.ToVersion.Should().Be(18);
+        upgraded.ToVersion.Should().Be(19);
         db.ChangeTracker.Clear();
         (await db.ExtractionJobs.SingleAsync()).SourcesJson.Should().Be(job.SourcesJson);
         (await db.ExtractionRevisions.SingleAsync()).RequestKey.Should().Be(receipt.RequestKey);
@@ -55,7 +55,7 @@ public sealed class ExtractionSchemaPostgresTests
     [Fact]
     public async Task EfPersistence_EnforcesReplayUniqueness_AndRetainsTombstoneAsync()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         await using var db = database.CreateContext();
         var job = NewJob();
         var itemId = Guid.NewGuid();
@@ -81,7 +81,7 @@ public sealed class ExtractionSchemaPostgresTests
     [Fact]
     public async Task RetainedFacts_RejectMutationDeletionTruncationAndNonemptyDowngradeAsync()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         await using var db = database.CreateContext();
         var job = NewJob();
         db.ExtractionJobs.Add(job);
@@ -104,7 +104,7 @@ public sealed class ExtractionSchemaPostgresTests
     [Fact]
     public async Task Verifier_RejectsChangedExtractionGuardAsync()
     {
-        await using var database = await ProductIntakePostgresTests.TestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync();
         await using var db = database.CreateContext();
         await db.Database.ExecuteSqlRawAsync("CREATE OR REPLACE FUNCTION guard_extraction_revision() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$");
         await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.InitializeAsync(db, NullLoggerFactory.Instance));

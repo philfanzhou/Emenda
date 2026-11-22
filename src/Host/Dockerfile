@@ -17,9 +17,6 @@ COPY src/Domain/Emenda.Domain.csproj src/Domain/
 COPY src/Service/Emenda.Service.csproj src/Service/
 COPY src/Host/Emenda.Host.csproj src/Host/
 COPY vendor/Emenda.Common/Emenda.Common.csproj vendor/Emenda.Common/
-COPY vendor/Emenda.Ai/Emenda.Ai.csproj vendor/Emenda.Ai/
-COPY vendor/Emenda.Consul/Emenda.Consul.csproj vendor/Emenda.Consul/
-COPY src/StudentClient/Emenda.StudentClient.csproj src/StudentClient/
 
 RUN dotnet restore "src/Host/Emenda.Host.csproj"
 
@@ -29,11 +26,10 @@ COPY docs/Integration/mistake-http-v2.json docs/Integration/mistake-http-v2.json
 COPY docs/Integration/mistake-http-v3.json docs/Integration/mistake-http-v3.json
 COPY docs/Integration/mistake-http-v4.json docs/Integration/mistake-http-v4.json
 COPY docs/Integration/mistake-http-v5.json docs/Integration/mistake-http-v5.json
+COPY docs/Integration/mistake-http-v6.json docs/Integration/mistake-http-v6.json
 COPY docs/Integration/emenda-intake-v1.json docs/Integration/emenda-intake-v1.json
 COPY docs/Integration/emenda-extraction-v1.json docs/Integration/emenda-extraction-v1.json
 COPY vendor/Emenda.Common vendor/Emenda.Common
-COPY vendor/Emenda.Ai vendor/Emenda.Ai
-COPY vendor/Emenda.Consul vendor/Emenda.Consul
 
 RUN dotnet publish "src/Host/Emenda.Host.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false --no-restore
 
@@ -50,7 +46,6 @@ LABEL org.opencontainers.image.title="Emenda" \
       org.opencontainers.image.revision="${APP_REVISION}" \
       org.opencontainers.image.channel="${APP_CHANNEL}"
 ENV ASPNETCORE_ENVIRONMENT=Standalone
-ENV Emenda__Runtime__Mode=Standalone
 ENV APP_VERSION=${APP_VERSION}
 ENV APP_REVISION=${APP_REVISION}
 ENV APP_CHANNEL=${APP_CHANNEL}

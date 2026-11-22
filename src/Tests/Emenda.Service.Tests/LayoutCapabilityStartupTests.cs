@@ -2,7 +2,7 @@ namespace Emenda.Service.Tests;
 
 /// <summary>
 /// IKQA2N startup-snapshot acceptance tests. They run the real Mistake Host as a subprocess
-/// (LocalBootstrapPostgresTests.RunHostAsync) and assert the capability-switch behavior:
+/// (HostProcess.RunHostAsync) and assert the capability-switch behavior:
 /// the default-off switch, the strict bool gate, the enabled configuration requirements
 /// before any database access, the masked credential and budget evidence in the startup
 /// logs, and that an enabled or disabled startup sends zero layout requests (parent
@@ -14,8 +14,7 @@ public sealed class LayoutCapabilityStartupTests
 
     private static Dictionary<string, string?> BaseSettings() => new()
     {
-        ["Mistake__ConfigMode"] = "Local",
-        ["ConnectionStrings__MistakeLocal"] =
+        ["ConnectionStrings__Emenda"] =
             "Host=127.0.0.1;Port=1;Database=unavailable;Username=none;Password=db-secret-marker",
         ["Mistake__Layout__Enabled"] = null,
         ["Mistake__Layout__BaseUrl"] = null,
@@ -28,7 +27,7 @@ public sealed class LayoutCapabilityStartupTests
         // The connection string points at a refused port: the host must complete the layout
         // wiring (default off, placeholder address, no budget claims) and only fail later at
         // the unavailable database.
-        var result = await LocalBootstrapPostgresTests.RunHostAsync([], BaseSettings());
+        var result = await HostProcess.RunHostAsync([], BaseSettings());
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("Layout detection: Enabled=False", result.Output);
         Assert.Contains("http://structadoc-layout-disabled.invalid", result.Output);
@@ -44,7 +43,7 @@ public sealed class LayoutCapabilityStartupTests
     {
         var settings = BaseSettings();
         settings["Mistake__Layout__Enabled"] = value;
-        var result = await LocalBootstrapPostgresTests.RunHostAsync([], settings);
+        var result = await HostProcess.RunHostAsync([], settings);
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("Mistake:Layout:Enabled must be true or false.", result.Output);
         Assert.DoesNotContain("Database: PostgreSQL", result.Output);
@@ -63,7 +62,7 @@ public sealed class LayoutCapabilityStartupTests
         settings["Mistake__Layout__Enabled"] = "true";
         settings["Mistake__Layout__BaseUrl"] = baseUrl;
         settings["Mistake__Layout__ApiKey"] = LayoutSecret;
-        var result = await LocalBootstrapPostgresTests.RunHostAsync([], settings);
+        var result = await HostProcess.RunHostAsync([], settings);
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains(diagnostic, result.Output);
         Assert.DoesNotContain("Database: PostgreSQL", result.Output);
@@ -76,7 +75,7 @@ public sealed class LayoutCapabilityStartupTests
         settings["Mistake__Layout__Enabled"] = "true";
         settings["Mistake__Layout__BaseUrl"] = "http://127.0.0.1:9";
         settings["Mistake__Layout__ApiKey"] = null;
-        var result = await LocalBootstrapPostgresTests.RunHostAsync([], settings);
+        var result = await HostProcess.RunHostAsync([], settings);
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("Mistake:Layout:ApiKey is required when Mistake:Layout:Enabled=true.", result.Output);
         Assert.DoesNotContain("Database: PostgreSQL", result.Output);
@@ -92,7 +91,7 @@ public sealed class LayoutCapabilityStartupTests
         settings["Mistake__Layout__BaseUrl"] = "http://127.0.0.1:9";
         settings["Mistake__Layout__ApiKey"] = LayoutSecret;
         settings["Mistake__Layout__PerImageBudgetSeconds"] = budgetSeconds.ToString();
-        var result = await LocalBootstrapPostgresTests.RunHostAsync([], settings);
+        var result = await HostProcess.RunHostAsync([], settings);
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("Mistake:Layout:PerImageBudgetSeconds must be an integer from 1 to 3600.", result.Output);
     }
@@ -102,12 +101,12 @@ public sealed class LayoutCapabilityStartupTests
     {
         // The StructaDoc base URL points at a request-counting probe: a correct startup
         // wires the client without sending anything to it.
-        await using var structaDoc = new LocalBootstrapPostgresTests.RequestProbe();
+        await using var structaDoc = new HostProcess.RequestProbe();
         var settings = BaseSettings();
         settings["Mistake__Layout__Enabled"] = "true";
         settings["Mistake__Layout__BaseUrl"] = $"http://127.0.0.1:{structaDoc.Port}";
         settings["Mistake__Layout__ApiKey"] = LayoutSecret;
-        var result = await LocalBootstrapPostgresTests.RunHostAsync([], settings);
+        var result = await HostProcess.RunHostAsync([], settings);
 
         // The host proceeds through the wiring and stops at the unavailable database.
         Assert.NotEqual(0, result.ExitCode);

@@ -37,56 +37,6 @@ public class MistakeDomainServiceTests
             _mockLogger.Object);
     }
 
-    private Task<CompleteUploadReviewResult> CompleteLegacyUploadReviewAsync(
-        string sourceUploadId, string? reviewerId)
-    {
-        // Exercise the retained legacy contract without removing its production deprecation warning.
-        var method = typeof(MistakeDomainService).GetMethod(
-            nameof(MistakeDomainService.CompleteUploadReviewAsync),
-            new[] { typeof(string), typeof(string) })
-            ?? throw new InvalidOperationException("The legacy completion method is missing.");
-        Assert.False(method.IsStatic);
-        Assert.True(method.IsDefined(typeof(ObsoleteAttribute), inherit: false));
-        var completeReview = method.CreateDelegate<Func<string, string?, Task<CompleteUploadReviewResult>>>(_service);
-        return completeReview(sourceUploadId, reviewerId);
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_ShouldCreateItemWithSourceRegions()
-    {
-        var imagePaths = new List<string> { "img1.jpg", "img2.jpg" };
-
-        var items = await _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, imagePaths, null, "upload-1");
-
-        items.Should().HaveCount(1);
-        items[0].SourceRegions.Should().HaveCount(2);
-        items[0].SourceRegions[0].SourceImagePath.Should().Be("img1.jpg");
-        items[0].SourceRegions[0].BoundingBox.Should().BeNull();
-        items[0].SourceRegions[1].SourceImagePath.Should().Be("img2.jpg");
-        items[0].ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
-        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenAlreadyExists_ShouldCreateNewItem()
-    {
-        var existingItem = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            SourceUploadId = "upload-1",
-            StudentId = "student-1"
-        };
-
-        var items = await _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
-
-        items.Should().HaveCount(1);
-        items[0].Id.Should().NotBe(existingItem.Id);
-        items[0].Id.Should().NotBe(Guid.Empty);
-        items[0].SourceUploadId.Should().Be("upload-1");
-    }
-
     [Fact]
     public async Task ReviewMistakeItemAsync_WhenPending_ShouldConfirm()
     {
@@ -173,69 +123,8 @@ public class MistakeDomainServiceTests
         _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
-    public async Task CompleteUploadReviewAsync_WhenPendingItemsExist_ShouldReturnError()
-    {
-        _mockItemRepo.Setup(x => x.CountPendingBySourceUploadIdAsync("upload-1")).ReturnsAsync(2);
 
-        var result = await CompleteLegacyUploadReviewAsync("upload-1", "teacher-1");
 
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("2 条错题待审核");
-        result.SourceUploadId.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task CompleteUploadReviewAsync_WhenAllReviewed_ShouldReturnSuccessWithStudentId()
-    {
-        _mockItemRepo.Setup(x => x.CountPendingBySourceUploadIdAsync("upload-1")).ReturnsAsync(0);
-        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1"))
-            .ReturnsAsync(new List<MistakeItemModel>
-            {
-                new() { Id = Guid.NewGuid(), SourceUploadId = "upload-1", StudentId = "student-1" }
-            });
-
-        var result = await CompleteLegacyUploadReviewAsync("upload-1", "teacher-1");
-
-        result.Success.Should().BeTrue();
-        result.ErrorMessage.Should().BeNull();
-        result.SourceUploadId.Should().Be("upload-1");
-        result.StudentId.Should().Be("student-1");
-    }
-
-    [Fact]
-    public async Task AddMistakeItemAsync_WithSourceRegions_ShouldSucceed()
-    {
-        var item = new MistakeItemModel
-        {
-            StudentId = "student-1",
-            Subject = 1,
-            Grade = 3,
-            SourceUploadId = "upload-1",
-            SourceRegions = new List<SourceRegionModel>
-            {
-                new()
-                {
-                    SourceImagePath = "img1.jpg",
-                    BoundingBox = new BoundingBoxModel { X1 = 10, Y1 = 20, X2 = 100, Y2 = 200 }
-                },
-                new()
-                {
-                    SourceImagePath = "img2.jpg",
-                    BoundingBox = null
-                }
-            }
-        };
-
-        var result = await _service.AddMistakeItemAsync(item);
-
-        result.Id.Should().NotBe(Guid.Empty);
-        result.SourceRegions.Should().HaveCount(2);
-        result.SourceRegions[0].BoundingBox.Should().NotBeNull();
-        result.SourceRegions[1].BoundingBox.Should().BeNull();
-        result.ReviewStatus.Should().Be((int)ReviewStatus.PendingReview);
-        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
 
     [Fact]
     public async Task AddPracticeAsync_WhenItemNotConfirmed_ShouldThrow()
@@ -303,35 +192,7 @@ public class MistakeDomainServiceTests
         _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
-    public async Task CompleteUploadReviewAsync_WhenNoItems_ShouldReturnError()
-    {
-        _mockItemRepo.Setup(x => x.CountPendingBySourceUploadIdAsync("upload-1")).ReturnsAsync(0);
-        _mockItemRepo.Setup(x => x.GetBySourceUploadIdAsync("upload-1"))
-            .ReturnsAsync(new List<MistakeItemModel>());
 
-        var result = await CompleteLegacyUploadReviewAsync("upload-1", "teacher-1");
-
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("未找到该上传记录的错题");
-    }
-
-    [Fact]
-    public async Task UpdateMistakeItemAsync_ShouldUpdateItem()
-    {
-        var item = new MistakeItemModel
-        {
-            Id = Guid.NewGuid(),
-            StudentId = "student-1"
-        };
-
-        _mockItemRepo.Setup(x => x.UpdateAsync(item, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-
-        var result = await _service.UpdateMistakeItemAsync(item);
-
-        result.Should().BeTrue();
-        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
 
     [Fact]
     public async Task GetPendingReviewUploadsAsync_ShouldReturnPendingItems()
@@ -352,113 +213,14 @@ public class MistakeDomainServiceTests
 
     // === SubmitMistakeUpload 补充测试 ===
 
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenStudentIdEmpty_ShouldThrow()
-    {
-        var act = () => _service.SubmitMistakeUploadAsync(
-            "", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
 
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*缺少学生ID*");
-    }
 
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenSubjectOutOfRange_ShouldThrow()
-    {
-        var act = () => _service.SubmitMistakeUploadAsync(
-            "student-1", 0, 3, new List<string> { "img.jpg" }, null, "upload-1");
 
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*学科值无效*");
 
-        var act2 = () => _service.SubmitMistakeUploadAsync(
-            "student-1", 10, 3, new List<string> { "img.jpg" }, null, "upload-1");
 
-        await act2.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*学科值无效*");
-    }
 
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenGradeOutOfRange_ShouldThrow()
-    {
-        var act = () => _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 0, new List<string> { "img.jpg" }, null, "upload-1");
 
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*年级值无效*");
 
-        var act2 = () => _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 13, new List<string> { "img.jpg" }, null, "upload-1");
-
-        await act2.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*年级值无效*");
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenSourceUploadIdEmpty_ShouldThrow()
-    {
-        var act = () => _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "");
-
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*缺少上传记录ID*");
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenImagePathsEmpty_ShouldThrow()
-    {
-        var act = () => _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string>(), null, "upload-1");
-
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*至少需要提供一张图片*");
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WhenMultipleValidationErrors_ShouldMergeMessages()
-    {
-        var act = () => _service.SubmitMistakeUploadAsync(
-            "", 0, 0, new List<string>(), null, "");
-
-        var ex = await act.Should().ThrowAsync<MistakeValidationException>();
-        ex.Which.Message.Should().Contain("缺少学生ID");
-        ex.Which.Message.Should().Contain("学科值无效");
-        ex.Which.Message.Should().Contain("年级值无效");
-        ex.Which.Message.Should().Contain("缺少上传记录ID");
-        ex.Which.Message.Should().Contain("至少需要提供一张图片");
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_ShouldRecordProcessLogCreated()
-    {
-        await _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
-
-        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
-            log.Action == (int)ProcessAction.Created &&
-            log.Details == "Mistake item created from upload"), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WithRootCause_ShouldStoreRootCause()
-    {
-        var items = await _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string> { "img.jpg" }, "概念混淆：混淆了通分和约分规则", "upload-1");
-
-        items.Should().HaveCount(1);
-        items[0].SourceUploadId.Should().Be("upload-1");
-        items[0].RootCause.Should().Be("概念混淆：混淆了通分和约分规则");
-    }
-
-    [Fact]
-    public async Task SubmitMistakeUploadAsync_WithNullRootCause_ShouldStoreNull()
-    {
-        var items = await _service.SubmitMistakeUploadAsync(
-            "student-1", 1, 3, new List<string> { "img.jpg" }, null, "upload-1");
-
-        items.Should().HaveCount(1);
-        items[0].RootCause.Should().BeNull();
-    }
 
     // === GetMistakeItem 补充测试 ===
 
@@ -671,41 +433,7 @@ public class MistakeDomainServiceTests
 
     // === AddMistakeItem 补充测试 ===
 
-    [Fact]
-    public async Task AddMistakeItemAsync_WhenStudentIdEmpty_ShouldThrow()
-    {
-        var item = new MistakeItemModel
-        {
-            StudentId = "",
-            Subject = 1,
-            Grade = 3,
-            SourceUploadId = "upload-1",
-            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img.jpg" } }
-        };
 
-        var act = () => _service.AddMistakeItemAsync(item);
-
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*缺少学生ID*");
-    }
-
-    [Fact]
-    public async Task AddMistakeItemAsync_WhenSourceRegionsEmpty_ShouldThrow()
-    {
-        var item = new MistakeItemModel
-        {
-            StudentId = "student-1",
-            Subject = 1,
-            Grade = 3,
-            SourceUploadId = "upload-1",
-            SourceRegions = new List<SourceRegionModel>()
-        };
-
-        var act = () => _service.AddMistakeItemAsync(item);
-
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*至少需要一个图片区域*");
-    }
 
     // === UpdateMistakeItemPartial 补充测试 ===
 
@@ -881,146 +609,11 @@ public class MistakeDomainServiceTests
 
     // ========== ReanalyzeMistakeItemAsync validation tests ==========
 
-    [Fact]
-    public async Task ReanalyzeMistakeItemAsync_WithEmptyId_ShouldReturnError()
-    {
-        var result = await _service.ReanalyzeMistakeItemAsync(Guid.Empty, "t1", null);
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("错题 ID 不能为空");
-    }
 
-    [Fact]
-    public async Task ReanalyzeMistakeItemAsync_WithNonExistentId_ShouldReturnError()
-    {
-        var id = Guid.NewGuid();
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
-        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Be("错题不存在");
-    }
 
-    [Fact]
-    public async Task ReanalyzeMistakeItemAsync_WithRejectedStatus_ShouldReturnError()
-    {
-        var id = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = id,
-            StudentId = "student-1",
-            ReviewStatus = (int)ReviewStatus.Rejected,
-            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
-        };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
-        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("PendingReview 或 Confirmed");
-    }
 
-    [Fact]
-    public async Task ReanalyzeMistakeItemAsync_WithEmptySourceRegions_ShouldReturnError()
-    {
-        var id = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = id,
-            StudentId = "student-1",
-            ReviewStatus = (int)ReviewStatus.PendingReview,
-            SourceRegions = new List<SourceRegionModel>()
-        };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
 
-        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("错题无图片");
-    }
 
-    [Fact]
-    public async Task ReanalyzeMistakeItemAsync_WithPendingReviewAndImages_ShouldReturnSuccess()
-    {
-        var id = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = id,
-            StudentId = "student-1",
-            ReviewStatus = (int)ReviewStatus.PendingReview,
-            RootCause = "原根因",
-            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
-        };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-
-        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", "教师备注");
-        result.Success.Should().BeTrue();
-        result.Item.Should().NotBeNull();
-        result.Item!.Id.Should().Be(id);
-        result.Item.RootCause.Should().Be("原根因");
-    }
-
-    [Fact]
-    public async Task ReanalyzeMistakeItemAsync_WithConfirmedAndImages_ShouldReturnSuccess()
-    {
-        var id = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = id,
-            StudentId = "student-1",
-            ReviewStatus = (int)ReviewStatus.Confirmed,
-            SourceRegions = new List<SourceRegionModel> { new() { SourceImagePath = "img1.jpg" } }
-        };
-        _mockItemRepo.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-
-        var result = await _service.ReanalyzeMistakeItemAsync(id, "t1", null);
-        result.Success.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task PersistReanalyzedRootCauseAsync_ShouldUpdateItemAndWriteProcessLog()
-    {
-        // Arrange
-        var id = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = id,
-            StudentId = "student-1",
-            RootCause = "原根因",
-            ReviewStatus = (int)ReviewStatus.Confirmed
-        };
-
-        // Act
-        await _service.PersistReanalyzedRootCauseAsync(
-            item, "原根因", "t1", "教师备注", "新根因");
-
-        // Assert
-        item.RootCause.Should().Be("新根因");
-        item.UpdatedAt.Should().NotBeNull();
-        _mockItemRepo.Verify(x => x.UpdateAsync(item, It.IsAny<CancellationToken>()), Times.Once);
-        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(
-            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed), It.IsAny<CancellationToken>()), Times.Once);
-        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task LogReanalyzeFailureAsync_ShouldNotMutateRootCause()
-    {
-        // Arrange
-        var id = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = id,
-            StudentId = "student-1",
-            RootCause = "原根因（保留）",
-            ReviewStatus = (int)ReviewStatus.Confirmed
-        };
-
-        // Act
-        await _service.LogReanalyzeFailureAsync(
-            item, "t1", "教师备注", "VL timeout");
-
-        // Assert — root_cause must remain unchanged
-        item.RootCause.Should().Be("原根因（保留）", "VL failure must not mutate root_cause");
-        _mockItemRepo.Verify(x => x.UpdateAsync(It.IsAny<MistakeItemModel>(), It.IsAny<CancellationToken>()), Times.Never);
-        _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(
-            m => m.MistakeItemId == id && m.Action == (int)ProcessAction.Reanalyzed), It.IsAny<CancellationToken>()), Times.Once);
-    }
 }

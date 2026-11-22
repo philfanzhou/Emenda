@@ -16,43 +16,43 @@ namespace Emenda.Service.Tests;
 public sealed class MistakeHttpContractTests
 {
     [Fact]
-    public void OperationalReadinessContractIncludesConditionalStrictIssuerDependency()
+    public void OperationalReadinessContractNamesOnlyProductDependencies()
     {
         var ops = MistakeHttpContract.Definition.GetProperty("x-ruoyu").GetProperty("ops");
         var ready = ops.GetProperty("GET /health/ready");
         ready.GetProperty("authorization").GetString().Should().Be("anonymous");
         ready.GetProperty("status").EnumerateArray().Select(value => value.GetInt32()).Should().Equal(200, 503);
         ready.GetProperty("dependencies").GetString().Should()
-            .Contain("strict-enabled issuer").And.Contain("exact discovery issuer").And.Contain("same-origin nonempty JWKS");
+            .Contain("DB/OSS").And.Contain("StructaDoc").And.NotContain("Student").And.NotContain("JWKS");
         ops.GetProperty("GET /health/live").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
-        ops.GetProperty("GET /contracts/mistake-http-v5.json").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
+        ops.GetProperty("GET /contracts/mistake-http-v6.json").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
     }
 
     [Theory]
-    [InlineData("mistake")]
-    [InlineData("homework")]
-    [InlineData("custom-preserved-metadata")]
-    public void SourceImageMetadataIsRequiredButDoesNotPretendToBeAClosedEligibilityEnum(string type)
+    [InlineData("POST", "/api/mistakes/upload")]
+    [InlineData("POST", "/api/mistakes")]
+    [InlineData("POST", "/api/intake/uploads")]
+    [InlineData("POST", "/api/mistakes/00000000-0000-0000-0000-000000000001/reanalyze")]
+    [InlineData("GET", "/api/mistakes/00000000-0000-0000-0000-000000000001/analysis")]
+    [InlineData("POST", "/api/mistakes/complete-review")]
+    [InlineData("GET", "/api/mistakes/reconciliation")]
+    [InlineData("GET", "/api/mistakes/intakes/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002")]
+    public async Task RemovedIntakeAndAnalysisRoutesAreNotMappedAsync(string method, string path)
     {
-        using var image = JsonDocument.Parse(JsonSerializer.Serialize(new
-        {
-            path = "uploads/synthetic.png", type, rotation = 0, length = 64, sha256 = new string('a', 64)
-        }));
-        var schema = MistakeHttpContract.Definition.GetProperty("components").GetProperty("schemas").GetProperty("ManifestImage");
-        MistakeHttpContract.ValidateSchema(image.RootElement, schema);
-        using var missing = JsonDocument.Parse("{}");
-        Action absent = () => MistakeHttpContract.ValidateSchema(missing.RootElement, schema);
-        absent.Should().Throw<JsonException>();
+        using var factory = new StandaloneWebApplicationFactory(null);
+        using var client = factory.Client();
+        using var request = new HttpRequestMessage(new HttpMethod(method), path) { Content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json") };
+        using var response = await client.SendAsync(request);
+        // 404 (no route) or 405 (path shape matched only by a remaining route of another method).
+        ((int)response.StatusCode).Should().BeOneOf(404, 405);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ActualHostInventoryAndAnonymousPublishedBytesMatchPinnedConsumerAsync(bool strict)
+    [Fact]
+    public async Task ActualHostInventoryAndAnonymousPublishedBytesMatchPinnedConsumerAsync()
     {
-        using var factory = new MistakeApiStrictAuthTests.MistakeStrictAuthWebApplicationFactory(strict, "test-admin-app-id-ikjeic");
+        using var factory = new StandaloneWebApplicationFactory(null);
         using var client = factory.CreateClient();
-        using var response = await client.GetAsync("/contracts/mistake-http-v5.json");
+        using var response = await client.GetAsync("/contracts/mistake-http-v6.json");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
         var bytes = await response.Content.ReadAsByteArrayAsync();
@@ -67,18 +67,13 @@ public sealed class MistakeHttpContractTests
                 .Select(method => method.ToLowerInvariant() + " " + Regex.Replace(endpoint.RoutePattern.RawText!, @":\w+", ""))).ToHashSet();
         var specified = MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .SelectMany(path => path.Value.EnumerateObject().Select(method => method.Name + " " + path.Name)).ToHashSet();
-        actual.Should().HaveCount(31).And.BeEquivalentTo(specified);
-        foreach (var path in MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
-            .Where(path => path.Name.StartsWith("/api/mistakes/intakes/", StringComparison.Ordinal)))
+        actual.Should().HaveCount(16).And.BeEquivalentTo(specified);
+        foreach (var operation in MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
+            .SelectMany(path => path.Value.EnumerateObject()))
         {
-            foreach (var operation in path.Value.EnumerateObject())
-            {
-                var security = operation.Value.GetProperty("security").EnumerateArray().ToList();
-                security.Should().HaveCount(1);
-                security[0].EnumerateObject().Select(value => value.Name).Should().Equal("Bearer");
-                operation.Value.GetProperty("x-ruoyu").GetProperty("authorization").GetProperty("compatibility")
-                    .GetString().Should().Be("always authenticated Admin subject; no anonymous compatibility window");
-            }
+            var security = operation.Value.GetProperty("security").EnumerateArray().ToList();
+            security.Should().ContainSingle();
+            security[0].EnumerateObject().Select(value => value.Name).Should().Contain("EmendaApiKey").And.NotContain("Bearer");
         }
         foreach (var other in endpoints.Where(endpoint => !IsBusiness(endpoint.RoutePattern.RawText!)))
         {
@@ -88,7 +83,7 @@ public sealed class MistakeHttpContractTests
             namespaces.Should().Contain(owner => BelongsToNamespace(path, owner),
                 "every other public route must have an explicit namespace owner: {0}", path);
         }
-        using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v5.json");
+        using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v6.json");
         conditional.Headers.TryAddWithoutValidation("If-None-Match", "\"different\", W/" + response.Headers.ETag.Tag);
         using var unchanged = await client.SendAsync(conditional);
         unchanged.StatusCode.Should().Be(HttpStatusCode.NotModified);
@@ -97,10 +92,12 @@ public sealed class MistakeHttpContractTests
     }
 
     [Theory]
-    [InlineData("mistake-http-v1")][InlineData("mistake-http-v2")][InlineData("mistake-http-v3")][InlineData("mistake-http-v4")]
-    public async Task PreviousPublishedBytesStayAvailableWithTheirOwnHashAndHistoricalMarkerAsync(string version)
+    [InlineData("mistake-http-v1", "mistake-http-v6")][InlineData("mistake-http-v2", "mistake-http-v6")]
+    [InlineData("mistake-http-v3", "mistake-http-v6")][InlineData("mistake-http-v4", "mistake-http-v6")]
+    [InlineData("mistake-http-v5", "mistake-http-v6")][InlineData("emenda-intake-v1", "emenda-extraction-v1")]
+    public async Task PreviousPublishedBytesStayAvailableWithTheirOwnHashAndHistoricalMarkerAsync(string version, string successor)
     {
-        using var factory = new MistakeApiStrictAuthTests.MistakeStrictAuthWebApplicationFactory(true, "test-admin-app-id-ikjeic");
+        using var factory = new StandaloneWebApplicationFactory(null);
         using var client = factory.CreateClient();
         using var response = await client.GetAsync("/contracts/" + version + ".json");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -109,7 +106,7 @@ public sealed class MistakeHttpContractTests
         (await response.Content.ReadAsByteArrayAsync()).Should().Equal(bytes.ToArray());
         response.Headers.ETag!.Tag.Should().Be('"' + Convert.ToHexString(SHA256.HashData(bytes.ToArray())).ToLowerInvariant() + '"');
         response.Headers.GetValues("X-Emenda-Contract-Status").Should().Equal("historical");
-        response.Headers.GetValues("Link").Single().Should().Contain("mistake-http-v5.json");
+        response.Headers.GetValues("Link").Single().Should().Contain(successor + ".json");
         response.Headers.ETag.Tag.Should().NotBe('"' + MistakeHttpContract.Sha256 + '"');
         using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/" + version + ".json");
         conditional.Headers.TryAddWithoutValidation("If-None-Match", "W/" + response.Headers.ETag.Tag);
@@ -143,8 +140,9 @@ public sealed class MistakeHttpContractTests
         app.MapMistakeContractEndpoints();
         await app.StartAsync();
         using var client = app.GetTestClient();
-        (await client.GetAsync("/contracts/mistake-http-v5.json")).StatusCode.Should().Be(HttpStatusCode.OK);
-        using var star = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v5.json");
+        (await client.GetAsync("/contracts/mistake-http-v6.json")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/contracts/emenda-extraction-v1.json")).Headers.Contains("X-Emenda-Contract-Status").Should().BeFalse();
+        using var star = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v6.json");
         star.Headers.TryAddWithoutValidation("If-None-Match", "*");
         (await client.SendAsync(star)).StatusCode.Should().Be(HttpStatusCode.NotModified);
         var endpoint = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().Single();
@@ -152,6 +150,6 @@ public sealed class MistakeHttpContractTests
         http.Request.RouteValues["version"] = MistakeContractEndpoints.Version;
         Func<Task> canceled = () => endpoint.RequestDelegate!(http);
         await canceled.Should().ThrowAsync<OperationCanceledException>();
-        // No DB, OSS or Student services exist in this host: a dependency access would fail the request.
+        // No DB or OSS services exist in this host: a dependency access would fail the request.
     }
 }

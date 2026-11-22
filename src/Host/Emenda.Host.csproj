@@ -15,14 +15,13 @@
     <!-- Official SignaCore hosted-login client for the admin console: owns the
          OIDC code flow, server-side session tickets and the CSRF boundary. -->
     <PackageReference Include="SignaCore.Client.AspNetCore" Version="0.1.21" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Service\Emenda.Service.csproj" />
-    <ProjectReference Include="..\StudentClient\Emenda.StudentClient.csproj" />
-    <ProjectReference Include="..\..\vendor\Emenda.Consul\Emenda.Consul.csproj" />
     <ProjectReference Include="..\..\vendor\Emenda.Common\Emenda.Common.csproj" />
-    <ProjectReference Include="..\..\vendor\Emenda.Ai\Emenda.Ai.csproj" />
     <ProjectReference Include="..\Database\Emenda.Database.csproj" />
   </ItemGroup>
 

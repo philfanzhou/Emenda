@@ -21,7 +21,6 @@ public class ProcessLogRepository : IProcessLogRepository
 
     public async Task AddAsync(ProcessLogModel model, CancellationToken ct = default)
     {
-        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, model.MistakeItemId, ct);
         var entity = new ProcessLogEntity
         {
             Id = model.Id,
@@ -53,7 +52,6 @@ public class ProcessLogRepository : IProcessLogRepository
 
     public async Task RemoveByMistakeItemIdAsync(Guid mistakeItemId)
     {
-        await LegacyReturnWriteGuard.EnsureAsync(_dbContext, mistakeItemId);
         var entities = await _dbContext.ProcessLogs
             .Where(p => p.MistakeItemId == mistakeItemId)
             .ToListAsync();

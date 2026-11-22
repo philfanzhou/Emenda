@@ -9,9 +9,9 @@ namespace Emenda.Service.Tests;
 /// IKJFIX acceptance tests for the anonymous health endpoints, run against the
 /// real Mistake Host subprocess with a temporary PostgreSQL database:
 /// live never touches external IO; ready reports the startup dependency matrix
-/// (db/oss always, student only when enabled, vl only when configured); a
+/// (db/oss always, structadoc only when layout detection is enabled); a
 /// failing component turns ready into 503 while live stays 200; the endpoints
-/// stay anonymous under strict authentication; responses and logs carry no
+/// stay anonymous while /api requires a caller key; responses and logs carry no
 /// secrets.
 /// </summary>
 public sealed class HealthProbePostgresTests
@@ -81,32 +81,31 @@ public sealed class HealthProbePostgresTests
         var admin = DedicatedAdminConnection();
         if (admin is null)
             throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
-        await using var database = await LocalBootstrapPostgresTests.TestDatabase.CreateAsync(admin);
+        await using var database = await HostProcess.ScratchDatabase.CreateAsync(admin);
         await using var s3 = new AlwaysOkProbe();
-        var port = LocalBootstrapPostgresTests.GetAvailablePort();
+        var port = HostProcess.GetAvailablePort();
         var settings = new Dictionary<string, string?>
         {
-            ["Mistake__ConfigMode"] = "Local",
             ["Mistake__Http__Port"] = port.ToString(),
             // The secret marker rides along as a valid harmless connection field
             // so the no-leak assertions below check the real connection string.
-            ["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
+            ["ConnectionStrings__Emenda"] = new NpgsqlConnectionStringBuilder(admin)
             {
                 Database = database.Name,
                 ApplicationName = SecretMarker,
             }.ConnectionString,
-            ["Mistake__Local__Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}"
+            ["Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}"
         };
-        Assert.Equal(0, (await LocalBootstrapPostgresTests.RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
+        Assert.Equal(0, (await HostProcess.RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
 
         HttpStatusCode liveStatus = HttpStatusCode.OK;
         HttpStatusCode readyStatus = HttpStatusCode.OK;
         string liveBody = "";
         string readyBody = "";
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        var run = await LocalBootstrapPostgresTests.RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
+        var run = await HostProcess.RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
         {
-            await LocalBootstrapPostgresTests.WaitForRootAsync(client, port, token);
+            await HostProcess.WaitForRootAsync(client, port, token);
             (liveStatus, liveBody) = await GetAsync(client, port, "/health/live", token);
             (readyStatus, readyBody) = await GetAsync(client, port, "/health/ready", token);
         });
@@ -115,11 +114,10 @@ public sealed class HealthProbePostgresTests
         Assert.Contains("\"status\":\"ok\"", liveBody);
         Assert.Equal(HttpStatusCode.OK, readyStatus);
         Assert.Contains("\"status\":\"ok\"", readyBody);
-        // Matrix: db and oss always, student disabled and vl unconfigured absent.
+        // Matrix: db and oss always; structadoc only when layout detection is enabled.
         Assert.Contains("\"name\":\"db\",\"ok\":true", readyBody);
         Assert.Contains("\"name\":\"oss\",\"ok\":true", readyBody);
-        Assert.DoesNotContain("student", readyBody);
-        Assert.DoesNotContain("\"name\":\"vl\"", readyBody);
+        Assert.DoesNotContain("structadoc", readyBody);
         // No secrets in the response or the host log.
         Assert.DoesNotContain(SecretMarker, readyBody);
         Assert.DoesNotContain(SecretMarker, run.Output);
@@ -131,28 +129,27 @@ public sealed class HealthProbePostgresTests
         var admin = DedicatedAdminConnection();
         if (admin is null)
             throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
-        await using var database = await LocalBootstrapPostgresTests.TestDatabase.CreateAsync(admin);
+        await using var database = await HostProcess.ScratchDatabase.CreateAsync(admin);
         // The request probe answers 404 to everything, so the MinIO bucket-exists
         // HEAD reports the bucket as missing.
-        await using var s3 = new LocalBootstrapPostgresTests.RequestProbe();
-        var port = LocalBootstrapPostgresTests.GetAvailablePort();
+        await using var s3 = new HostProcess.RequestProbe();
+        var port = HostProcess.GetAvailablePort();
         var settings = new Dictionary<string, string?>
         {
-            ["Mistake__ConfigMode"] = "Local",
             ["Mistake__Http__Port"] = port.ToString(),
-            ["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
+            ["ConnectionStrings__Emenda"] = new NpgsqlConnectionStringBuilder(admin)
                 { Database = database.Name }.ConnectionString,
-            ["Mistake__Local__Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}"
+            ["Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}"
         };
-        Assert.Equal(0, (await LocalBootstrapPostgresTests.RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
+        Assert.Equal(0, (await HostProcess.RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
 
         HttpStatusCode liveStatus = HttpStatusCode.OK;
         HttpStatusCode readyStatus = HttpStatusCode.OK;
         string readyBody = "";
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        await LocalBootstrapPostgresTests.RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
+        await HostProcess.RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
         {
-            await LocalBootstrapPostgresTests.WaitForRootAsync(client, port, token);
+            await HostProcess.WaitForRootAsync(client, port, token);
             (liveStatus, _) = await GetAsync(client, port, "/health/live", token);
             (readyStatus, readyBody) = await GetAsync(client, port, "/health/ready", token);
         });
@@ -164,92 +161,42 @@ public sealed class HealthProbePostgresTests
         Assert.Contains("\"name\":\"oss\",\"ok\":false", readyBody);
     }
 
+
     [Fact]
-    public async Task ReadyReportsStudentFailureWhenEnabledAndUnreachableAsync()
+    public async Task HealthEndpointsStayAnonymousWhileApiRequiresCallerKeyAsync()
     {
         var admin = DedicatedAdminConnection();
         if (admin is null)
             throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
-        await using var database = await LocalBootstrapPostgresTests.TestDatabase.CreateAsync(admin);
-        await using var s3 = new AlwaysOkProbe();
-        var port = LocalBootstrapPostgresTests.GetAvailablePort();
-        // A released port has nothing listening, so the Student HTTP probe hits
-        // connection refusal.
-        var unreachableStudentPort = LocalBootstrapPostgresTests.GetAvailablePort();
+        await using var database = await HostProcess.ScratchDatabase.CreateAsync(admin);
+        await using var s3 = new HostProcess.RequestProbe();
+        var port = HostProcess.GetAvailablePort();
         var settings = new Dictionary<string, string?>
         {
-            ["Mistake__ConfigMode"] = "Local",
             ["Mistake__Http__Port"] = port.ToString(),
-            ["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
+            ["ConnectionStrings__Emenda"] = new NpgsqlConnectionStringBuilder(admin)
                 { Database = database.Name }.ConnectionString,
-            ["Mistake__Local__Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}",
-            ["Mistake__Student__Enabled"] = "true",
-            ["Mistake__Local__Student__Url"] = $"http://127.0.0.1:{unreachableStudentPort}",
-            // Probe behavior must not depend on the worker switches.
-            ["Mistake__Workers__UploadPollingWorker__Enabled"] = "true",
-            ["Mistake__Workers__ReanalyzeJobHostedService__Enabled"] = "true",
-            ["Mistake__Workers__ReanalyzeJobCleanupService__Enabled"] = "true"
+            ["Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}"
         };
-        Assert.Equal(0, (await LocalBootstrapPostgresTests.RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
+        Assert.Equal(0, (await HostProcess.RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
 
         HttpStatusCode liveStatus = HttpStatusCode.OK;
         HttpStatusCode readyStatus = HttpStatusCode.OK;
+        HttpStatusCode apiStatus = HttpStatusCode.OK;
         string readyBody = "";
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        await LocalBootstrapPostgresTests.RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
+        await HostProcess.RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
         {
-            await LocalBootstrapPostgresTests.WaitForRootAsync(client, port, token);
+            await HostProcess.WaitForRootAsync(client, port, token);
+            // No caller key: health endpoints stay anonymous, the business API does not.
             (liveStatus, _) = await GetAsync(client, port, "/health/live", token);
             (readyStatus, readyBody) = await GetAsync(client, port, "/health/ready", token);
-        });
-
-        Assert.Equal(HttpStatusCode.OK, liveStatus);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, readyStatus);
-        Assert.Contains("\"name\":\"db\",\"ok\":true", readyBody);
-        Assert.Contains("\"name\":\"oss\",\"ok\":true", readyBody);
-        Assert.Contains("\"name\":\"student\",\"ok\":false", readyBody);
-        Assert.DoesNotContain("\"name\":\"vl\"", readyBody);
-    }
-
-    [Fact]
-    public async Task HealthEndpointsStayAnonymousUnderStrictAuthAsync()
-    {
-        var admin = DedicatedAdminConnection();
-        if (admin is null)
-            throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
-        await using var database = await LocalBootstrapPostgresTests.TestDatabase.CreateAsync(admin);
-        await using var s3 = new LocalBootstrapPostgresTests.RequestProbe();
-        var port = LocalBootstrapPostgresTests.GetAvailablePort();
-        var settings = new Dictionary<string, string?>
-        {
-            ["Mistake__ConfigMode"] = "Local",
-            ["Mistake__Http__Port"] = port.ToString(),
-            ["ConnectionStrings__MistakeLocal"] = new NpgsqlConnectionStringBuilder(admin)
-                { Database = database.Name }.ConnectionString,
-            ["Mistake__Local__Oss__InternalEndpoint"] = $"127.0.0.1:{s3.Port}",
-            ["IdentityService__MistakeApiStrictAuth"] = "true",
-            ["IdentityService__Authority"] = "http://127.0.0.1:5002",
-            ["IdentityService__Issuer"] = "http://127.0.0.1:5002",
-            ["IdentityService__Audience"] = "ruoyu-mistake",
-            ["IdentityService__RequireHttpsMetadata"] = "false"
-        };
-        Assert.Equal(0, (await LocalBootstrapPostgresTests.RunHostAsync(["--upgrade-empty-db"], settings)).ExitCode);
-
-        HttpStatusCode liveStatus = HttpStatusCode.OK;
-        HttpStatusCode readyStatus = HttpStatusCode.OK;
-        string readyBody = "";
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        await LocalBootstrapPostgresTests.RunHostAsync([], settings, waitForStartup: true, duringStartup: async token =>
-        {
-            await LocalBootstrapPostgresTests.WaitForRootAsync(client, port, token);
-            // No Authorization header: anonymous requests under strict mode must
-            // not receive 401 from the health endpoints.
-            (liveStatus, _) = await GetAsync(client, port, "/health/live", token);
-            (readyStatus, readyBody) = await GetAsync(client, port, "/health/ready", token);
+            (apiStatus, _) = await GetAsync(client, port, "/api/mistakes?page=1&size=1&subject=0&grade=0&reviewStatus=0", token);
         });
 
         Assert.Equal(HttpStatusCode.OK, liveStatus);
         Assert.NotEqual(HttpStatusCode.Unauthorized, readyStatus);
         Assert.Contains("\"checks\"", readyBody);
+        Assert.Equal(HttpStatusCode.Unauthorized, apiStatus);
     }
 }

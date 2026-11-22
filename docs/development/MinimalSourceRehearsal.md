@@ -1,6 +1,6 @@
 # Mistake 最小源码包 manifest 与仓库外预演
 
-Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定，配套脚本在仓库外空目录复现完整构建链路，作为未来迁出的自动预演入口。本入口只覆盖构建/测试/镜像面；运行面（隔离环境启动矩阵与平台模式回归）由 [IsolatedDeployVerification.md](./IsolatedDeployVerification.md) 的 07 脚本承接。
+Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定，配套脚本在仓库外空目录复现完整构建链路，作为未来迁出的自动预演入口。本入口只覆盖构建/测试/镜像面。
 
 ## 组成
 
@@ -9,9 +9,9 @@ Mistake 服务的最小可构建/可测试/可镜像化闭包由 manifest 固定
 | manifest | `src/services/ruoyu.mistake/manifest/mistake-minimal-source-package.json` | 固定源 commit、闭包成员路径（7 个 Mistake 项目 + 3 个共享项目 + sln + .dockerignore）、NuGet 直接依赖 id/版本/许可证表达式、导出排除规则 |
 | 预演脚本 | `script/build-script/06-mistake.minimal-source-rehearsal.sh` | 从指定 commit 按 manifest 导出到仓库外空目录，依次执行 restore、Release build、Domain 测试、Service 测试、docker 镜像构建 |
 
-最小闭包成员：Database、Domain、Service、Host、StudentClient、Domain.Tests、Service.Tests（Mistake 7 项）+ ruoyu.common/backend 下 Common、Ai.Shared、Consul.Shared（共享 3 项）+ sln + 仓库根 `.dockerignore` + 历史 `docs/Integration/mistake-http-v1.json`、`mistake-http-v2.json` 与当前 `mistake-http-v3.json` 发布资源。不含 4 个 Portal BFF 共享库、common frontend/docs/test、其他服务与 Portal 源码。
+最小闭包成员：Database、Domain、Service、Host、Domain.Tests、Service.Tests（6 项）+ `vendor/Emenda.Common`（共享 1 项）+ sln + 仓库根 `.dockerignore` + `docs/Integration/` 下全部已发布合同资源（`mistake-http-v1`…`v6`、`emenda-intake-v1`、`emenda-extraction-v1`）。成员以 `manifest/mistake-minimal-source-package.json` 为准。
 
-Service.Tests 只保留 portable 核心/宿主测试，不引用 Student 或 Portal BFF 项目或源码。需要真实 Student provider 的来源入库、目标、退回与交接测试由 `tests/integration/src/Ruoyu.Study.Mistake.Provider.Tests` 主责；原 `MistakeConsumerHostModesTests` 的三个 strict/resource 组合也由该项目执行，原 alias 引用随测试移动，并复用 Service.Tests 的内部真实 Host fixture；该项目不进入最小包。仓库常规回归必须执行两套，不能以最小包成功替代 provider 正常 TLS/PG/S3 验证。
+Service.Tests 只包含本仓库的核心与宿主测试，不引用 Student 或 Portal 项目。
 
 ## 命令
 

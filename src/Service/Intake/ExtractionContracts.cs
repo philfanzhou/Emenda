@@ -37,7 +37,15 @@ public sealed record ExtractionRetryRequest(Guid RequestKey);
 public sealed record ExtractionReviewRequest(int ExpectedVersion, Guid ItemId, int ReviewStatus,
     string ReviewerId, string? RootCause, string? ReturnReason);
 public sealed record ExtractionAccess(string Caller, string Actor, bool Administrator = false);
-public sealed record ExtractionUpload(string StudentId, int Grade, string SourceKey, List<ProductIntakeImage> Images);
+public sealed record ExtractionUpload(string StudentId, int Grade, string SourceKey, List<ExtractionImage> Images);
+
+/// <summary>One original image supplied by the caller; <see cref="Content"/> is stored as-is.</summary>
+public sealed class ExtractionImage
+{
+    public string FileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public byte[] Content { get; set; } = Array.Empty<byte>();
+}
 
 public interface IExtractionService
 {

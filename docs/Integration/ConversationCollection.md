@@ -1,6 +1,6 @@
 # Conversation-backed mistakes
 
-This optional capability imports the complete conversation collection workflow into Emenda. It is disabled by default. It does not require a Student service, a user JWT, Identity, or StorageReferences in standalone mode. Existing upload, extraction and structured-analysis workflows remain available.
+This optional capability imports the complete conversation collection workflow into Emenda. It is disabled by default. It does not require a Student service, a user JWT, Identity, or StorageReferences in standalone mode. It complements automatic extraction; the former upload and VL structured-analysis workflows were removed.
 
 ## Configuration
 
@@ -43,7 +43,7 @@ Only a valid `200 application/json {authorized:false}` is permanent revocation. 
 
 ## Durable behavior
 
-Schema 18 (`20261118000000_AddConversationMistakes`) adds independent item snapshots, durable jobs and permanent replay receipts after schema 17. It preserves structured-analysis data and every historical migration. The strict classifier verifies the full catalog; downgrade refuses to discard collection work or snapshots. StorageReferences is not restored.
+Schema 18 (`20261118000000_AddConversationMistakes`) adds independent item snapshots, durable jobs and permanent replay receipts after schema 17. It preserves structured-analysis data and every historical migration; schema 19 later retires the managed source tables without touching conversation data. The strict classifier verifies the full catalog; downgrade refuses to discard collection work or snapshots. StorageReferences is not restored.
 
 Workers lease queued work with expiration/retry bounds. Source export validation checks owner-bound event identities, quoted attempts, outcomes, source/asset linkage and bounded images. Images are copied into independent content-addressed mistake storage, read back and hash-verified before references are committed; staged references survive failed writes. A current export fingerprint and clear/lease barriers are checked before commit.
 

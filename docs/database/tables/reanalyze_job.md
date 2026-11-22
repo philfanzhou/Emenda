@@ -1,5 +1,7 @@
 # reanalyze_job
 
+> VL 再分析功能已移除，本表不再写入；保留历史数据，不在 schema v19 中删除。
+
 `id`（uuid）为稳定 JobId；`item_id` 是错题引用，不设外键，因此条目删除后仍可保留失败任务。`reviewer_id`、`student_id`、可选 `teacher_description` 与 `previous_root_cause` 在提交时保存。`previous_root_cause` 是提交时审计快照；执行输入使用领取时的 `execution_root_cause`。
 
 | 字段 | 类型 | 含义 |
@@ -15,4 +17,4 @@
 | `created_at`、`started_at`、`completed_at` | timestamptz | 提交、最近一次领取、终态时间 |
 | `vl_duration_ms` | bigint nullable | 成功 VL 耗时 |
 
-索引按 `status,created_at`、`reviewer_id,status`、`completed_at`。全局领取通过 PostgreSQL transaction advisory lock、Job/Item 行锁及条件更新实现；同题顺序由 `created_at,id` 确定。仅 Completed/Failed 且 `completed_at` 超过 30 天删除。执行模型见[重分析能力](../../modules/MistakeReview/ReanalyzeMistakeItem/README.md)。
+索引按 `status,created_at`、`reviewer_id,status`、`completed_at`。全局领取通过 PostgreSQL transaction advisory lock、Job/Item 行锁及条件更新实现；同题顺序由 `created_at,id` 确定。仅 Completed/Failed 且 `completed_at` 超过 30 天删除。执行模型见重分析能力。
