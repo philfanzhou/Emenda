@@ -105,6 +105,7 @@ textarea { min-height:60px; resize:vertical; }
     </div>
   </div>
 </main>
+{{ExtractionCorrectionPanel.Script}}
 <script>
 (function () {
   'use strict';
@@ -170,7 +171,8 @@ textarea { min-height:60px; resize:vertical; }
   async function write(method, url, value) {
     const csrf = await request('/admin/auth/oidc/csrf');
     if (typeof csrf.token !== 'string' || !csrf.token) throw new Error('无法取得 CSRF 令牌，未发送写入。');
-    return request(url, { method, headers:{ 'X-CSRF-TOKEN':csrf.token, 'Content-Type':'application/json' }, body:value === undefined ? undefined : JSON.stringify(value) });
+    const multipart = value instanceof FormData;
+    return request(url, { method, headers:{ 'X-CSRF-TOKEN':csrf.token, ...(multipart ? {} : {'Content-Type':'application/json'}) }, body:multipart ? value : value === undefined ? undefined : JSON.stringify(value) });
   }
   async function checkSession() {
     try {
@@ -364,13 +366,19 @@ textarea { min-height:60px; resize:vertical; }
           } else body.append(node('p', '任务完成后会在这里显示题目、作答和判定证据。', 'empty'));
       }
       root.append(body);
+      if (job.status === 'Succeeded') window.renderEmendaCorrections(root, {
+        job, selected:job.questions.find(view => view.question.id === state.questionId) || job.questions[0],
+        read:request, write, error:message => notice('message', message, 'error'),
+        setBusy:value => { state.busy = value; root.inert = value; $('taskList').inert = value; },
+        reload:async () => { const body = await request(jobUrl(job.id)); acceptJob(body.data); renderJob(); }
+      });
     }
     const selectedChip = root.querySelector('.question-nav button[aria-pressed=true]');
     if (selectedChip) {
       const strip = selectedChip.parentElement;
       strip.scrollLeft += selectedChip.getBoundingClientRect().left - strip.getBoundingClientRect().left - strip.clientWidth / 2 + selectedChip.offsetWidth / 2;
     }
-    if (state.busy) root.querySelectorAll('button').forEach(control => { control.disabled = true; });
+    root.inert = state.busy;
   }
   $('returnToTask').onclick = () => { state.editing = false; state.section = '判题结果'; renderJob(); };
   function renderSources(root, job) {
@@ -463,7 +471,6 @@ textarea { min-height:60px; resize:vertical; }
       pick.setAttribute('aria-pressed', String(question.id === draft.selectedQuestion)); picker.append(pick);
     });
     groupRow.append(title, picker, button('新增题目组', () => {
-      if (draft.questions.length >= 32) return;
       const question = { id:uuid(), questionNumber:null, subject:1, statement:'', studentAnswer:null, referenceAnswer:'', explanation:'', outcome:'unknown', evidence:'', regions:[] };
       draft.questions = [...draft.questions, question]; draft.selectedQuestion = question.id; draft.selectedRegion = 0; draft.splitRegions.clear(); changed(draft); renderJob();
     })); fields.append(groupRow);
@@ -520,7 +527,7 @@ textarea { min-height:60px; resize:vertical; }
   }
   function splitSelectedRegions(draft, question) {
     const regions = question.regions.filter(region => draft.splitRegions.has(region));
-    if (!regions.length || regions.length === question.regions.length || draft.questions.length >= 32 || state.busy || draft.pending) return;
+    if (!regions.length || regions.length === question.regions.length || state.busy || draft.pending) return;
     if (!confirm('将勾选的 ' + regions.length + ' 个部分按现有阅读顺序拆为新 UUID？原组保留 UUID、题号和未勾选部分，新组题号留空。全部文字、作答与证据会复制供复核，但两组判定均重置为无法判断，不能沿用拆分前的结论。此操作只改草稿，保存后才生成新版本。')) return;
     const created = { ...question, id:uuid(), questionNumber:null, outcome:'unknown', regions:regions.map(region => ({ ...region })) };
     const remaining = { ...question, outcome:'unknown', regions:question.regions.filter(region => !draft.splitRegions.has(region)) };
@@ -588,8 +595,8 @@ textarea { min-height:60px; resize:vertical; }
     const splitState = node('p', null, 'muted'); splitState.setAttribute('role', 'status');
     const updateSplit = () => {
       const count = question.regions.filter(region => draft.splitRegions.has(region)).length;
-      split.disabled = !count || count === question.regions.length || draft.questions.length >= 32;
-      splitState.textContent = '已勾选 ' + count + ' / ' + question.regions.length + ' 个部分。' + (draft.questions.length >= 32 ? '已有 32 组，不能再拆分。' : count === question.regions.length && count ? '必须保留至少 1 个部分在原组。' : '');
+      split.disabled = !count || count === question.regions.length;
+      splitState.textContent = '已勾选 ' + count + ' / ' + question.regions.length + ' 个部分。' + (count === question.regions.length && count ? '必须保留至少 1 个部分在原组。' : '');
     };
     updateSplit(); options.append(splitHelp, split, splitState);
     const list = node('ol', null, 'region-list');
@@ -652,7 +659,6 @@ textarea { min-height:60px; resize:vertical; }
   });
   function validateDraft(draft) {
     if (!draft.reason.trim() || draft.reason.length > 2000) return '请填写 1 至 2000 字的纠偏原因。';
-    if (draft.questions.length > 32) return '最多保存 32 个题目组。';
     const ids = new Set(), sources = new Set(state.job.sources.map(source => source.id));
     for (let index = 0; index < draft.questions.length; index++) {
       const question = draft.questions[index], prefix = '题目组 ' + (index + 1) + '：';
@@ -719,35 +725,12 @@ textarea { min-height:60px; resize:vertical; }
     root.append(conflict);
   }
   function renderHistory(root) {
-    const history = node('details'); history.open = true; history.append(node('summary', '历史版本（' + state.job.versions.length + '），只读快照'));
+    const history = node('details'); history.open = true; history.append(node('summary', '版本回执（' + state.job.versions.length + '）'));
     const list = node('ol', null, 'history-list');
     [...state.job.versions].sort((left, right) => right.version - left.version).forEach(version => {
-      const li = node('li'); li.append(button('查看 v' + version.version, () => loadHistory(version.version)), node('div', date(version.createdAt) + ' · ' + version.actor + ' · 模型 ' + version.model, 'muted'), node('p', version.reason || '未记录原因'), node('div', '请求键：' + version.requestKey, 'mono')); list.append(li);
+      const li = node('li'); li.append(node('strong', 'v' + version.version + (version.version === state.job.version ? ' · 当前' : ' · 旧框和裁图已退役')), node('div', date(version.createdAt) + ' · ' + version.actor + ' · 模型 ' + version.model, 'muted'), node('p', version.reason || '未记录原因'), node('div', '请求键：' + version.requestKey, 'mono')); list.append(li);
     }); history.append(list);
-    if (state.history) {
-      const selected = state.history; history.append(node('h3', '历史 v' + selected.version + ' · 只读，不代表当前结果'));
-      const controls = node('div', null, 'row'); controls.append(button('关闭历史快照', () => { state.history = null; state.historyEpoch++; renderJob(); }), button('将此历史版本显式加载为当前草稿', () => loadHistoricalDraft(selected)));
-      history.append(controls); renderQuestions(history, selected.snapshot.questions, selected.version);
-    }
     root.append(history);
-  }
-  async function loadHistory(version) {
-    const id = state.selectedId, epoch = ++state.historyEpoch;
-    try {
-      const body = await request(jobUrl(id) + '/versions/' + version);
-      if (id !== state.selectedId || epoch !== state.historyEpoch) return;
-      state.history = { version, snapshot:body.data }; renderJob();
-    } catch (error) { notice('message', '历史版本读取失败：' + error.message, 'error'); }
-  }
-  async function loadHistoricalDraft(history) {
-    if (state.busy) return;
-    const id = state.selectedId, epoch = ++state.loading;
-    try {
-      const body = await request(jobUrl(id)); if (id !== state.selectedId || epoch !== state.loading || state.busy) return;
-      acceptJob(body.data);
-      if (!['Succeeded','Failed'].includes(body.data.status)) throw new Error('当前任务正在处理，不能编辑。');
-      beginDraft(history.snapshot.questions, body.data.version, history.version);
-    } catch (error) { notice('message', '加载历史到草稿失败：' + error.message, 'error'); }
   }
   const authErrors = { signInFailed:'登录失败，请重新登录。', notAdmin:'当前账户没有管理员权限。', identityUnavailable:'无法连接 SignaCore，请稍后重试。' };
   const authError = new URLSearchParams(location.search).get('authError'); if (authError) notice('message', authErrors[authError] || '登录失败。', 'error');

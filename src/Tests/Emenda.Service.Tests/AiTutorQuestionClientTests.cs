@@ -38,6 +38,38 @@ public sealed class AiTutorQuestionClientTests
     }
 
     [Fact]
+    public async Task ReadsAllFortyQuestionsInProviderOrder()
+    {
+        var labels = Enumerable.Range(1, 40).Select(n => n.ToString()).ToArray();
+        var drafts = labels.Select(label => Draft() with { QuestionNumber = label }).ToList();
+        var client = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new QuestionAnalysisResult("vision", drafts))
+        }));
+
+        Assert.Equal(labels, (await client.AnalyzeAsync(Request())).Questions.Select(q => q.QuestionNumber));
+    }
+
+    [Fact]
+    public async Task RevisionPreservesOnlySuppliedQuestionIdentities()
+    {
+        var question = Draft() with { Id = Guid.NewGuid() };
+        foreach (var id in new[] { question.Id, Guid.NewGuid() })
+        {
+            var client = Client(async (message, ct) =>
+            {
+                var sent = await message.Content!.ReadFromJsonAsync<QuestionAnalysisRequest>(ct);
+                Assert.Equal(question.Id, sent!.Revision!.Questions.Single().Id);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = JsonContent.Create(new QuestionAnalysisResult("vision", [question with { Id = id }])) };
+            });
+            var request = Request() with { Revision = new("Complete the original crop", "questions", [question]) };
+            if (id == question.Id) Assert.Equal(id, (await client.AnalyzeAsync(request)).Questions.Single().Id);
+            else Assert.Equal("invalid_analysis_response", (await Assert.ThrowsAsync<ExtractionException>(() => client.AnalyzeAsync(request))).Code);
+        }
+    }
+
+    [Fact]
     public async Task RejectsForeignRegionsAndConfidentAnswersWithoutAttempt()
     {
         foreach (var draft in new[] { Draft() with { Regions = [Region with { SourceId = Other }] }, Draft() with { Outcome = "incorrect", ReferenceAnswer = "2", Evidence = "visible" } })

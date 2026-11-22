@@ -123,17 +123,27 @@ public sealed partial class ExtractionService(
     public async Task<ExtractionSnapshot> GetVersionAsync(ExtractionAccess access, Guid id, int version, CancellationToken ct = default)
     {
         await using var db = Open();
-        await FindAsync(db, access, id, ct);
+        var job = await FindAsync(db, access, id, ct);
+        if (version != job.Version) throw new ExtractionException("version_retired", 410);
         var row = await db.ExtractionRevisions.AsNoTracking().SingleOrDefaultAsync(r => r.JobId == id && r.Version == version, ct)
             ?? throw new ExtractionException("version_not_found", 404);
         return await WithDeletionStateAsync(db, ExtractionRules.Read<ExtractionSnapshot>(row.SnapshotJson), ct);
     }
 
-    private static async Task<ExtractionSnapshot> WithDeletionStateAsync(MistakeDbContext db, ExtractionSnapshot snapshot, CancellationToken ct)
+    private static async Task<ExtractionSnapshot> WithDeletionStateAsync(MistakeDbContext db, ExtractionSnapshot snapshot, CancellationToken ct,
+        bool includeSupplements = false)
     {
         var ids = snapshot.Questions.Where(q => q.ItemId.HasValue).Select(q => q.ItemId!.Value).ToArray();
         var existing = (await db.MistakeItems.AsNoTracking().Where(i => ids.Contains(i.Id)).Select(i => i.Id).ToListAsync(ct)).ToHashSet();
-        return new(snapshot.Questions.Select(q => q with { ItemDeleted = q.ItemId.HasValue && !existing.Contains(q.ItemId.Value) }).ToList());
+        var questionIds = snapshot.Questions.Select(q => q.Question.Id).ToArray();
+        var pending = includeSupplements ? await db.ExtractionSupplements.AsNoTracking()
+            .Where(s => questionIds.Contains(s.QuestionId) && s.Status == "Requested").ToListAsync(ct) : [];
+        return new(snapshot.Questions.Select(q =>
+        {
+            var current = q.ItemId.HasValue && !existing.Contains(q.ItemId.Value) ? q with { ItemDeleted = true, Images = [] } : q;
+            var supplement = pending.SingleOrDefault(s => s.QuestionId == q.Question.Id);
+            return current with { Supplement = supplement is null ? null : SupplementView(supplement) };
+        }).ToList());
     }
 
     private static async Task<ExtractionJobView> ViewAsync(MistakeDbContext db, ExtractionJobEntity job, int? version, CancellationToken ct)
@@ -141,11 +151,11 @@ public sealed partial class ExtractionService(
         var selected = version ?? job.Version;
         var snapshot = selected == 0 ? new ExtractionSnapshot([]) : ExtractionRules.Read<ExtractionSnapshot>(
             (await db.ExtractionRevisions.AsNoTracking().SingleAsync(r => r.JobId == job.Id && r.Version == selected, ct)).SnapshotJson);
-        snapshot = await WithDeletionStateAsync(db, snapshot, ct);
+        snapshot = selected == job.Version ? await WithDeletionStateAsync(db, snapshot, ct, includeSupplements: true) : new([]);
         var versions = await db.ExtractionRevisions.AsNoTracking().Where(r => r.JobId == job.Id).OrderByDescending(r => r.Version)
             .Select(r => new ExtractionVersionView(r.Version, r.RequestKey, r.Actor, r.Reason, r.Model, r.CreatedAt)).ToListAsync(ct);
         return new(job.Id, job.StudentId, job.Grade, job.Status, selected, job.Attempt, job.ErrorCode,
-            job.CreatedAt, job.UpdatedAt, Sources(job), snapshot.Questions, versions);
+            job.CreatedAt, job.UpdatedAt, Sources(job), snapshot.Questions, versions) { Superseded = selected != job.Version };
     }
 
     public async Task<ExtractionJobView> RetryAsync(ExtractionAccess access, Guid id, ExtractionRetryRequest request, CancellationToken ct = default)

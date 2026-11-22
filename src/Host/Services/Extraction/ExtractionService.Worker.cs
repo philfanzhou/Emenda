@@ -151,6 +151,7 @@ public sealed partial class ExtractionService
         }
         ExtractionRules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
         var requestKey = ExtractionRules.Identity($"{job.Id:N}:automatic");
+        await using var jobLock = await SerializeJobAsync(job.Id, ct);
         var snapshot = await BuildSnapshotAsync(job.Id, requestKey, analyzed.Questions, sources, null, ct);
         await using var publish = Open();
         await using var transaction = await publish.Database.BeginTransactionAsync(ct);
@@ -202,6 +203,7 @@ public sealed class ExtractionHostedService(IServiceProvider services, ILogger<E
                 using var scope = services.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<ExtractionService>();
                 await service.RunQueuedAsync(stoppingToken);
+                await service.RunCleanupAsync(stoppingToken);
                 await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }

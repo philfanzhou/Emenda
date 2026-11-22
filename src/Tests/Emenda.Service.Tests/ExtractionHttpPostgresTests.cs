@@ -82,8 +82,8 @@ public sealed class ExtractionHttpPostgresTests
         Assert.Equal("三、2（1）", revised.Questions.Single().Question.QuestionNumber);
         Assert.Equal(result.Questions.Single().ItemId, revised.Questions.Single().ItemId);
         var history = await admin.GetAsync($"/admin/api/extractions/{job.Id}/versions/1");
-        Assert.Equal(HttpStatusCode.OK, history.StatusCode);
-        Assert.Equal("12", (await Data<ExtractionSnapshot>(history)).Questions.Single().Question.QuestionNumber);
+        Assert.Equal(HttpStatusCode.Gone, history.StatusCode);
+        Assert.Contains("version_retired", await history.Content.ReadAsStringAsync());
         var original = await admin.GetAsync($"/admin/api/extractions/{job.Id}/sources/{job.Sources[0].Id}");
         Assert.Equal(originalBytes, await original.Content.ReadAsByteArrayAsync());
         using var page = await admin.GetAsync("/admin/extractions");
@@ -181,6 +181,8 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
             services.AddSingleton<ILayoutDetectionClient, ControlledLayout>();
             services.RemoveAll<IOptions<ExtractionOptions>>();
             services.AddSingleton(Options.Create(new ExtractionOptions { Enabled = true }));
+            foreach (var registration in services.Where(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
+                && d.ImplementationType == typeof(ExtractionHostedService)).ToList()) services.Remove(registration);
             if (_runWorker) services.AddHostedService<ExtractionHostedService>();
         });
     }

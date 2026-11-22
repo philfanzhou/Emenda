@@ -22,6 +22,172 @@ namespace Emenda.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionObjectEntity", b =>
+                {
+                    b.Property<string>("Path")
+                        .HasColumnType("text")
+                        .HasColumnName("path");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<bool>("Pending")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pending");
+
+                    b.Property<bool>("Legacy")
+                        .HasColumnType("boolean")
+                        .HasColumnName("legacy");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset>("NextAttempt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt");
+
+                    b.HasKey("Path");
+
+                    b.HasIndex("Pending", "NextAttempt")
+                        .HasDatabaseName("IX_extraction_object_pending_next_attempt");
+
+                    b.ToTable("extraction_object");
+                });
+
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionProposalEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("RequestKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_key");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("payload_hash");
+
+                    b.Property<int>("ExpectedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("expected_version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("RequestJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("request_json");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result_json");
+
+                    b.Property<Guid?>("Owner")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner");
+
+                    b.Property<DateTimeOffset?>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("ErrorCode")
+                        .HasColumnType("text")
+                        .HasColumnName("error_code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "RequestKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_extraction_proposal_job_key");
+
+                    b.ToTable("extraction_proposal");
+                });
+
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionSupplementEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<Guid>("QuestionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("question_id");
+
+                    b.Property<Guid>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<Guid>("RequestKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_key");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("payload_hash");
+
+                    b.Property<int>("ExpectedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("expected_version");
+
+                    b.Property<int?>("AcceptedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("accepted_version");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<string>("SourcesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("sources_json");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "RequestKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_extraction_supplement_job_key");
+
+                    b.ToTable("extraction_supplement");
+                });
+
             modelBuilder.Entity("Emenda.Database.Entities.ConversationCollectionEntity", b =>
                 {
                     b.Property<Guid>("Id")

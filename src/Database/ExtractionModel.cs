@@ -7,6 +7,11 @@ internal static class ExtractionModel
 {
     internal static void Configure(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ExtractionProposalEntity>().Property(e => e.Id).ValueGeneratedNever();
+        modelBuilder.Entity<ExtractionSupplementEntity>().Property(e => e.Id).ValueGeneratedNever();
+        modelBuilder.Entity<ExtractionObjectEntity>().HasIndex(e => new { e.Pending, e.NextAttempt }).HasDatabaseName("IX_extraction_object_pending_next_attempt");
+        modelBuilder.Entity<ExtractionProposalEntity>().HasIndex(e => new { e.JobId, e.RequestKey }).IsUnique().HasDatabaseName("IX_extraction_proposal_job_key");
+        modelBuilder.Entity<ExtractionSupplementEntity>().HasIndex(e => new { e.JobId, e.RequestKey }).IsUnique().HasDatabaseName("IX_extraction_supplement_job_key");
         modelBuilder.Entity<ExtractionJobEntity>(b =>
         {
             b.Property(e => e.Id).ValueGeneratedNever();

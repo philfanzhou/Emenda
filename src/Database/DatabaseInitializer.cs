@@ -17,7 +17,7 @@ public static class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
-    private const int TargetVersion = 19;
+    private const int TargetVersion = 20;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -247,9 +247,9 @@ public static class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(RetiredSourceSchema.Migration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(ExtractionCorrectionsSchema.Migration, cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {RetiredSourceSchema.Migration}");
+                steps.Add($"migrate to {ExtractionCorrectionsSchema.Migration}");
             }
 
             archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -360,11 +360,12 @@ public static class DatabaseInitializer
         var analysisHistory = new HashSet<string>(extractionHistory, StringComparer.Ordinal) { $"{MistakeAnalysisSchema.Migration}|8.0.11" };
         var conversationHistory = new HashSet<string>(analysisHistory, StringComparer.Ordinal) { $"{ConversationMistakeSchema.Migration}|8.0.11" };
         var retiredSourceHistory = new HashSet<string>(conversationHistory, StringComparer.Ordinal) { $"{RetiredSourceSchema.Migration}|8.0.11" };
+        var correctionsHistory = new HashSet<string>(retiredSourceHistory, StringComparer.Ordinal) { $"{ExtractionCorrectionsSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : history.SetEquals(correctionsHistory) ? 20 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
         // Name the leftover directly instead of reporting it as a routine or relation mismatch.
@@ -376,7 +377,7 @@ public static class DatabaseInitializer
         var managed = version < 19;
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed);
+            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
@@ -395,6 +396,7 @@ public static class DatabaseInitializer
         if (version >= 16) expectedTables.UnionWith(ExtractionSchema.Tables);
         if (version >= 17) expectedTables.Add("mistake_analysis");
         if (version >= 18) expectedTables.UnionWith(ConversationMistakeSchema.Tables);
+        if (version >= 20) expectedTables.UnionWith(ExtractionCorrectionsSchema.Tables);
         var mismatch = Compare("relation", expectedTables, relations);
         if (mismatch is not null) return Invalid(mismatch);
 
@@ -418,6 +420,7 @@ public static class DatabaseInitializer
         if (version >= 16) expectedColumns.UnionWith(ExtractionSchema.Columns);
         if (version >= 17) expectedColumns.UnionWith(MistakeAnalysisSchema.Columns);
         if (version >= 18) expectedColumns.UnionWith(ConversationMistakeSchema.Columns);
+        if (version >= 20) expectedColumns.UnionWith(ExtractionCorrectionsSchema.Columns);
         if (version < 3)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
         else if (version < 5)
@@ -472,7 +475,7 @@ public static class DatabaseInitializer
             """, cancellationToken).ConfigureAwait(false);
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed);
+            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (triggers.Count > 0) return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");
@@ -500,6 +503,7 @@ public static class DatabaseInitializer
         if (version >= 16) expectedIndexes.UnionWith(ExtractionSchema.Indexes);
         if (version >= 17) expectedIndexes.Add("PK_mistake_analysis|mistake_analysis|mistake_item_id|U");
         if (version >= 18) expectedIndexes.UnionWith(ConversationMistakeSchema.Indexes);
+        if (version >= 20) expectedIndexes.UnionWith(ExtractionCorrectionsSchema.Indexes);
         if (version < 3)
             expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
         if (version < 2)
@@ -554,6 +558,7 @@ public static class DatabaseInitializer
         }
         if (version >= 16) expectedConstraints.UnionWith(ExtractionSchema.Constraints);
         if (version >= 18) expectedConstraints.UnionWith(ConversationMistakeSchema.Constraints);
+        if (version >= 20) expectedConstraints.UnionWith(ExtractionCorrectionsSchema.Constraints);
         mismatch = Compare("constraint", expectedConstraints, constraints);
         if (mismatch is not null) return Invalid(mismatch);
 

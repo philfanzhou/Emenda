@@ -2,6 +2,7 @@ namespace Emenda.Host.Services.Extraction;
 
 public sealed class ExtractionOptions
 {
+    public bool CleanupLegacyObjects { get; set; }
     public const string SectionName = "Emenda:Extraction";
     public bool Enabled { get; set; }
     public string TutorBaseUrl { get; set; } = "";

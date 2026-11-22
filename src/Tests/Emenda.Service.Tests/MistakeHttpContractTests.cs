@@ -94,7 +94,8 @@ public sealed class MistakeHttpContractTests
     [Theory]
     [InlineData("mistake-http-v1", "mistake-http-v6")][InlineData("mistake-http-v2", "mistake-http-v6")]
     [InlineData("mistake-http-v3", "mistake-http-v6")][InlineData("mistake-http-v4", "mistake-http-v6")]
-    [InlineData("mistake-http-v5", "mistake-http-v6")][InlineData("emenda-intake-v1", "emenda-extraction-v1")]
+    [InlineData("mistake-http-v5", "mistake-http-v6")][InlineData("emenda-intake-v1", "emenda-extraction-v2")]
+    [InlineData("emenda-extraction-v1", "emenda-extraction-v2")]
     public async Task PreviousPublishedBytesStayAvailableWithTheirOwnHashAndHistoricalMarkerAsync(string version, string successor)
     {
         using var factory = new StandaloneWebApplicationFactory(null);
@@ -141,7 +142,7 @@ public sealed class MistakeHttpContractTests
         await app.StartAsync();
         using var client = app.GetTestClient();
         (await client.GetAsync("/contracts/mistake-http-v6.json")).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await client.GetAsync("/contracts/emenda-extraction-v1.json")).Headers.Contains("X-Emenda-Contract-Status").Should().BeFalse();
+        (await client.GetAsync("/contracts/emenda-extraction-v2.json")).Headers.Contains("X-Emenda-Contract-Status").Should().BeFalse();
         using var star = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v6.json");
         star.Headers.TryAddWithoutValidation("If-None-Match", "*");
         (await client.SendAsync(star)).StatusCode.Should().Be(HttpStatusCode.NotModified);

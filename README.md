@@ -76,9 +76,20 @@ and the [paired AI Tutor implementation](integrations/ai-tutor/README.md) before
 ### HTTP contracts
 
 The lifecycle contract is [mistake-http-v6](docs/Integration/mistake-http-v6.json) and the
-extraction contract is [emenda-extraction-v1](docs/Integration/emenda-extraction-v1.json);
+extraction contract is [emenda-extraction-v2](docs/Integration/emenda-extraction-v2.json);
 both are served anonymously under `GET /contracts/{version}.json`. Earlier published
-documents (`mistake-http-v1`…`v5`, `emenda-intake-v1`) stay available as historical versions.
+documents (`mistake-http-v1`…`v5`, `emenda-intake-v1`, `emenda-extraction-v1`) stay available as historical versions.
+
+### Database schema v20
+
+Schema v20 adds persistent AI proposals, original-question supplements and crop cleanup.
+Only current incorrect items have formal crops; originals and accepted supplements stay.
+Old geometry, checkpoints and log crop snapshots are retired irreversibly while version
+and idempotency receipts remain. Object references are fenced against physical cleanup.
+Read [v2 corrections](docs/Integration/extraction-corrections-v2.md) before deployment:
+the existing-data geometry migration requires a reviewed inventory and authorization,
+even when `CleanupLegacyObjects` is false. Shared test/production acceptance is separate
+from a successful build.
 
 ### Database schema v19
 

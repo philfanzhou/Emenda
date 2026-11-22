@@ -82,6 +82,8 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
             }
             var result = root.Deserialize<QuestionAnalysisResult>(Json);
             ValidateResult(result, request.Images.Select(i => i.SourceId).ToHashSet());
+            if (request.Revision is not null && result!.Questions.Any(q => q.Id != Guid.Empty && !request.Revision.Questions.Any(c => c.Id == q.Id)))
+                throw new ExtractionException("invalid_analysis_response", 502);
             return result!;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -113,12 +115,20 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
             var decoded = new byte[data.Length / 4 * 3 + 3];
             if (!Convert.TryFromBase64Chars(data, decoded, out _)) throw new ExtractionException("invalid_analysis_request");
         }
+        if (request.Revision is { } revision)
+        {
+            if (string.IsNullOrWhiteSpace(revision.Instruction) || revision.Instruction.Length > 4000
+                || revision.Scope is not ("questions" or "regions" or "all") || revision.Questions is null)
+                throw new ExtractionException("invalid_analysis_request");
+            var originals = request.Images.Select(i => new ExtractionSource(i.SourceId, "", "image/jpeg", 0, "", i.Width, i.Height, null)).ToList();
+            ExtractionRules.ValidateQuestions(revision.Questions, originals, automatic: false);
+        }
     }
 
     private static void ValidateResult(QuestionAnalysisResult? result, HashSet<Guid> sources)
     {
         if (result is null || string.IsNullOrWhiteSpace(result.Model) || result.Model.Length > 256
-            || result.Questions is null || result.Questions.Count > 32)
+            || result.Questions is null)
             throw new ExtractionException("invalid_analysis_response", 502);
         foreach (var q in result.Questions)
             if (q is null || !ExtractionRules.ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || string.IsNullOrWhiteSpace(q.Statement) || q.Statement.Length > 8000

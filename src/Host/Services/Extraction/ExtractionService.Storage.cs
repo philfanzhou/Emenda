@@ -46,7 +46,8 @@ public sealed partial class ExtractionService
         {
             var split = path.LastIndexOf('/');
             var folder = path["mistakes/".Length..split];
-            var actual = await oss.UploadAsync(bytes, path[(split + 1)..], contentType, OssBucket.Mistakes, folder).WaitAsync(ct);
+            // Do not release the job lock while an uncancellable PUT can still complete.
+            var actual = await oss.UploadAsync(bytes, path[(split + 1)..], contentType, OssBucket.Mistakes, folder);
             if (actual != path) throw new ExtractionException("storage_path_conflict", 503);
         }
         var stored = await ReadObjectAsync(path, ExtractionRules.MaxCropBytes, ct);
@@ -81,25 +82,36 @@ public sealed partial class ExtractionService
         List<ExtractionQuestionDraft> drafts, List<ExtractionSource> sources, ExtractionSnapshot? prior, CancellationToken ct)
     {
         var result = new List<ExtractionQuestionView>();
+        var reusable = (prior?.Questions ?? []).Where(q => !q.ItemDeleted && q.Question.Outcome == "incorrect")
+            .SelectMany(q => q.Images).GroupBy(i => i.Region).ToDictionary(g => g.Key, g => g.First());
+        var previous = (prior?.Questions ?? []).ToDictionary(q => q.Question.Id);
         foreach (var draft in drafts)
         {
-            var old = prior?.Questions.SingleOrDefault(q => q.Question.Id == draft.Id);
-            if (old is not null && old.Question.Regions.SequenceEqual(draft.Regions))
+            var old = previous.GetValueOrDefault(draft.Id);
+            if (draft.Outcome != "incorrect" || old?.ItemDeleted == true)
             {
-                result.Add(old with { Question = draft });
+                result.Add(new(draft, old?.ItemId, old?.ItemDeleted ?? false, []));
                 continue;
             }
             var crops = new List<ExtractionCrop>();
             foreach (var region in draft.Regions)
             {
+                if (reusable.TryGetValue(region, out var retained))
+                {
+                    crops.Add(retained);
+                    continue;
+                }
                 var original = sources.Single(s => s.Id == region.SourceId);
                 var bytes = await VerifiedSourceAsync(original, ct);
                 var crop = QuestionImage.Crop(bytes, region.X0, region.Y0, region.X1, region.Y1);
                 if (crop.Bytes.Length > ExtractionRules.MaxCropBytes) throw new ExtractionException("crop_too_large", 413);
                 var hash = ExtractionRules.Hash(crop.Bytes);
-                var key = $"mistakes/extractions/{jobId:N}/versions/{requestKey:N}/{draft.Id:N}/{crops.Count}-{hash[..16]}.png";
+                var key = $"mistakes/extractions/{jobId:N}/versions/{requestKey:N}/{ExtractionRules.Hash(region)}-{hash}.png";
+                await TrackObjectAsync(jobId, key, ct);
                 await StoreAsync(key, crop.Bytes, "image/png", ct);
-                crops.Add(new(key, crop.Width, crop.Height, region.SourceId, region, crop.Bytes.LongLength, hash));
+                var created = new ExtractionCrop(key, crop.Width, crop.Height, region.SourceId, region, crop.Bytes.LongLength, hash);
+                crops.Add(created);
+                reusable.Add(region, created);
             }
             result.Add(new(draft, old?.ItemId, old?.ItemDeleted ?? false, crops));
         }

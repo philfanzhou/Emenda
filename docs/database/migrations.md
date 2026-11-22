@@ -13,7 +13,7 @@
 
 ### 启动时自动升级
 
-Host 正常启动时自动把数据库升级到当前目标结构（19 条 EF 历史，最后一条为 `20261122000000_DropManagedSourceTables`；第 16 条为自动提取迁移）。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。已部署实例升级前应备份完整数据库、对象和凭据卷；备份不是由 Host 自动完成。
+Host 正常启动时自动把数据库升级到当前目标结构（20 条 EF 历史，最后一条为 `20261122010000_ExtractionCorrections`；第 16 条为自动提取迁移）。整个过程在一个 `READ COMMITTED` 事务内：先取 advisory transaction lock，再读取 PostgreSQL catalog 与迁移历史，核对关系、列、类型、空值性、默认值、索引、约束、函数、触发器及历史记录，按下表处理，最后整体核验目标结构后提交。已部署实例升级前应备份完整数据库、对象和凭据卷；备份不是由 Host 自动完成。v20 会不可逆地退役旧提取几何，部署前须按 [存量盘点](../operations/extraction-crop-inventory.md) 确认范围，不能因关闭物理删除而跳过确认。
 
 | 启动时数据库状态 | 结果 |
 |---|---|

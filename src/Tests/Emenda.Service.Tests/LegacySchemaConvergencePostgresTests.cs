@@ -338,9 +338,9 @@ public sealed class LegacySchemaConvergencePostgresTests
         foreach (var statement in new[] { "UPDATE legacy_archive SET reason='x'", "DELETE FROM legacy_archive", "TRUNCATE legacy_archive" })
             Assert.Contains("legacy_archive_append_only",
                 (await Assert.ThrowsAsync<PostgresException>(() => database.ExecuteAsync(statement))).MessageText);
-        // Schema v19 (retired managed sources) is forward-only: no downgrade can reach the archive migration.
+        // The latest correction migration is forward-only; no downgrade can reach the archive migration.
         var before = await database.SnapshotAsync();
-        Assert.Contains("retired_source_schema_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
+        Assert.Contains("extraction_corrections_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
             context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration))).MessageText);
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(3, (await database.ArchiveAsync()).Count);

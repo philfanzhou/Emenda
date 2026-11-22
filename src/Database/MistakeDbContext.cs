@@ -26,6 +26,9 @@ public class MistakeDbContext : DbContext
     public DbSet<ExtractionJobEntity> ExtractionJobs => Set<ExtractionJobEntity>();
     public DbSet<ExtractionQuestionEntity> ExtractionQuestions => Set<ExtractionQuestionEntity>();
     public DbSet<ExtractionRevisionEntity> ExtractionRevisions => Set<ExtractionRevisionEntity>();
+    public DbSet<ExtractionObjectEntity> ExtractionObjects => Set<ExtractionObjectEntity>();
+    public DbSet<ExtractionProposalEntity> ExtractionProposals => Set<ExtractionProposalEntity>();
+    public DbSet<ExtractionSupplementEntity> ExtractionSupplements => Set<ExtractionSupplementEntity>();
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

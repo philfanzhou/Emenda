@@ -28,6 +28,7 @@ public interface IOssService
     Task<bool> DeleteAsync(string objectPath);
     // Idempotent cleanup: missing objects are successful; storage failures remain failures.
     Task<bool> DeleteIfExistsAsync(string objectPath) => DeleteAsync(objectPath);
+    Task<bool> DeleteDerivedAsync(string objectPath) => DeleteIfExistsAsync(objectPath);
     Task<int> DeleteManyAsync(IEnumerable<string> objectPaths);
     Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600);
     Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600);
@@ -238,6 +239,41 @@ public class S3OssService : IOssService
         {
             return false;
         }
+    }
+
+    public async Task<bool> DeleteDerivedAsync(string objectPath)
+    {
+        if (!objectPath.StartsWith("mistakes/extractions/", StringComparison.Ordinal)
+            || !(objectPath.Contains("/versions/", StringComparison.Ordinal) || objectPath.Contains("/supplements/", StringComparison.Ordinal)))
+            return false;
+        try
+        {
+            _prefixValidator?.ValidateWritePath(objectPath);
+            using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+            foreach (var path in ThumbnailHelper.GetAllThumbnailPaths(objectPath).Prepend(objectPath))
+            {
+                var versions = new List<string?>();
+                await foreach (var item in _internalClient.ListObjectsEnumAsync(new ListObjectsArgs()
+                    .WithBucket(_bucketName).WithPrefix(path).WithRecursive(true).WithVersions(true), timeout.Token))
+                {
+                    if (item.Key != path) continue;
+                    if (versions.Count >= 10000) return false;
+                    versions.Add(item.VersionId);
+                }
+                foreach (var version in versions)
+                {
+                    var remove = new RemoveObjectArgs().WithBucket(_bucketName).WithObject(path);
+                    if (version is not null) remove.WithVersionId(version);
+                    await _internalClient.RemoveObjectAsync(remove, timeout.Token);
+                }
+                // Hiding bytes behind a delete marker is insufficient: every data version must be absent.
+                await foreach (var item in _internalClient.ListObjectsEnumAsync(new ListObjectsArgs()
+                    .WithBucket(_bucketName).WithPrefix(path).WithRecursive(true).WithVersions(true), timeout.Token))
+                    if (item.Key == path) return false;
+            }
+            return true;
+        }
+        catch { return false; }
     }
 
     public async Task<int> DeleteManyAsync(IEnumerable<string> objectPaths)

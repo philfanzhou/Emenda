@@ -39,7 +39,7 @@ internal static class ExtractionRules
     internal static void ValidateQuestions(List<ExtractionQuestionDraft>? questions,
         IReadOnlyCollection<ExtractionSource> sources, bool automatic)
     {
-        if (questions is null || questions.Count > 32 || automatic && questions.Count == 0 ||
+        if (questions is null ||
             questions.Any(q => q is null) || questions.Select(q => q.Id).Distinct().Count() != questions.Count)
             throw new ExtractionException("invalid_questions");
         var sourceIds = sources.Select(s => s.Id).ToHashSet();
@@ -63,7 +63,7 @@ internal static class ExtractionRules
             }
             if (q.Regions.Distinct().Count() != q.Regions.Count) throw new ExtractionException("duplicate_region");
         }
-        if (automatic && !sourceIds.SetEquals(questions.SelectMany(q => q.Regions).Select(r => r.SourceId)))
+        if (automatic && questions.Count > 0 && !sourceIds.SetEquals(questions.SelectMany(q => q.Regions).Select(r => r.SourceId)))
             throw new ExtractionException("source_omitted");
         var canonical = questions.Select(q => Hash(new { q.Subject, q.Statement, q.StudentAnswer,
             Regions = q.Regions.OrderBy(r => r.SourceId).ThenBy(r => r.X0).ThenBy(r => r.Y0).ThenBy(r => r.X1).ThenBy(r => r.Y1) })).ToList();
