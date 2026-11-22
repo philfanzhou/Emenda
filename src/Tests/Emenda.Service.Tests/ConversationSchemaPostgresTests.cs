@@ -8,7 +8,7 @@ namespace Emenda.Service.Tests;
 public sealed class ConversationSchemaPostgresTests
 {
     [Fact]
-    public async Task Version17UpgradeRetainsStructuredAnalysisAndVerifiesExactSchema19()
+    public async Task Version17UpgradeRetainsStructuredAnalysisAndVerifiesExactSchema20()
     {
         await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
@@ -19,7 +19,7 @@ public sealed class ConversationSchemaPostgresTests
         var report = """{"summary":"Retained report"}""";
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_analysis(mistake_item_id,revision,teacher_feedback,draft_report) VALUES ({id},7,{feedback}::jsonb,{report}::jsonb)");
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
-        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(19, upgraded.ToVersion);
+        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(20, upgraded.ToVersion);
         Assert.Equal("Teacher retained", (await db.MistakeItems.SingleAsync()).RootCause);
         Assert.Equal(7, (await db.MistakeAnalyses.SingleAsync()).Revision);
         Assert.Contains(MistakeAnalysisSchema.Migration, await db.Database.GetAppliedMigrationsAsync());

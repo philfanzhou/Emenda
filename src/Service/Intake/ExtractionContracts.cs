@@ -24,16 +24,43 @@ public sealed record ExtractionQuestionDraft
 public sealed record ExtractionCrop(string Path, int Width, int Height, Guid SourceId, ExtractionRegion Region,
     long Length, string Sha256);
 public sealed record ExtractionQuestionView(ExtractionQuestionDraft Question, Guid? ItemId, bool ItemDeleted,
-    List<ExtractionCrop> Images);
+    List<ExtractionCrop> Images)
+{
+    public ExtractionSupplementView? Supplement { get; init; }
+}
 public sealed record ExtractionSnapshot(List<ExtractionQuestionView> Questions);
 public sealed record ExtractionVersionView(int Version, Guid RequestKey, string Actor, string Reason,
     string Model, DateTimeOffset CreatedAt);
 public sealed record ExtractionJobView(Guid Id, string StudentId, int Grade, string Status, int Version,
     int Attempt, string? ErrorCode, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    List<ExtractionSource> Sources, List<ExtractionQuestionView> Questions, List<ExtractionVersionView> Versions);
+    List<ExtractionSource> Sources, List<ExtractionQuestionView> Questions, List<ExtractionVersionView> Versions)
+{
+    public bool Superseded { get; init; }
+}
 public sealed record ExtractionRevisionRequest(Guid RequestKey, int ExpectedVersion, string Reason,
     List<ExtractionQuestionDraft> Questions);
+public sealed record ExtractionQuestionRevisionRequest(Guid RequestKey, int ExpectedVersion, string Reason,
+    ExtractionQuestionDraft Question);
+public sealed record ExtractionQuestionRevisionView(Guid Id, string StudentId, int Version,
+    ExtractionQuestionView? Question)
+{
+    public bool Superseded { get; init; }
+}
 public sealed record ExtractionRetryRequest(Guid RequestKey);
+public sealed record ExtractionSupplementRequest(Guid RequestKey, int ExpectedVersion, Guid ItemId, string Note);
+public sealed record ExtractionSupplementUpload(Guid RequestKey, int ExpectedVersion, Guid ItemId, List<ExtractionImage> Images);
+public sealed record ExtractionSupplementView(Guid Id, Guid QuestionId, Guid ItemId, string Status, string Note,
+    int Version, List<ExtractionSource> Sources);
+public sealed record ExtractionProposalRequest(Guid RequestKey, int ExpectedVersion, string Instruction, string Scope,
+    List<Guid> QuestionIds, List<Guid> SourceIds, List<ExtractionRegion> Regions, Guid? PreviousProposalId = null);
+public sealed record ExtractionProposalView(Guid Id, Guid JobId, Guid RequestKey, int ExpectedVersion, string Status,
+    string? Scope, List<Guid> QuestionIds, List<ExtractionQuestionDraft> Questions, string? ErrorCode)
+{
+    public ExtractionProposalRequest? Request { get; init; }
+}
+public sealed record ExtractionProposalAdoptionRequest(Guid RequestKey, int ExpectedVersion,
+    List<ExtractionQuestionDraft>? Questions = null);
+public sealed record ExtractionProposalAdoptionView(Guid Id, Guid JobId, Guid RequestKey, int Version, bool Superseded);
 public sealed record ExtractionReviewRequest(int ExpectedVersion, Guid ItemId, int ReviewStatus,
     string ReviewerId, string? RootCause, string? ReturnReason);
 public sealed record ExtractionAccess(string Caller, string Actor, bool Administrator = false);
@@ -53,6 +80,20 @@ public interface IExtractionService
     Task<List<ExtractionJobView>> ListAsync(ExtractionAccess access, string? studentId, int page = 1, CancellationToken ct = default);
     Task<ExtractionJobView> GetAsync(ExtractionAccess access, Guid id, CancellationToken ct = default);
     Task<ExtractionJobView> ReviseAsync(ExtractionAccess access, Guid id, ExtractionRevisionRequest request, CancellationToken ct = default);
+    Task<ExtractionQuestionRevisionView> ReviseQuestionAsync(ExtractionAccess access, Guid id, Guid questionId,
+        ExtractionQuestionRevisionRequest request, CancellationToken ct = default);
+    Task<ExtractionSupplementView> RequestSupplementAsync(ExtractionAccess access, Guid id, Guid questionId,
+        ExtractionSupplementRequest request, CancellationToken ct = default);
+    Task<ExtractionSupplementView> AppendSupplementAsync(ExtractionAccess access, Guid id, Guid questionId, Guid supplementId,
+        ExtractionSupplementUpload request, CancellationToken ct = default);
+    Task<ExtractionSupplementView> GetSupplementAsync(ExtractionAccess access, Guid id, Guid questionId, Guid supplementId,
+        CancellationToken ct = default);
+    Task<ExtractionProposalView> GenerateProposalAsync(ExtractionAccess access, Guid id, ExtractionProposalRequest request, CancellationToken ct = default);
+    Task<List<ExtractionProposalView>> ListProposalsAsync(ExtractionAccess access, Guid id, CancellationToken ct = default);
+    Task<ExtractionProposalView> GetProposalAsync(ExtractionAccess access, Guid id, Guid proposalId, CancellationToken ct = default);
+    Task<ExtractionProposalView> DiscardProposalAsync(ExtractionAccess access, Guid id, Guid proposalId, CancellationToken ct = default);
+    Task<ExtractionProposalAdoptionView> AdoptProposalAsync(ExtractionAccess access, Guid id, Guid proposalId,
+        ExtractionProposalAdoptionRequest request, CancellationToken ct = default);
     Task<ExtractionJobView> RetryAsync(ExtractionAccess access, Guid id, ExtractionRetryRequest request, CancellationToken ct = default);
     Task<(byte[] Bytes, string ContentType)> ReadSourceAsync(ExtractionAccess access, Guid id, Guid sourceId, CancellationToken ct = default);
     Task<(byte[] Bytes, string ContentType)> ReadCropAsync(ExtractionAccess access, Guid id, Guid questionId, int version, int index, CancellationToken ct = default);
@@ -67,7 +108,12 @@ public sealed class ExtractionException(string code, int status = 400) : Excepti
 
 public sealed record QuestionAnalysisImage(Guid SourceId, string DataUrl, int Width, int Height,
     List<ExtractionRegion> Regions);
-public sealed record QuestionAnalysisRequest(int Grade, List<QuestionAnalysisImage> Images);
+public sealed record QuestionAnalysisRequest(int Grade, List<QuestionAnalysisImage> Images)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public QuestionAnalysisRevision? Revision { get; init; }
+}
+public sealed record QuestionAnalysisRevision(string Instruction, string Scope, List<ExtractionQuestionDraft> Questions);
 public sealed record QuestionAnalysisResult(string Model, List<ExtractionQuestionDraft> Questions);
 public interface IQuestionAnalysisClient
 {

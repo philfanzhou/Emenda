@@ -283,7 +283,14 @@ app.Use(async (http, next) =>
     if (http.Request.Path.StartsWithSegments("/api"))
         http.RequestServices.GetRequiredService<MistakeDbContext>().ConversationCallerScope =
             http.Items[ProductCallerAuthenticationMiddleware.CallerNameItemKey] as string ?? "";
-    await next(http);
+    try { await next(http); }
+    catch (DbUpdateException error) when (!http.Response.HasStarted && error.InnerException is PostgresException
+        { SqlState: PostgresErrorCodes.CheckViolation, MessageText: "extraction_object_retired" })
+    {
+        http.Response.StatusCode = StatusCodes.Status409Conflict;
+        await http.Response.WriteAsJsonAsync(new { success = false, errorCode = "extraction_object_retired",
+            message = "题图已退役，请重新读取当前错题。" }, http.RequestAborted);
+    }
 });
 app.MapMistakeHttpEndpoints();
 // Admin console page, hosted-login protocol endpoints and the caller management API.

@@ -8,7 +8,7 @@ namespace Emenda.Host;
 public static class MistakeContractEndpoints
 {
     public const string Version = "mistake-http-v6";
-    public const string ExtractionVersion = "emenda-extraction-v1";
+    public const string ExtractionVersion = "emenda-extraction-v2";
     private static readonly byte[] Document = ReadDocument(Version);
     private static readonly IReadOnlyDictionary<string, byte[]> CurrentDocuments = new Dictionary<string, byte[]>
     {
@@ -24,7 +24,8 @@ public static class MistakeContractEndpoints
             ["mistake-http-v3"] = (ReadDocument("mistake-http-v3"), Version),
             ["mistake-http-v4"] = (ReadDocument("mistake-http-v4"), Version),
             ["mistake-http-v5"] = (ReadDocument("mistake-http-v5"), Version),
-            ["emenda-intake-v1"] = (ReadDocument("emenda-intake-v1"), ExtractionVersion)
+            ["emenda-intake-v1"] = (ReadDocument("emenda-intake-v1"), ExtractionVersion),
+            ["emenda-extraction-v1"] = (ReadDocument("emenda-extraction-v1"), ExtractionVersion)
         };
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Document)).ToLowerInvariant();
     private static readonly EntityTagHeaderValue Tag = new('"' + Sha256 + '"');

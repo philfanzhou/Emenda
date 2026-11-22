@@ -27,7 +27,8 @@
       "docs/Integration/mistake-http-v5.json",
       "docs/Integration/mistake-http-v6.json",
       "docs/Integration/emenda-intake-v1.json",
-      "docs/Integration/emenda-extraction-v1.json"
+      "docs/Integration/emenda-extraction-v1.json",
+      "docs/Integration/emenda-extraction-v2.json"
     ]
   },
   "export": {

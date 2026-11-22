@@ -27,7 +27,7 @@ public static partial class ExtractionEndpoints
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(AiTutorQuestionClient.CreateHandler);
         services.AddScoped<ExtractionService>();
         services.AddScoped<IExtractionService>(sp => sp.GetRequiredService<ExtractionService>());
-        if (settings.Enabled) services.AddHostedService<ExtractionHostedService>();
+        services.AddHostedService<ExtractionHostedService>();
         return services;
     }
 
@@ -94,6 +94,11 @@ public static partial class ExtractionEndpoints
                 await ReviewExtractionAsync(http, administrator, id, questionId, service, db, mistakes, ct));
         group.MapPut("/{id:guid}/questions", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
             Ok(await service.ReviseAsync(Access(http, administrator), id, await BodyAsync<ExtractionRevisionRequest>(http, ct), ct)));
+        group.MapPut("/{id:guid}/questions/{questionId:guid}",
+            async (HttpContext http, Guid id, Guid questionId, IExtractionService service, CancellationToken ct) =>
+                Ok(await service.ReviseQuestionAsync(Access(http, administrator), id, questionId,
+                    await BodyAsync<ExtractionQuestionRevisionRequest>(http, ct), ct)));
+        MapCorrectionRoutes(group, administrator);
     }
 
     private static ExtractionAccess Access(HttpContext http, bool administrator)

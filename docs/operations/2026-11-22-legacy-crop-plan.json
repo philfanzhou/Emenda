@@ -1,0 +1,338 @@
+{
+  "observedAtUtc": "2026-11-22T07:21:07.131892+00:00",
+  "readOnly": true,
+  "jobs": 1,
+  "revisions": 1,
+  "s3Objects": 60,
+  "s3Bytes": 928604,
+  "originals": {
+    "objects": 30,
+    "present": 30,
+    "storedBytes": 615323,
+    "missing": 0,
+    "lengthMismatch": 0
+  },
+  "currentCrops": {
+    "objects": 30,
+    "present": 30,
+    "storedBytes": 313281,
+    "missing": 0,
+    "lengthMismatch": 0
+  },
+  "historyOnlyCrops": {
+    "objects": 0,
+    "present": 0,
+    "storedBytes": 0,
+    "missing": 0,
+    "lengthMismatch": 0
+  },
+  "currentMistakeCrops": {
+    "objects": 3,
+    "present": 3,
+    "storedBytes": 40007,
+    "missing": 0,
+    "lengthMismatch": 0
+  },
+  "outsideManifestsNeedsReview": {
+    "objects": 0,
+    "present": 0,
+    "storedBytes": 0,
+    "missing": 0,
+    "lengthMismatch": 0
+  },
+  "practiceImages": {
+    "objects": 0,
+    "present": 0,
+    "storedBytes": 0,
+    "missing": 0,
+    "lengthMismatch": 0
+  },
+  "prospectiveCurrentOnlyRetirement": {
+    "objects": 27,
+    "present": 27,
+    "storedBytes": 273274,
+    "missing": 0,
+    "lengthMismatch": 0
+  },
+  "retirementCandidates": [
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/0487740c8c2e67b529c472898d869af9/0-3e465f98af54010b.png",
+      "currentBytes": 9126,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9126
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/05cddece28cfdab4ee903d05b5c5bfad/0-afe29b9a4b1f0243.png",
+      "currentBytes": 9452,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9452
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/07711715694dbaebecd7af62a87f56dd/0-b279a3ed2a68b512.png",
+      "currentBytes": 10174,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10174
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/1b335f961122b49937b0a990dcf137fe/0-93ccc3b36ae7657f.png",
+      "currentBytes": 9386,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9386
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/28849200014a6fedd753bc28b2296442/0-4484deb88f6c57de.png",
+      "currentBytes": 10411,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10411
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/390afcd1cbb832652a2c96ff41dd3588/0-b4ccaca5aa83262f.png",
+      "currentBytes": 10665,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10665
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/45dbf886b0abd368e2ba3b4f8e752aef/0-a6ca73a0d09f0b78.png",
+      "currentBytes": 9831,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9831
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/64b0c80b19c2044941c0e95440ab8a17/0-ad5138e24d94b7fe.png",
+      "currentBytes": 10992,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10992
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/69b6ece8e187ceaaf86dd289f66d1847/0-ee4e242ed15fd1e9.png",
+      "currentBytes": 10130,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10130
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/6ae047d25962075d1fb2b0c616527d84/0-91a3fc7e20e6ccec.png",
+      "currentBytes": 9833,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9833
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/6f7dd1b60b0de2e55cc41b999d744999/0-706818aecf6801f3.png",
+      "currentBytes": 10102,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10102
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/7b1ee7787026d91e5153fbc12725a8bc/0-74f7a21f4ededc07.png",
+      "currentBytes": 10319,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10319
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/8389396d12873f493c08861919ba2986/0-45e66c85d8702c28.png",
+      "currentBytes": 10556,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10556
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/83a5ee1b202effc9d25882ba297a731b/0-47f97482bca0b468.png",
+      "currentBytes": 9727,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9727
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/87a83c114d5e4c81fadd406257169fa3/0-58eadbbd8316b569.png",
+      "currentBytes": 10169,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10169
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/88abe53ef3540d483d1f254515209b43/0-eeb625acfc0ca822.png",
+      "currentBytes": 10952,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10952
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/8db24969d4cf8fba14930c6b226975e0/0-e22fc5373df0ac80.png",
+      "currentBytes": 10348,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10348
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/9736e878e50cdeef3d87712cb75d4385/0-90286c6eade44d43.png",
+      "currentBytes": 9597,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9597
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/989d732f99f30d2d93a97a58ee2d070b/0-7b9601a5c47169a3.png",
+      "currentBytes": 10098,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10098
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/b2dceb6490fc5950659a51cfa284e252/0-5a53632fb2b4ef94.png",
+      "currentBytes": 10982,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10982
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/bdce2336797172420c29797e7d4d4643/0-43ffb7bf06a9e40d.png",
+      "currentBytes": 10065,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10065
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/d6b8fd31d7772eae887f38b386196701/0-3b1990325d410cb1.png",
+      "currentBytes": 10553,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10553
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/e2de04e835d1eb36d137e2f423b62534/0-70d139e82beabe47.png",
+      "currentBytes": 9779,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9779
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/e3211f28df403d42ddf8283eb1cdc53e/0-80f09be220155f17.png",
+      "currentBytes": 10367,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10367
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/ec49f962ca74c55b5c4ca9633a0e148d/0-567299103f674a37.png",
+      "currentBytes": 10238,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 10238
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/f66a4a8cda7294c03d2a04fc292280e1/0-e196afde0c4d396d.png",
+      "currentBytes": 9588,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9588
+        }
+      ]
+    },
+    {
+      "path": "mistakes/extractions/dee1e6afbd5244d9bf2cd0f8ab6c8687/versions/f33feab79bae25f834a04b3f5cb1ca39/f7084da81ca2362a4f75855395034079/0-376f549836214a7e.png",
+      "currentBytes": 9834,
+      "contentVersions": [
+        {
+          "version": "null",
+          "bytes": 9834
+        }
+      ]
+    }
+  ],
+  "jobVersions": [
+    {
+      "Id": "dee1e6af-bd52-44d9-bf2c-d0f8ab6c8687",
+      "Version": 1
+    }
+  ],
+  "deletionApproved": false,
+  "objectVersionsInspected": true,
+  "limitations": "Database and S3 are sequential observations, not an atomic snapshot. Candidates predict current-only migration and are not approved for deletion. Verify unchanged job versions, current sources/references and object fingerprints before acting. Zero-byte delete markers are not image content."
+}
