@@ -114,7 +114,7 @@ textarea { min-height:60px; resize:vertical; }
   const MAX_POLLS = 60;
   const statusNames = { Staging:'原图校验中', Queued:'排队中', Running:'识别与判错中', Succeeded:'处理完成', Failed:'处理失败' };
   const outcomeNames = { correct:'正确', incorrect:'错误', unknown:'无法判断' };
-  const state = { authenticated:false, page:1, filter:'', list:[], job:null, selectedId:null, loading:0, pollEpoch:0, pollTimer:null, pollCount:0, polling:false, drafts:new Map(), history:null, historyEpoch:0, busy:false, section:'判题结果', questionId:null, editing:false, retryKeys:new Map() };
+  const state = { authenticated:false, page:1, filter:'', list:[], job:null, selectedId:null, loading:0, pollEpoch:0, pollTimer:null, pollCount:0, polling:false, drafts:new Map(), busy:false, section:'判题结果', questionId:null, editing:false, retryKeys:new Map() };
   const $ = id => document.getElementById(id);
   const copy = value => JSON.parse(JSON.stringify(value));
   function uuid() {
@@ -213,8 +213,8 @@ textarea { min-height:60px; resize:vertical; }
       if (!state.list.some(job => job.id === state.selectedId)) {
         if (state.list.length) await selectJob(state.list[0].id);
         else {
-          stopPolling(); state.loading++; state.historyEpoch++; state.selectedId = null; state.job = null;
-          state.history = null; state.editing = false; renderJob();
+          stopPolling(); state.loading++; state.selectedId = null; state.job = null;
+          state.editing = false; renderJob();
         }
       } else if (!state.job || state.job.id !== state.selectedId) await selectJob(state.selectedId);
       else if (refreshDetail) await refreshCurrent(false);
@@ -266,7 +266,7 @@ textarea { min-height:60px; resize:vertical; }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { stopPolling(); renderPollLabel(); } });
   async function selectJob(id) {
     if (state.busy) { notice('message', '写入尚未结束，请等待结果后再切换任务。', 'warning'); return; }
-    stopPolling(); state.section = '判题结果'; state.questionId = null; state.editing = false; state.job = null; state.selectedId = id; state.history = null; state.historyEpoch++; renderList(); const epoch = ++state.loading;
+    stopPolling(); state.section = '判题结果'; state.questionId = null; state.editing = false; state.job = null; state.selectedId = id; renderList(); const epoch = ++state.loading;
     $('detail').replaceChildren(node('h2', '任务详情'), node('p', '读取任务中…', 'muted'));
     try {
       const body = await request(jobUrl(id));
@@ -438,11 +438,11 @@ textarea { min-height:60px; resize:vertical; }
     evidence.append(crops, text); article.append(evidence, identifiers); root.append(article);
   }
   function draftOf() { return state.job && state.drafts.get(state.job.id); }
-  function beginDraft(views, version, fromHistory) {
+  function beginDraft(views, version) {
     const existing = draftOf();
     if (existing && (existing.dirty || existing.pending) && !confirm('加载会替换现有本地草稿。确定放弃该草稿？')) return;
     const questions = copy(views.map(view => ({ ...view.question, questionNumber:view.question.questionNumber ?? null })));
-    const draft = { expectedVersion:version, baseQuestions:copy(state.job.questions.map(view => view.question)), questions, reason:fromHistory ? '从历史 v' + fromHistory + ' 加载并人工复核' : '', dirty:!!fromHistory, pending:null, conflict:false, remote:null, selectedQuestion:questions.find(q => q.id === state.questionId)?.id ?? questions[0]?.id ?? null, selectedRegion:0, splitRegions:new Set(), selectedSource:state.job.sources[0] ? state.job.sources[0].id : null, drawing:false };
+    const draft = { expectedVersion:version, baseQuestions:copy(state.job.questions.map(view => view.question)), questions, reason:'', dirty:false, pending:null, conflict:false, remote:null, selectedQuestion:questions.find(q => q.id === state.questionId)?.id ?? questions[0]?.id ?? null, selectedRegion:0, splitRegions:new Set(), selectedSource:state.job.sources[0] ? state.job.sources[0].id : null, drawing:false };
     state.section = '判题结果'; state.editing = true; state.drafts.set(state.job.id, draft); renderJob(); if ($('draftHeading')) $('draftHeading').focus();
   }
   function changed(draft) {
