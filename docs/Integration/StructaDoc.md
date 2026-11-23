@@ -42,6 +42,8 @@ multipart/form-data，恰好一个名为 `file` 的文件节、无其他表单�
 | 502 / 503 `layout-runtime-unavailable` | `RuntimeUnavailable` | 是 |
 | 502 `layout-runtime-rejected` | `RuntimeRejected` | 否 |
 | 502 `layout-output-invalid` | `InvalidOutput` | 否 |
+
+自动提取收到明确的 `504 layout-timeout` 时，等待 2 秒后仅重试当前图片一次。再次失败时保留已完成图片的版面结果，供「重新识别」续跑。Emenda 自己的单图预算到期不会触发这次自动重试。
 | 200 但 JSON/几何/坐标帧/尺寸违约或超限 | `MalformedResponse` | 否 |
 | 传输层故障（连接、DNS） | `TransientTransport` | 是 |
 | 上述之外的状态 + code 组合 | `UnexpectedResponse` | 否 |
