@@ -244,6 +244,46 @@ public sealed class ExtractionWorkflowPostgresTests
         (await service.RetryAsync(Caller, job.Id, retry)).Attempt.Should().Be(2);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task FourthPageTimeout_RetriesOnceAndPreservesCompletedPages(int timeoutCount)
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer(request => new("test-model", request.Images.Select((image, index) =>
+            Question("correct", [new(image.SourceId, 0, 0, 1, 1)]) with { QuestionNumber = (index + 1).ToString() }).ToList()));
+        var layout = new LayoutClient { FailCall = call => call >= 4 && call < 4 + timeoutCount
+            ? new LayoutDetectionException(LayoutDetectionFailure.UpstreamTimeout, "upstream timed out")
+                { HttpStatusCode = 504, ProblemCode = "layout-timeout" }
+            : null };
+        var service = Service(database, analyzer, layout);
+        var upload = Upload(13);
+        var job = await service.SubmitAsync(Caller, upload);
+        await service.RunQueuedAsync(default);
+
+        if (timeoutCount == 2)
+        {
+            var failed = await service.GetAsync(Caller, job.Id);
+            failed.Status.Should().Be("Failed");
+            failed.ErrorCode.Should().Be("layout_upstreamtimeout");
+            layout.Calls.Should().Be(5);
+            analyzer.Calls.Should().Be(0);
+            await service.RetryAsync(Caller, job.Id, new(Guid.NewGuid()));
+            await service.RunQueuedAsync(default);
+        }
+
+        var completed = await service.GetAsync(Caller, job.Id);
+        completed.Status.Should().Be("Succeeded", completed.ErrorCode);
+        completed.Attempt.Should().Be(timeoutCount);
+        completed.Version.Should().Be(1);
+        completed.Questions.Should().HaveCount(13);
+        var expectedImages = upload.Images.Take(3).Select(image => image.Content)
+            .Concat(Enumerable.Repeat(upload.Images[3].Content, timeoutCount))
+            .Concat(upload.Images.Skip(3).Select(image => image.Content));
+        layout.Images.Select(Convert.ToHexString).Should().Equal(expectedImages.Select(Convert.ToHexString));
+        analyzer.Calls.Should().Be(1);
+    }
+
     [Fact]
     public async Task LateWorkerCannotPublishAfterItsLeaseWasReplaced()
     {
@@ -447,7 +487,7 @@ public sealed class ExtractionWorkflowPostgresTests
         {
             var offset = ppm.Length + (y * 40 + x) * 3;
             if (x < 20) raster[offset] = 255;
-            else raster[offset + (i == 0 ? 2 : 1)] = 255;
+            else raster[offset + (i == 0 ? 2 : 1)] = (byte)(255 - i);
         }
         using var image = new MagickImage(raster);
         return new ExtractionImage { FileName = "page.png", ContentType = "image/png", Content = image.ToByteArray(MagickFormat.Png) };
@@ -464,9 +504,13 @@ public sealed class ExtractionWorkflowPostgresTests
     private sealed class LayoutClient : ILayoutDetectionClient
     {
         public int Calls;
+        public Func<int, LayoutDetectionException?>? FailCall { get; init; }
+        public List<byte[]> Images { get; } = [];
         public Task<LayoutDetectionResult> DetectLayoutAsync(LayoutDetectionImage image, CancellationToken cancellationToken = default)
         {
-            Interlocked.Increment(ref Calls);
+            var call = Interlocked.Increment(ref Calls);
+            lock (Images) Images.Add(image.Bytes);
+            if (FailCall?.Invoke(call) is { } failure) return Task.FromException<LayoutDetectionResult>(failure);
             using var decoded = new MagickImage(image.Bytes);
             return Task.FromResult(new LayoutDetectionResult { RequestId = "test-layout", Width = (int)decoded.Width,
                 Height = (int)decoded.Height, Regions = [new(0, "question", new(0, 0, 1, 1))] });

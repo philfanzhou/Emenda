@@ -126,7 +126,19 @@ public sealed partial class ExtractionService
                 var retained = accepted.SingleOrDefault(a => a.SourceId == source.Id);
                 if (retained is null)
                 {
-                    var result = await layout.DetectLayoutAsync(new(bytes, source.ContentType), ct);
+                    var image = new Layout.LayoutDetectionImage(bytes, source.ContentType);
+                    LayoutDetectionResult result;
+                    try
+                    {
+                        result = await layout.DetectLayoutAsync(image, ct);
+                    }
+                    catch (Layout.LayoutDetectionException error) when (error is
+                        { Failure: Layout.LayoutDetectionFailure.UpstreamTimeout, HttpStatusCode: 504, ProblemCode: "layout-timeout" })
+                    {
+                        logger.LogWarning("Retrying layout detection once for extraction {JobId}, source {SourceId}", lease.Id, source.Id);
+                        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                        result = await layout.DetectLayoutAsync(image, ct);
+                    }
                     var swaps = source.Orientation is >= 5 and <= 8;
                     if (result.Width != (swaps ? source.Height : source.Width) || result.Height != (swaps ? source.Width : source.Height) ||
                         result.Orientation.HasValue && result.Orientation != (source.Orientation ?? 1))
