@@ -27,6 +27,7 @@ public sealed partial class ExtractionService
             if (candidate is null) return;
             await LockAsync(db, candidate.Id.ToString(), stoppingToken);
             await db.Entry(candidate).ReloadAsync(stoppingToken);
+            if (db.Entry(candidate).State == EntityState.Detached) return;
             now = await NowAsync(db, stoppingToken);
             if (candidate.Status != "Queued" && !(candidate.Status == "Running" && candidate.LeaseUntil < now)) return;
             if (candidate.Attempt >= ExtractionRules.MaxAttempts)
@@ -88,9 +89,9 @@ public sealed partial class ExtractionService
     private static async Task<ExtractionJobEntity> OwnedExtractionAsync(MistakeDbContext db, ExtractionLease lease, CancellationToken ct)
     {
         await LockAsync(db, lease.Id.ToString(), ct);
-        var job = await db.ExtractionJobs.SingleAsync(j => j.Id == lease.Id, ct);
+        var job = await db.ExtractionJobs.SingleOrDefaultAsync(j => j.Id == lease.Id, ct);
         var now = await NowAsync(db, ct);
-        if (job.Status != "Running" || job.OwnerId != lease.Owner || job.Fence != lease.Fence || job.LeaseUntil <= now)
+        if (job is null || job.Status != "Running" || job.OwnerId != lease.Owner || job.Fence != lease.Fence || job.LeaseUntil <= now)
             throw new ExtractionException("lease_lost", 409);
         return job;
     }
@@ -109,7 +110,8 @@ public sealed partial class ExtractionService
     private async Task ExecuteExtractionAsync(ExtractionLease lease, CancellationToken ct)
     {
         ExtractionJobEntity job;
-        await using (var db = Open()) job = await db.ExtractionJobs.AsNoTracking().SingleAsync(j => j.Id == lease.Id, ct);
+        await using (var db = Open()) job = await db.ExtractionJobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == lease.Id, ct)
+            ?? throw new ExtractionException("lease_lost", 409);
         var sources = Sources(job);
         QuestionAnalysisResult analyzed;
         if (job.CandidateJson is not null) analyzed = ExtractionRules.Read<QuestionAnalysisResult>(job.CandidateJson);
@@ -164,6 +166,12 @@ public sealed partial class ExtractionService
         ExtractionRules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
         var requestKey = ExtractionRules.Identity($"{job.Id:N}:automatic");
         await using var jobLock = await SerializeJobAsync(job.Id, ct);
+        await using (var check = Open())
+        await using (var checkTransaction = await check.Database.BeginTransactionAsync(ct))
+        {
+            await OwnedExtractionAsync(check, lease, ct);
+            await checkTransaction.CommitAsync(ct);
+        }
         var snapshot = await BuildSnapshotAsync(job.Id, requestKey, analyzed.Questions, sources, null, ct);
         await using var publish = Open();
         await using var transaction = await publish.Database.BeginTransactionAsync(ct);

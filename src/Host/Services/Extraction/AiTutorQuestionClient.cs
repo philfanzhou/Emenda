@@ -77,8 +77,13 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
             foreach (var question in questions.EnumerateArray())
             {
                 if (question.ValueKind != JsonValueKind.Object) throw new JsonException();
-                foreach (var name in new[] { "subject", "statement", "studentAnswer", "referenceAnswer", "explanation", "outcome", "evidence", "regions" })
+                foreach (var name in new[] { "subject", "statement", "studentAnswer", "referenceAnswer", "outcome", "regions" })
                     if (!question.TryGetProperty(name, out _)) throw new JsonException();
+                var outcome = question.GetProperty("outcome");
+                if (outcome.ValueKind != JsonValueKind.String ||
+                    (outcome.GetString() == "incorrect" && !question.TryGetProperty("explanation", out _)) ||
+                    (outcome.GetString() != "unknown" && !question.TryGetProperty("evidence", out _)))
+                    throw new JsonException();
             }
             var result = root.Deserialize<QuestionAnalysisResult>(Json);
             ValidateResult(result, request.Images.Select(i => i.SourceId).ToHashSet());
@@ -131,7 +136,7 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
             || result.Questions is null)
             throw new ExtractionException("invalid_analysis_response", 502);
         foreach (var q in result.Questions)
-            if (q is null || !ExtractionRules.ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || string.IsNullOrWhiteSpace(q.Statement) || q.Statement.Length > 8000
+            if (q is null || !ExtractionRules.ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || q.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(q.Statement) || q.Statement.Length > 8000
                 || q.StudentAnswer?.Length > 8000 || q.ReferenceAnswer is null || q.ReferenceAnswer.Length > 16000
                 || q.Explanation is null || q.Explanation.Length > 16000 || q.Evidence is null || q.Evidence.Length > 16000
                 || q.Outcome is not ("correct" or "incorrect" or "unknown")

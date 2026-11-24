@@ -17,6 +17,9 @@ public sealed class DynamicCallerEntry
 
     public bool Enabled { get; set; } = true;
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CanOperateExtractions { get; set; }
+
     /// <summary>A durable tombstone suppressing any same-name configuration caller.</summary>
     public bool Deleted { get; set; }
 
@@ -141,9 +144,9 @@ public sealed class DynamicCallerStore
         }
     }
 
-    /// <summary>Updates enabled/note fields; deletion tombstones cannot be re-enabled.</summary>
+    /// <summary>Updates caller metadata and grants; deletion tombstones cannot be modified.</summary>
     public async Task<DynamicCallerEntry?> UpdateAsync(
-        string name, bool? enabled, string? note, CancellationToken ct = default)
+        string name, bool? enabled, string? note, bool? canOperateExtractions = null, CancellationToken ct = default)
     {
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -155,6 +158,7 @@ public sealed class DynamicCallerStore
             if (entry is null) return null;
             if (enabled is { } value) entry.Enabled = value;
             if (note is not null) entry.Note = note;
+            if (canOperateExtractions is { } grant) entry.CanOperateExtractions = grant;
             entry.UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O");
             Save(next);
             return Clone(entry);
@@ -179,6 +183,7 @@ public sealed class DynamicCallerStore
             var removed = Clone(entry);
             entry.Deleted = true;
             entry.Enabled = false;
+            entry.CanOperateExtractions = false;
             entry.ApiKey = string.Empty;
             entry.UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("O");
             Save(next);
@@ -270,6 +275,7 @@ public sealed class DynamicCallerStore
         Name = entry.Name,
         ApiKey = entry.ApiKey,
         Enabled = entry.Enabled,
+        CanOperateExtractions = entry.CanOperateExtractions,
         Deleted = entry.Deleted,
         Note = entry.Note,
         CreatedAtUtc = entry.CreatedAtUtc,

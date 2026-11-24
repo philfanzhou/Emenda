@@ -27,6 +27,7 @@ public static partial class ExtractionEndpoints
             .RemoveAllLoggers().ConfigurePrimaryHttpMessageHandler(AiTutorQuestionClient.CreateHandler);
         services.AddScoped<ExtractionService>();
         services.AddScoped<IExtractionService>(sp => sp.GetRequiredService<ExtractionService>());
+        services.AddScoped<IExtractionDeletionService>(sp => sp.GetRequiredService<ExtractionService>());
         services.AddHostedService<ExtractionHostedService>();
         return services;
     }
@@ -34,6 +35,9 @@ public static partial class ExtractionEndpoints
     public static WebApplication MapExtractionEndpoints(this WebApplication app)
     {
         MapGroup(app.MapGroup("/api/intake/extractions"), administrator: false);
+        var operations = app.MapGroup("/api/ops/extractions");
+        MapErrors(operations);
+        MapOperations(operations, administrator: false);
         app.MapGet("/admin/extractions", (HttpContext http) =>
         {
             http.Response.Headers.CacheControl = "no-store";
@@ -45,7 +49,7 @@ public static partial class ExtractionEndpoints
         return app;
     }
 
-    private static void MapGroup(RouteGroupBuilder group, bool administrator)
+    private static void MapErrors(RouteGroupBuilder group)
     {
         group.AddEndpointFilter(async (context, next) =>
         {
@@ -60,6 +64,11 @@ public static partial class ExtractionEndpoints
             catch (DbException) { return Error("database_unavailable", 503); }
             catch (IOException) { return Error("storage_unavailable", 503); }
         });
+    }
+
+    private static void MapGroup(RouteGroupBuilder group, bool administrator)
+    {
+        MapErrors(group);
         if (!administrator)
         {
             group.MapPost("", async (HttpContext http, IExtractionService service, CancellationToken ct) =>
@@ -68,7 +77,23 @@ public static partial class ExtractionEndpoints
                 var result = await service.SubmitAsync(Access(http, false), upload, ct);
                 return Results.Json(new { success = true, data = result }, statusCode: StatusCodes.Status202Accepted);
             }).WithMetadata(new RequestSizeLimitAttribute(UploadBudget));
+            group.MapPost("/images", async (HttpContext http, IConfiguration configuration, ExtractionService service, CancellationToken ct) =>
+            {
+                var access = Access(http, false);
+                if (!PortalStudentAssertion.TryResolveStudentId(http, configuration, out var studentId))
+                    throw new ExtractionException("student_assertion_invalid", 403);
+                var form = await ReadUploadFormAsync(http, ct);
+                if (form.Keys.Count != 0) throw new ExtractionException("invalid_request");
+                var job = await service.SubmitImagesAsync(access, studentId!, await ReadImagesAsync(form, ct), ct);
+                return Results.Json(new { success = true, data = ExtractionResultSummary.From(job) }, statusCode: StatusCodes.Status202Accepted);
+            }).WithMetadata(new RequestSizeLimitAttribute(UploadBudget));
+            group.MapGet("/{id:guid}/summary", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
+                Ok(ExtractionResultSummary.From(await service.GetAsync(Access(http, false), id, ct))));
         }
+        if (administrator) MapOperations(group, administrator: true);
+        group.MapGet("/retained/{itemId:guid}/images/{index:int}",
+            async (HttpContext http, Guid itemId, int index, ExtractionService service, CancellationToken ct) =>
+                Results.File(await service.ReadRetainedCropAsync(Access(http, administrator), itemId, index, ct), "image/png"));
         group.MapGet("", async (HttpContext http, string? studentId, int? page, IExtractionService service, CancellationToken ct) =>
             Ok(await service.ListAsync(Access(http, administrator), studentId, page ?? 1, ct)));
         group.MapGet("/{id:guid}", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
@@ -120,6 +145,19 @@ public static partial class ExtractionEndpoints
 
     private static async Task<ExtractionUpload> UploadAsync(HttpContext http, CancellationToken ct)
     {
+        var form = await ReadUploadFormAsync(http, ct);
+        if (form.Keys.Any(k => k is not ("studentId" or "grade" or "sourceKey")) ||
+            form["studentId"].Count != 1 || form["grade"].Count != 1 || form["sourceKey"].Count != 1 ||
+            !int.TryParse(form["grade"], NumberStyles.None, CultureInfo.InvariantCulture, out var grade))
+            throw new ExtractionException("invalid_request");
+        var images = await ReadImagesAsync(form, ct);
+        var upload = new ExtractionUpload(form["studentId"].ToString(), grade, form["sourceKey"].ToString(), images);
+        ExtractionRules.ValidateUpload(upload);
+        return upload;
+    }
+
+    private static async Task<IFormCollection> ReadUploadFormAsync(HttpContext http, CancellationToken ct)
+    {
         if (http.Request.ContentLength > UploadBudget) throw new ExtractionException("request_too_large", 413);
         if (!http.Request.HasFormContentType || http.Request.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) != true)
             throw new ExtractionException("multipart_required", 415);
@@ -127,11 +165,12 @@ public static partial class ExtractionEndpoints
         if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = UploadBudget;
         var reader = new FormFeature(http.Request, new FormOptions { MultipartBodyLengthLimit = ExtractionRules.MaxImageBytes,
             ValueLengthLimit = 4096, ValueCountLimit = 3 + ExtractionRules.MaxSources, MultipartHeadersLengthLimit = 16384 });
-        var form = await reader.ReadFormAsync(ct);
-        if (form.Keys.Any(k => k is not ("studentId" or "grade" or "sourceKey")) ||
-            form["studentId"].Count != 1 || form["grade"].Count != 1 || form["sourceKey"].Count != 1 ||
-            !int.TryParse(form["grade"], NumberStyles.None, CultureInfo.InvariantCulture, out var grade) ||
-            form.Files.Count is < 1 or > ExtractionRules.MaxSources || form.Files.Any(f => f.Name is not ("images" or "images[]") ||
+        return await reader.ReadFormAsync(ct);
+    }
+
+    private static async Task<List<ExtractionImage>> ReadImagesAsync(IFormCollection form, CancellationToken ct)
+    {
+        if (form.Files.Count is < 1 or > ExtractionRules.MaxSources || form.Files.Any(f => f.Name is not ("images" or "images[]") ||
                 f.Length is 0 or > ExtractionRules.MaxImageBytes || f.ContentType is not ("image/jpeg" or "image/png")))
             throw new ExtractionException("invalid_request");
         var images = new List<ExtractionImage>();
@@ -143,9 +182,7 @@ public static partial class ExtractionEndpoints
             catch (EndOfStreamException) { throw new ExtractionException("invalid_request"); }
             images.Add(new() { Content = content, ContentType = file.ContentType, FileName = "original" });
         }
-        var upload = new ExtractionUpload(form["studentId"].ToString(), grade, form["sourceKey"].ToString(), images);
-        ExtractionRules.ValidateUpload(upload);
-        return upload;
+        return images;
     }
 
     private static async Task<T> BodyAsync<T>(HttpContext http, CancellationToken ct)

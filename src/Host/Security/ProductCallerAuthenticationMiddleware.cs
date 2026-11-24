@@ -15,6 +15,10 @@ public sealed class ProductCallerAuthenticationMiddleware
 {
     public const string CallerNameItemKey = "Emenda.CallerName";
 
+    private static readonly object ExtractionOperationsItemKey = new();
+    private static readonly object OperationsGranted = true;
+    private static readonly object OperationsDenied = false;
+
     private readonly RequestDelegate _next;
     private readonly ILogger<ProductCallerAuthenticationMiddleware> _logger;
 
@@ -24,6 +28,20 @@ public sealed class ProductCallerAuthenticationMiddleware
     {
         _next = next;
         _logger = logger;
+    }
+
+    /// <summary>Requires a verified machine credential with extraction operations access.</summary>
+    public static IResult? RequireExtractionOperations(HttpContext http)
+    {
+        if (!http.Items.TryGetValue(ExtractionOperationsItemKey, out var grant) || grant is not bool canOperateExtractions)
+        {
+            return Results.Json(new { success = false, message = "caller authentication required" },
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        return canOperateExtractions ? null : Results.Json(
+            new { success = false, message = "extraction operations capability required" },
+            statusCode: StatusCodes.Status403Forbidden);
     }
 
     public async Task InvokeAsync(
@@ -40,10 +58,10 @@ public sealed class ProductCallerAuthenticationMiddleware
         }
 
         var provided = context.Request.Headers[ProductCallerAuthenticationOptions.ApiKeyHeaderName].ToString();
-        string? callerName;
+        CallerAuthenticationMatch? match;
         try
         {
-            callerName = await registry.MatchAsync(provided, context.RequestAborted).ConfigureAwait(false);
+            match = await registry.MatchAsync(provided, context.RequestAborted).ConfigureAwait(false);
         }
         catch (DynamicCallerStoreUnavailableException)
         {
@@ -55,7 +73,7 @@ public sealed class ProductCallerAuthenticationMiddleware
             }, context.RequestAborted).ConfigureAwait(false);
             return;
         }
-        if (callerName is null)
+        if (match is not { } caller)
         {
             _logger.LogWarning(
                 "Product caller authentication failed for {Method} {Path}",
@@ -71,12 +89,13 @@ public sealed class ProductCallerAuthenticationMiddleware
             return;
         }
 
-        context.Items[CallerNameItemKey] = callerName;
+        context.Items[ExtractionOperationsItemKey] = caller.CanOperateExtractions ? OperationsGranted : OperationsDenied;
+        context.Items[CallerNameItemKey] = caller.Name;
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
             new[]
             {
-                new Claim(ClaimTypes.Name, callerName),
-                new Claim("emenda:caller", callerName)
+                new Claim(ClaimTypes.Name, caller.Name),
+                new Claim("emenda:caller", caller.Name)
             },
             authenticationType: "ProductCaller"));
 

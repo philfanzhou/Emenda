@@ -202,6 +202,53 @@ public sealed class AdminConsoleEndpointTests
     }
 
     [Fact]
+    public async Task ConfiguredConsole_GrantAndRevokeExtractionOperationsRequireSessionAndCsrf()
+    {
+        const string callerUrl = "/admin/api/callers/ops-agent";
+        using var factory = new AdminConsoleWebApplicationFactory(configured: true, callerState: """
+            {"version":2,"callers":[{"name":"ops-agent","apiKey":"ops-agent-test-key"}]}
+            """);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        using var machine = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        machine.DefaultRequestHeaders.Add(ProductCallerAuthenticationOptions.ApiKeyHeaderName, CallerKey);
+        using var withoutSession = await machine.PutAsJsonAsync(callerUrl, new { canOperateExtractions = true });
+        withoutSession.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.Unauthorized);
+
+        await AuthenticateWithCsrfAsync(factory, client);
+        var token = client.DefaultRequestHeaders.GetValues(AdminConsoleConstants.CsrfHeader).Single();
+        client.DefaultRequestHeaders.Remove(AdminConsoleConstants.CsrfHeader);
+        using var withoutCsrf = await client.PutAsJsonAsync(callerUrl, new { canOperateExtractions = true });
+        withoutCsrf.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        client.DefaultRequestHeaders.Add(AdminConsoleConstants.CsrfHeader, token);
+
+        async Task<bool> ListedGrantAsync()
+        {
+            using var list = await client.GetAsync("/admin/api/callers");
+            list.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var body = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+            return body.RootElement.GetProperty("data").EnumerateArray()
+                .Single(entry => entry.GetProperty("name").GetString() == "ops-agent")
+                .GetProperty("canOperateExtractions").GetBoolean();
+        }
+
+        (await ListedGrantAsync()).Should().BeFalse();
+        using var staticGrant = await client.PutAsJsonAsync($"/admin/api/callers/{CallerName}", new { canOperateExtractions = true });
+        staticGrant.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        using var invalidGrant = await client.PutAsJsonAsync(callerUrl, new { canOperateExtractions = "true" });
+        invalidGrant.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var granted = await client.PutAsJsonAsync(callerUrl, new { canOperateExtractions = true });
+        granted.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ListedGrantAsync()).Should().BeTrue();
+        using var noteOnly = await client.PutAsJsonAsync(callerUrl, new { note = "still granted" });
+        noteOnly.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ListedGrantAsync()).Should().BeTrue();
+        using var revoked = await client.PutAsJsonAsync(callerUrl, new { canOperateExtractions = false });
+        revoked.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ListedGrantAsync()).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ConfiguredConsole_StaticRotationDisableAndDeletionSurviveRestarts()
     {
         string state;

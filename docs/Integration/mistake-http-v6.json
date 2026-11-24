@@ -3004,6 +3004,20 @@
           },
           "conversationActive": {
             "type": "boolean"
+          },
+          "analysisSnapshot": {
+            "description": "Item-owned worksheet analysis, returned only by GET /api/mistakes/{id} for pending or confirmed worksheet mistakes with a saved snapshot. sourceVersion is the revision used for these fields, not the current job version. Independent of rootCause.",
+            "type": "object",
+            "properties": {
+              "statement": { "type": "string" },
+              "studentAnswer": { "type": "string" },
+              "referenceAnswer": { "type": "string" },
+              "explanation": { "type": "string" },
+              "evidence": { "type": "string" },
+              "sourceVersion": { "type": "integer", "minimum": 1 }
+            },
+            "required": ["statement", "studentAnswer", "referenceAnswer", "explanation", "evidence", "sourceVersion"],
+            "additionalProperties": false
           }
         },
         "required": [

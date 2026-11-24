@@ -67,7 +67,8 @@ continues to use static configuration only.
 - **Dynamic file** — `Emenda:Security:DynamicCallers:Path`. Existing version 1
   documents are readable without migration. Every successful management
   write persists a version 2 document atomically before publishing the new
-  in-memory state:
+  in-memory state. Existing records without `canOperateExtractions` default to
+  `false`:
 
 ```json
 {
@@ -156,16 +157,25 @@ never leaves the browser's cookie jar):
 
 | Action | Endpoint | Effect |
 |---|---|---|
-| List (masked keys) | `GET /admin/api/callers` | effective, non-deleted callers: name, `abcd****wxyz`, source, state, note |
+| List (masked keys) | `GET /admin/api/callers` | effective, non-deleted callers: name, `abcd****wxyz`, source, state, `canOperateExtractions`, note |
 | Create | `POST /admin/api/callers` | generates a 43-char key, shown **once**; explicitly recreates a deleted name with a new key |
 | Reveal | `GET /admin/api/callers/{name}/secret` | full key of a non-deleted dynamic entry; configuration entries return 409 |
 | Rotate | `POST /admin/api/callers/{name}/rotate` | existing caller only; new key revokes the previous one; static entries become dynamic overrides; disabled entries stay disabled |
 | Enable/disable | `PUT /admin/api/callers/{name}` | dynamic entries only; disabling never reactivates their static predecessor |
+| Grant/revoke extraction operations | `PUT /admin/api/callers/{name}` | dynamic entries only; send `{"canOperateExtractions":true}` or `{"canOperateExtractions":false}` |
 | Delete | `DELETE /admin/api/callers/{name}` | dynamic entries only; persists a tombstone so neither the removed key nor its static predecessor matches |
 
 A failed persistence operation returns 503 and does **not** publish the
 requested credential change. The last successfully committed state stays
 active; do not treat a failed rotate/disable/delete response as revocation.
+
+In the caller console, use **更多** → **授予试卷运维权限** / **撤销试卷运维权限**.
+Granting allows the key to list and delete extraction jobs across callers through
+the machine operations routes. Static callers must first be rotated into dynamic
+credentials. Grant changes apply on the next request; disabling a caller blocks
+its key, rotation preserves its grant, and recreating a deleted caller starts
+without a grant. A key shared by multiple effective callers never confers
+operations access.
 
 ## Security properties
 

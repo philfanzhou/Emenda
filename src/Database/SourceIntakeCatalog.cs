@@ -30,7 +30,7 @@ internal static class SourceIntakeCatalog
         "FK_source_intake_group_created_log|f|created_log_id|process_log|id|r|V",
         "PK_source_intake_request|p|actor,action,request_key|-|-|-|V",
         "FK_source_intake_request_source_intake|f|source_upload_id,content_revision|source_intake|source_upload_id,content_revision|r|V"];
-    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false)
+    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false,bool deletion=false)
     {
         await using var command=connection.CreateCommand();
         command.CommandTimeout=0;
@@ -54,6 +54,13 @@ internal static class SourceIntakeCatalog
             bodies["guard_extraction_revision"] = ExtractionCorrectionsSchema.RevisionGuard;
             bodies["guard_extraction_object_reference"] = ExtractionObjectReferenceSchema.Guard;
         }
+        if (deletion)
+        {
+            bodies["guard_extraction_revision"] = ExtractionDeletionSchema.RevisionGuard;
+            bodies["guard_extraction_retention"] = ExtractionDeletionSchema.RetentionGuard;
+            bodies["guard_extraction_object_reference"] = ExtractionDeletionSchema.ReferenceGuard;
+            bodies.Add("guard_extraction_deletion_receipt", ExtractionDeletionSchema.ReceiptGuard);
+        }
         var found=new HashSet<string>(StringComparer.Ordinal);
         while(await reader.ReadAsync(ct))
         {
@@ -65,7 +72,7 @@ internal static class SourceIntakeCatalog
         }
         return found.SetEquals(bodies.Keys) ? null : "missing source intake routine.";
     }
-    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false)
+    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false,bool deletion=false)
     {
         var expected=new HashSet<string>(StringComparer.Ordinal)
         {
@@ -99,6 +106,11 @@ internal static class SourceIntakeCatalog
             "extraction_job|trg_extraction_job_truncate|34|guard_extraction_retention|False|False",
             "extraction_question|trg_extraction_question|27|guard_extraction_retention|False|False",
             "extraction_question|trg_extraction_question_truncate|34|guard_extraction_retention|False|False"]);
+        if (deletion)
+        {
+            expected.Remove("extraction_job|trg_extraction_job_delete|10|guard_extraction_retention|False|False");
+            expected.UnionWith(ExtractionDeletionSchema.Triggers);
+        }
         await using var command=connection.CreateCommand();
         command.CommandTimeout=0;
         command.CommandText="""

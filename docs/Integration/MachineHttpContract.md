@@ -6,6 +6,14 @@ v6 is the standalone-only surface: it removes the legacy upload/manual-add intak
 
 [mistake-http-v6.json](./mistake-http-v6.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 Portals 文档 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
 
+## Worksheet mistake detail
+
+Read `GET /api/mistakes/{id}` using the existing product caller boundary and the **mistake item ID**, not the worksheet job or question ID. Pending and confirmed worksheet items with saved analysis include `data.analysisSnapshot`: `statement`, `studentAnswer` (the original visible attempt), `referenceAnswer`, `explanation` (possibly `""`), `evidence`, and `sourceVersion`. `rootCause` is a separate reviewer field; an empty cause does not mean the judgment has no evidence. Render these fields as untrusted text.
+
+The detail does not read the extraction job or call a model. An adopted correction can replace the analysis; confirming, practicing, adding supplements, and revising sibling questions do not change it. `sourceVersion` identifies the revision used for that snapshot, not the current job version required by the review endpoint. No snapshot is returned on list/by-upload responses, for other sources, for rejected or reclassified items, or for legacy items whose analysis could not be recovered.
+
+Schema v21 backfills unset snapshots from the matching current extraction revision only when all five text fields are recoverable. Stop old extraction-writing instances before upgrading: pre-v21 publishers do not maintain the item snapshot.
+
 ## 取得发布版本
 
 匿名 `GET /contracts/mistake-http-v6.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。Historical v1–v5 (and `emenda-intake-v1`) continue to publish their exact bytes; latest-version links point to v6 (`emenda-extraction-v1` for the intake contract).`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。

@@ -23,6 +23,8 @@
 
 该字段为兼容性扩展，无新增数据库迁移。旧快照及已接受模型检查点缺失题号时按未知读取；未知题号序列化时省略，保留旧版无题号修订的载荷哈希与幂等身份。
 
+提取结果逐题记录内容 `grade`（1–12）；缺失表示未知。错题记录使用题目年级，未知用 `0`，不会用上传时的学生年级代替。旧 Portal 纠偏不带 `grade` 时，已有题目保留当前年级。
+
 ## 启用
 
 这是唯一的图片入库入口（旧的 `/api/intake/uploads` 同步入口已移除）。能力默认关闭，通过以下配置启用：
@@ -54,14 +56,21 @@ Emenda 已发布的 `v0.1.1-rc.5` 仍限 9 页。首个兼容版本应同时包�
 | 方法 | `/api/intake/extractions` 下路径 | 语义 |
 |---|---|---|
 | POST | 空路径 | multipart `studentId`、`grade`、必填 `sourceKey`、重复 `images` 或 `images[]`；返回 202 和任务 |
+| POST | `/images` | 仅接受有序 `images`/`images[]`；受信 Portal 在后端校验学生后提供短时签名凭据。返回 202 和分组任务视图；不切换旧客户端 |
 | GET | 空路径 | 可选 `studentId`、`page`；每页 20 条 |
 | GET | `/{id}` | 来源、状态、当前结果和版本列表 |
+| GET | `/{id}/summary` | 调用方自有任务，按学科（带名称）与内容年级分组；`total` 含正确、错误和无法判断，`incorrect` 只计判错；只有错题有明细和当前版裁图链接 |
 | POST | `/{id}/retry` | `{requestKey}`；仅失败且未完成任务，最多总计 5 次尝试 |
 | GET | `/{id}/sources/{sourceId}` | 校验摘要后读取精确原图 |
 | GET | `/{id}/versions/{version}` | 只读历史快照 |
 | GET | `/{id}/questions/{questionId}/images/{version}/{index}` | 零基 index 的历史 PNG 裁图 |
+| GET | `/retained/{itemId}/images/{index}` | 删除任务后，由原调用方按错题 ID 与零基序号读取保留的确认题 PNG；仍由业务后端核验学生权限 |
 | PUT | `/{id}/questions` | 保存本调用方任务的完整题目分组；请求与管理端相同，其他调用方的任务返回 404 |
 | PUT | `/{id}/questions/{questionId}` | 仅替换指定题目，服务端保留其他题目；返回目标题和接受版本，不返回其他学科题组 |
+
+管理员在 `/admin/extractions` 管理所有试卷任务。摘要查询为 `GET /admin/api/extractions/summary?page=1`；删除为 `DELETE /admin/api/extractions/{id}`（会话和 CSRF），回执为 `GET /admin/api/extractions/{id}/deletion`。获授 `canOperateExtractions` 的机器调用方使用相同语义的 `/api/ops/extractions`：例如用 `X-Emenda-Api-Key` 请求 `GET /api/ops/extractions?page=1`，再对目标执行 `DELETE /api/ops/extractions/{id}`。撤销权限后旧密钥的后续请求返回 403。
+
+任务从列表消失代表数据库清理已提交，不代表文件都已清除。回执区分 `Pending`、`Failed` 与 `Completed`，并返回删除及保留错题数。请求中断后先查询 `GET .../{id}/deletion`；重复 DELETE 不会再次删除错题，可请求继续清理。保留的已确认错题继续按原 ID 读取分析、练习和裁图。删除后同一学生重传相同顺序的图片返回 `410 job_deleted`；旧调用重用同一 `sourceKey` 却更换内容继续返回 `409 source_conflict`。
 
 学生或管理该学生的老师、助教重裁时，由业务后端根据任务实际关联的 `studentId` 和目标题学科校验当前用户权限，服务密钥不发给浏览器。单题入口提交 `{requestKey,expectedVersion,reason,question}`，`question.id` 必须与路径一致；只提交该题的完整内容及全部区域，不需提交其他学科。服务端从当前版本合成完整修订，其他题和审核结果不变。响应为 `{success:true,data:{id,studentId,version,question}}`，其中 `question` 为包含 `question/itemId/itemDeleted/images` 的目标题视图。同一错题保留原 `itemId`，保存裁切不等于确认；确认应使用返回的新版本调用审核接口。
 

@@ -29,7 +29,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<MistakeItemModel?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var entity = await _dbContext.MistakeItems.FindAsync(new object?[] { id }, ct);
-        return entity != null ? MapToModel(entity) : null;
+        return entity != null ? MapToModel(entity, entity.AnalysisSnapshot) : null;
     }
 
     public async Task<bool> UpdateAsync(MistakeItemModel model, CancellationToken ct = default)
@@ -54,6 +54,8 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.UpdatedAt = model.UpdatedAt;
 
         _dbContext.MistakeItems.Update(entity);
+        // Only extraction publication and backfill own this column.
+        _dbContext.Entry(entity).Property(e => e.AnalysisSnapshot).IsModified = false;
         return true;
     }
 
@@ -185,7 +187,9 @@ public class MistakeItemRepository : IMistakeItemRepository
         };
     }
 
-    private static MistakeItemModel MapToModel(MistakeItemEntity entity)
+    private static MistakeItemModel MapToModel(MistakeItemEntity entity) => MapToModel(entity, null);
+
+    private static MistakeItemModel MapToModel(MistakeItemEntity entity, string? analysisSnapshot)
     {
         return new MistakeItemModel
         {
@@ -214,6 +218,7 @@ public class MistakeItemRepository : IMistakeItemRepository
             ReviewerId = entity.ReviewerId,
             ReviewedAt = entity.ReviewedAt,
             RootCause = entity.RootCause,
+            AnalysisSnapshot = analysisSnapshot,
             QuestionId = entity.QuestionId,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

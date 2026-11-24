@@ -7,6 +7,7 @@ using Emenda.Service.Intake;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 using Moq;
 
 namespace Emenda.Service.Tests;
@@ -77,13 +78,19 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         Assert.True(await db.Files.ObjectExistsAsync(retained));
         await using (var context = db.CreateContext())
             await context.Database.ExecuteSqlRawAsync("CREATE FUNCTION fail_revision() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected_publish_failure'; END $$; CREATE TRIGGER fail_revision BEFORE INSERT ON extraction_revision FOR EACH ROW EXECUTE FUNCTION fail_revision();");
-        var changed = revised.Questions[0].Question with { Regions = [revised.Questions[0].Question.Regions[0] with { X1 = .5 }] };
+        var changed = revised.Questions[0].Question with { Statement = "This correction must not publish",
+            Regions = [revised.Questions[0].Question.Regions[0] with { X1 = .5 }] };
         await Assert.ThrowsAnyAsync<Exception>(() => service.ReviseAsync(Caller, job.Id,
             new(Guid.NewGuid(), revised.Version, "Fail after storage", [changed])));
         Assert.Equal(revised.Version, (await service.GetAsync(Caller, job.Id)).Version);
         Assert.True(await db.Files.ObjectExistsAsync(retained));
         await using (var context = db.CreateContext())
         {
+            var items = await context.MistakeItems.AsNoTracking().ToDictionaryAsync(item => item.Id);
+            Assert.Null(items[job.Questions[0].ItemId!.Value].AnalysisSnapshot);
+            using var retainedAnalysis = JsonDocument.Parse(items[job.Questions[1].ItemId!.Value].AnalysisSnapshot!);
+            Assert.Equal("Other subject", retainedAnalysis.RootElement.GetProperty("statement").GetString());
+            Assert.Equal(job.Version, retainedAnalysis.RootElement.GetProperty("sourceVersion").GetInt32());
             await context.Database.ExecuteSqlRawAsync("DROP TRIGGER fail_revision ON extraction_revision; DROP FUNCTION fail_revision(); UPDATE extraction_object SET next_attempt=clock_timestamp();");
         }
         await service.RunCleanupAsync();
@@ -137,7 +144,13 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         Assert.Equal("Pending", proposal.Status);
         Assert.Equal(target.Question.Id, proposal.Questions.Single().Id);
         Assert.Equal(job.Version, (await service.GetAsync(Caller, job.Id)).Version);
-        await using (var context = db.CreateContext()) Assert.Equal(2, await context.ExtractionObjects.CountAsync());
+        await using (var context = db.CreateContext())
+        {
+            Assert.Equal(4, await context.ExtractionObjects.CountAsync());
+            using var pending = JsonDocument.Parse((await context.MistakeItems.SingleAsync()).AnalysisSnapshot!);
+            Assert.Equal("Mistake", pending.RootElement.GetProperty("statement").GetString());
+            Assert.Equal(job.Version, pending.RootElement.GetProperty("sourceVersion").GetInt32());
+        }
         var refinement = await service.GenerateProposalAsync(Caller, job.Id,
             request with { RequestKey = Guid.NewGuid(), Instruction = "Keep more of the diagram", PreviousProposalId = proposal.Id });
         Assert.Equal("Superseded", (await service.GetProposalAsync(Caller, job.Id, proposal.Id)).Status);
@@ -154,7 +167,11 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         Assert.Equal(System.Text.Json.JsonSerializer.Serialize(job.Questions[1]), System.Text.Json.JsonSerializer.Serialize(read.Questions[1]));
         Assert.Equal("Accepted", (await service.GetProposalAsync(Caller, job.Id, refinement.Id)).Status);
         await using var check = db.CreateContext();
-        Assert.Equal(1, (await check.MistakeItems.SingleAsync()).ReviewStatus);
+        var item = await check.MistakeItems.SingleAsync();
+        Assert.Equal(1, item.ReviewStatus);
+        using var analysis = JsonDocument.Parse(item.AnalysisSnapshot!);
+        Assert.Equal("Complete mistake statement", analysis.RootElement.GetProperty("statement").GetString());
+        Assert.Equal(read.Version, analysis.RootElement.GetProperty("sourceVersion").GetInt32());
     }
 
     [Fact]
@@ -333,7 +350,7 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
             {
                 Assert.NotEmpty(revision.Instruction);
                 var corrected = revision.Questions.Count > 0 ? revision.Questions.Select(q => q with
-                    { Regions = [q.Regions[0], q.Regions[^1] with { X1 = .5 }] }).ToList() : [Question("incorrect", "Missed question")];
+                    { Statement = "Complete mistake statement", Regions = [q.Regions[0], q.Regions[^1] with { X1 = .5 }] }).ToList() : [Question("incorrect", "Missed question")];
                 return Task.FromResult(new QuestionAnalysisResult("controlled", corrected));
             }
             return Task.FromResult(new QuestionAnalysisResult("controlled", Empty ? [] :

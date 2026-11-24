@@ -29,6 +29,7 @@ public interface IOssService
     // Idempotent cleanup: missing objects are successful; storage failures remain failures.
     Task<bool> DeleteIfExistsAsync(string objectPath) => DeleteAsync(objectPath);
     Task<bool> DeleteDerivedAsync(string objectPath) => DeleteIfExistsAsync(objectPath);
+    Task<bool> DeleteExtractionOriginalAsync(string objectPath) => Task.FromResult(false);
     Task<int> DeleteManyAsync(IEnumerable<string> objectPaths);
     Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600);
     Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600);
@@ -246,6 +247,23 @@ public class S3OssService : IOssService
         if (!objectPath.StartsWith("mistakes/extractions/", StringComparison.Ordinal)
             || !(objectPath.Contains("/versions/", StringComparison.Ordinal) || objectPath.Contains("/supplements/", StringComparison.Ordinal)))
             return false;
+        return await PurgeExtractionObjectAsync(objectPath);
+    }
+
+    public Task<bool> DeleteExtractionOriginalAsync(string objectPath)
+    {
+        var segments = objectPath.Split('/');
+        if (segments.Length != 5 || segments[0] != "mistakes" || segments[1] != "extractions" ||
+            segments[2].Length != 32 || !Guid.TryParseExact(segments[2], "N", out _) || segments[3] != "originals" ||
+            segments[4].Length != 36 ||
+            !(segments[4].EndsWith(".png", StringComparison.Ordinal) || segments[4].EndsWith(".jpg", StringComparison.Ordinal)) ||
+            !Guid.TryParseExact(segments[4][..^4], "N", out _))
+            return Task.FromResult(false);
+        return PurgeExtractionObjectAsync(objectPath);
+    }
+
+    private async Task<bool> PurgeExtractionObjectAsync(string objectPath)
+    {
         try
         {
             _prefixValidator?.ValidateWritePath(objectPath);

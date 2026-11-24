@@ -11,6 +11,35 @@
     }
   ],
   "paths": {
+    "/api/intake/extractions/images": {
+      "post": {
+        "operationId": "submitExtractionImagesOnly",
+        "description": "Requires X-Emenda-Api-Key and a valid short-lived X-Emenda-Student-Assertion for the authenticated caller. Pass only ordered JPEG/PNG files, no studentId, grade or sourceKey. Same caller, student and content replay the task; a deleted same-student content match returns 410.",
+        "parameters": [{ "in": "header", "name": "X-Emenda-Student-Assertion", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "required": ["images"], "additionalProperties": false, "properties": { "images": { "type": "array", "minItems": 1, "maxItems": 30, "items": { "type": "string", "format": "binary" } } } } } } },
+        "responses": { "202": { "$ref": "#/components/responses/GroupedExtraction" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "410": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/intake/extractions/{id}/summary": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": { "operationId": "getExtractionGroupedResult", "responses": { "200": { "$ref": "#/components/responses/GroupedExtraction" }, "401": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/ops/extractions": {
+      "get": {
+        "operationId": "listExtractionOperations",
+        "description": "Requires a machine credential explicitly granted canOperateExtractions. Reads all callers; up to 20 tasks per page ordered createdAt descending then id ascending. Includes failed and zero-question tasks.",
+        "parameters": [{ "in": "query", "name": "page", "schema": { "type": "integer", "minimum": 1, "maximum": 100000, "default": 1 } }, { "in": "query", "name": "studentId", "schema": { "type": "string", "maxLength": 36 } }],
+        "responses": { "200": { "description": "Envelope data is {items:[{id,caller,studentId,createdAt,status,mistakeCount,confirmedCount}],nextPage}; nextPage is null on the last page." }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/ops/extractions/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "delete": { "operationId": "deleteExtractionOperation", "description": "Requires the operations grant. Deletes the task and non-confirmed mistakes, preserving confirmed items. Request may be safely repeated to resume cleanup.", "responses": { "200": { "$ref": "#/components/responses/ExtractionDeletionReceipt" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/ops/extractions/{id}/deletion": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": { "operationId": "getExtractionDeletionReceipt", "description": "Requires the operations grant. Reads cleanup progress after the task disappears from the list.", "responses": { "200": { "$ref": "#/components/responses/ExtractionDeletionReceipt" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
     "/api/intake/extractions": {
       "post": {
         "operationId": "submitExtraction",
@@ -2064,6 +2093,12 @@
       }
     },
     "responses": {
+      "GroupedExtraction": {
+        "description": "Envelope data is {id,status,version,errorCode,groups}. Each group contains summary {subject,subjectName,grade,total,incorrect} and mistakes [{questionId,itemId,itemDeleted,questionNumber,statement,studentAnswer,referenceAnswer,explanation,evidence,images}]. Null grade is unknown; total includes all judgments; images are ordered current crop URLs. No full details for correct or unknown questions."
+      },
+      "ExtractionDeletionReceipt": {
+        "description": "Envelope data is {jobId,deletedAt,status,pendingObjects,deletedMistakes,retainedConfirmed}. Pending and Failed can be queried after removal from the list; Completed means no further cleanup is needed."
+      },
       "QuestionRevision": {
         "description": "Accepted target only; never returns unrelated subject questions, originals or version snapshots.",
         "content": {
@@ -2237,6 +2272,13 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 9
+          },
+          "grade": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 12,
+            "description": "Content grade independent of the student. Absent means unknown when reading and preserves an existing grade for direct corrections."
           },
           "statement": {
             "type": "string",

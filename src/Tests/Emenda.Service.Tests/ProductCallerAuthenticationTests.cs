@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Security.Claims;
 using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
@@ -10,6 +11,10 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Emenda.Database;
+using Emenda.Host.Security;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Emenda.Service.Tests;
@@ -128,9 +133,34 @@ public sealed class ProductCallerAuthenticationTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    private static class ProductCallerAuthenticationOptions
+    [Theory]
+    [InlineData(false, false, StatusCodes.Status401Unauthorized)]
+    [InlineData(true, true, StatusCodes.Status401Unauthorized)]
+    [InlineData(true, false, StatusCodes.Status403Forbidden)]
+    public async Task ExtractionOperationsGateDoesNotTrustCallerNameOrRequestHeaders(
+        bool enabled, bool allowAnonymous, int expectedStatus)
     {
-        public const string ApiKeyHeaderName = "X-Emenda-Api-Key";
+        using var services = new ServiceCollection().Configure<ProductCallerAuthenticationOptions>(options =>
+        {
+            options.Enabled = enabled;
+            options.AllowAnonymous = allowAnonymous;
+            options.Callers = [new ProductCallerCredential { Name = "administrator", ApiKey = CallerKey }];
+        }).BuildServiceProvider();
+        var registry = new CallerRegistry(services.GetRequiredService<IOptionsMonitor<ProductCallerAuthenticationOptions>>());
+        var http = new DefaultHttpContext { RequestServices = services };
+        http.Request.Path = "/api/probe";
+        http.Request.Headers[ProductCallerAuthenticationOptions.ApiKeyHeaderName] = CallerKey;
+        http.Request.Headers["X-Emenda-Caller"] = "administrator";
+        http.Request.Headers["X-Emenda-Can-Operate-Extractions"] = "true";
+        http.Items[ProductCallerAuthenticationMiddleware.CallerNameItemKey] = "administrator";
+        http.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("emenda:caller", "administrator")], "ProductCaller"));
+        var middleware = new ProductCallerAuthenticationMiddleware(
+            _ => Task.CompletedTask, NullLogger<ProductCallerAuthenticationMiddleware>.Instance);
+
+        await middleware.InvokeAsync(http, registry);
+
+        var rejection = ProductCallerAuthenticationMiddleware.RequireExtractionOperations(http);
+        rejection.Should().BeAssignableTo<IStatusCodeHttpResult>().Which.StatusCode.Should().Be(expectedStatus);
     }
 
     private sealed class StandaloneWebApplicationFactory : WebApplicationFactory<Program>

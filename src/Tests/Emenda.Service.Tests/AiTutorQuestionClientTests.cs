@@ -38,6 +38,23 @@ public sealed class AiTutorQuestionClientTests
     }
 
     [Fact]
+    public async Task AcceptsImagesWithoutGradeAndKeepsIndependentQuestionGrades()
+    {
+        var body = $$"""{"model":"vision","questions":[{"subject":2,"grade":6,"statement":"1+1","studentAnswer":"2","referenceAnswer":"2","outcome":"correct","evidence":"Matches 2","regions":[{"sourceId":"{{Source}}","x0":0,"y0":0,"x1":1,"y1":1}]},{"subject":2,"grade":8,"statement":"x+2=3","studentAnswer":null,"referenceAnswer":"1","outcome":"unknown","regions":[{"sourceId":"{{Source}}","x0":0,"y0":0,"x1":1,"y1":1}]}]}""";
+        var client = Client(async (message, ct) =>
+        {
+            var request = await message.Content!.ReadFromJsonAsync<System.Text.Json.JsonElement>(ct);
+            Assert.False(request.TryGetProperty("grade", out _));
+            return new(HttpStatusCode.OK) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
+        });
+        var result = await client.AnalyzeAsync(Request() with { Grade = null });
+        Assert.Equal(new int?[] { 6, 8 }, result.Questions.Select(q => q.Grade));
+        Assert.Equal("", result.Questions[0].Explanation);
+        Assert.Equal("Matches 2", result.Questions[0].Evidence);
+        Assert.Equal("", result.Questions[1].Evidence);
+    }
+
+    [Fact]
     public async Task ReadsAllFortyQuestionsInProviderOrder()
     {
         var labels = Enumerable.Range(1, 40).Select(n => n.ToString()).ToArray();
@@ -72,7 +89,7 @@ public sealed class AiTutorQuestionClientTests
     [Fact]
     public async Task RejectsForeignRegionsAndConfidentAnswersWithoutAttempt()
     {
-        foreach (var draft in new[] { Draft() with { Regions = [Region with { SourceId = Other }] }, Draft() with { Outcome = "incorrect", ReferenceAnswer = "2", Evidence = "visible" } })
+        foreach (var draft in new[] { Draft() with { Regions = [Region with { SourceId = Other }] }, Draft() with { Outcome = "incorrect", ReferenceAnswer = "2", Evidence = "visible" }, Draft() with { Grade = 13 } })
         {
             var client = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new QuestionAnalysisResult("vision", [draft])) }));
             Assert.Equal("invalid_analysis_response", (await Assert.ThrowsAsync<ExtractionException>(() => client.AnalyzeAsync(Request()))).Code);

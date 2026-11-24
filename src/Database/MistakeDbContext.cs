@@ -24,6 +24,7 @@ public class MistakeDbContext : DbContext
     public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
     public DbSet<ProductIntakeRequestEntity> ProductIntakeRequests => Set<ProductIntakeRequestEntity>();
     public DbSet<ExtractionJobEntity> ExtractionJobs => Set<ExtractionJobEntity>();
+    public DbSet<ExtractionDeletionEntity> ExtractionDeletions => Set<ExtractionDeletionEntity>();
     public DbSet<ExtractionQuestionEntity> ExtractionQuestions => Set<ExtractionQuestionEntity>();
     public DbSet<ExtractionRevisionEntity> ExtractionRevisions => Set<ExtractionRevisionEntity>();
     public DbSet<ExtractionObjectEntity> ExtractionObjects => Set<ExtractionObjectEntity>();

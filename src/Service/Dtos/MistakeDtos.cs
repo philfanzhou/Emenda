@@ -37,6 +37,8 @@ public class MistakeItemDto
     public Emenda.HttpContracts.ConversationQuestionSnapshot? ConversationSource { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool ConversationActive { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public MistakeAnalysisSnapshotDto? AnalysisSnapshot { get; set; }
     public string Id { get; set; } = string.Empty;
     public string StudentId { get; set; } = string.Empty;
     public int Subject { get; set; }
@@ -51,6 +53,9 @@ public class MistakeItemDto
     public string CreatedAt { get; set; } = string.Empty;
     public string UpdatedAt { get; set; } = string.Empty;
 }
+
+public sealed record MistakeAnalysisSnapshotDto(string Statement, string StudentAnswer, string ReferenceAnswer,
+    string Explanation, string Evidence, int SourceVersion);
 
 // ===== Request DTOs =====
 

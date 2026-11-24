@@ -121,6 +121,13 @@ public class LocalFileOssService : IOssService
         return Task.FromResult(true);
     }
 
+    public async Task<bool> DeleteExtractionOriginalAsync(string objectPath)
+    {
+        foreach (var path in ThumbnailHelper.GetAllThumbnailPaths(objectPath).Prepend(objectPath))
+            await DeleteIfExistsAsync(path);
+        return true;
+    }
+
     public Task<string> GetPresignedUrlAsync(string objectPath, int expirySeconds = 3600)
     {
         var fullPath = GetFullPath(objectPath);

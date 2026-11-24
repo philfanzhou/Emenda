@@ -89,6 +89,7 @@ public static class AdminConsoleEndpoints
                 maskedKey = Mask(entry.ApiKey),
                 source = entry.Source == CallerEntrySource.Configuration ? "configuration" : "dynamic",
                 enabled = entry.Enabled,
+                canOperateExtractions = entry.CanOperateExtractions,
                 note = entry.Note,
                 createdAtUtc = entry.CreatedAtUtc,
                 updatedAtUtc = entry.UpdatedAtUtc
@@ -165,13 +166,23 @@ public static class AdminConsoleEndpoints
         if ((await registry.ListAsync(ct).ConfigureAwait(false)).Any(entry =>
             string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase) && entry.Source == CallerEntrySource.Configuration))
             return ConfigurationManaged();
-        var body = await ReadJsonBody(http, ct).ConfigureAwait(false);
+        using var body = await ReadJsonBody(http, ct).ConfigureAwait(false);
+        if (body is null || body.RootElement.ValueKind != JsonValueKind.Object)
+            return Results.Json(new { success = false, message = "请求体必须是 JSON 对象。" }, statusCode: 400);
+        const string capability = "canOperateExtractions";
+        var canOperateExtractions = BodyBool(body, capability);
+        if (canOperateExtractions is null && body.RootElement.TryGetProperty(capability, out _))
+            return Results.Json(new { success = false, message = "canOperateExtractions 必须是布尔值。" }, statusCode: 400);
         var enabled = BodyBool(body, "enabled");
         var note = BodyString(body, "note");
-        var updated = await store.UpdateAsync(name, enabled, note, ct).ConfigureAwait(false);
+        var updated = await store.UpdateAsync(name, enabled, note, canOperateExtractions, ct).ConfigureAwait(false);
         return updated is null
             ? Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404)
-            : Results.Json(new { success = true, data = new { name = updated.Name, enabled = updated.Enabled } });
+            : Results.Json(new
+            {
+                success = true,
+                data = new { name = updated.Name, enabled = updated.Enabled, canOperateExtractions = updated.CanOperateExtractions }
+            });
     }
 
     private static async Task<IResult> DeleteCaller(
@@ -194,7 +205,7 @@ public static class AdminConsoleEndpoints
     // ---- helpers ----
 
     private static IResult ConfigurationManaged() => Results.Json(
-        new { success = false, message = "静态配置调用方由部署配置管理；请修改部署配置，或先轮换为动态凭据后再禁用/删除。" },
+        new { success = false, message = "静态配置调用方由部署配置管理；请修改部署配置，或先轮换为动态凭据再进行管理。" },
         statusCode: StatusCodes.Status409Conflict);
 
 
