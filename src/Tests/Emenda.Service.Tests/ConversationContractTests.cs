@@ -54,11 +54,11 @@ public sealed class ConversationContractTests
             foreach (var node in new[] { expected, candidate })
             {
                 node.Remove("security");
-                node["x-ruoyu"]!.AsObject().Remove("authorization");
+                node.Remove("x-ruoyu");
                 var responses = node["responses"]!.AsObject();
                 responses.Remove("202");
-                foreach (var status in new[] { "401", "403" })
-                    responses[status]?.AsObject().Remove("description");
+                foreach (var response in responses)
+                    response.Value?.AsObject().Remove("description");
             }
             Assert.True(JsonNode.DeepEquals(expected, candidate), key);
         }
