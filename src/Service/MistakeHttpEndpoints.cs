@@ -319,6 +319,10 @@ public static partial class MistakeHttpEndpoints
             var result = await mistakeService.AddPracticeAsync(practice, imagePaths);
             return MistakeHttpResponse.Ok(MapPracticeDto(result));
         }
+        catch (MistakeConflictException ex)
+        {
+            return ErrorKind(ex.Code, 409);
+        }
         catch (MistakeValidationException ex)
         {
             return MistakeHttpResponse.BadRequest(ex.Message);

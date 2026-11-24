@@ -3,6 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using Amazon.Runtime;
+using Amazon.S3;
+using Amazon.S3.Model;
 using Minio;
 using Minio.DataModel.Args;
 
@@ -35,6 +40,8 @@ public interface IOssService
     Task<List<string>> GetPresignedUrlsAsync(IEnumerable<string> objectPaths, int expirySeconds = 3600);
     Task<bool> CheckConnectivityAsync();
     Task<List<OssObjectInfo>> ListObjectsAsync(string? prefix = null);
+    // Extraction cleanup needs every historical version, including keys hidden by delete markers; failures propagate.
+    Task<List<OssObjectInfo>> ListExtractionObjectsAsync(Guid jobId);
     Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null);
 }
 
@@ -46,10 +53,12 @@ public class OssObjectInfo
     public bool IsZombie { get; set; }
 }
 
-public class S3OssService : IOssService
+public class S3OssService : IOssService, IDisposable
 {
     private readonly IMinioClient _internalClient;
     private readonly IMinioClient _presignClient;
+    private AmazonS3Client? _versionClient;
+    private readonly SemaphoreSlim _versionClientLock = new(1, 1);
     private readonly string _bucketName;
     private readonly PathPrefixValidator? _prefixValidator;
     private readonly Uri? _publicBaseUri;
@@ -74,6 +83,14 @@ public class S3OssService : IOssService
                 options.AccessKey,
                 options.SecretKey,
                 string.Equals(_publicBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public void Dispose()
+    {
+        _versionClient?.Dispose();
+        _versionClientLock.Dispose();
+        if (!ReferenceEquals(_presignClient, _internalClient)) _presignClient.Dispose();
+        _internalClient.Dispose();
     }
 
     private static IMinioClient BuildClient(string endpoint, string accessKey, string secretKey, bool secure)
@@ -271,8 +288,7 @@ public class S3OssService : IOssService
             foreach (var path in ThumbnailHelper.GetAllThumbnailPaths(objectPath).Prepend(objectPath))
             {
                 var versions = new List<string?>();
-                await foreach (var item in _internalClient.ListObjectsEnumAsync(new ListObjectsArgs()
-                    .WithBucket(_bucketName).WithPrefix(path).WithRecursive(true).WithVersions(true), timeout.Token))
+                await foreach (var item in ListObjectVersionsAsync(path, timeout.Token))
                 {
                     if (item.Key != path) continue;
                     if (versions.Count >= 10000) return false;
@@ -285,8 +301,7 @@ public class S3OssService : IOssService
                     await _internalClient.RemoveObjectAsync(remove, timeout.Token);
                 }
                 // Hiding bytes behind a delete marker is insufficient: every data version must be absent.
-                await foreach (var item in _internalClient.ListObjectsEnumAsync(new ListObjectsArgs()
-                    .WithBucket(_bucketName).WithPrefix(path).WithRecursive(true).WithVersions(true), timeout.Token))
+                await foreach (var item in ListObjectVersionsAsync(path, timeout.Token))
                     if (item.Key == path) return false;
             }
             return true;
@@ -375,6 +390,78 @@ public class S3OssService : IOssService
         }
 
         return objects;
+    }
+
+    public async Task<List<OssObjectInfo>> ListExtractionObjectsAsync(Guid jobId)
+    {
+        var prefix = $"mistakes/extractions/{jobId:N}/";
+        var objects = new List<OssObjectInfo>();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await foreach (var item in ListObjectVersionsAsync(prefix, timeout.Token))
+        {
+            if (!item.Key.StartsWith(prefix, StringComparison.Ordinal) || !keys.Add(item.Key)) continue;
+            objects.Add(new OssObjectInfo
+            {
+                ObjectPath = item.Key,
+                Size = item.Size ?? 0,
+                LastModified = item.LastModified is { } modified ? new DateTimeOffset(modified) : null,
+                IsZombie = false
+            });
+        }
+        return objects;
+    }
+
+    private AmazonS3Client CreateVersionClient(string region) =>
+        new(new BasicAWSCredentials(_internalClient.Config.AccessKey, _internalClient.Config.SecretKey), new AmazonS3Config
+        {
+            ServiceURL = _internalClient.Config.Endpoint,
+            AuthenticationRegion = region,
+            ForcePathStyle = true
+        });
+
+    private async Task<AmazonS3Client> VersionClientAsync(CancellationToken ct)
+    {
+        var client = Volatile.Read(ref _versionClient);
+        if (client is not null) return client;
+        await _versionClientLock.WaitAsync(ct);
+        try
+        {
+            if (_versionClient is not null) return _versionClient;
+            // Preserve Minio's bucket-location discovery, including its empty/EU location defaults.
+            using var lookup = CreateVersionClient("us-east-1");
+            var location = await lookup.GetBucketLocationAsync(new GetBucketLocationRequest { BucketName = _bucketName }, ct);
+            var region = location.Location?.Value;
+            region = string.IsNullOrEmpty(region) ? "us-east-1" : region == "EU" ? "eu-west-1" : region;
+            client = CreateVersionClient(region);
+            Volatile.Write(ref _versionClient, client);
+            return client;
+        }
+        finally { _versionClientLock.Release(); }
+    }
+
+    private async IAsyncEnumerable<S3ObjectVersion> ListObjectVersionsAsync(string prefix,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        // Minio 7's iterator skips S3 version markers and delete markers, so use the maintained page API here.
+        var client = await VersionClientAsync(ct);
+        var request = new ListVersionsRequest { BucketName = _bucketName, Prefix = prefix, MaxKeys = 1000 };
+        HashSet<(string Key, string? Version)>? markers = null;
+        while (true)
+        {
+            var page = await client.ListVersionsAsync(request, ct);
+            if (page.Versions is not null)
+                foreach (var version in page.Versions) yield return version;
+            if (page.IsTruncated == false) yield break;
+            if (page.IsTruncated != true || string.IsNullOrEmpty(page.NextKeyMarker))
+                throw new IOException("Incomplete S3 version listing.");
+            var versionMarker = string.IsNullOrEmpty(page.NextVersionIdMarker) ? null : page.NextVersionIdMarker;
+            markers ??= [];
+            if (!markers.Add((page.NextKeyMarker, versionMarker)))
+                throw new IOException("S3 version listing did not advance.");
+            request.KeyMarker = page.NextKeyMarker;
+            request.VersionIdMarker = versionMarker;
+        }
     }
 
     public async Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null)

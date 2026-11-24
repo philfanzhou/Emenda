@@ -65,6 +65,7 @@ public sealed partial class ExtractionService
         var job = await db.ExtractionJobs.SingleOrDefaultAsync(j => j.Id == id, ct);
         var deleted = job is null && await db.ExtractionDeletions.AnyAsync(d => d.JobId == id, ct);
         if (job is null && !deleted) return;
+        if (deleted) await InventoryObjectsAsync(db, id, ct);
         var snapshot = job is null || job.Version == 0 ? new ExtractionSnapshot([]) : ExtractionRules.Read<ExtractionSnapshot>(
             (await db.ExtractionRevisions.AsNoTracking().SingleAsync(r => r.JobId == id && r.Version == job.Version, ct)).SnapshotJson);
         var itemIds = snapshot.Questions.Where(q => q.ItemId.HasValue).Select(q => q.ItemId!.Value).ToArray();
@@ -105,8 +106,7 @@ public sealed partial class ExtractionService
             var suffix = entry.Path.StartsWith(prefix, StringComparison.Ordinal) ? entry.Path[prefix.Length..] : "";
             var original = deleted && suffix.StartsWith("originals/", StringComparison.Ordinal);
             // This is a queue of known object keys, never an instruction to purge an arbitrary prefix.
-            var safe = suffix.Length > 0 && !suffix.Contains('\\') &&
-                !suffix.Split('/').Any(segment => segment is "" or "." or "..");
+            var safe = IsJobObjectPath(id, entry.Path);
             var derived = suffix.StartsWith("versions/", StringComparison.Ordinal) || suffix.StartsWith("supplements/", StringComparison.Ordinal);
             entry.Pending = true;
             // Persist rejection of new references BEFORE an irreversible storage delete.

@@ -11,6 +11,35 @@
     }
   ],
   "paths": {
+    "/api/intake/extractions/retained/{itemId}/images/{index}": {
+      "parameters": [
+        { "in": "path", "name": "itemId", "required": true, "schema": { "type": "string", "format": "uuid" } },
+        { "in": "path", "name": "index", "required": true, "schema": { "type": "integer", "minimum": 0 } }
+      ],
+      "get": {
+        "operationId": "readRetainedExtractionCrop",
+        "description": "After task deletion, only the original caller may read a confirmed retained item's exact referenced crop. New deletions retain full SHA-256 and length independently of historical key format. Older receipts without manifests use the digest encoded in the crop name.",
+        "responses": {
+          "200": { "description": "Retained PNG crop", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } },
+          "401": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/intake/extractions/retained/{itemId}/practices/{practiceId}/images/{index}": {
+      "parameters": [
+        { "in": "path", "name": "itemId", "required": true, "schema": { "type": "string", "format": "uuid" } },
+        { "in": "path", "name": "practiceId", "required": true, "schema": { "type": "string", "format": "uuid" } },
+        { "in": "path", "name": "index", "required": true, "schema": { "type": "integer", "minimum": 0 } }
+      ],
+      "get": {
+        "operationId": "readRetainedExtractionPracticeImage",
+        "description": "Reads only an exact image reference of the specified retained item's practice, in the deleted task's namespace, with original-caller authorization. Never accepts an arbitrary object key. New deletions verify retained length and full SHA-256; old rc.12 source attachments have no retained digest and are returned from the exact authorized reference without a checksum guarantee.",
+        "responses": {
+          "200": { "description": "Retained practice attachment", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/jpeg": { "schema": { "type": "string", "format": "binary" } } } },
+          "401": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/intake/extractions/images": {
       "post": {
         "operationId": "submitExtractionImagesOnly",

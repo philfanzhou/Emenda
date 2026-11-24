@@ -3,7 +3,8 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Mistake HTTP contract",
-    "version": "mistake-http-v6"
+    "version": "mistake-http-v6",
+    "description": "Extraction-backed mistakes and their practices, logs and analyses are scoped to the original product caller, including after task deletion. Student authorization remains the trusted BFF's responsibility."
   },
   "paths": {
     "/api/mistakes/{id}": {
@@ -1495,7 +1496,7 @@
             "description": "Framework method mismatch, empty body and Allow header."
           },
           "409": {
-            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "description": "Archived extraction attachments not recorded for this item return retained_image_not_recorded before any write. Retired extraction objects also return a conflict.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1546,7 +1547,7 @@
             "conversation": "conversation-backed items additionally require the owning product caller"
           },
           "semantics": {
-            "validation": "confirmed item only; learner-only owner binding under resource/managed; route id authoritative over body mistakeItemId; image paths optional; required business values preserved"
+            "validation": "confirmed item only; learner-only owner binding under resource/managed; route id authoritative over body mistakeItemId; image paths optional; required business values preserved. For archived extraction items, extraction images must already belong to this item's retained file manifest (old rc.12: existing item/practice references); new unrecorded images return 409 retained_image_not_recorded. Parent locking and insertion are atomic with respect to task deletion."
           }
         },
         "requestBody": {

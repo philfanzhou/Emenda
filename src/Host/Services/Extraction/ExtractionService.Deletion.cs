@@ -11,22 +11,23 @@ public sealed partial class ExtractionService
     public async Task<ExtractionDeletionView> DeleteAsync(ExtractionAccess access, Guid id, CancellationToken ct = default)
     {
         RequireDeletionAccess(access);
-        await using var db = Open();
-        // Already-deleted jobs never wait behind an OSS purge.
-        var job = await db.ExtractionJobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == id, ct);
-        if (job is null) return await RequeueDeletionAsync(db, access, id, ct);
-
         await using var storage = await SerializeJobAsync(id, ct);
+        await using var db = Open();
+        var job = await db.ExtractionJobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == id, ct);
+        if (job is null) return await RequeueDeletionAsync(db, id, ct);
+
+        var objectPaths = await ListJobObjectPathsAsync(id, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         // Same order as submit. Admission is never held across a storage call.
         await LockAdmissionAsync(db, job.StudentId, ct);
         await LockAsync(db, $"extraction-source:{job.Caller}:{job.SourceKey}", ct);
         await LockAsync(db, id.ToString(), ct);
+        await RegisterJobObjectsAsync(db, id, objectPaths, ct);
         job = await db.ExtractionJobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == id, ct);
         if (job is null)
         {
             await tx.CommitAsync(ct);
-            return await RequeueDeletionAsync(db, access, id, ct);
+            return await RequeueDeletionAsync(db, id, ct);
         }
 
         var sourceId = $"extract:{id:N}";
@@ -48,6 +49,7 @@ public sealed partial class ExtractionService
                 throw new ExtractionException("retained_analysis_unavailable", 409);
             item.AnalysisSnapshot = SerializeAnalysis(question, job.Version);
         }
+        await RetainFilesAsync(db, job, retained, ct);
         await db.SaveChangesAsync(ct);
         await db.MistakeItems.Where(i => deleted.Contains(i.Id)).ExecuteDeleteAsync(ct);
 
@@ -78,12 +80,15 @@ public sealed partial class ExtractionService
         await db.ExtractionQuestions.Where(q => q.JobId == id).ExecuteDeleteAsync(ct);
         await db.ExtractionJobs.Where(j => j.Id == id).ExecuteDeleteAsync(ct);
         await tx.CommitAsync(ct);
-        return await GetDeletionAsync(access, id, ct);
+        return await GetDeletionCoreAsync(id, ct);
     }
 
-    private async Task<ExtractionDeletionView> RequeueDeletionAsync(MistakeDbContext db, ExtractionAccess access,
+    private async Task<ExtractionDeletionView> RequeueDeletionAsync(MistakeDbContext db,
         Guid id, CancellationToken ct)
     {
+        if (!await db.ExtractionDeletions.AnyAsync(d => d.JobId == id, ct))
+            throw new ExtractionException("not_found", 404);
+        await InventoryObjectsAsync(db, id, ct);
         // Only failed entries for a committed deletion receipt are expedited. The collector
         // still owns physical deletion and will recheck references before touching storage.
         await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -91,12 +96,22 @@ public sealed partial class ExtractionService
             WHERE o.job_id={id} AND o.pending AND o.attempts>0 AND o.next_attempt>clock_timestamp()
                 AND EXISTS (SELECT 1 FROM public.extraction_deletion d WHERE d.job_id=o.job_id)
             """, ct);
-        return await GetDeletionAsync(access, id, ct);
+        return await GetDeletionCoreAsync(id, ct);
     }
 
     public async Task<ExtractionDeletionView> GetDeletionAsync(ExtractionAccess access, Guid id, CancellationToken ct = default)
     {
         RequireDeletionAccess(access);
+        await using var storage = await SerializeJobAsync(id, ct);
+        await using var db = Open();
+        if (!await db.ExtractionDeletions.AnyAsync(d => d.JobId == id, ct))
+            throw new ExtractionException("not_found", 404);
+        await InventoryObjectsAsync(db, id, ct);
+        return await GetDeletionCoreAsync(id, ct);
+    }
+
+    private async Task<ExtractionDeletionView> GetDeletionCoreAsync(Guid id, CancellationToken ct)
+    {
         await using var db = Open();
         await using var snapshot = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct);
         var receipt = await db.ExtractionDeletions.AsNoTracking().SingleOrDefaultAsync(d => d.JobId == id, ct)

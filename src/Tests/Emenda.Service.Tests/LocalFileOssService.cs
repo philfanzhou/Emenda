@@ -185,6 +185,9 @@ public class LocalFileOssService : IOssService
         return Task.FromResult(objects);
     }
 
+    public Task<List<OssObjectInfo>> ListExtractionObjectsAsync(Guid jobId) =>
+        ListObjectsAsync($"mistakes/extractions/{jobId:N}/");
+
     public Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null)
     {
         var bucketPrefix = BucketToPrefix(bucket);
