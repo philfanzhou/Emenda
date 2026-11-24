@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Emenda.Database.Entities;
 
@@ -13,7 +14,19 @@ public class MistakeDbContext : DbContext
     }
 
     // Null is reserved for trusted background jobs; HTTP requests set an explicit caller scope.
-    public string? ConversationCallerScope { get; set; }
+    private string? _conversationCallerScope;
+    public string? ConversationCallerScope
+    {
+        get => _conversationCallerScope;
+        set
+        {
+            _conversationCallerScope = value;
+            ExtractionCallerOwnerHash = value == null ? null : Convert.ToHexStringLower(
+                SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes("caller:" + value, JsonOptions)));
+        }
+    }
+
+    private string? ExtractionCallerOwnerHash { get; set; }
 
     public DbSet<MistakeItemEntity> MistakeItems { get; set; } = null!;
     public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
@@ -24,6 +37,7 @@ public class MistakeDbContext : DbContext
     public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
     public DbSet<ProductIntakeRequestEntity> ProductIntakeRequests => Set<ProductIntakeRequestEntity>();
     public DbSet<ExtractionJobEntity> ExtractionJobs => Set<ExtractionJobEntity>();
+    public DbSet<ExtractionDeletionEntity> ExtractionDeletions => Set<ExtractionDeletionEntity>();
     public DbSet<ExtractionQuestionEntity> ExtractionQuestions => Set<ExtractionQuestionEntity>();
     public DbSet<ExtractionRevisionEntity> ExtractionRevisions => Set<ExtractionRevisionEntity>();
     public DbSet<ExtractionObjectEntity> ExtractionObjects => Set<ExtractionObjectEntity>();
@@ -43,11 +57,16 @@ public class MistakeDbContext : DbContext
         ConversationCollectionModel.Configure(modelBuilder);
         modelBuilder.Entity<MistakeItemEntity>().Property(e => e.ConversationActive).HasDefaultValue(false);
         modelBuilder.Entity<MistakeItemEntity>().HasQueryFilter(e => ConversationCallerScope == null
-            || e.ConversationSource == null || e.ConversationCaller == ConversationCallerScope);
+            || (e.ConversationSource == null || e.ConversationCaller == ConversationCallerScope)
+            && (!e.SourceUploadId.StartsWith("extract:")
+                || ExtractionJobs.Any(job => e.SourceUploadId == "extract:" + job.Id.ToString().Replace("-", "")
+                    && job.Caller == "caller:" + ConversationCallerScope)
+                || ExtractionDeletions.Any(deletion => e.SourceUploadId == "extract:" + deletion.JobId.ToString().Replace("-", "")
+                    && deletion.OwnerHash == ExtractionCallerOwnerHash)));
         modelBuilder.Entity<MistakePracticeEntity>().HasQueryFilter(e => ConversationCallerScope == null
-            || e.MistakeItem.ConversationSource == null || e.MistakeItem.ConversationCaller == ConversationCallerScope);
+            || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         modelBuilder.Entity<ProcessLogEntity>().HasQueryFilter(e => ConversationCallerScope == null
-            || e.MistakeItem.ConversationSource == null || e.MistakeItem.ConversationCaller == ConversationCallerScope);
+            || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         modelBuilder.Entity<MistakeAnalysisEntity>().HasQueryFilter(e => ConversationCallerScope == null
             || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         ExtractionModel.Configure(modelBuilder);

@@ -2,17 +2,20 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Emenda.Common.Oss;
 using Emenda.Database;
 using Emenda.Domain.Models;
 using Emenda.Host.Authentication;
+using Emenda.Host.Security;
 using Emenda.Host.Services.Extraction;
 using Emenda.Host.Services.Layout;
 using Emenda.Service.Intake;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -115,6 +118,110 @@ public sealed class ExtractionHttpPostgresTests
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/intake/extractions", form)).StatusCode);
         var list = await Data<List<ExtractionJobView>>(await client.GetAsync("/api/intake/extractions"));
         Assert.Empty(list);
+    }
+
+    [Fact]
+    public async Task ImagesOnly_UsesSignedStudentAndDeduplicatesOnlyWithinThatStudent()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var signer = RSA.Create(2048);
+        using var root = new ExtractionHostFixture(database.Connection);
+        const string trust = "Emenda:Security:PortalStudentAssertions:0:";
+        using var factory = root.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [trust + "CallerName"] = "http-tests", [trust + "Issuer"] = "https://portal.example",
+                [trust + "Audience"] = "emenda-images", [trust + "PublicKeyPem"] = signer.ExportSubjectPublicKeyInfoPem()
+            })));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
+        async Task<HttpResponseMessage> Submit(string? student, bool extraField = false)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, PortalStudentAssertion.UploadPath);
+            using var form = new MultipartFormDataContent();
+            var image = new ByteArrayContent(TestPng());
+            image.Headers.ContentType = new("image/png");
+            form.Add(image, "images", "page.png");
+            if (extraField) form.Add(new StringContent("different-student"), "studentId");
+            request.Content = form;
+            if (student is not null)
+            {
+                var claims = PortalStudentAssertionTests.Claims();
+                claims["sub"] = student; claims["caller"] = "http-tests";
+                request.Headers.Add(PortalStudentAssertion.HeaderName, PortalStudentAssertionTests.Sign(signer, claims));
+            }
+            return await client.SendAsync(request);
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await Submit(null)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Submit("student-a", extraField: true)).StatusCode);
+        var first = (await Data<JsonElement>(await Submit("student-a"))).GetProperty("id").GetGuid();
+        var replay = (await Data<JsonElement>(await Submit("student-a"))).GetProperty("id").GetGuid();
+        var other = (await Data<JsonElement>(await Submit("student-b"))).GetProperty("id").GetGuid();
+        Assert.Equal(first, replay);
+        Assert.NotEqual(first, other);
+        await using var db = database.CreateContext();
+        var stored = await db.ExtractionJobs.FindAsync(first);
+        Assert.Equal("student-a", stored!.StudentId);
+        Assert.Null(stored.Grade);
+    }
+
+    [Fact]
+    public async Task Operations_ListsAcrossCallers_RequiresGrantAndCsrf_AndRemovesDeletedTask()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var admin = factory.CreateClient(new() { AllowAutoRedirect = false });
+        using var agent = factory.CreateClient();
+        const string ops = "/api/ops/extractions";
+        const string key = "fixture-only-operations-credential-for-local-testing";
+        using var scope = factory.Services.CreateScope();
+        var callers = scope.ServiceProvider.GetRequiredService<DynamicCallerStore>();
+        var service = scope.ServiceProvider.GetRequiredService<ExtractionService>();
+        await callers.UpsertAsync("agent-fixture", key, "fixture", "");
+        var job = await service.SubmitAsync(new("http-tests", "http-tests"), new("student-a", 4, "source-a",
+            [new() { ContentType = "image/png", Content = TestPng(), FileName = "page.png" }]));
+        var other = await service.SubmitAsync(new("agent-fixture", "agent-fixture"), new("student-b", 4, "source-b",
+            [new() { ContentType = "image/png", Content = TestPng(), FileName = "page.png" }]));
+        await service.RunQueuedAsync(default);
+        await service.RunQueuedAsync(default);
+        var ownerAccess = new ExtractionAccess("http-tests", "http-tests");
+        var initial = await service.GetAsync(ownerAccess, job.Id);
+        var first = initial.Questions.Single().Question;
+        var mixed = await service.ReviseAsync(ownerAccess, job.Id, new(Guid.NewGuid(), initial.Version, "Mixed worksheet",
+            [first, first with { Id = Guid.NewGuid(), Statement = "Second question", Regions = [first.Regions[0] with { X1 = .5 }] }]));
+        var retained = mixed.Questions[0];
+        using var owner = factory.CreateClient();
+        owner.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
+        using var confirmed = await owner.PostAsJsonAsync($"/api/intake/extractions/{job.Id}/questions/{first.Id}/review",
+            new ExtractionReviewRequest(mixed.Version, retained.ItemId!.Value, (int)ReviewStatus.Confirmed, "test-teacher", null, null));
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        var imageBefore = await owner.GetByteArrayAsync($"/api/intake/extractions/{job.Id}/questions/{first.Id}/images/{mixed.Version}/0");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await agent.GetAsync(ops)).StatusCode);
+        agent.DefaultRequestHeaders.Add("X-Emenda-Api-Key", key);
+        Assert.Equal(HttpStatusCode.Forbidden, (await agent.GetAsync(ops)).StatusCode);
+        await callers.UpdateAsync("agent-fixture", null, null, canOperateExtractions: true);
+        var summaries = await Data<ExtractionSummaryPage>(await agent.GetAsync(ops));
+        Assert.Equal(new[] { other.Id, job.Id }, summaries.Items.Select(x => x.Id));
+        Assert.Equal(1, summaries.Items[0].MistakeCount);
+        Assert.Equal(2, summaries.Items[1].MistakeCount);
+        Assert.Equal(1, summaries.Items[1].ConfirmedCount);
+        var session = await factory.SeedSessionAsync(admin);
+        var route = $"/admin/api/extractions/{job.Id}";
+        Assert.Equal(HttpStatusCode.Forbidden, (await admin.DeleteAsync(route)).StatusCode);
+        await factory.AddCsrfAsync(admin, session);
+        var deletion = await Data<JsonElement>(await admin.DeleteAsync(route));
+        Assert.Equal(job.Id, deletion.GetProperty("jobId").GetGuid());
+        Assert.Equal(1, deletion.GetProperty("deletedMistakes").GetInt32());
+        Assert.Equal(1, deletion.GetProperty("retainedConfirmed").GetInt32());
+        var retainedPath = $"/api/intake/extractions/retained/{retained.ItemId}/images/0";
+        Assert.Equal(imageBefore, await owner.GetByteArrayAsync(retainedPath));
+        Assert.Equal(HttpStatusCode.NotFound, (await agent.GetAsync(retainedPath)).StatusCode);
+        var detail = await Data<JsonElement>(await owner.GetAsync($"/api/mistakes/{retained.ItemId}"));
+        Assert.Equal(first.Statement, detail.GetProperty("analysisSnapshot").GetProperty("statement").GetString());
+        Assert.Equal(other.Id, Assert.Single((await Data<ExtractionSummaryPage>(await agent.GetAsync(ops))).Items).Id);
+        Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync($"{ops}/{job.Id}/deletion")).StatusCode);
+        await callers.UpdateAsync("agent-fixture", null, null, canOperateExtractions: false);
+        Assert.Equal(HttpStatusCode.Forbidden, (await agent.DeleteAsync($"{ops}/{other.Id}")).StatusCode);
     }
 
     internal static byte[] TestPng()

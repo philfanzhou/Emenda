@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
@@ -69,7 +70,12 @@ public static partial class MistakeHttpEndpoints
         if (item.ConversationSource != null && !IsProductCaller(user))
             return ErrorKind("authentication_required", 401);
 
-        return MistakeHttpResponse.Ok(MapMistakeItemDto(item));
+        var detail = MapMistakeItemDto(item);
+        if (item.ConversationSource is null && item.AnalysisSnapshot is { } snapshot &&
+            detail.ReviewStatus is ReviewStatus.PendingReview or ReviewStatus.Confirmed)
+            detail.AnalysisSnapshot = JsonSerializer.Deserialize<MistakeAnalysisSnapshotDto>(snapshot, JsonSerializerOptions.Web);
+
+        return MistakeHttpResponse.Ok(detail);
     }
 
     // GET /api/mistakes/by-upload/{sourceUploadId}
@@ -312,6 +318,10 @@ public static partial class MistakeHttpEndpoints
         {
             var result = await mistakeService.AddPracticeAsync(practice, imagePaths);
             return MistakeHttpResponse.Ok(MapPracticeDto(result));
+        }
+        catch (MistakeConflictException ex)
+        {
+            return ErrorKind(ex.Code, 409);
         }
         catch (MistakeValidationException ex)
         {

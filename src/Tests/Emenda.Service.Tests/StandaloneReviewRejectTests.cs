@@ -295,6 +295,9 @@ public sealed class StandaloneReviewRejectTests
         public Task<List<OssObjectInfo>> ListObjectsAsync(string? prefix = null) =>
             throw new NotImplementedException();
 
+        public Task<List<OssObjectInfo>> ListExtractionObjectsAsync(Guid jobId) =>
+            throw new NotImplementedException();
+
         public Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null) =>
             throw new NotImplementedException();
     }

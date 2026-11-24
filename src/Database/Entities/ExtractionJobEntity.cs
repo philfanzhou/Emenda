@@ -11,7 +11,8 @@ public sealed class ExtractionJobEntity
     [Column("source_key"), Required, MaxLength(64)] public string SourceKey { get; set; } = "";
     [Column("payload_hash"), Required, MaxLength(64)] public string PayloadHash { get; set; } = "";
     [Column("student_id"), Required, MaxLength(36)] public string StudentId { get; set; } = "";
-    [Column("grade")] public int Grade { get; set; }
+    [Column("grade")] public int? Grade { get; set; }
+    [Column("content_hash"), MaxLength(64)] public string? ContentHash { get; set; }
     [Column("status"), Required] public string Status { get; set; } = "Staging";
     [Column("version")] public int Version { get; set; }
     [Column("sources_json", TypeName = "jsonb"), Required] public string SourcesJson { get; set; } = "[]";

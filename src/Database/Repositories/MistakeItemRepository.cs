@@ -28,13 +28,13 @@ public class MistakeItemRepository : IMistakeItemRepository
 
     public async Task<MistakeItemModel?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var entity = await _dbContext.MistakeItems.FindAsync(new object?[] { id }, ct);
-        return entity != null ? MapToModel(entity) : null;
+        var entity = await _dbContext.MistakeItems.SingleOrDefaultAsync(item => item.Id == id, ct);
+        return entity != null ? MapToModel(entity, entity.AnalysisSnapshot) : null;
     }
 
     public async Task<bool> UpdateAsync(MistakeItemModel model, CancellationToken ct = default)
     {
-        var entity = await _dbContext.MistakeItems.FindAsync(model.Id);
+        var entity = await _dbContext.MistakeItems.SingleOrDefaultAsync(item => item.Id == model.Id, ct);
         if (entity == null) return false;
         await EnsureIdentityAsync(entity, model, ct);
 
@@ -54,14 +54,16 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.UpdatedAt = model.UpdatedAt;
 
         _dbContext.MistakeItems.Update(entity);
+        // Only extraction publication and backfill own this column.
+        _dbContext.Entry(entity).Property(e => e.AnalysisSnapshot).IsModified = false;
         return true;
     }
 
     /// <summary>
     /// Source-backed items keep the identity their source assigned: conversation items keep
-    /// their student, source and conversation evidence; items created by an extraction
-    /// question keep their student, source and image regions (corrections go through the
-    /// extraction revision API, which rewrites the item together with its question).
+    /// their student, source and conversation evidence; extraction items (including
+    /// retained items after job deletion) keep their student, source, question and image
+    /// regions. Corrections go through the extraction revision API.
     /// </summary>
     private async Task EnsureIdentityAsync(MistakeItemEntity stored, MistakeItemModel proposed, CancellationToken ct)
     {
@@ -70,8 +72,10 @@ public class MistakeItemRepository : IMistakeItemRepository
             || proposed.ConversationSource != stored.ConversationSource || proposed.ConversationActive != stored.ConversationActive))
             throw new MistakeConflictException("conversation_identity");
         if ((proposed.StudentId != stored.StudentId || proposed.SourceUploadId != stored.SourceUploadId
+             || proposed.QuestionId != stored.QuestionId
              || !SameRegions(MapSourceRegions(proposed.SourceRegions), stored.SourceRegions))
-            && await _dbContext.ExtractionQuestions.AnyAsync(q => q.ItemId == stored.Id, ct))
+            && (stored.SourceUploadId.StartsWith("extract:", StringComparison.Ordinal)
+                || await _dbContext.ExtractionQuestions.AnyAsync(q => q.ItemId == stored.Id, ct)))
             throw new MistakeConflictException("source_managed");
     }
 
@@ -87,7 +91,7 @@ public class MistakeItemRepository : IMistakeItemRepository
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
     {
-        var entity = await _dbContext.MistakeItems.FindAsync(id);
+        var entity = await _dbContext.MistakeItems.SingleOrDefaultAsync(item => item.Id == id, ct);
         if (entity == null) return false;
 
         _dbContext.MistakeItems.Remove(entity);
@@ -185,7 +189,9 @@ public class MistakeItemRepository : IMistakeItemRepository
         };
     }
 
-    private static MistakeItemModel MapToModel(MistakeItemEntity entity)
+    private static MistakeItemModel MapToModel(MistakeItemEntity entity) => MapToModel(entity, null);
+
+    private static MistakeItemModel MapToModel(MistakeItemEntity entity, string? analysisSnapshot)
     {
         return new MistakeItemModel
         {
@@ -214,6 +220,7 @@ public class MistakeItemRepository : IMistakeItemRepository
             ReviewerId = entity.ReviewerId,
             ReviewedAt = entity.ReviewedAt,
             RootCause = entity.RootCause,
+            AnalysisSnapshot = analysisSnapshot,
             QuestionId = entity.QuestionId,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

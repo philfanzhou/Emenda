@@ -49,6 +49,28 @@ public sealed class ConversationCollectionPostgresTests
     }
 
     [Fact]
+    public async Task UnansweredPhotoCollectsNoMistakeEvenWithAValidPreparedCrop()
+    {
+        await using var f = await Fixture.CreateAsync();
+        const string original = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC";
+        using var decoded = GuardedImageDecoder.LoadQuestion(Convert.FromBase64String(original.Split(',')[1]));
+        var crop = decoded.CropQuestion(0, 0, 1000, 1000);
+        var asset = new ConversationExportAsset(Guid.NewGuid(), 0, new(0, 0, 1000, 1000), crop.Width, crop.Height,
+            "data:image/jpeg;base64," + Convert.ToBase64String(crop.Data));
+        var packet = f.Packet(outcome: "unknown", attempt: false);
+        var item = packet.Events[0];
+        await f.Receive(packet with
+        {
+            Events = [item with { Question = item.Question with { AssetIds = [asset.Id], KnowledgePoints = ["Addition"] } }],
+            Assets = [asset], Sources = [new(0, "Please tell me the answer", original)]
+        });
+        await using var db = f.Open();
+        Assert.Empty(await db.MistakeItems.ToListAsync());
+        Assert.Equal("skipped", (await db.ConversationMistakeReceipts.SingleAsync()).Status);
+        Assert.Equal("completed", (await db.ConversationCollections.SingleAsync()).Status);
+    }
+
+    [Fact]
     public async Task RevocationAndFabricatedQuotesAreDeniedBeforeMaterialization()
     {
         await using var f = await Fixture.CreateAsync();

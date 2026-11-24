@@ -37,8 +37,10 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
         Files = new LocalFileOssService(_root);
         Oss.Setup(o => o.ObjectExistsAsync(It.IsAny<string>())).Returns((string path) => Files.ObjectExistsAsync(path));
         Oss.Setup(o => o.DownloadAsync(It.IsAny<string>())).Returns((string path) => Files.DownloadAsync(path));
+        Oss.Setup(o => o.ListExtractionObjectsAsync(It.IsAny<Guid>())).Returns((Guid jobId) => Files.ListExtractionObjectsAsync(jobId));
         Oss.Setup(o => o.DeleteIfExistsAsync(It.IsAny<string>())).Returns((string path) => ((IOssService)Files).DeleteIfExistsAsync(path));
         Oss.Setup(o => o.DeleteDerivedAsync(It.IsAny<string>())).Returns((string path) => Oss.Object.DeleteIfExistsAsync(path));
+        Oss.Setup(o => o.DeleteExtractionOriginalAsync(It.IsAny<string>())).Returns((string path) => Files.DeleteExtractionOriginalAsync(path));
         Oss.Setup(o => o.UploadAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OssBucket>(), It.IsAny<string?>()))
             .Returns(async (byte[] bytes, string name, string type, OssBucket bucket, string? folder) =>
             {
@@ -407,6 +409,7 @@ internal sealed class FakeOssService : IOssService
         throw new NotImplementedException();
     public Task<bool> CheckConnectivityAsync() => throw new NotImplementedException();
     public Task<List<OssObjectInfo>> ListObjectsAsync(string? prefix = null) => throw new NotImplementedException();
+    public Task<List<OssObjectInfo>> ListExtractionObjectsAsync(Guid jobId) => throw new NotImplementedException();
     public Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null) =>
         throw new NotImplementedException();
 }

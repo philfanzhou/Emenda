@@ -24,11 +24,17 @@ internal static class ExtractionRules
 
     internal static void ValidateUpload(ExtractionUpload upload)
     {
-        if (upload is null || string.IsNullOrWhiteSpace(upload.StudentId) || upload.StudentId.Length > 36 ||
-            upload.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(upload.SourceKey) || upload.SourceKey.Length > 64 ||
-            upload.SourceKey.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-')) ||
-            upload.Images is null || upload.Images.Count is < 1 or > MaxSources ||
-            upload.Images.Any(i => i is null || i.Content is null || i.Content.Length is 0 or > MaxImageBytes ||
+        if (upload is null || upload.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(upload.SourceKey) || upload.SourceKey.Length > 64 ||
+            upload.SourceKey.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-')))
+            throw new ExtractionException("invalid_request");
+        ValidateImages(upload.StudentId, upload.Images);
+    }
+
+    internal static void ValidateImages(string studentId, List<ExtractionImage> images)
+    {
+        if (string.IsNullOrWhiteSpace(studentId) || studentId.Length > 36 ||
+            images is null || images.Count is < 1 or > MaxSources ||
+            images.Any(i => i is null || i.Content is null || i.Content.Length is 0 or > MaxImageBytes ||
                 i.ContentType is not ("image/jpeg" or "image/png")))
             throw new ExtractionException("invalid_request");
     }
@@ -45,7 +51,7 @@ internal static class ExtractionRules
         var sourceIds = sources.Select(s => s.Id).ToHashSet();
         foreach (var q in questions)
         {
-            if (q.Id == Guid.Empty || !ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || string.IsNullOrWhiteSpace(q.Statement) ||
+            if (q.Id == Guid.Empty || !ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || q.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(q.Statement) ||
                 q.Statement.Length > 8000 || q.StudentAnswer?.Length > 8000 ||
                 q.ReferenceAnswer is null || q.ReferenceAnswer.Length > 16000 ||
                 q.Explanation is null || q.Explanation.Length > 16000 || q.Evidence is null || q.Evidence.Length > 16000 ||

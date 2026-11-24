@@ -13,6 +13,10 @@ public sealed record ExtractionQuestionDraft
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? QuestionNumber { get; init; }
     public int Subject { get; init; }
+    // Legacy snapshots and revision hashes have no content grade.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonNumberHandling(JsonNumberHandling.Strict)]
+    public int? Grade { get; init; }
     public string Statement { get; init; } = "";
     public string? StudentAnswer { get; init; }
     public string ReferenceAnswer { get; init; } = "";
@@ -108,7 +112,9 @@ public sealed class ExtractionException(string code, int status = 400) : Excepti
 
 public sealed record QuestionAnalysisImage(Guid SourceId, string DataUrl, int Width, int Height,
     List<ExtractionRegion> Regions);
-public sealed record QuestionAnalysisRequest(int Grade, List<QuestionAnalysisImage> Images)
+public sealed record QuestionAnalysisRequest(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Grade,
+    List<QuestionAnalysisImage> Images)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public QuestionAnalysisRevision? Revision { get; init; }

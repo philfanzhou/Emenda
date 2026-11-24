@@ -66,17 +66,23 @@ public sealed class SourceIdentityGuardTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
         var id = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
         db.MistakeItems.Add(new MistakeItemEntity
         {
             Id = id, StudentId = "owner-student", Subject = 2, Grade = 7,
-            SourceUploadId = conversation ? "conversation:source" : $"extract:{Guid.NewGuid():N}",
+            SourceUploadId = conversation ? "conversation:source" : $"extract:{jobId:N}",
             SourceRegions = [new SourceRegionEntry { SourceImagePath = "mistakes/extractions/original.png" }],
             ReviewStatus = (int)ReviewStatus.PendingReview, CreatedAt = DateTimeOffset.UtcNow,
             ConversationSource = conversation ? "{}" : null,
             ConversationCaller = conversation ? StandaloneWebApplicationFactory.CallerName : null
         });
         if (!conversation)
-            db.ExtractionQuestions.Add(new ExtractionQuestionEntity { Id = Guid.NewGuid(), JobId = Guid.NewGuid(), ItemId = id, Active = true });
+        {
+            db.ExtractionJobs.Add(new ExtractionJobEntity { Id = jobId, Caller = "caller:" + StandaloneWebApplicationFactory.CallerName,
+                StudentId = "owner-student", SourceKey = "identity-test", PayloadHash = new string('a', 64),
+                CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
+            db.ExtractionQuestions.Add(new ExtractionQuestionEntity { Id = Guid.NewGuid(), JobId = jobId, ItemId = id, Active = true });
+        }
         await db.SaveChangesAsync();
         return id;
     }

@@ -27,12 +27,16 @@ public sealed class EffectiveCallerEntry
 
     public bool Enabled { get; init; } = true;
 
+    public bool CanOperateExtractions { get; init; }
+
     public string Note { get; init; } = string.Empty;
 
     public string CreatedAtUtc { get; init; } = string.Empty;
 
     public string UpdatedAtUtc { get; init; } = string.Empty;
 }
+
+public readonly record struct CallerAuthenticationMatch(string Name, bool CanOperateExtractions);
 
 /// <summary>
 /// The effective caller set: static configuration callers merged with the
@@ -85,6 +89,7 @@ public sealed class CallerRegistry
                         ApiKey = replacement.ApiKey,
                         Source = CallerEntrySource.Dynamic,
                         Enabled = replacement.Enabled,
+                        CanOperateExtractions = replacement.CanOperateExtractions,
                         Note = replacement.Note,
                         CreatedAtUtc = replacement.CreatedAtUtc,
                         UpdatedAtUtc = replacement.UpdatedAtUtc
@@ -111,6 +116,7 @@ public sealed class CallerRegistry
                 ApiKey = entry.ApiKey,
                 Source = CallerEntrySource.Dynamic,
                 Enabled = entry.Enabled,
+                CanOperateExtractions = entry.CanOperateExtractions,
                 Note = entry.Note,
                 CreatedAtUtc = entry.CreatedAtUtc,
                 UpdatedAtUtc = entry.UpdatedAtUtc
@@ -120,24 +126,25 @@ public sealed class CallerRegistry
     }
 
     /// <summary>
-    /// Matches a presented credential against every enabled effective entry
-    /// with a fixed-time comparison. Returns the caller name or null.
+    /// Matches a presented credential with fixed-time comparisons. A key
+    /// shared by multiple effective entries never confers operations access.
     /// </summary>
-    public async Task<string?> MatchAsync(string provided, CancellationToken ct = default)
+    public async Task<CallerAuthenticationMatch?> MatchAsync(string provided, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(provided)) return null;
         var providedBytes = System.Text.Encoding.UTF8.GetBytes(provided);
-        string? matched = null;
+        EffectiveCallerEntry? matched = null;
+        var matches = 0;
         foreach (var entry in await ListAsync(ct).ConfigureAwait(false))
         {
-            if (!entry.Enabled) continue;
             var expected = System.Text.Encoding.UTF8.GetBytes(entry.ApiKey);
             if (expected.Length == providedBytes.Length &&
                 System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(expected, providedBytes))
             {
-                matched = entry.Name;
+                matches++;
+                if (entry.Enabled) matched = entry;
             }
         }
-        return matched;
+        return matched is null ? null : new CallerAuthenticationMatch(matched.Name, matches == 1 && matched.CanOperateExtractions);
     }
 }

@@ -27,6 +27,8 @@ aside { position:sticky; top:12px; }
 .job-list { list-style:none; padding:5px 7px; margin:0; max-height:55vh; overflow:auto; }
 .job-list button { width:100%; border:1px solid transparent; text-align:left; padding:10px 9px; }
 .job-list button[aria-current=true] { background:var(--tint); border-color:#c6bde5; }
+.job-list .delete-task { width:auto; text-align:center; margin:0 9px 8px; }
+.cleanup-status { margin:8px 7px; padding:8px; border-top:1px solid var(--line); }
 .job-list .spread { gap:4px; } .job-list strong { overflow-wrap:anywhere; }
 .task-head,.section-body { padding:20px 22px; }
 .task-head p,.read-text { margin-top:5px; }
@@ -99,6 +101,7 @@ textarea { min-height:60px; resize:vertical; }
           <div id="listMessage" role="status" class="muted"></div>
         </form>
         <ol id="jobs" class="job-list"></ol>
+        <div id="cleanupStatus" class="cleanup-status" hidden><p id="cleanupMessage" role="status"></p><div class="row"><button id="checkCleanup" type="button">查询清理状态</button><button id="retryCleanup" type="button" class="danger" hidden>重试清理</button></div></div>
         <div class="queue-footer spread"><button id="previous" type="button" disabled>上一页</button><span id="pageLabel" class="muted">第 1 页</span><button id="next" type="button" disabled>下一页</button></div>
       </aside>
       <section id="detail" class="panel" aria-label="任务详情"><p class="empty">选择入库任务，查看判题结果和原图。</p></section>
@@ -115,6 +118,7 @@ textarea { min-height:60px; resize:vertical; }
   const statusNames = { Staging:'原图校验中', Queued:'排队中', Running:'识别与判错中', Succeeded:'处理完成', Failed:'处理失败' };
   const outcomeNames = { correct:'正确', incorrect:'错误', unknown:'无法判断' };
   const state = { authenticated:false, page:1, filter:'', list:[], job:null, selectedId:null, loading:0, pollEpoch:0, pollTimer:null, pollCount:0, polling:false, drafts:new Map(), busy:false, section:'判题结果', questionId:null, editing:false, retryKeys:new Map() };
+  let cleanupJobId = null;
   const $ = id => document.getElementById(id);
   const copy = value => JSON.parse(JSON.stringify(value));
   function uuid() {
@@ -205,11 +209,14 @@ textarea { min-height:60px; resize:vertical; }
     $('listMessage').textContent = '读取中…'; $('previous').disabled = true; $('next').disabled = true;
     try {
       const query = new URLSearchParams({ page:String(state.page) }); if (state.filter) query.set('studentId', state.filter);
-      const body = await request(ROOT + '?' + query);
+      const body = await request(ROOT + '/summary?' + query);
       if (epoch !== listEpoch) return;
-      state.list = body.data; renderList();
+      if (!body.data.items.length && state.page > 1) {
+        state.page--; await loadList(refreshDetail); return;
+      }
+      state.list = body.data.items; renderList();
       $('listMessage').textContent = state.list.length ? '' : '未找到入库任务。';
-      $('previous').disabled = state.page <= 1; $('next').disabled = state.list.length < 20; $('pageLabel').textContent = '第 ' + state.page + ' 页';
+      $('previous').disabled = state.page <= 1; $('next').disabled = !body.data.nextPage; $('pageLabel').textContent = '第 ' + state.page + ' 页';
       if (!state.list.some(job => job.id === state.selectedId)) {
         if (state.list.length) await selectJob(state.list[0].id);
         else {
@@ -228,10 +235,48 @@ textarea { min-height:60px; resize:vertical; }
       open.setAttribute('aria-current', String(job.id === state.selectedId));
       const line = node('div', null, 'spread');
       line.append(node('strong', job.studentId), statusBadge(job)); open.title = job.id;
-      open.append(line, node('span', job.grade + ' 年级 · ' + date(job.createdAt), 'muted'));
-      li.append(open); $('jobs').append(li);
+      open.append(line, node('span', job.caller + ' · ' + date(job.createdAt), 'muted'), node('div', job.id, 'mono'),
+        node('div', '错题 ' + job.mistakeCount + ' · 已确认 ' + job.confirmedCount, 'muted'));
+      const remove = button('删除任务', () => deleteExtraction(job), 'danger delete-task');
+      remove.setAttribute('aria-label', '删除任务 ' + job.id);
+      remove.disabled = state.busy;
+      li.append(open, remove); $('jobs').append(li);
     });
   }
+  function showCleanup(receipt) {
+    const states = { Pending:'任务已移除，文件正在清理', Failed:'部分文件清理失败，可重试', Completed:'清理完成' };
+    $('cleanupStatus').hidden = false;
+    $('cleanupMessage').textContent = receipt.jobId + '：' + (states[receipt.status] || receipt.status) + '。删除错题 ' +
+      receipt.deletedMistakes + ' 道，保留已确认题 ' + receipt.retainedConfirmed + ' 道。';
+    $('retryCleanup').hidden = receipt.status !== 'Failed';
+  }
+  async function deleteExtraction(job, retry = false) {
+    if (state.busy) return;
+    if (!retry && state.drafts.has(job.id)) {
+      notice('message', '该任务有未保存的纠偏，请先保存或放弃草稿。', 'warning'); return;
+    }
+    if (!window.confirm(retry ? '重试清理任务 ' + job.id + ' 的剩余文件？' :
+      '删除试卷任务 ' + job.id + '？当前已确认的错题会保留。')) return;
+    cleanupJobId = job.id;
+    state.busy = true; renderList(); stopPolling();
+    $('checkCleanup').disabled = true; $('retryCleanup').disabled = true;
+    try {
+      showCleanup((await write('DELETE', jobUrl(job.id))).data);
+    } catch (error) {
+      $('cleanupStatus').hidden = false; $('retryCleanup').hidden = false;
+      $('cleanupMessage').textContent = '未确认清理结果：' + error.message + '。请先查询状态。';
+    } finally {
+      state.busy = false; $('checkCleanup').disabled = false; $('retryCleanup').disabled = false;
+      await loadList(false);
+    }
+  }
+  $('checkCleanup').onclick = async () => {
+    if (!cleanupJobId || state.busy) return;
+    const id = cleanupJobId;
+    try { const body = await request(jobUrl(id) + '/deletion'); if (id === cleanupJobId) showCleanup(body.data); }
+    catch (error) { if (id === cleanupJobId) $('cleanupMessage').textContent = '无法确认清理状态：' + error.message; }
+  };
+  $('retryCleanup').onclick = () => { if (cleanupJobId) deleteExtraction({ id:cleanupJobId }, true); };
   $('filterForm').onsubmit = event => { event.preventDefault(); state.filter = $('filterStudent').value.trim(); state.page = 1; loadList(); };
   $('previous').onclick = () => { if (state.page > 1) { state.page--; loadList(); } };
   $('next').onclick = () => { state.page++; loadList(); };
@@ -280,7 +325,7 @@ textarea { min-height:60px; resize:vertical; }
     if (retry && (job.attempt > retry.attempt || job.status !== 'Failed')) state.retryKeys.delete(job.id);
     const draft = state.drafts.get(job.id);
     if (draft && (draft.conflict || job.version !== draft.expectedVersion)) { draft.remote = copy(job); draft.conflict = true; }
-    state.list = state.list.map(item => item.id === job.id ? job : item); renderList();
+    state.list = state.list.map(item => item.id === job.id ? { ...item, status:job.status } : item); renderList();
   }
   async function refreshCurrent(continuePolling) {
     const id = state.selectedId; if (!id || state.busy) return;

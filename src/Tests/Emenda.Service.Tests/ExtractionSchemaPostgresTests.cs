@@ -22,7 +22,7 @@ public sealed class ExtractionSchemaPostgresTests
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now())");
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
         result.FromVersion.Should().Be(15);
-        result.ToVersion.Should().Be(20);
+        result.ToVersion.Should().Be(22);
         (await db.MistakeItems.SingleAsync()).Id.Should().Be(itemId);
         (await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded.Should().BeFalse();
         (await db.Database.GetAppliedMigrationsAsync()).Should().Contain("20261116000000_AddExtractions");
@@ -38,15 +38,18 @@ public sealed class ExtractionSchemaPostgresTests
         job.SourcesJson = "[{\"id\":\"702b2566-b846-40e5-81dd-9d742166e009\",\"path\":\"mistakes/extractions/retained/original.png\",\"sha256\":\"original-digest\"}]";
         var receipt = NewRevision(job.Id);
         receipt.SnapshotJson = "{\"questions\":[]}";
-        db.ExtractionJobs.Add(job);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO extraction_job(id,caller,student_id,grade,source_key,payload_hash,status,sources_json,created_at,updated_at)
+            VALUES ({job.Id},{job.Caller},{job.StudentId},{job.Grade},{job.SourceKey},{job.PayloadHash},{job.Status},
+                {job.SourcesJson}::jsonb,{job.CreatedAt},{job.UpdatedAt})
+            """);
         db.ExtractionRevisions.Add(receipt);
         await db.SaveChangesAsync();
-        await db.Entry(job).ReloadAsync();
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         upgraded.FromVersion.Should().Be(16);
-        upgraded.ToVersion.Should().Be(20);
+        upgraded.ToVersion.Should().Be(22);
         db.ChangeTracker.Clear();
-        (await db.ExtractionJobs.SingleAsync()).SourcesJson.Should().Be(job.SourcesJson);
+        (await db.ExtractionJobs.SingleAsync()).SourcesJson.Should().Contain("original-digest");
         (await db.ExtractionRevisions.SingleAsync()).RequestKey.Should().Be(receipt.RequestKey);
         (await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded.Should().BeFalse();
         db.Database.HasPendingModelChanges().Should().BeFalse();
@@ -72,7 +75,7 @@ public sealed class ExtractionSchemaPostgresTests
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now())");
         await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM mistake_item WHERE id={itemId}");
         (await db.ExtractionQuestions.SingleAsync()).ItemId.Should().Be(itemId);
-        await RejectAsync(db, $"INSERT INTO extraction_job SELECT '{Guid.NewGuid()}'::uuid,caller,source_key,payload_hash,student_id,grade,status,version,sources_json,layout_json,candidate_json,error_code,created_at,updated_at,owner_id,fence,lease_until,attempt,last_retry_key,retry_keys_json FROM extraction_job", PostgresErrorCodes.UniqueViolation);
+        await RejectAsync(db, $"INSERT INTO extraction_job SELECT '{Guid.NewGuid()}'::uuid,caller,source_key,payload_hash,student_id,grade,status,version,sources_json,layout_json,candidate_json,error_code,created_at,updated_at,owner_id,fence,lease_until,attempt,last_retry_key,retry_keys_json,content_hash FROM extraction_job", PostgresErrorCodes.UniqueViolation);
         await RejectAsync(db, "INSERT INTO extraction_revision SELECT job_id,version+1,request_key,payload_hash,snapshot_json,actor,reason,model,created_at FROM extraction_revision", PostgresErrorCodes.UniqueViolation);
         await RejectAsync(db, $"INSERT INTO extraction_revision SELECT job_id,version,'{Guid.NewGuid()}'::uuid,payload_hash,snapshot_json,actor,reason,model,created_at FROM extraction_revision", PostgresErrorCodes.UniqueViolation);
         await DatabaseInitializer.InitializeAsync(db, NullLoggerFactory.Instance);

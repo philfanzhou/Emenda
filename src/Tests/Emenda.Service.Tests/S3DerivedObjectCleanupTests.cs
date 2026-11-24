@@ -7,15 +7,19 @@ namespace Emenda.Service.Tests;
 public sealed class S3DerivedObjectCleanupTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task PurgesEveryContentVersionRatherThanOnlyHidingThem_AndKeepsFailureRetryable(bool failDeletion)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task PurgesEveryContentVersionRatherThanOnlyHidingThem_AndKeepsFailureRetryable(bool failDeletion, bool original)
     {
         var port = HostProcess.GetAvailablePort();
         using var listener = new HttpListener();
         listener.Prefixes.Add($"http://127.0.0.1:{port}/");
         listener.Start();
-        var key = "mistakes/extractions/11111111111141118111111111111111/versions/revision/crop.png";
+        var key = original
+            ? $"mistakes/extractions/{Guid.NewGuid():N}/originals/{Guid.NewGuid():N}.png"
+            : "mistakes/extractions/synthetic-job/versions/synthetic-revision/crop.png";
         var versions = new HashSet<string> { "old", "current", "marker" };
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var server = Task.Run(async () =>
@@ -54,9 +58,11 @@ public sealed class S3DerivedObjectCleanupTests
         {
             var service = new S3OssService(new() { InternalEndpoint = $"127.0.0.1:{port}", BucketName = "test-bucket",
                 AccessKey = "synthetic-access", SecretKey = "synthetic-secret" });
-            Assert.Equal(!failDeletion, await service.DeleteDerivedAsync(key).WaitAsync(stop.Token));
+            Assert.Equal(!failDeletion, await (original ? service.DeleteExtractionOriginalAsync(key) : service.DeleteDerivedAsync(key)).WaitAsync(stop.Token));
             Assert.Equal(failDeletion ? 2 : 0, versions.Count(v => v != "marker"));
             Assert.False(await service.DeleteDerivedAsync("mistakes/extractions/job/originals/keep.png"));
+            Assert.False(await service.DeleteExtractionOriginalAsync("mistakes/extractions/job/originals/keep.png"));
+            if (original) Assert.False(await service.DeleteDerivedAsync(key));
         }
         finally { stop.Cancel(); await server; listener.Stop(); }
     }

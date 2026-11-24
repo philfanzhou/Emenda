@@ -1,6 +1,7 @@
 using Emenda.Database;
 using Emenda.Database.Entities;
 using Emenda.Domain.Models;
+using Emenda.Service.Dtos;
 using Emenda.Service.Intake;
 using Microsoft.EntityFrameworkCore;
 
@@ -63,7 +64,15 @@ public sealed partial class ExtractionService
                 : request.Questions;
             if (acceptance is not null)
                 drafts = await ProposalRevisionAsync(db, id, initial.Version, prior ?? new([]), acceptance, ct);
+            else if (prior is not null && drafts is not null)
+            {
+                // Legacy Portal corrections omit grade. Keep inferred grades on existing groups.
+                var priorGrades = prior.Questions.ToDictionary(q => q.Question.Id, q => q.Question.Grade);
+                drafts = drafts.Select(q => q is not null && q.Grade is null && priorGrades.GetValueOrDefault(q.Id) is { } grade
+                    ? q with { Grade = grade } : q!).ToList();
+            }
             ExtractionRules.ValidateQuestions(drafts, Sources(initial), automatic: false);
+            if (drafts is null) throw new ExtractionException("invalid_questions");
         }
         var snapshot = await BuildSnapshotAsync(id, request.RequestKey, drafts, Sources(initial), prior, ct);
         await using var publish = Open();
@@ -117,8 +126,9 @@ public sealed partial class ExtractionService
             if (proposed.Question.Outcome == "incorrect" && row.ItemId is null)
             {
                 item = new() { Id = Guid.NewGuid(), StudentId = job.StudentId, Subject = proposed.Question.Subject,
-                    Grade = job.Grade, SourceUploadId = $"extract:{job.Id:N}", QuestionId = row.Id.ToString("D"),
+                    Grade = proposed.Question.Grade ?? 0, SourceUploadId = $"extract:{job.Id:N}", QuestionId = row.Id.ToString("D"),
                     SourceRegions = proposed.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).ToList(),
+                    AnalysisSnapshot = SerializeAnalysis(proposed.Question, job.Version + 1),
                     ReviewStatus = (int)ReviewStatus.PendingReview, CreatedAt = now };
                 row.ItemId = item.Id;
                 db.MistakeItems.Add(item);
@@ -131,8 +141,11 @@ public sealed partial class ExtractionService
             {
                 RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
                 item.Subject = proposed.Question.Subject;
+                item.Grade = proposed.Question.Grade ?? 0;
                 item.SourceRegions = proposed.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).ToList();
                 item.ReviewStatus = proposed.Question.Outcome == "incorrect" ? (int)ReviewStatus.PendingReview : (int)ReviewStatus.Rejected;
+                item.AnalysisSnapshot = proposed.Question.Outcome == "incorrect"
+                    ? SerializeAnalysis(proposed.Question, job.Version + 1) : null;
                 item.ReviewerId = null;
                 item.ReviewedAt = null;
                 item.RootCause = null;
@@ -149,6 +162,7 @@ public sealed partial class ExtractionService
             RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
             item.SourceRegions = [];
             item.ReviewStatus = (int)ReviewStatus.Rejected;
+            item.AnalysisSnapshot = null;
             item.ReviewerId = null;
             item.ReviewedAt = null;
             item.RootCause = null;
@@ -173,6 +187,10 @@ public sealed partial class ExtractionService
         job.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
     }
+
+    private static string SerializeAnalysis(ExtractionQuestionDraft question, int version) =>
+        ExtractionRules.Serialize(new MistakeAnalysisSnapshotDto(question.Statement, question.StudentAnswer!,
+            question.ReferenceAnswer, question.Explanation, question.Evidence, version));
 
     private static void RetainBeforeCorrection(MistakeDbContext db, MistakeItemEntity item, string actor,
         string reason, int version, DateTimeOffset now) => db.ProcessLogs.Add(new()

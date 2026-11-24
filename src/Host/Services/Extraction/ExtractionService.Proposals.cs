@@ -34,7 +34,7 @@ public sealed partial class ExtractionService
         if (!options.Value.Enabled) throw new ExtractionException("extraction_disabled", 503);
         var hash = ExtractionRules.Hash(request);
         Guid proposalId, owner;
-        int grade;
+        int? grade;
         List<ExtractionSource> sources;
         List<ExtractionQuestionDraft> context;
         HashSet<int> subjects;

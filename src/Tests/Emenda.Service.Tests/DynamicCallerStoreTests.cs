@@ -30,15 +30,15 @@ public sealed class DynamicCallerStoreTests : IDisposable
         await BootstrapAsync();
         var first = CreateStore();
         await first.UpsertAsync("study-platform", "key-1", "admin", "bootstrap");
-        (await Registry(first).MatchAsync("key-1")).Should().Be("study-platform");
+        ((await Registry(first).MatchAsync("key-1"))?.Name).Should().Be("study-platform");
 
         var second = CreateStore();
-        (await Registry(second).MatchAsync("key-1")).Should().Be("study-platform");
+        ((await Registry(second).MatchAsync("key-1"))?.Name).Should().Be("study-platform");
         await second.UpsertAsync("study-platform", "key-2", "admin", "rotated");
         foreach (var registry in new[] { Registry(second), Registry(CreateStore()) })
         {
             (await registry.MatchAsync("key-1")).Should().BeNull();
-            (await registry.MatchAsync("key-2")).Should().Be("study-platform");
+            ((await registry.MatchAsync("key-2"))?.Name).Should().Be("study-platform");
         }
     }
 
@@ -53,7 +53,7 @@ public sealed class DynamicCallerStoreTests : IDisposable
             """);
         var store = CreateStore();
         var registry = Registry(store, ("platform", "static-key"), ("unrelated", "unrelated-key"));
-        (await registry.MatchAsync("override-key")).Should().Be("platform");
+        ((await registry.MatchAsync("override-key"))?.Name).Should().Be("platform");
         (await registry.MatchAsync("static-key")).Should().BeNull();
 
         switch (operation)
@@ -77,8 +77,8 @@ public sealed class DynamicCallerStoreTests : IDisposable
         {
             (await effective.MatchAsync("static-key")).Should().BeNull();
             (await effective.MatchAsync("override-key")).Should().BeNull();
-            (await effective.MatchAsync("rotated-key")).Should().Be(operation == "rotate" ? "platform" : null);
-            (await effective.MatchAsync("unrelated-key")).Should().Be("unrelated");
+            ((await effective.MatchAsync("rotated-key"))?.Name).Should().Be(operation == "rotate" ? "platform" : null);
+            ((await effective.MatchAsync("unrelated-key"))?.Name).Should().Be("unrelated");
             if (operation == "delete") (await effective.ListAsync()).Should().NotContain(entry => entry.Name == "platform");
         }
         using var persisted = JsonDocument.Parse(await File.ReadAllTextAsync(StorePath));
@@ -91,19 +91,21 @@ public sealed class DynamicCallerStoreTests : IDisposable
         await BootstrapAsync();
         var store = CreateStore();
         await store.UpsertAsync("platform", "dynamic-key", "admin", "");
+        await store.UpdateAsync("platform", null, null, canOperateExtractions: true);
         await store.RemoveAsync("PLATFORM");
         (await store.RemoveAsync("platform")).Should().BeNull();
         (await store.UpdateAsync("platform", true, null)).Should().BeNull();
         var tombstone = (await store.ListAsync()).Should().ContainSingle().Which;
         tombstone.Deleted.Should().BeTrue();
         tombstone.ApiKey.Should().BeEmpty("deleted credentials must not remain available for reveal");
+        tombstone.CanOperateExtractions.Should().BeFalse();
         var registry = Registry(store, ("platform", "static-key"));
         (await registry.MatchAsync("dynamic-key")).Should().BeNull();
         (await registry.MatchAsync("static-key")).Should().BeNull();
 
         await store.UpsertAsync("platform", "recreated-key", "admin", "");
         var restarted = Registry(CreateStore(), ("platform", "static-key"));
-        (await restarted.MatchAsync("recreated-key")).Should().Be("platform");
+        (await restarted.MatchAsync("recreated-key")).Should().Be(new CallerAuthenticationMatch("platform", false));
         (await restarted.MatchAsync("dynamic-key")).Should().BeNull();
         (await restarted.MatchAsync("static-key")).Should().BeNull();
     }
@@ -184,7 +186,7 @@ public sealed class DynamicCallerStoreTests : IDisposable
         await load.Should().ThrowAsync<DynamicCallerStoreUnavailableException>();
         await BootstrapAsync();
         await load.Should().ThrowAsync<DynamicCallerStoreUnavailableException>();
-        (await Registry(CreateStore(), ("platform", "static-key")).MatchAsync("static-key"))
+        ((await Registry(CreateStore(), ("platform", "static-key")).MatchAsync("static-key"))?.Name)
             .Should().Be("platform");
     }
 
@@ -196,7 +198,7 @@ public sealed class DynamicCallerStoreTests : IDisposable
         await store.UpsertAsync("platform", "dynamic-key", "admin", "");
         var json = await File.ReadAllTextAsync(StorePath);
         await File.WriteAllTextAsync(StorePath, json.Replace("\"enabled\": true", "\"enabled\": false"));
-        (await Registry(store, ("platform", "static-key")).MatchAsync("dynamic-key")).Should().Be("platform");
+        ((await Registry(store, ("platform", "static-key")).MatchAsync("dynamic-key"))?.Name).Should().Be("platform");
         var restarted = Registry(CreateStore(), ("platform", "static-key"));
         (await restarted.MatchAsync("dynamic-key")).Should().BeNull();
         (await restarted.MatchAsync("static-key")).Should().BeNull();
@@ -221,7 +223,7 @@ public sealed class DynamicCallerStoreTests : IDisposable
         await write.Should().ThrowAsync<DynamicCallerStoreUnavailableException>();
         foreach (var registry in new[] { Registry(store), Registry(CreateStore()) })
         {
-            (await registry.MatchAsync("committed-key")).Should().Be("platform");
+            ((await registry.MatchAsync("committed-key"))?.Name).Should().Be("platform");
             (await registry.MatchAsync("uncommitted-key")).Should().BeNull();
         }
     }
@@ -239,8 +241,67 @@ public sealed class DynamicCallerStoreTests : IDisposable
     public async Task RegistryWithoutStoreServesStaticConfiguration()
     {
         var registry = Registry(null, ("platform", "static-key"));
-        (await registry.MatchAsync("static-key")).Should().Be("platform");
+        (await registry.MatchAsync("static-key")).Should().Be(new CallerAuthenticationMatch("platform", false));
         (await registry.MatchAsync("other")).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task OperationsGrantDefaultsToDeniedAndGrantAndRevokeSurviveRestart(int version)
+    {
+        await BootstrapAsync($$"""
+            {"version":{{version}},"callers":[{"name":"ops-agent","apiKey":"legacy-key"}]}
+            """);
+        var store = CreateStore();
+        var registry = Registry(store, ("ops-agent", "static-key"));
+        (await registry.MatchAsync("legacy-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", false));
+
+        await store.UpdateAsync("ops-agent", null, null, canOperateExtractions: true);
+        (await registry.MatchAsync("legacy-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", true));
+        (await Registry(CreateStore()).MatchAsync("legacy-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", true));
+        (await registry.MatchAsync("static-key")).Should().BeNull();
+
+        await store.UpsertAsync("ops-agent", "rotated-key", "admin", "");
+        (await registry.MatchAsync("legacy-key")).Should().BeNull();
+        (await registry.MatchAsync("rotated-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", true));
+        await store.UpdateAsync("ops-agent", false, null);
+        (await registry.MatchAsync("rotated-key")).Should().BeNull();
+        await store.UpdateAsync("ops-agent", true, null, canOperateExtractions: false);
+        (await registry.MatchAsync("rotated-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", false));
+        (await Registry(CreateStore()).MatchAsync("rotated-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", false));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SharedKeyNeverConfersOperationsAccess(bool otherCallerEnabled)
+    {
+        await BootstrapAsync();
+        var store = CreateStore();
+        await store.UpsertAsync("ordinary", "shared-key", "admin", "");
+        await store.UpdateAsync("ordinary", otherCallerEnabled, null);
+        await store.UpsertAsync("ops-agent", "shared-key", "admin", "");
+        await store.UpdateAsync("ops-agent", null, null, canOperateExtractions: true);
+
+        (await Registry(store).MatchAsync("shared-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", false));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FailedPersistenceLeavesPreviousOperationsGrantActive(bool originallyGranted)
+    {
+        await BootstrapAsync();
+        var store = CreateStore();
+        await store.UpsertAsync("ops-agent", "ops-key", "admin", "");
+        await store.UpdateAsync("ops-agent", null, null, canOperateExtractions: originallyGranted);
+        Directory.CreateDirectory(StorePath + ".tmp");
+
+        var write = () => store.UpdateAsync("ops-agent", null, null, canOperateExtractions: !originallyGranted);
+        await write.Should().ThrowAsync<DynamicCallerStoreUnavailableException>();
+        foreach (var registry in new[] { Registry(store), Registry(CreateStore()) })
+            (await registry.MatchAsync("ops-key")).Should().Be(new CallerAuthenticationMatch("ops-agent", originallyGranted));
     }
 
     private static CallerRegistry Registry(DynamicCallerStore? store, params (string Name, string Key)[] callers)

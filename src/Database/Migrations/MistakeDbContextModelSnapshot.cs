@@ -50,10 +50,30 @@ namespace Emenda.Database.Migrations
 
                     b.HasKey("Path");
 
+                    b.HasIndex("JobId").HasDatabaseName("IX_extraction_object_job_id");
+
                     b.HasIndex("Pending", "NextAttempt")
                         .HasDatabaseName("IX_extraction_object_pending_next_attempt");
 
                     b.ToTable("extraction_object");
+                });
+
+            modelBuilder.Entity("Emenda.Database.Entities.ExtractionDeletionEntity", b =>
+                {
+                    b.Property<Guid>("JobId").HasColumnType("uuid").HasColumnName("job_id");
+                    b.Property<string>("AdmissionHash").IsRequired().HasMaxLength(64)
+                        .HasColumnType("character varying(64)").HasColumnName("admission_hash");
+                    b.Property<string>("SourceBindingHash").IsRequired().HasMaxLength(64)
+                        .HasColumnType("character varying(64)").HasColumnName("source_binding_hash");
+                    b.Property<string>("OwnerHash").IsRequired().HasMaxLength(64)
+                        .HasColumnType("character varying(64)").HasColumnName("owner_hash");
+                    b.Property<DateTimeOffset>("DeletedAt").HasColumnType("timestamp with time zone").HasColumnName("deleted_at");
+                    b.Property<int>("DeletedMistakes").HasColumnType("integer").HasColumnName("deleted_mistakes");
+                    b.Property<int>("RetainedConfirmed").HasColumnType("integer").HasColumnName("retained_confirmed");
+                    b.HasKey("JobId");
+                    b.HasIndex("AdmissionHash").HasDatabaseName("IX_extraction_deletion_admission_hash");
+                    b.HasIndex("SourceBindingHash").HasDatabaseName("IX_extraction_deletion_source_binding_hash");
+                    b.ToTable("extraction_deletion");
                 });
 
             modelBuilder.Entity("Emenda.Database.Entities.ExtractionProposalEntity", b =>
@@ -343,6 +363,9 @@ namespace Emenda.Database.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("candidate_json");
 
+                    b.Property<string>("ContentHash").HasMaxLength(64)
+                        .HasColumnType("character varying(64)").HasColumnName("content_hash");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -357,7 +380,7 @@ namespace Emenda.Database.Migrations
                         .HasDefaultValue(0L)
                         .HasColumnName("fence");
 
-                    b.Property<int>("Grade")
+                    b.Property<int?>("Grade")
                         .HasColumnType("integer")
                         .HasColumnName("grade");
 
@@ -432,6 +455,7 @@ namespace Emenda.Database.Migrations
                     b.HasIndex("Caller", "SourceKey")
                         .IsUnique()
                         .HasDatabaseName("IX_extraction_job_caller_source_key");
+                    b.HasIndex("Caller", "StudentId").HasDatabaseName("IX_extraction_job_caller_student_id");
 
                     b.ToTable("extraction_job");
                 });
@@ -580,6 +604,10 @@ namespace Emenda.Database.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("AnalysisSnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("analysis_snapshot");
 
                     b.Property<bool>("ConversationActive")
                         .ValueGeneratedOnAdd()

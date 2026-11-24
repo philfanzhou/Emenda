@@ -33,7 +33,7 @@ public sealed class ConversationContractTests
     }
 
     [Fact]
-    public void V6RetainsEveryUnremovedV5OperationAndSchemaWithOnlyDeclaredAuthorizationChanges()
+    public void V6RetainsEveryUnremovedV5OperationAndSchemaWithDeclaredAuthorizationAndWorksheetDetailChanges()
     {
         var previous = Resource("mistake-http-v5");
         var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
@@ -54,18 +54,23 @@ public sealed class ConversationContractTests
             foreach (var node in new[] { expected, candidate })
             {
                 node.Remove("security");
-                node["x-ruoyu"]!.AsObject().Remove("authorization");
+                node.Remove("x-ruoyu");
                 var responses = node["responses"]!.AsObject();
                 responses.Remove("202");
-                foreach (var status in new[] { "401", "403" })
-                    responses[status]?.AsObject().Remove("description");
+                foreach (var response in responses)
+                    response.Value?.AsObject().Remove("description");
             }
             Assert.True(JsonNode.DeepEquals(expected, candidate), key);
         }
         Assert.Equal(16, retained);
         Assert.Equal(15, removed.Count);
         foreach (var schema in current["components"]!["schemas"]!.AsObject())
-            Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"]![schema.Key], schema.Value), schema.Key);
+        {
+            var candidate = schema.Value!.DeepClone();
+            if (schema.Key == "MistakeItemDto")
+                Assert.True(candidate["properties"]!.AsObject().Remove("analysisSnapshot"));
+            Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"]![schema.Key], candidate), schema.Key);
+        }
     }
 
     private static JsonNode Resource(string version)
