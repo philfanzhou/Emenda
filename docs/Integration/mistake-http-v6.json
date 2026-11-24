@@ -4203,6 +4203,7 @@
       "/health": "operational probes",
       "/": "operational banner",
       "/api/intake/extractions": "automatic extraction intake (emenda-extraction-v1)",
+      "/api/ops/extractions": "cross-caller extraction operations (emenda-extraction-v2; requires an explicit operations grant)",
       "/admin": "SignaCore administrator console and its session-bound API"
     },
     "compatibility": {
