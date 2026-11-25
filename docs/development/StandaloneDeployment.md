@@ -129,6 +129,11 @@ practice, process logs and presigned reads. Rejection persists `Rejected` and it
 log without moving images. Extraction-generated items are reviewed through
 `/api/intake/extractions/{id}/questions/{questionId}/review`.
 
+Image display sizes are generated in the background (`Emenda__ImageVariants__Enabled`, default
+`true`; `Emenda__ImageVariants__BatchSize`, default 8). Schema v23 queues every existing image on
+upgrade, so the first start after upgrading backfills thumbnails without manual steps. See
+[Display sizes](../Integration/ImageVariants.md).
+
 ## Health, contracts and verification
 
 | Route | Authentication | Purpose |

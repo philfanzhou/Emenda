@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Emenda.Common.Oss;
+using Emenda.TestFixtures;
 using Emenda.Database;
 using Emenda.Domain.Models;
 using Emenda.Host.Authentication;
@@ -224,6 +225,61 @@ public sealed class ExtractionHttpPostgresTests
         Assert.Equal(HttpStatusCode.Forbidden, (await agent.DeleteAsync($"{ops}/{other.Id}")).StatusCode);
     }
 
+    [Fact]
+    public async Task RealHost_ServesEveryMistakeImageBySize()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var caller = factory.CreateClient(new() { AllowAutoRedirect = false });
+        caller.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent("student-sizes"), "studentId");
+        form.Add(new StringContent("4"), "grade");
+        form.Add(new StringContent("worksheet-sizes"), "sourceKey");
+        using var page = RasterFixture.Create(1600, 1000);
+        var image = new ByteArrayContent(page.ToByteArray(ImageMagick.MagickFormat.Png));
+        image.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(image, "images", "page.png");
+        var job = await Data<ExtractionJobView>(await caller.PostAsync("/api/intake/extractions", form));
+        using (var scope = factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<ExtractionService>().RunQueuedAsync(default);
+        job = await Data<ExtractionJobView>(await caller.GetAsync($"/api/intake/extractions/{job.Id}"));
+        var itemId = job.Questions.Single().ItemId!.Value;
+
+        using var source = await caller.GetAsync($"/api/intake/extractions/{job.Id}/sources/{job.Sources[0].Id}?size=thumbnail");
+        Assert.Equal(HttpStatusCode.OK, source.StatusCode);
+        Assert.Equal("image/jpeg", source.Content.Headers.ContentType!.MediaType);
+        Assert.True(source.Headers.CacheControl!.Private);
+        Assert.Equal(TimeSpan.FromDays(1), source.Headers.CacheControl.MaxAge);
+        using (var decoded = new ImageMagick.MagickImage(await source.Content.ReadAsByteArrayAsync())) Assert.Equal(200u, decoded.Width);
+        using var bogus = await caller.GetAsync($"/api/intake/extractions/{job.Id}/sources/{job.Sources[0].Id}?size=huge");
+        Assert.Equal(HttpStatusCode.BadRequest, bogus.StatusCode);
+        Assert.Contains("invalid_size", await bogus.Content.ReadAsStringAsync());
+
+        using var card = await caller.GetAsync($"/api/mistakes/{itemId}/images/0?size=small");
+        Assert.Equal(HttpStatusCode.OK, card.StatusCode);
+        Assert.Equal("image/jpeg", card.Content.Headers.ContentType!.MediaType);
+        using (var decoded = new ImageMagick.MagickImage(await card.Content.ReadAsByteArrayAsync())) Assert.Equal(400u, decoded.Width);
+        using var fullCrop = await caller.GetAsync($"/api/mistakes/{itemId}/images/0");
+        Assert.Equal("image/png", fullCrop.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(HttpStatusCode.NotFound, (await caller.GetAsync($"/api/mistakes/{itemId}/images/1?size=small")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await caller.GetAsync($"/api/mistakes/{itemId}/images/0?size=xl")).StatusCode);
+
+        // A legacy item reads through the same route; variants appear beside its original.
+        var oss = factory.Services.GetRequiredService<IOssService>();
+        var legacyPath = await oss.UploadAsync(page.ToByteArray(ImageMagick.MagickFormat.Jpeg), "page.jpg", "image/jpeg", OssBucket.Mistakes, "2025/06/14/legacy");
+        var legacyId = Guid.NewGuid();
+        await using (var db = database.CreateContext())
+        {
+            db.MistakeItems.Add(new() { Id = legacyId, StudentId = "student-sizes", Subject = 2, Grade = 4, SourceUploadId = "legacy-upload",
+                QuestionId = "legacy", SourceRegions = [new() { SourceImagePath = legacyPath }], ReviewStatus = 2 });
+            await db.SaveChangesAsync();
+        }
+        using var legacy = await caller.GetAsync($"/api/mistakes/{legacyId}/images/0?size=medium");
+        Assert.Equal(HttpStatusCode.OK, legacy.StatusCode);
+        Assert.True(await oss.ObjectExistsAsync(ImageVariants.PathFor(legacyPath, "medium")));
+    }
+
     internal static byte[] TestPng()
     {
         // A real raster fixture, encoded from the decoder's permitted PNM input.
@@ -289,7 +345,8 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
             services.RemoveAll<IOptions<ExtractionOptions>>();
             services.AddSingleton(Options.Create(new ExtractionOptions { Enabled = true }));
             foreach (var registration in services.Where(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)
-                && d.ImplementationType == typeof(ExtractionHostedService)).ToList()) services.Remove(registration);
+                && (d.ImplementationType == typeof(ExtractionHostedService)
+                    || d.ImplementationType == typeof(Emenda.Host.Services.Images.ImageVariantWorker))).ToList()) services.Remove(registration);
             if (_runWorker) services.AddHostedService<ExtractionHostedService>();
         });
     }

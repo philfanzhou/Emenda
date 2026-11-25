@@ -145,8 +145,10 @@ textarea { min-height:60px; resize:vertical; }
   }
   function date(value) { return new Date(value).toLocaleString('zh-CN', { hour12:false }); }
   function jobUrl(id) { return ROOT + '/' + encodeURIComponent(id); }
-  function sourceUrl(jobId, sourceId) { return jobUrl(jobId) + '/sources/' + encodeURIComponent(sourceId); }
-  function cropUrl(jobId, questionId, version, index) { return jobUrl(jobId) + '/questions/' + encodeURIComponent(questionId) + '/images/' + version + '/' + index; }
+  // Lists and cards show display variants; links and the box editor keep the full original.
+  function sized(url, size) { return size ? url + '?size=' + size : url; }
+  function sourceUrl(jobId, sourceId, size) { return sized(jobUrl(jobId) + '/sources/' + encodeURIComponent(sourceId), size); }
+  function cropUrl(jobId, questionId, version, index, size) { return sized(jobUrl(jobId) + '/questions/' + encodeURIComponent(questionId) + '/images/' + version + '/' + index, size); }
   function isActive(job) { return ['Staging','Queued','Running'].includes(job.status); }
   function showLogin(text) {
     $('who').textContent = '';
@@ -431,7 +433,7 @@ textarea { min-height:60px; resize:vertical; }
     job.sources.forEach((source, index) => {
       const figure = node('figure'), link = node('a'), image = node('img');
       link.href = sourceUrl(job.id, source.id); link.target = '_blank'; link.rel = 'noopener';
-      image.src = link.href; image.loading = 'lazy'; image.alt = '查看原图 ' + (index + 1);
+      image.src = sourceUrl(job.id, source.id, 'thumbnail'); image.loading = 'lazy'; image.alt = '查看原图 ' + (index + 1);
       link.append(image); figure.append(link, node('figcaption', '原图 ' + (index + 1) + ' · ' + source.width + ' × ' + source.height + ' · EXIF ' + (source.orientation || 1)), node('div', source.id, 'mono'));
       list.append(figure);
     });
@@ -468,7 +470,7 @@ textarea { min-height:60px; resize:vertical; }
     view.images.forEach((crop, i) => {
       const figure = node('figure'), link = node('a'), image = node('img'), caption = node('figcaption', null, 'spread');
       link.href = cropUrl(state.job.id, q.id, version, i); link.target = '_blank'; link.rel = 'noopener';
-      image.src = link.href; image.alt = '查看第 ' + (i + 1) + ' 部分的 v' + version + ' 裁图'; image.loading = 'lazy';
+      image.src = cropUrl(state.job.id, q.id, version, i, 'small'); image.alt = '查看第 ' + (i + 1) + ' 部分的 v' + version + ' 裁图'; image.loading = 'lazy';
       link.append(image);
       const original = node('a', '查看原图 ↗'); original.href = sourceUrl(state.job.id, crop.sourceId); original.target = '_blank'; original.rel = 'noopener';
       caption.append(node('span', sourceName(crop.sourceId) + ' · 第 ' + (i + 1) + ' 部分'), original);

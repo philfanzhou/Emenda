@@ -99,6 +99,10 @@ PC 管理页「错题入库」（`/admin/extractions`）展示客户端提交的
 
 响应统一 `{success:true,data:...}`，错误 `{success:false,errorCode:...}`。处理和恢复状态可见，不能把上传成功或 HTTP 202 当作业务入库完成。
 
+## 缩略图
+
+界面上显示小图的地方都按 `size` 读取缩略图：列表和题图卡片用 `small`，原图画廊和原图列表用 `thumbnail`，详情和纠偏参照用 `medium`；点开查看和框选编辑才读原图。原图、裁图和保留裁图的读取接口都接受 `size`。缩略图在写入原图、补图、裁图时登记到 `image_variant_task`，由后台补齐，缺失时读取兜底生成，并随父对象一起回收；删除任务时已确认错题的裁图连同缩略图保留。schema v23 升级会把现有任务和错题的图片全部登记，自动补齐历史数据。详见 [显示尺寸](../Integration/ImageVariants.md)。
+
 ## 持久化与恢复
 
 迁移 `20261116000000_AddExtractions` 为 schema v16，新增 `extraction_job`、`extraction_question`、`extraction_revision`。启动时由严格升级器升级。非空 Down 拒绝，备份包含三表及原图和历史裁图。

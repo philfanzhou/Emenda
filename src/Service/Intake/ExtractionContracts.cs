@@ -101,6 +101,9 @@ public interface IExtractionService
     Task<ExtractionJobView> RetryAsync(ExtractionAccess access, Guid id, ExtractionRetryRequest request, CancellationToken ct = default);
     Task<(byte[] Bytes, string ContentType)> ReadSourceAsync(ExtractionAccess access, Guid id, Guid sourceId, CancellationToken ct = default);
     Task<(byte[] Bytes, string ContentType)> ReadCropAsync(ExtractionAccess access, Guid id, Guid questionId, int version, int index, CancellationToken ct = default);
+    /// <summary>Size is <c>full</c> (default), <c>medium</c>, <c>small</c> or <c>thumbnail</c>; variants are JPEG.</summary>
+    Task<(byte[] Bytes, string ContentType)> ReadSourceAsync(ExtractionAccess access, Guid id, Guid sourceId, string? size, CancellationToken ct = default);
+    Task<(byte[] Bytes, string ContentType)> ReadCropAsync(ExtractionAccess access, Guid id, Guid questionId, int version, int index, string? size, CancellationToken ct = default);
     Task<ExtractionSnapshot> GetVersionAsync(ExtractionAccess access, Guid id, int version, CancellationToken ct = default);
 }
 

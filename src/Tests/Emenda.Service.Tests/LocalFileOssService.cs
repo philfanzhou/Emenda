@@ -121,6 +121,14 @@ public class LocalFileOssService : IOssService
         return Task.FromResult(true);
     }
 
+    // Like S3: the object goes first, then every derived display variant.
+    public async Task<bool> DeleteDerivedAsync(string objectPath)
+    {
+        foreach (var path in ThumbnailHelper.GetAllThumbnailPaths(objectPath).Prepend(objectPath))
+            await DeleteIfExistsAsync(path);
+        return true;
+    }
+
     public async Task<bool> DeleteExtractionOriginalAsync(string objectPath)
     {
         foreach (var path in ThumbnailHelper.GetAllThumbnailPaths(objectPath).Prepend(objectPath))

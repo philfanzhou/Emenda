@@ -12,7 +12,8 @@ extracted from the Ruoyu.Study platform and now an independent open-source produ
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Local build/test workflow and pull-request expectations |
 | [Standalone deployment](./development/StandaloneDeployment.md) | Container deployment, required configuration, health checks and API examples |
 | [Automation and releases](./development/Automation.md) | CI/CodeQL/Dependabot workflows, GHCR image tags and the release process |
-| [Lifecycle contract](./Integration/mistake-http-v6.json) | Current `/api/mistakes` lifecycle wire (review, practice, process logs, presigned reads, conversation collection) |
+| [Lifecycle contract](./Integration/mistake-http-v6.json) | Current `/api/mistakes` lifecycle wire (review, practice, process logs, presigned and sized image reads, conversation collection) |
+| [Display sizes](./Integration/ImageVariants.md) | Image kinds, thumbnail sizes, generation, automatic backfill and cleanup with task deletion |
 | [Standalone verification](./development/StandaloneVerification.md) | Task-owned PostgreSQL/S3 acceptance entry point (still targets the removed `/api/intake/uploads`; needs porting to extraction) |
 | [Local acceptance record](./development/StandaloneVerificationResult.md) | Observed checks, runtime versions, tested binary hashes and unverified boundaries |
 | [Automatic extraction](./modules/AutomaticExtraction.md) | Multi-image grouping, AI judgment, asynchronous intake, admin correction and retained history |

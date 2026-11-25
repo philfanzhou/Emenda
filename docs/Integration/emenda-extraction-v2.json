@@ -14,13 +14,14 @@
     "/api/intake/extractions/retained/{itemId}/images/{index}": {
       "parameters": [
         { "in": "path", "name": "itemId", "required": true, "schema": { "type": "string", "format": "uuid" } },
-        { "in": "path", "name": "index", "required": true, "schema": { "type": "integer", "minimum": 0 } }
+        { "in": "path", "name": "index", "required": true, "schema": { "type": "integer", "minimum": 0 } },
+        { "$ref": "#/components/parameters/Size" }
       ],
       "get": {
         "operationId": "readRetainedExtractionCrop",
         "description": "After task deletion, only the original caller may read a confirmed retained item's exact referenced crop. New deletions retain full SHA-256 and length independently of historical key format. Older receipts without manifests use the digest encoded in the crop name.",
         "responses": {
-          "200": { "description": "Retained PNG crop", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } },
+          "200": { "description": "Retained PNG crop; with a variant size, an upright JPEG derived from it", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/jpeg": { "schema": { "type": "string", "format": "binary" } } } },
           "401": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" }
         }
       }
@@ -303,13 +304,16 @@
             "type": "string",
             "format": "uuid"
           }
+        },
+        {
+          "$ref": "#/components/parameters/Size"
         }
       ],
       "get": {
         "operationId": "readExtractionOriginal",
         "responses": {
           "200": {
-            "description": "Exact immutable original bytes, verified against retained length and SHA-256",
+            "description": "Exact immutable original bytes, verified against retained length and SHA-256; with a variant size, an upright JPEG derived from them",
             "content": {
               "image/png": {
                 "schema": {
@@ -359,15 +363,24 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        {
+          "$ref": "#/components/parameters/Size"
         }
       ],
       "get": {
         "operationId": "readExtractionCrop",
         "responses": {
           "200": {
-            "description": "Exact retained PNG crop, verified against length/SHA-256",
+            "description": "Exact retained PNG crop, verified against length/SHA-256; with a variant size, an upright JPEG derived from it",
             "content": {
               "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
@@ -2119,6 +2132,24 @@
           "type": "integer",
           "minimum": 1
         }
+      },
+      "Size": {
+        "in": "query",
+        "name": "size",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "full",
+            "large",
+            "original",
+            "medium",
+            "small",
+            "thumbnail"
+          ],
+          "default": "full"
+        },
+        "description": "Display size. full (default; large/original are aliases) returns the stored bytes; medium (800px), small (400px) and thumbnail (200px) return an upright JPEG fitted to that long edge, never enlarged. Missing variants are rendered on demand from the verified original. Any other value is 400 invalid_size."
       }
     },
     "responses": {

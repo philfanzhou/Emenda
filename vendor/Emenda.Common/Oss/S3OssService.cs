@@ -226,11 +226,16 @@ public class S3OssService : IOssService, IDisposable
         {
             _prefixValidator?.ValidateWritePath(objectPath);
 
-            // 如果不是缩略图路径，先删除关联缩略图
+            var removeObjectArgs = new RemoveObjectArgs()
+                .WithBucket(_bucketName)
+                .WithObject(objectPath);
+
+            await _internalClient.RemoveObjectAsync(removeObjectArgs);
+
+            // 原图删除后再删关联缩略图：并发生成者上传后会复查原图，二者不会留下孤儿缩略图。
             if (!ThumbnailHelper.IsThumbnailPath(objectPath))
             {
-                var thumbnailPaths = ThumbnailHelper.GetAllThumbnailPaths(objectPath);
-                foreach (var thumbPath in thumbnailPaths)
+                foreach (var thumbPath in ThumbnailHelper.GetAllThumbnailPaths(objectPath))
                 {
                     try
                     {
@@ -246,11 +251,6 @@ public class S3OssService : IOssService, IDisposable
                 }
             }
 
-            var removeObjectArgs = new RemoveObjectArgs()
-                .WithBucket(_bucketName)
-                .WithObject(objectPath);
-
-            await _internalClient.RemoveObjectAsync(removeObjectArgs);
             return true;
         }
         catch

@@ -7,6 +7,241 @@
     "description": "Extraction-backed mistakes and their practices, logs and analyses are scoped to the original product caller, including after task deletion. Student authorization remains the trusted BFF's responsibility."
   },
   "paths": {
+    "/api/mistakes/{id}/images/{index}": {
+      "get": {
+        "operationId": "GetMistakeImage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "x-ruoyu-route-constraint": "int"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "large",
+                "original",
+                "medium",
+                "small",
+                "thumbnail"
+              ],
+              "default": "full"
+            },
+            "description": "Display size. full (default; large/original are aliases) returns the stored bytes; medium (800px), small (400px) and thumbnail (200px) return an upright JPEG fitted to that long edge, never enlarged. Missing variants are rendered on demand from the verified original. Any other value is 400 invalid_size."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image bytes: variants are image/jpeg; full keeps the stored media type.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored image cannot be read or decoded (errorKind image_unavailable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "errors": "IntakeError errorKind: invalid_size 400, not_found 404, conversation_image_forbidden 403, image_unavailable 503",
+            "integrity": "extraction crops are digest-verified before any byte or variant is served; variants are caches derived from the verified parent"
+          }
+        },
+        "description": "Bytes of the index-th picture of one mistake (zero-based sourceRegions order) at a display size. Extraction mistakes read the current crop through the owning caller's job, or the retained archive after the task was deleted; conversation mistakes require the owning product caller and canonical path; legacy mistakes read their stored image. Responses are not cacheable because a correction may replace the picture behind the same address."
+      }
+    },
     "/api/mistakes/{id}": {
       "get": {
         "operationId": "GetMistakeItem",
@@ -2294,7 +2529,8 @@
             "conversation": "conversation-backed items additionally require the owning product caller"
           },
           "semantics": {
-            "validation": "exact Ordinal mistakes/ prefix for legacy; full default, size normalizedlowercase; expiry<=0=>3600",
+            "validation": "exact Ordinal mistakes/ prefix for legacy; size is one closed vocabulary: full (default, aliases large/original), medium, small, thumbnail; any other size is 400 invalid_size and a variant path cannot be the parent of another variant; expiry<=0=>3600",
+            "conversation": "a conversation original or crop may be signed at any size, but only after the canonical parent passes the owning-caller reference check; the variant itself is never a signable parent",
             "managed": "verified managed source path may be uploads/; full only; always authenticated owner; reserved unverified targets denied; practice ownership checked",
             "capability": "short-lived bearer URL; never log URL or infer readability from object existence;404 missing object;500message on ordinary OSS generation failure"
           }
@@ -4173,7 +4409,7 @@
   },
   "x-ruoyu": {
     "businessPredicate": "/api/mistakes",
-    "businessOperationCount": 16,
+    "businessOperationCount": 17,
     "ops": {
       "GET /": {
         "authorization": "anonymous",

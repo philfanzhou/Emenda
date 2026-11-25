@@ -55,27 +55,63 @@ public sealed partial class ExtractionService
             throw new ExtractionException("storage_bytes_conflict", 503);
     }
 
+    /// <summary>Validates a requested display size before any lookup; unknown sizes never reach storage.</summary>
+    internal static string DisplaySize(string? size) =>
+        ImageVariants.Normalize(size) ?? throw new ExtractionException("invalid_size");
+
     public async Task<(byte[] Bytes, string ContentType)> ReadSourceAsync(ExtractionAccess access, Guid id,
-        Guid sourceId, CancellationToken ct = default)
+        Guid sourceId, CancellationToken ct = default) => await ReadSourceAsync(access, id, sourceId, null, ct);
+
+    public async Task<(byte[] Bytes, string ContentType)> ReadSourceAsync(ExtractionAccess access, Guid id,
+        Guid sourceId, string? size, CancellationToken ct = default)
     {
-        await using var db = Open();
-        var job = await FindAsync(db, access, id, ct);
-        var source = Sources(job).SingleOrDefault(s => s.Id == sourceId) ?? throw new ExtractionException("not_found", 404);
-        return (await VerifiedSourceAsync(source, ct), source.ContentType);
+        var display = DisplaySize(size);
+        ExtractionSource source;
+        await using (var db = Open())
+        {
+            var job = await FindAsync(db, access, id, ct);
+            source = Sources(job).SingleOrDefault(s => s.Id == sourceId) ?? throw new ExtractionException("not_found", 404);
+        }
+        if (display == ImageVariants.Full) return (await VerifiedSourceAsync(source, ct), source.ContentType);
+        return (await VariantAsync(source.Path, display, token => VerifiedSourceAsync(source, token), ct), ImageVariants.ContentType);
     }
 
     public async Task<(byte[] Bytes, string ContentType)> ReadCropAsync(ExtractionAccess access, Guid id,
-        Guid questionId, int version, int index, CancellationToken ct = default)
+        Guid questionId, int version, int index, CancellationToken ct = default) =>
+        await ReadCropAsync(access, id, questionId, version, index, null, ct);
+
+    public async Task<(byte[] Bytes, string ContentType)> ReadCropAsync(ExtractionAccess access, Guid id,
+        Guid questionId, int version, int index, string? size, CancellationToken ct = default)
     {
+        var display = DisplaySize(size);
         var snapshot = await GetVersionAsync(access, id, version, ct);
         var question = snapshot.Questions.SingleOrDefault(q => q.Question.Id == questionId)
             ?? throw new ExtractionException("not_found", 404);
         if (index < 0 || index >= question.Images.Count) throw new ExtractionException("not_found", 404);
         var crop = question.Images[index];
+        if (display != ImageVariants.Full)
+            return (await VariantAsync(crop.Path, display, token => VerifiedCropAsync(crop, token), ct), ImageVariants.ContentType);
+        return (await VerifiedCropAsync(crop, ct), "image/png");
+    }
+
+    private async Task<byte[]> VerifiedCropAsync(ExtractionCrop crop, CancellationToken ct)
+    {
         var bytes = await ReadObjectAsync(crop.Path, ExtractionRules.MaxCropBytes, ct);
         if (bytes.LongLength != crop.Length || ExtractionRules.Hash(bytes) != crop.Sha256)
             throw new ExtractionException("crop_bytes_conflict", 503);
-        return (bytes, "image/png");
+        return bytes;
+    }
+
+    // Variants are a cache: a miss renders from the verified parent; an undecodable parent is a storage fault.
+    private async Task<byte[]> VariantAsync(string parentPath, string size, Func<CancellationToken, Task<byte[]>> parent,
+        CancellationToken ct)
+    {
+        try { return await ImageVariants.ReadOrCreateAsync(oss, parentPath, size, parent, ct); }
+        catch (Exception error) when (error is ImageMagick.MagickException or InvalidDataException)
+        {
+            logger.LogWarning("Image variant rendering failed {ErrorType}", error.GetType().Name);
+            throw new ExtractionException("image_unavailable", 503);
+        }
     }
 
     private async Task<ExtractionSnapshot> BuildSnapshotAsync(Guid jobId, Guid requestKey,

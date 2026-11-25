@@ -11,7 +11,7 @@ Emenda 通过 `IOssService` 直连一个私有 S3 兼容桶（`Oss:*` 配置，�
 
 ## 签名读取
 
-`POST /api/mistakes/presigned-url` 只接受 `mistakes/` 前缀，支持 full 与缩略图尺寸；对话图片只允许 full 且须为所属调用方的规范路径。返回的预签名 URL 是短期持有凭据，公开代理须把签名 Host 与对象路径路由到同一个桶。
+`POST /api/mistakes/presigned-url` 只接受 `mistakes/` 前缀。尺寸只接受 `full`（默认，`large`/`original` 为别名）、`medium`、`small`、`thumbnail`，其他值返回 `400 invalid_size`；缩略图路径本身不能再作为原图请求缩略图。对话图片须为所属调用方的规范路径，通过校验后才签名其缩略图。尺寸、生成和清理规则见 [显示尺寸](../ImageVariants.md)。返回的预签名 URL 是短期持有凭据，公开代理须把签名 Host 与对象路径路由到同一个桶。
 
 ## 对象清理边界
 

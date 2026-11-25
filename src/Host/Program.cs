@@ -198,6 +198,13 @@ builder.Services.AddSingleton(structaDocLayoutOptions);
 // Automatic extraction (StructaDoc layout + paired AI Tutor analysis).
 builder.Services.AddExtraction(builder.Configuration);
 
+// Display variants (thumbnails) for every stored mistake image, including the automatic backfill.
+var imageVariantOptions = builder.Configuration.GetSection(Emenda.Host.Services.Images.ImageVariantOptions.SectionName)
+    .Get<Emenda.Host.Services.Images.ImageVariantOptions>() ?? new();
+builder.Services.AddSingleton(imageVariantOptions);
+builder.Services.AddScoped<Emenda.Host.Services.Images.ImageVariantBacklog>();
+builder.Services.AddHostedService<Emenda.Host.Services.Images.ImageVariantWorker>();
+
 // Readiness dependency matrix (IKJFIX): registered after every capability
 // switch and address is resolved so the snapshot reflects the wired process.
 builder.Services.AddSingleton(new MistakeReadinessSnapshot(
@@ -296,6 +303,7 @@ app.MapMistakeHttpEndpoints();
 // Admin console page, hosted-login protocol endpoints and the caller management API.
 app.MapAdminConsole();
 app.MapExtractionEndpoints();
+app.MapMistakeImageEndpoints();
 Emenda.Host.Services.Conversation.ConversationCollectionEndpoints.MapConversationCollectionEndpoints(app);
 app.MapMistakeContractEndpoints();
 // Health endpoints (IKJFIX): anonymous, outside the /api group.

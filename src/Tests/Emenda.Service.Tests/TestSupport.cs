@@ -39,7 +39,7 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
         Oss.Setup(o => o.DownloadAsync(It.IsAny<string>())).Returns((string path) => Files.DownloadAsync(path));
         Oss.Setup(o => o.ListExtractionObjectsAsync(It.IsAny<Guid>())).Returns((Guid jobId) => Files.ListExtractionObjectsAsync(jobId));
         Oss.Setup(o => o.DeleteIfExistsAsync(It.IsAny<string>())).Returns((string path) => ((IOssService)Files).DeleteIfExistsAsync(path));
-        Oss.Setup(o => o.DeleteDerivedAsync(It.IsAny<string>())).Returns((string path) => Oss.Object.DeleteIfExistsAsync(path));
+        Oss.Setup(o => o.DeleteDerivedAsync(It.IsAny<string>())).Returns((string path) => DeleteWithVariantsAsync(path));
         Oss.Setup(o => o.DeleteExtractionOriginalAsync(It.IsAny<string>())).Returns((string path) => Files.DeleteExtractionOriginalAsync(path));
         Oss.Setup(o => o.UploadAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<OssBucket>(), It.IsAny<string?>()))
             .Returns(async (byte[] bytes, string name, string type, OssBucket bucket, string? folder) =>
@@ -49,6 +49,14 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
                 if (FailAfterPut) throw new IOException("injected lost PUT response");
                 return path;
             });
+    }
+
+    // Mirrors S3: the parent goes first, then every derived display variant; a failure leaves a retryable result.
+    private async Task<bool> DeleteWithVariantsAsync(string path)
+    {
+        if (!await Oss.Object.DeleteIfExistsAsync(path)) return false;
+        foreach (var variant in ThumbnailHelper.GetAllThumbnailPaths(path)) await Files.DeleteIfExistsAsync(variant);
+        return true;
     }
 
     internal static async Task<PostgresTestDatabase> CreateAsync(bool initialize = true)
@@ -384,6 +392,9 @@ internal sealed class StandaloneWebApplicationFactory : WebApplicationFactory<Pr
 
             services.RemoveAll<IOssService>();
             services.AddSingleton<IOssService>(Oss ?? new LocalFileOssService(_ossRoot));
+            // Tests drive the variant backlog explicitly instead of racing a background loop.
+            foreach (var worker in services.Where(d => d.ImplementationType == typeof(Emenda.Host.Services.Images.ImageVariantWorker)).ToList())
+                services.Remove(worker);
 
         });
     }
