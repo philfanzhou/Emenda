@@ -53,6 +53,54 @@ public sealed class ImageVariantWorkflowPostgresTests
     }
 
     [Fact]
+    public async Task FailedParentLookupStaysQueuedUntilStorageRecovers()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        await using var context = db.CreateContext();
+        using var image = RasterFixture.Create(100, 40);
+        var path = await db.Files.UploadAsync(image.ToByteArray(MagickFormat.Png), "photo.png", "image/png", OssBucket.Mistakes, "legacy");
+        await ImageVariantSchema.EnqueueAsync(context, [path]);
+        db.Oss.Setup(o => o.ObjectExistsOrThrowAsync(path, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Storage unavailable"));
+
+        var worker = Backlog(db);
+        Assert.Equal(1, await worker.RunOnceAsync(1, default));
+        Assert.Equal(new[] { path }, await QueuedAsync(db));
+        Assert.Equal(0, await worker.RunOnceAsync(1, default));
+
+        db.Oss.Setup(o => o.ObjectExistsOrThrowAsync(path, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        await context.Database.ExecuteSqlInterpolatedAsync($"UPDATE image_variant_task SET next_attempt=clock_timestamp() WHERE path={path}");
+        Assert.Equal(1, await worker.RunOnceAsync(1, default));
+        Assert.Empty(await QueuedAsync(db));
+        Assert.True(await ImageVariants.AllExistAsync(db.Files, path));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExpiredClaimCannotCompleteOrRescheduleAnotherWorkersLease(bool storageFailed)
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        await using var context = db.CreateContext();
+        const string path = "mistakes/legacy/expired.png";
+        await ImageVariantSchema.EnqueueAsync(context, [path]);
+        db.Oss.Setup(o => o.ObjectExistsOrThrowAsync(path, It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                // A second worker acquired the expired lease while the first was waiting on S3.
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE image_variant_task SET next_attempt=clock_timestamp()+interval '10 minutes', attempts=attempts+1 WHERE path={path}");
+                if (storageFailed) throw new IOException("Storage unavailable");
+                return false;
+            });
+        Assert.Equal(1, await Backlog(db).RunOnceAsync(1, default));
+        Assert.True(await context.Database.SqlQuery<bool>($"""
+            SELECT EXISTS (SELECT 1 FROM image_variant_task WHERE path={path} AND attempts=2
+                AND next_attempt > clock_timestamp()+interval '9 minutes') AS "Value"
+            """).SingleAsync());
+    }
+
+    [Fact]
     public async Task RetiredCropsLoseTheirVariants_AndReplacementCropsAreQueued()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();

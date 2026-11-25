@@ -99,7 +99,7 @@ public static class ImageVariants
     public static async Task<bool> AllExistAsync(IOssService oss, string parentPath, CancellationToken ct = default)
     {
         foreach (var (size, _) in Sizes)
-            if (!await oss.ObjectExistsAsync(PathFor(parentPath, size)).WaitAsync(ct)) return false;
+            if (!await oss.ObjectExistsOrThrowAsync(PathFor(parentPath, size), ct)) return false;
         return true;
     }
 
@@ -129,7 +129,7 @@ public static class ImageVariants
             if (actual != path) throw new InvalidOperationException("Image variant was stored under an unexpected path.");
         }
         // Re-check after the writes: a concurrent delete removes the parent before its variants.
-        if (await oss.ObjectExistsAsync(parentPath)) return true;
+        if (await oss.ObjectExistsOrThrowAsync(parentPath, ct)) return true;
         await DiscardAsync(oss, parentPath);
         return false;
     }

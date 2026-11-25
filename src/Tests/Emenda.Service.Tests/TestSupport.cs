@@ -36,6 +36,8 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
         Connection = new NpgsqlConnectionStringBuilder(admin) { Database = name }.ConnectionString;
         Files = new LocalFileOssService(_root);
         Oss.Setup(o => o.ObjectExistsAsync(It.IsAny<string>())).Returns((string path) => Files.ObjectExistsAsync(path));
+        Oss.Setup(o => o.ObjectExistsOrThrowAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((string path, CancellationToken ct) => Files.ObjectExistsAsync(path).WaitAsync(ct));
         Oss.Setup(o => o.DownloadAsync(It.IsAny<string>())).Returns((string path) => Files.DownloadAsync(path));
         Oss.Setup(o => o.ListExtractionObjectsAsync(It.IsAny<Guid>())).Returns((Guid jobId) => Files.ListExtractionObjectsAsync(jobId));
         Oss.Setup(o => o.DeleteIfExistsAsync(It.IsAny<string>())).Returns((string path) => ((IOssService)Files).DeleteIfExistsAsync(path));

@@ -30,6 +30,8 @@ public interface IOssService
     Task<List<Stream>> DownloadManyAsync(IEnumerable<string> objectPaths);
     Task CopyObjectAsync(string sourcePath, string destPath);
     Task<bool> ObjectExistsAsync(string objectPath);
+    // Used for lifecycle decisions. Storage errors must reach the caller for retry.
+    Task<bool> ObjectExistsOrThrowAsync(string objectPath, CancellationToken ct) => ObjectExistsAsync(objectPath).WaitAsync(ct);
     Task<bool> DeleteAsync(string objectPath);
     // Idempotent cleanup: missing objects are successful; storage failures remain failures.
     Task<bool> DeleteIfExistsAsync(string objectPath) => DeleteAsync(objectPath);
@@ -57,8 +59,8 @@ public class S3OssService : IOssService, IDisposable
 {
     private readonly IMinioClient _internalClient;
     private readonly IMinioClient _presignClient;
-    private AmazonS3Client? _versionClient;
-    private readonly SemaphoreSlim _versionClientLock = new(1, 1);
+    private AmazonS3Client? _metadataClient;
+    private readonly SemaphoreSlim _metadataClientLock = new(1, 1);
     private readonly string _bucketName;
     private readonly PathPrefixValidator? _prefixValidator;
     private readonly Uri? _publicBaseUri;
@@ -87,8 +89,8 @@ public class S3OssService : IOssService, IDisposable
 
     public void Dispose()
     {
-        _versionClient?.Dispose();
-        _versionClientLock.Dispose();
+        _metadataClient?.Dispose();
+        _metadataClientLock.Dispose();
         if (!ReferenceEquals(_presignClient, _internalClient)) _presignClient.Dispose();
         _internalClient.Dispose();
     }
@@ -216,6 +218,23 @@ public class S3OssService : IOssService, IDisposable
         }
         catch
         {
+            return false;
+        }
+    }
+
+    public async Task<bool> ObjectExistsOrThrowAsync(string objectPath, CancellationToken ct)
+    {
+        var client = await MetadataClientAsync(ct);
+        try
+        {
+            var metadata = await client.GetObjectMetadataAsync(new GetObjectMetadataRequest
+                { BucketName = _bucketName, Key = objectPath }, ct);
+            return metadata.ContentLength > 0;
+        }
+        catch (AmazonS3Exception error) when (error.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // A bodyless HEAD 404 can also mean the bucket disappeared. Only retire work for a missing key.
+            await client.GetBucketLocationAsync(new GetBucketLocationRequest { BucketName = _bucketName }, ct);
             return false;
         }
     }
@@ -412,7 +431,7 @@ public class S3OssService : IOssService, IDisposable
         return objects;
     }
 
-    private AmazonS3Client CreateVersionClient(string region) =>
+    private AmazonS3Client CreateMetadataClient(string region) =>
         new(new BasicAWSCredentials(_internalClient.Config.AccessKey, _internalClient.Config.SecretKey), new AmazonS3Config
         {
             ServiceURL = _internalClient.Config.Endpoint,
@@ -420,31 +439,31 @@ public class S3OssService : IOssService, IDisposable
             ForcePathStyle = true
         });
 
-    private async Task<AmazonS3Client> VersionClientAsync(CancellationToken ct)
+    private async Task<AmazonS3Client> MetadataClientAsync(CancellationToken ct)
     {
-        var client = Volatile.Read(ref _versionClient);
+        var client = Volatile.Read(ref _metadataClient);
         if (client is not null) return client;
-        await _versionClientLock.WaitAsync(ct);
+        await _metadataClientLock.WaitAsync(ct);
         try
         {
-            if (_versionClient is not null) return _versionClient;
+            if (_metadataClient is not null) return _metadataClient;
             // Preserve Minio's bucket-location discovery, including its empty/EU location defaults.
-            using var lookup = CreateVersionClient("us-east-1");
+            using var lookup = CreateMetadataClient("us-east-1");
             var location = await lookup.GetBucketLocationAsync(new GetBucketLocationRequest { BucketName = _bucketName }, ct);
             var region = location.Location?.Value;
             region = string.IsNullOrEmpty(region) ? "us-east-1" : region == "EU" ? "eu-west-1" : region;
-            client = CreateVersionClient(region);
-            Volatile.Write(ref _versionClient, client);
+            client = CreateMetadataClient(region);
+            Volatile.Write(ref _metadataClient, client);
             return client;
         }
-        finally { _versionClientLock.Release(); }
+        finally { _metadataClientLock.Release(); }
     }
 
     private async IAsyncEnumerable<S3ObjectVersion> ListObjectVersionsAsync(string prefix,
         [EnumeratorCancellation] CancellationToken ct)
     {
         // Minio 7's iterator skips S3 version markers and delete markers, so use the maintained page API here.
-        var client = await VersionClientAsync(ct);
+        var client = await MetadataClientAsync(ct);
         var request = new ListVersionsRequest { BucketName = _bucketName, Prefix = prefix, MaxKeys = 1000 };
         HashSet<(string Key, string? Version)>? markers = null;
         while (true)
