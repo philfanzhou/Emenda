@@ -83,6 +83,36 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(6, (await db.MistakeItems.SingleAsync(i => i.Id == corrected.Question.ItemId)).Grade);
     }
 
+    [Theory]
+    [InlineData(1, "语文")]
+    [InlineData(2, "数学")]
+    [InlineData(3, "英语")]
+    [InlineData(4, "物理")]
+    [InlineData(5, "化学")]
+    [InlineData(6, "生物")]
+    [InlineData(7, "历史")]
+    [InlineData(8, "地理")]
+    [InlineData(9, "政治")]
+    public async Task GroupedResult_UsesPortalSubjectTaxonomy(int subject, string subjectName)
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var caller = Caller(factory);
+        var job = await SeedAsync(factory);
+        var drafts = job.Questions.Select(q => q.Question with { Subject = subject }).ToList();
+        var revised = await DataAsync<ExtractionJobView>(await caller.PutAsJsonAsync(
+            $"/api/intake/extractions/{job.Id}/questions",
+            new ExtractionRevisionRequest(Guid.NewGuid(), job.Version, "Set canonical curriculum subject", drafts)));
+        var grouped = await DataAsync<JsonElement>(await caller.GetAsync($"/api/intake/extractions/{job.Id}/summary"));
+        var summary = Assert.Single(grouped.GetProperty("groups").EnumerateArray()).GetProperty("summary");
+        Assert.Equal(subject, summary.GetProperty("subject").GetInt32());
+        Assert.Equal(subjectName, summary.GetProperty("subjectName").GetString());
+        await using var db = database.CreateContext();
+        var itemIds = revised.Questions.Select(q => q.ItemId!.Value).ToArray();
+        Assert.All(await db.MistakeItems.Where(item => itemIds.Contains(item.Id)).ToListAsync(),
+            item => Assert.Equal(subject, item.Subject));
+    }
+
     [Fact]
     public async Task PartialCorrection_PreservesOtherSubjectsAndReviews_AndReturnsOnlyTarget()
     {
