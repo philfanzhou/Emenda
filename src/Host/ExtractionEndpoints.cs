@@ -92,8 +92,8 @@ public static partial class ExtractionEndpoints
         }
         if (administrator) MapOperations(group, administrator: true);
         group.MapGet("/retained/{itemId:guid}/images/{index:int}",
-            async (HttpContext http, Guid itemId, int index, ExtractionService service, CancellationToken ct) =>
-                Results.File(await service.ReadRetainedCropAsync(Access(http, administrator), itemId, index, ct), "image/png"));
+            async (HttpContext http, Guid itemId, int index, string? size, ExtractionService service, CancellationToken ct) =>
+                Image(http, await service.ReadRetainedCropAsync(Access(http, administrator), itemId, index, size, ct)));
         group.MapGet("/retained/{itemId:guid}/practices/{practiceId:guid}/images/{index:int}",
             async (HttpContext http, Guid itemId, Guid practiceId, int index, ExtractionService service, CancellationToken ct) =>
             {
@@ -108,17 +108,11 @@ public static partial class ExtractionEndpoints
             Ok(await service.GetVersionAsync(Access(http, administrator), id, version, ct)));
         group.MapPost("/{id:guid}/retry", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
             Ok(await service.RetryAsync(Access(http, administrator), id, await BodyAsync<ExtractionRetryRequest>(http, ct), ct)));
-        group.MapGet("/{id:guid}/sources/{sourceId:guid}", async (HttpContext http, Guid id, Guid sourceId, IExtractionService service, CancellationToken ct) =>
-        {
-            var image = await service.ReadSourceAsync(Access(http, administrator), id, sourceId, ct);
-            return Results.File(image.Bytes, image.ContentType);
-        });
+        group.MapGet("/{id:guid}/sources/{sourceId:guid}", async (HttpContext http, Guid id, Guid sourceId, string? size, IExtractionService service, CancellationToken ct) =>
+            Image(http, await service.ReadSourceAsync(Access(http, administrator), id, sourceId, size, ct)));
         group.MapGet("/{id:guid}/questions/{questionId:guid}/images/{version:int}/{index:int}",
-            async (HttpContext http, Guid id, Guid questionId, int version, int index, IExtractionService service, CancellationToken ct) =>
-            {
-                var image = await service.ReadCropAsync(Access(http, administrator), id, questionId, version, index, ct);
-                return Results.File(image.Bytes, image.ContentType);
-            });
+            async (HttpContext http, Guid id, Guid questionId, int version, int index, string? size, IExtractionService service, CancellationToken ct) =>
+                Image(http, await service.ReadCropAsync(Access(http, administrator), id, questionId, version, index, size, ct)));
         group.MapPost("/{id:guid}/questions/{questionId:guid}/review",
             async (HttpContext http, Guid id, Guid questionId, IExtractionService service,
                 Emenda.Database.MistakeDbContext db, Emenda.Domain.Services.IMistakeDomainService mistakes, CancellationToken ct) =>
@@ -209,5 +203,12 @@ public static partial class ExtractionEndpoints
     }
 
     private static IResult Ok(object data) => Results.Json(new { success = true, data });
+
+    // Source ids, versioned crop addresses and retained crops never change their bytes; deleted or retired ones answer 404/410.
+    internal static IResult Image(HttpContext http, (byte[] Bytes, string ContentType) image)
+    {
+        http.Response.Headers.CacheControl = "private, max-age=86400";
+        return Results.File(image.Bytes, image.ContentType);
+    }
     private static IResult Error(string code, int status) => Results.Json(new { success = false, errorCode = code }, statusCode: status);
 }

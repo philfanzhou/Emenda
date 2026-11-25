@@ -145,6 +145,8 @@ public sealed partial class ExtractionService(
             current.Status = "Queued";
             current.UpdatedAt = await NowAsync(queue, ct);
             await queue.SaveChangesAsync(ct);
+            // Display variants for the stored originals are produced by the background backlog.
+            await ImageVariantSchema.EnqueueAsync(queue, Sources(current).Select(s => s.Path), ct);
         }
         await queued.CommitAsync(ct);
         return await ViewAsync(queue, current, null, ct);

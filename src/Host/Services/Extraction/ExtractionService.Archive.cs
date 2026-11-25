@@ -19,6 +19,24 @@ public sealed partial class ExtractionService
         return image.Bytes;
     }
 
+    /// <summary>
+    /// A retained confirmed crop at a display size. The crop stays referenced after its task is deleted,
+    /// so cleanup keeps it and its variants together; a missing variant is rendered from the verified file.
+    /// </summary>
+    public async Task<(byte[] Bytes, string ContentType)> ReadRetainedCropAsync(ExtractionAccess access, Guid itemId, int index,
+        string? size, CancellationToken ct)
+    {
+        var display = DisplaySize(size);
+        if (index < 0) throw new ExtractionException("not_found", 404);
+        await using var db = Open();
+        var (item, jobId) = await RetainedItemAsync(db, access, itemId, ct);
+        if (index >= item.SourceRegions.Count) throw new ExtractionException("not_found", 404);
+        var path = item.SourceRegions[index].SourceImagePath;
+        if (display == Emenda.Common.Oss.ImageVariants.Full) return await ReadRetainedFileAsync(item, jobId, path, ct);
+        return (await VariantAsync(path, display, async token => (await ReadRetainedFileAsync(item, jobId, path, token)).Bytes, ct),
+            Emenda.Common.Oss.ImageVariants.ContentType);
+    }
+
     public async Task<(byte[] Bytes, string ContentType)> ReadRetainedPracticeImageAsync(ExtractionAccess access,
         Guid itemId, Guid practiceId, int index, CancellationToken ct)
     {

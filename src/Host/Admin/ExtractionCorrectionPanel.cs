@@ -74,7 +74,7 @@ window.renderEmendaCorrections = function(root, api) {
           if (!source) return;
           const frame = element('div'), image = element('img'), overlay = element('div');
           frame.style.cssText = 'position:relative;max-width:480px'; image.style.cssText = 'display:block;width:100%';
-          image.src = base + '/sources/' + source.id; image.alt = '原图 ' + (job.sources.indexOf(source) + 1) + ' · 第 ' + (index + 1) + ' 部分';
+          image.src = base + '/sources/' + source.id + '?size=medium'; image.alt = '原图 ' + (job.sources.indexOf(source) + 1) + ' · 第 ' + (index + 1) + ' 部分';
           overlay.style.cssText = 'position:absolute;border:2px solid #2563eb;pointer-events:none';
           const draw = () => { overlay.style.left = region.x0 * 100 + '%'; overlay.style.top = region.y0 * 100 + '%'; overlay.style.width = (region.x1-region.x0) * 100 + '%'; overlay.style.height = (region.y1-region.y0) * 100 + '%'; };
           draw(); frame.append(image, overlay); block.append(frame);

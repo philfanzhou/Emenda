@@ -176,6 +176,7 @@ public sealed partial class ExtractionService
         var previousPaths = prior?.Questions.SelectMany(q => q.Images).Select(i => i.Path).ToArray() ?? [];
         await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE extraction_object SET legacy=false WHERE job_id={job.Id} AND path=ANY({previousPaths})", ct);
         var currentPaths = published.SelectMany(q => q.Images).Select(i => i.Path).Concat(Sources(job).Select(s => s.Path)).ToArray();
+        await ImageVariantSchema.EnqueueAsync(db, published.SelectMany(q => q.Images).Select(i => i.Path).Except(previousPaths), ct);
         await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE extraction_object SET pending=NOT(path=ANY({currentPaths})),next_attempt=clock_timestamp() WHERE job_id={job.Id} AND NOT legacy", ct);
         job.CandidateJson = null;
         job.LayoutJson = "[]";

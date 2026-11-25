@@ -51,7 +51,7 @@ Corrections are per attempt: a later correct answer does not erase another incor
 
 List `reviewStatus=4` is a query-only learner-visible filter: confirmed mistakes plus complete, active automatic conversation mistakes. It is never stored as a review status. Pending-review upload queues exclude conversation-only records. Clearing the chat does not delete independently retained mistake snapshots/images.
 
-The generic product presigning endpoint accepts a conversation original or crop only when the authenticated product caller matches its canonical caller-hashed path and a live caller-owned conversation item references that exact object. Noncanonical aliases, foreign objects, staged-only references, deleted references and unreferenced objects cannot be signed. Conversation reads are full-object only; thumbnails do not create an alternate signing path. Conversation records do not enter the legacy source/return JWT-managed-data predicate.
+The generic product presigning endpoint accepts a conversation original or crop only when the authenticated product caller matches its canonical caller-hashed path and a live caller-owned conversation item references that exact object. Noncanonical aliases, foreign objects, staged-only references, deleted references and unreferenced objects cannot be signed. Display sizes (`medium`, `small`, `thumbnail`) are signed only after the canonical parent passes this same check; a variant path is never accepted as a parent, so thumbnails do not create an alternate signing path. `GET /api/mistakes/{id}/images/{index}?size=` returns the same bytes through the caller-scoped item. Conversation records do not enter the legacy source/return JWT-managed-data predicate.
 
 ## Focused verification
 

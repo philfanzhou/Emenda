@@ -116,7 +116,10 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         foreach (var item in packet.Events) receipts.Add((await db.ConversationMistakeReceipts.FindAsync([ReceiptId(job.CallerName, item.Id)], ct))!);
         job.Result = JsonSerializer.Serialize(new { collected = receipts.Count(r => r.Status == "collected"), updated = receipts.Count(r => r.Status == "updated"), retracted = receipts.Count(r => r.Status == "retracted") });
         job.Status = "completed"; job.ErrorCode = null; job.LeaseId = null; job.LeaseUntil = null; job.StagedRegions = "[]"; job.UpdatedAt = now;
-        await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+        await db.SaveChangesAsync(ct);
+        // Evidence images get their display variants from the background backlog.
+        await ImageVariantSchema.EnqueueAsync(db, images.Keys, ct);
+        await transaction.CommitAsync(ct);
     }
 
     private static async Task ApplyAsync(MistakeDbContext db, ConversationCollectionEntity job, ConversationExport packet, ConversationExportEvent item,

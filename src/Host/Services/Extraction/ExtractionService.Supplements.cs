@@ -143,6 +143,7 @@ public sealed partial class ExtractionService
         accepted.AcceptedVersion = current.Version + 1;
         pending.Status = "Fulfilled";
         current.SourcesJson = ExtractionRules.Serialize(Sources(current).Concat(ExtractionRules.Read<List<ExtractionSource>>(accepted.SourcesJson)).DistinctBy(s => s.Id).ToList());
+        await ImageVariantSchema.EnqueueAsync(publish, ExtractionRules.Read<List<ExtractionSource>>(accepted.SourcesJson).Select(s => s.Path), ct);
         ResetReview(await publish.MistakeItems.SingleAsync(i => i.Id == request.ItemId, ct));
         await PublishExtractionAsync(publish, current, snapshotNow, snapshotNow, request.RequestKey, hash,
             access.Actor, "append_supplement", "supplement_upload", ct);

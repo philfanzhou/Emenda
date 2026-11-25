@@ -399,7 +399,7 @@ public static partial class MistakeHttpEndpoints
                 && string.Equals(segments[1], "conversation", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsCanonicalConversationObjectPath(string path, string caller)
+    public static bool IsCanonicalConversationObjectPath(string path, string caller)
     {
         if (path.Length > 300) return false;
         var parts = path.Split('/');
@@ -423,6 +423,9 @@ public static partial class MistakeHttpEndpoints
         var logger = loggerFactory.CreateLogger("MistakeHttpEndpoints");
         if (string.IsNullOrWhiteSpace(request.ObjectPath))
             return MistakeHttpResponse.BadRequest("object_path is required");
+        // One size vocabulary for every image; unknown names are refused instead of creating unmanaged objects.
+        if (ImageVariants.Normalize(request.Size) is not { } size)
+            return ErrorKind("invalid_size", 400);
         if (IsConversationObjectPath(request.ObjectPath))
         {
             var product = user.Identities.FirstOrDefault(identity => identity.IsAuthenticated && identity.AuthenticationType == "ProductCaller");
@@ -430,13 +433,18 @@ public static partial class MistakeHttpEndpoints
             if (string.IsNullOrWhiteSpace(caller) || !IsCanonicalConversationObjectPath(request.ObjectPath, caller)
                 || !await mistakeService.IsConversationObjectReferencedAsync(request.ObjectPath, caller, ct))
                 return ErrorKind("conversation_image_forbidden", 403);
-            if (!string.IsNullOrWhiteSpace(request.Size) && !string.Equals(request.Size, "full", StringComparison.OrdinalIgnoreCase))
-                return ErrorKind("conversation_full_only", 400);
             var seconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
             try
             {
                 if (!await ossService.ObjectExistsAsync(request.ObjectPath).WaitAsync(ct))
                     return MistakeHttpResponse.NotFound("Conversation image is unavailable");
+                // The ownership check above is on the canonical parent; its variant is signed only after it passes.
+                if (size != ImageVariants.Full)
+                {
+                    var (variantUrl, variantExpiry) = await ThumbnailHelper.GetOrGenerateThumbnailAsync(
+                        request.ObjectPath, size, ossService, seconds, logger).WaitAsync(ct);
+                    return MistakeHttpResponse.Ok(new PresignedUrlResponse { Url = variantUrl, ExpirySeconds = variantExpiry });
+                }
                 var url = await ossService.GetPresignedUrlAsync(request.ObjectPath, seconds).WaitAsync(ct);
                 return MistakeHttpResponse.Ok(new PresignedUrlResponse { Url = url, ExpirySeconds = seconds });
             }
@@ -447,9 +455,11 @@ public static partial class MistakeHttpEndpoints
             return ErrorKind("extraction_read_endpoint_required", 403);
         if (!request.ObjectPath.StartsWith("mistakes/", StringComparison.Ordinal))
             return MistakeHttpResponse.BadRequest("object_path must start with mistakes/");
+        // Variants are derived from their parent; a variant name is never itself a parent of further variants.
+        if (size != ImageVariants.Full && ThumbnailHelper.IsThumbnailPath(request.ObjectPath))
+            return ErrorKind("invalid_size", 400);
 
         var expirySeconds = request.ExpirySeconds > 0 ? request.ExpirySeconds : 3600;
-        var size = string.IsNullOrWhiteSpace(request.Size) ? "full" : request.Size.ToLowerInvariant();
 
         try
         {

@@ -104,12 +104,20 @@ public sealed class ConversationIsolationHttpPostgresTests
             using var denied = await own.PostAsJsonAsync("/api/mistakes/presigned-url", new { objectPath = path });
             Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         }
+        // A display variant is signed only after the canonical parent passes the same ownership check.
         using var thumbnail = await own.PostAsJsonAsync("/api/mistakes/presigned-url", new { objectPath = original, size = "small" });
-        Assert.Equal(HttpStatusCode.BadRequest, thumbnail.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, thumbnail.StatusCode);
+        Assert.Contains(ImageVariants.PathFor(original, "small"), f.Signed);
+        using var foreignThumbnail = await foreign.PostAsJsonAsync("/api/mistakes/presigned-url", new { objectPath = original, size = "small" });
+        Assert.Equal(HttpStatusCode.Forbidden, foreignThumbnail.StatusCode);
+        using var variantAsParent = await own.PostAsJsonAsync("/api/mistakes/presigned-url", new { objectPath = ImageVariants.PathFor(original, "small") });
+        Assert.Equal(HttpStatusCode.Forbidden, variantAsParent.StatusCode);
+        using var unknownSize = await own.PostAsJsonAsync("/api/mistakes/presigned-url", new { objectPath = original, size = "huge" });
+        Assert.Equal(HttpStatusCode.BadRequest, unknownSize.StatusCode);
         await using (var db = f.Database.CreateContext()) { db.MistakeItems.Remove(await db.MistakeItems.SingleAsync()); await db.SaveChangesAsync(); }
         using var deleted = await own.PostAsJsonAsync("/api/mistakes/presigned-url", new { objectPath = original });
         Assert.Equal(HttpStatusCode.Forbidden, deleted.StatusCode);
-        Assert.Equal(2, f.Signed.Count);
+        Assert.Equal(3, f.Signed.Count);
     }
 
     private static async Task<JsonElement> Data(HttpClient client, string path)
