@@ -49,6 +49,8 @@ string[] retiredSections =
 ];
 var ignoredSettings = retiredSections.Where(section => builder.Configuration.GetSection(section).Exists()).ToList();
 
+// Serilog owns logging, so the framework Logging:LogLevel section is never
+// applied: the level below is fixed and logging has no configuration keys.
 builder.Host.UseSerilog((_, _, logger) => logger
     .MinimumLevel.Information()
     .Enrich.FromLogContext()
