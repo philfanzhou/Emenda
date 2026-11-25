@@ -15,7 +15,7 @@ public sealed class ImageVariantOptions
 
 /// <summary>
 /// Drains <c>image_variant_task</c>: every listed stored image gets all display variants. Existing data
-/// was seeded by the v21 upgrade; writers enqueue new originals, supplements, crops and conversation images.
+/// was seeded by the v23 upgrade; writers enqueue new originals, supplements, crops and conversation images.
 /// </summary>
 public sealed class ImageVariantBacklog(DbContextOptions<MistakeDbContext> databaseOptions, IOssService oss,
     ILogger<ImageVariantBacklog> logger)
@@ -29,6 +29,7 @@ public sealed class ImageVariantBacklog(DbContextOptions<MistakeDbContext> datab
     {
         public string Path { get; set; } = "";
         public int Attempts { get; set; }
+        public DateTimeOffset LeaseUntil { get; set; }
     }
 
     /// <summary>Processes one batch; returns how many tasks were claimed.</summary>
@@ -42,7 +43,7 @@ public sealed class ImageVariantBacklog(DbContextOptions<MistakeDbContext> datab
                 UPDATE image_variant_task t SET attempts=t.attempts+1, next_attempt=clock_timestamp()+interval '10 minutes'
                 WHERE t.path IN (SELECT path FROM image_variant_task WHERE next_attempt<=clock_timestamp()
                     ORDER BY next_attempt, path LIMIT {batchSize} FOR UPDATE SKIP LOCKED)
-                RETURNING t.path AS "Path", t.attempts AS "Attempts"
+                RETURNING t.path AS "Path", t.attempts AS "Attempts", t.next_attempt AS "LeaseUntil"
                 """).ToListAsync(ct);
         }
         foreach (var claim in claims)
@@ -56,12 +57,12 @@ public sealed class ImageVariantBacklog(DbContextOptions<MistakeDbContext> datab
                 done = claim.Attempts >= MaxAttempts;
             }
             await using var db = Open();
-            if (done) await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM image_variant_task WHERE path={claim.Path}", ct);
+            if (done) await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM image_variant_task WHERE path={claim.Path} AND next_attempt={claim.LeaseUntil} AND attempts={claim.Attempts}", ct);
             else
             {
                 var delay = TimeSpan.FromSeconds(Math.Min(3600, 15 * (1 << Math.Min(claim.Attempts, 8))));
                 await db.Database.ExecuteSqlInterpolatedAsync(
-                    $"UPDATE image_variant_task SET next_attempt=clock_timestamp()+{delay} WHERE path={claim.Path}", ct);
+                    $"UPDATE image_variant_task SET next_attempt=clock_timestamp()+{delay} WHERE path={claim.Path} AND next_attempt={claim.LeaseUntil} AND attempts={claim.Attempts}", ct);
             }
         }
         return claims.Count;
@@ -72,7 +73,7 @@ public sealed class ImageVariantBacklog(DbContextOptions<MistakeDbContext> datab
     {
         if (!path.StartsWith("mistakes/", StringComparison.Ordinal) || ThumbnailHelper.IsThumbnailPath(path)) return true;
         if (await ImageVariants.AllExistAsync(oss, path, ct)) return true;
-        if (!await oss.ObjectExistsAsync(path).WaitAsync(ct)) return true;
+        if (!await oss.ObjectExistsOrThrowAsync(path, ct)) return true;
         var expected = await ExpectedDigestAsync(path, ct);
         if (expected == "") return true;
         byte[] bytes;

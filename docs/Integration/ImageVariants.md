@@ -28,7 +28,7 @@
 ## 何时生成
 
 1. **写入时登记**：原图入库、补图接受、裁图发布、对话图入库时，在同一事务里把原图路径写入 `image_variant_task`。
-2. **后台补齐**：`ImageVariantWorker` 持续处理 `image_variant_task`。缺哪个生成哪个，多实例用 `FOR UPDATE SKIP LOCKED` 加 10 分钟租约分工，失败退避，最多 8 次。原图已删除、摘要不符或无法解码时放弃，并记录 warning。
+2. **后台补齐**：`ImageVariantWorker` 持续处理 `image_variant_task`。缺哪个生成哪个，多实例用 `FOR UPDATE SKIP LOCKED` 加 10 分钟租约分工，对象存储暂时不可用时退避重试，最多 8 次。只有仍持有该次租约的进程才能完成任务或安排重试。原图已删除、摘要不符或无法解码时放弃，并记录 warning。
 3. **读取时兜底**：带 `size` 读取时，如果缩略图不存在，就从校验过的原图当场生成并保存，再返回。正确性不依赖后台补齐。
 
 schema v23 升级会把现有任务的原图（含已接受补图）、当前版本裁图，以及所有错题 `source_regions` 里的图片写入 `image_variant_task`，部署后自动补齐历史数据，不需要人工操作。配置 `Emenda__ImageVariants__Enabled=false` 可以停止后台生成（读取兜底仍然有效），`Emenda__ImageVariants__BatchSize` 控制每批数量（默认 8，范围 1–64）。
