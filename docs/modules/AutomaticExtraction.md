@@ -25,6 +25,8 @@
 
 提取结果逐题记录内容 `grade`（1–12）；缺失表示未知。错题记录使用题目年级，未知用 `0`，不会用上传时的学生年级代替。旧 Portal 纠偏不带 `grade` 时，已有题目保留当前年级。
 
+Subject IDs retain the Portal/Student taxonomy: 1 Chinese, 2 Mathematics, 3 English, 4 Physics, 5 Chemistry, 6 Biology, 7 History, 8 Geography, 9 Politics. Grouped responses pair those IDs with the corresponding Chinese names, including 历史/地理/政治 for 7/8/9. The AI provider must emit the same IDs; Emenda persists them without renumbering. A label or classifier correction does not automatically rewrite old task snapshots, confirmed mistakes, reviews or practice. Historical classification corrections require inspecting their source content first.
+
 ## 启用
 
 这是唯一的图片入库入口（旧的 `/api/intake/uploads` 同步入口已移除）。能力默认关闭，通过以下配置启用：

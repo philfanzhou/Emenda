@@ -5,7 +5,8 @@ namespace Emenda.Host.Services.Extraction;
 internal sealed record ExtractionResultSummary(Guid Id, string Status, int Version, string? ErrorCode,
     IReadOnlyList<ExtractionResultGroup> Groups)
 {
-    private static readonly string[] Subjects = ["语文", "数学", "英语", "物理", "化学", "生物", "政治", "历史", "地理"];
+    // Match the persisted Portal/Student subject IDs, not a model-provided ordering.
+    private static readonly string[] Subjects = ["语文", "数学", "英语", "物理", "化学", "生物", "历史", "地理", "政治"];
 
     public static ExtractionResultSummary From(ExtractionJobView job)
     {
