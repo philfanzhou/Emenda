@@ -3,9 +3,8 @@ namespace Emenda.Database;
 /// <summary>
 /// Schema v19: removes the platform-era managed source structures (source intake, targets,
 /// returns, handoffs, legacy returns and layout jobs) together with the guard triggers they
-/// installed on the core tables. Emenda runs only as a standalone product, where none of these
-/// structures can be written, so the migration refuses to run when any of them holds a row
-/// instead of discarding data. The drop is not reversible.
+/// installed on the core tables. No current code path writes these structures, so the migration
+/// refuses to run when any of them holds a row instead of discarding data. The drop is not reversible.
 /// </summary>
 public static class RetiredSourceSchema
 {

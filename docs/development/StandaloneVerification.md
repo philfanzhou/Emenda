@@ -4,7 +4,7 @@
 
 ## 边界与真实依赖
 
-- PostgreSQL **15**：全新容器及空库；实际 Host 以 `Standalone/Own` 启动并应用迁移。
+- PostgreSQL **15**：全新容器及空库；实际 Host 启动时应用迁移。
 - 实际 S3：`chrislusf/seaweedfs:3.85`，启用独立随机凭据，创建私有 bucket，真实 AWS SigV4 PUT、上传及签名 GET；不是内存对象存储或 HTTP 假 S3。验收配置固定 `volume.max=8`、`master.volumeSizeLimitMB=64`，避免默认 30GB 卷规格耗尽小型测试 VM；仍须为镜像、数据库及存储元数据留出空间。
 - 实际 Host：将已构建的 Host 输出复制进 `.NET 10 aspnet` 容器，运行 `dotnet /app/Emenda.Host.dll`。不依赖源码挂载，也不隐式运行 `dotnet build/run/publish`。
 - VL：独占 Python 容器提供确定性的 OpenAI-compatible 协议 fixture，每张实际图片产生一个独立分组。用于验收入库、恢复及整批成功语义，**不证明真实模型识别质量或外部模型供应商可用性**。

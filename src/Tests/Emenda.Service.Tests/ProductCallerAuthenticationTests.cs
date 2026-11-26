@@ -134,15 +134,13 @@ public sealed class ProductCallerAuthenticationTests
     }
 
     [Theory]
-    [InlineData(false, false, StatusCodes.Status401Unauthorized)]
-    [InlineData(true, true, StatusCodes.Status401Unauthorized)]
-    [InlineData(true, false, StatusCodes.Status403Forbidden)]
+    [InlineData(true, StatusCodes.Status401Unauthorized)]
+    [InlineData(false, StatusCodes.Status403Forbidden)]
     public async Task ExtractionOperationsGateDoesNotTrustCallerNameOrRequestHeaders(
-        bool enabled, bool allowAnonymous, int expectedStatus)
+        bool allowAnonymous, int expectedStatus)
     {
         using var services = new ServiceCollection().Configure<ProductCallerAuthenticationOptions>(options =>
         {
-            options.Enabled = enabled;
             options.AllowAnonymous = allowAnonymous;
             options.Callers = [new ProductCallerCredential { Name = "administrator", ApiKey = CallerKey }];
         }).BuildServiceProvider();

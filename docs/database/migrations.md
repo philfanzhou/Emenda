@@ -217,7 +217,7 @@ For the recognized migration chain, `ProductVersion` accepts the original `8.0.1
 
 请求摘要绑定学生与有序图片字节/规范化媒体类型；文件名不参与身份。请求绑定先独立提交，图片使用确定性产品对象键；全部分组条目、Created 日志及完成响应随后在同一事务提交。进程失败或取消不留下部分已提交的题目；完成响应丢失后，同 key 原载荷重放读取同一回执。未完成请求的图片保留供恢复，不做自动物理清理。
 
-Down 在该表非空时以 `product_intake_requests_present` 拒绝，避免丢失幂等与重放事实。已有 v14 产品上传没有可信请求摘要，不能伪造或自动补建绑定；原条目保持可读。独立部署边界及恢复规则以 [StandaloneDeployment](../development/StandaloneDeployment.md) 为准，真实 PostgreSQL 回归见 `ProductIntakePostgresTests`。
+Down 在该表非空时以 `product_intake_requests_present` 拒绝，避免丢失幂等与重放事实。已有 v14 产品上传没有可信请求摘要，不能伪造或自动补建绑定；原条目保持可读。独立部署边界及恢复规则以 [Deployment](../development/Deployment.md) 为准，真实 PostgreSQL 回归见 `ProductIntakePostgresTests`。
 
 ## 20261116000000_AddExtractions
 

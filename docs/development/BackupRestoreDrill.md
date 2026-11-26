@@ -24,5 +24,5 @@ dotnet test Ruoyu.Study.Mistake.sln --configuration Release --filter FullyQualif
 4. 恢复库匹配后，才可把**该次备份**记为已验证。可在隔离恢复库用新版本正常启动做一次升级预演，随后核对迁移历史、全部业务/source/group/request/target object/attempt/return operation/object/attempt 表、行/ID/引用和函数/trigger/FK保护。测试结果不能自动授权生产操作。
 5. 若升级后行为异常或提交结果不明，继续停写，先查询当前库实际 schema、历史和业务行；从原备份**再建新库**恢复并校验，再决定实际恢复或重试。不要把 EF Down 当作生产恢复保证。
 
-适用范围及兼容命令详见[部署说明](./StandaloneDeployment.md)与[迁移历史](../database/migrations.md)。旧 `public.mistake` 的映射由隔离 PostgreSQL 重放夹具核验（`LegacySchemaConvergencePostgresTests`）。本演练不证明生产灾备能力。
+适用范围及兼容命令详见[部署说明](./Deployment.md)与[迁移历史](../database/migrations.md)。旧 `public.mistake` 的映射由隔离 PostgreSQL 重放夹具核验（`LegacySchemaConvergencePostgresTests`）。本演练不证明生产灾备能力。
 

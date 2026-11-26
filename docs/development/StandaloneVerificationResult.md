@@ -68,4 +68,4 @@ schema snapshot 的 pending-model-change 在修复前被现有空库迁移测试
 - `studentId` 公开上限为 36。新 sourceId 为 opaque 值；旧上传没有可信摘要，不能自动迁成新的 caller-scoped 幂等回执。
 - 迁移 `20261111000000_AddProductIntakeRequests` 在 Own 模式自动应用；存在请求记录时拒绝回退删除该表。
 
-复现步骤见 [StandaloneVerification](StandaloneVerification.md)，部署及恢复契约见 [StandaloneDeployment](StandaloneDeployment.md)。本记录不包含临时连接串、密钥、Cookie、Host 原始日志或活签名 URL。
+复现步骤见 [StandaloneVerification](StandaloneVerification.md)，部署及恢复契约见 [Deployment](Deployment.md)。本记录不包含临时连接串、密钥、Cookie、Host 原始日志或活签名 URL。

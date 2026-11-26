@@ -8,7 +8,7 @@ using System.Text.Json;
 namespace Emenda.Host.Admin;
 
 /// <summary>
-/// The admin console HTTP surface (standalone deployments only):
+/// The admin console HTTP surface:
 /// <list type="bullet">
 /// <item><c>GET /admin</c> — the single console page (anonymous; it decides
 /// login state through the session endpoint).</item>

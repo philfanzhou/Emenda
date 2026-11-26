@@ -13,11 +13,9 @@ in this repository.
 
 ## Status
 
-Emenda runs only as a standalone product: it is configured from standard
-appsettings/environment configuration, owns a dedicated PostgreSQL database and S3 bucket,
-and authenticates trusted backend callers with a per-caller credential. The platform-era
-Local/Platform runtime modes, Consul/Loki, platform JWT authorization, the Student service
-integration and the managed source intake/return/handoff workflow were removed (schema v19).
+Emenda is configured from standard appsettings/environment configuration, owns a dedicated
+PostgreSQL database and S3 bucket, and authenticates trusted backend callers with a
+per-caller credential.
 
 Mistakes enter through two paths, both backed by the paired AI Tutor service:
 
@@ -39,13 +37,6 @@ with `./start.sh` (or the same environment variables):
 | `OSS_INTERNAL_ENDPOINT` / `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` / `OSS_BUCKET_NAME` / `OSS_PUBLIC_BASE_URL` | yes | S3-compatible object storage (`Oss__*`) |
 | `EMENDA_ADMIN_AUTHORITY` / `EMENDA_ADMIN_CLIENT_ID` / `EMENDA_ADMIN_CLIENT_SECRET` / `EMENDA_ADMIN_REDIRECT_URI` / `EMENDA_ADMIN_POST_LOGOUT_REDIRECT_URI` | no | SignaCore hosted login for the admin console (`Emenda__Admin__Oidc__*`) |
 
-The removed settings `Mistake:ConfigMode`, `Emenda:Runtime:Mode` (other than `Standalone`) and
-`Emenda:Database:SchemaOwnership` (other than `Own`) fail startup, because ignoring them could
-act on the wrong database. Other retired platform sections (`Mistake:Student`,
-`Mistake:Workers`, `Mistake:Source*`, `Mistake:LegacyReturns`, `IdentityService`,
-`VlAnalyzer`, `StudentService`, `Consul`, `Loki`) are ignored with a startup warning; remove
-them from existing deployments.
-
 The optional **admin console** at `GET /admin` uses SignaCore administrator login and
 manages dynamic credentials. Before a **new installation**, explicitly initialize the
 persistent caller file with `./start.sh --init-callers` using the same image/data mount as
@@ -58,7 +49,7 @@ Business requests under `/api/*` must carry `X-Emenda-Api-Key`. Health (`/health
 `/health/ready`), the contract endpoint (`/contracts/*`) and the root endpoint stay
 anonymous. Callers own student authorization; API keys identify trusted backends, not
 isolated tenants. Review rejection changes local state and preserves images. See
-[Standalone deployment](docs/development/StandaloneDeployment.md).
+[Deployment](docs/development/Deployment.md).
 
 ### Automatic extraction
 

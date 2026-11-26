@@ -57,7 +57,7 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 - `20260930000001_LeaseReanalyzeJobs`：全局领取租约与终态栅栏
 - `20261008000001_AddLegacyArchive`：旧结构收敛归档表（其余迁移见[迁移历史](./migrations.md)）
 
-服务启动时自动把空库、已知 EF 历史的旧库和旧版自动维护留下的已知结构升级到当前结构，已是目标时不写入；不支持的结构拒绝启动且不修改。详见[迁移历史](./migrations.md)和[部署说明](../development/StandaloneDeployment.md)。
+服务启动时自动把空库、已知 EF 历史的旧库和旧版自动维护留下的已知结构升级到当前结构，已是目标时不写入；不支持的结构拒绝启动且不修改。详见[迁移历史](./migrations.md)和[部署说明](../development/Deployment.md)。
 
 ## 数据库类型
 

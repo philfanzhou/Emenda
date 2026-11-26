@@ -51,7 +51,7 @@ public sealed class ProductCallerAuthenticationMiddleware
         var options = context.RequestServices
             .GetRequiredService<IOptionsMonitor<ProductCallerAuthenticationOptions>>()
             .CurrentValue;
-        if (!options.Enabled || options.AllowAnonymous || !context.Request.Path.StartsWithSegments("/api"))
+        if (options.AllowAnonymous || !context.Request.Path.StartsWithSegments("/api"))
         {
             await _next(context).ConfigureAwait(false);
             return;

@@ -19,36 +19,8 @@ using Emenda.Service;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Emenda runs as a single standalone product: standard appsettings/environment
-// configuration, console logging, per-caller product credentials and its own
-// PostgreSQL database. Settings whose silent removal could act on the wrong database
-// (the runtime mode and the Shared schema ownership) fail startup; other retired
-// platform switches are ignored with a startup warning.
-var legacyMode = builder.Configuration["Mistake:ConfigMode"];
-if (legacyMode is not null)
-    throw new InvalidOperationException(
-        "Mistake:ConfigMode (Local/Platform) was removed; Emenda only runs as a standalone product. Remove the setting.");
-var runtimeMode = builder.Configuration["Emenda:Runtime:Mode"];
-if (runtimeMode is not null && !string.Equals(runtimeMode, "Standalone", StringComparison.OrdinalIgnoreCase))
-    throw new InvalidOperationException("Emenda:Runtime:Mode only accepts Standalone.");
-
-// The product always owns and migrates its dedicated schema. The former Shared
-// coexistence setting would now upgrade a legacy database, so it fails startup.
-const string schemaOwnershipKey = "Emenda:Database:SchemaOwnership";
-var schemaOwnershipValue = builder.Configuration[schemaOwnershipKey];
-if (schemaOwnershipValue is not null && !string.Equals(schemaOwnershipValue, "Own", StringComparison.OrdinalIgnoreCase))
-    throw new InvalidOperationException(string.Equals(schemaOwnershipValue, "Shared", StringComparison.OrdinalIgnoreCase)
-        ? $"{schemaOwnershipKey}=Shared was removed; Emenda requires a dedicated database it owns. Remove the setting or set it to Own."
-        : $"{schemaOwnershipKey} must be Own (found '{schemaOwnershipValue}').");
-
-string[] retiredSections =
-[
-    "Mistake:Student", "Mistake:Local", "Mistake:Workers", "Mistake:SourceIntake", "Mistake:SourceTargets",
-    "Mistake:SourceReturns", "Mistake:SourceHandoffs", "Mistake:LegacyReturns", "IdentityService",
-    "VlAnalyzer", "StudentService", "Consul", "Loki"
-];
-var ignoredSettings = retiredSections.Where(section => builder.Configuration.GetSection(section).Exists()).ToList();
-
+// Emenda is configured from standard appsettings/environment configuration, logs to the
+// console, authenticates per-caller product credentials and owns its PostgreSQL database.
 // Serilog owns logging, so the framework Logging:LogLevel section is never
 // applied: the level below is fixed and logging has no configuration keys.
 builder.Host.UseSerilog((_, _, logger) => logger
@@ -219,9 +191,6 @@ builder.Services.AddScoped<MistakeReadinessProbe>();
 var app = builder.Build();
 
 app.Logger.LogInformation("Mistake Service starting");
-if (ignoredSettings.Count > 0)
-    app.Logger.LogWarning("Ignoring retired platform configuration sections: {Sections}; remove them from the deployment.",
-        string.Join(", ", ignoredSettings));
 app.Logger.LogInformation("Endpoint: HTTP={HttpPort}", httpPort);
 if (!string.IsNullOrEmpty(connectionString))
 {
@@ -254,8 +223,8 @@ if (layoutEnabled)
     var callerOptions = app.Services
         .GetRequiredService<IOptions<ProductCallerAuthenticationOptions>>().Value;
     app.Logger.LogInformation(
-        "Product caller authentication: Enabled={Enabled}, AllowAnonymous={AllowAnonymous}, Callers={CallerCount}",
-        callerOptions.Enabled, callerOptions.AllowAnonymous, callerOptions.ValidCallers.Count);
+        "Product caller authentication: AllowAnonymous={AllowAnonymous}, Callers={CallerCount}",
+        callerOptions.AllowAnonymous, callerOptions.ValidCallers.Count);
     var adminSettings = app.Services.GetRequiredService<AdminConsoleSettings>();
     app.Logger.LogInformation(
         "Admin console: Available={Available}, Authority={Authority}, MissingKeys={MissingKeys}",

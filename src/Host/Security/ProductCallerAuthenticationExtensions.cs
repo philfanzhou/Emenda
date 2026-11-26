@@ -8,7 +8,7 @@ public static class ProductCallerAuthenticationExtensions
 {
     /// <summary>
     /// Registers product caller authentication and fails startup when a
-    /// standalone deployment has no caller credential and anonymous access is
+    /// deployment has no caller credential and anonymous access is
     /// not explicitly allowed for local development. The static callers are
     /// merged with the optional dynamic caller file
     /// (<c>Emenda:Security:DynamicCallers:Path</c>).
@@ -22,7 +22,7 @@ public static class ProductCallerAuthenticationExtensions
 
         var options = section.Get<ProductCallerAuthenticationOptions>()
             ?? new ProductCallerAuthenticationOptions();
-        if (options.Enabled && !options.AllowAnonymous && options.ValidCallers.Count == 0)
+        if (!options.AllowAnonymous && options.ValidCallers.Count == 0)
         {
             throw new InvalidOperationException(
                 "Emenda requires at least one caller credential under " +

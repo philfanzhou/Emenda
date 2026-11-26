@@ -1,15 +1,10 @@
-# Standalone Deployment
+# Deployment
 
 Emenda serves trusted backend callers with a dedicated PostgreSQL database and a private
 S3-compatible bucket, configured through appsettings/environment configuration only. The
 optional admin console uses SignaCore; business API calls do not require it. The image
-defaults to the `Standalone` ASP.NET Core environment (`appsettings.Standalone.json`).
-
-The platform-era settings `Mistake:ConfigMode`, `Emenda:Runtime:Mode` (other than
-`Standalone`) and `Emenda:Database:SchemaOwnership=Shared` fail startup; `start.sh` also
-refuses `EMENDA_SCHEMA_OWNERSHIP` values other than `Own`. Other retired platform sections
-(Student, workers, managed sources, `IdentityService`, `VlAnalyzer`, Consul, Loki) are ignored
-and named in a startup warning. Remove them when upgrading.
+runs in the default `Production` ASP.NET Core environment and keeps the dynamic caller file at
+`/app/data/emenda-callers.json`.
 
 ## Configuration
 
