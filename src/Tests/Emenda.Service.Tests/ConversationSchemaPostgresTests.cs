@@ -19,7 +19,7 @@ public sealed class ConversationSchemaPostgresTests
         var report = """{"summary":"Retained report"}""";
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_analysis(mistake_item_id,revision,teacher_feedback,draft_report) VALUES ({id},7,{feedback}::jsonb,{report}::jsonb)");
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
-        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(24, upgraded.ToVersion);
+        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(25, upgraded.ToVersion);
         Assert.Equal("Teacher retained", (await db.MistakeItems.SingleAsync()).RootCause);
         Assert.Equal(7, (await db.MistakeAnalyses.SingleAsync()).Revision);
         Assert.Contains(MistakeAnalysisSchema.Migration, await db.Database.GetAppliedMigrationsAsync());

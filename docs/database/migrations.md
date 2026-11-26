@@ -279,9 +279,26 @@ In this version the existing columns (`analysis_snapshot`, `conversation_*`, `so
 `derive_mistake_item_source`) derives the new columns on every insert and update, so every writer,
 including raw SQL, keeps them consistent and a value written to a derived column directly is
 replaced. The upgrade fills existing rows through the same trigger without touching `updated_at`,
-resolves the caller of an extraction whose task was already deleted from its deletion receipt's
-owner hash, and refuses to commit if any row's images disagree with its `source_regions`.
+attempts to resolve the caller of an extraction whose task was already deleted from its deletion receipt's
+owner hash (with the wrong hash form; v25 corrects it), and refuses to commit if any row's images disagree with its `source_regions`.
 
 Down raises `unified_mistake_source_irreversible`; v24 is forward-only. A manual rollback only has
 to drop the trigger, the function and the four columns and remove the history row, because the
 derived columns hold no data of their own. Regression coverage: `UnifiedMistakeSchemaPostgresTests`.
+
+## 20261127000000_ExtractionCallerRecovery
+
+Schema v25, data only. A deletion receipt's `owner_hash` is the SHA-256 of the JSON string the application
+serializes (`"caller:<name>"`, quotes included), but v24 resolved deleted-task callers against the hash of the
+bare text, so every extraction mistake whose task had been deleted before v24 kept a NULL `source_caller`.
+Visibility was not affected, because the caller scope matches the receipt directly. v25 repeats the lookup with
+the stored form against every caller name the database knows (extraction tasks, conversation rows, conversation
+collection jobs and already resolved `source_caller` values).
+
+System.Text.Json escapes non-ASCII characters, the backslash, the backtick and `" & ' + < >`, which plain SQL
+concatenation does not reproduce, so names containing them are not compared and their rows keep NULL. This also rules
+out handing a row to a different caller whose literal name equals another name's escaped form. The derivation
+trigger keeps a recovered caller on later writes because the task no longer exists.
+
+Down raises `extraction_caller_recovery_irreversible`; v25 is forward-only. A manual rollback only removes the
+history row. Regression coverage: `ExtractionCallerRecoveryPostgresTests`.

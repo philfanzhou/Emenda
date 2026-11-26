@@ -80,8 +80,9 @@ public static class UnifiedMistakeSchema
         CREATE TRIGGER trg_mistake_item_source BEFORE INSERT OR UPDATE ON mistake_item FOR EACH ROW EXECUTE FUNCTION derive_mistake_item_source();
         -- Fires the trigger once per row. updated_at is untouched, so optimistic concurrency tokens stay valid.
         UPDATE mistake_item SET source_upload_id=source_upload_id;
-        -- An extraction whose task was already deleted keeps only sha256('caller:' || name). Resolve it against every caller
-        -- name the database knows; a row that stays NULL keeps its current visibility, which still uses the deletion receipt.
+        -- An extraction whose task was already deleted keeps only the receipt's owner hash. This statement hashes the bare
+        -- text and never matches the receipt's JSON-string form; v25 (ExtractionCallerRecoverySchema) redoes the lookup.
+        -- A row that stays NULL keeps its current visibility, which still uses the deletion receipt.
         UPDATE mistake_item m SET source_caller=n.name
         FROM extraction_deletion d, (
             SELECT substr(caller, 8) AS name FROM extraction_job WHERE caller LIKE 'caller:%'

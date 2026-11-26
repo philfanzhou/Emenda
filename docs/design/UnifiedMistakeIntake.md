@@ -1,6 +1,6 @@
 # 统一错题入库模型设计
 
-状态：阶段 A 已实现（schema v24，v0.1.1-rc.17） · 阶段 B、C 待做
+状态：阶段 A 已实现（schema v24，v0.1.1-rc.17；v25 修正已删任务的调用方反查） · 阶段 B、C 待做
 
 ## 1. 背景与目标
 
@@ -211,7 +211,9 @@ WHERE m.source_upload_id LIKE 'extract:%'
    - 提取错题的调用方取自 `extraction_job.caller`；任务被删后查不到时保留之前的值。
 3. 回填：`UPDATE mistake_item SET source_upload_id=source_upload_id` 让每行经过一次触发器，`updated_at` 不变，
    不影响乐观并发。
-4. 已删任务的提取错题：用库里已知的调用方名计算 `sha256('caller:' || name)` 匹配 `extraction_deletion.owner_hash`。
+4. 已删任务的提取错题：用库里已知的调用方名反查 `extraction_deletion.owner_hash`。回执存的是应用对 JSON 字符串
+   `"caller:<name>"`（含引号）求的 sha256；v24 误用了不带引号的原文，一条也匹配不上，由 v25 迁移
+   （`ExtractionCallerRecovery`）按正确格式重做。名称含非 ASCII 或 `" & ' + < > \` 反引号等会被 JSON 转义的字符时不参与比较。
    仍解析不了的保持 NULL；阶段 A 的读取仍走旧的子查询，可见性不变。
 5. `source_kind`、`content` 设为 NOT NULL；加 CHECK 约束 `CK_mistake_item_source_kind`、`CK_mistake_item_source_detail`
    （`legacy` 当且仅当 `source_detail IS NULL`）。
@@ -273,6 +275,7 @@ WHERE m.source_upload_id LIKE 'extract:%'
 | PR | 内容 | 状态 |
 |---|---|---|
 | 1 | 阶段 A：v24 迁移、触发器推导、回填、迁移内校验、严格校验器登记 | 已完成（rc.17） |
+| 1a | v25：按回执的真实哈希格式补回已删任务的调用方（test2 发现 2 条） | 已完成 |
 | 2 | 阶段 B：`MistakeMaterializer`、实体映射新列、读取侧切换、契约 v7 | 待做 |
 | 3 | Ruoyu Portal 适配 v7 | 待做 |
 | 4 | 阶段 C：删除旧列、契约 v8、闲置表清理 | Portal 稳定后 |
