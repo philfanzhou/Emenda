@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Emenda.Database;
 using Emenda.Database.Entities;
@@ -27,7 +25,7 @@ public sealed class UnifiedMistakeSchemaPostgresTests
         db.ExtractionDeletions.Add(new()
         {
             JobId = deletedJob, AdmissionHash = new string('a', 64), SourceBindingHash = new string('b', 64),
-            OwnerHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("caller:school"))),
+            OwnerHash = ExtractionCallerRecoveryPostgresTests.OwnerHash("school"),
             DeletedAt = DateTimeOffset.UtcNow, RetainedConfirmed = 1
         });
         await db.SaveChangesAsync();
@@ -47,10 +45,16 @@ public sealed class UnifiedMistakeSchemaPostgresTests
         db.MistakeItems.AddRange(extraction, retained, conversation, legacy);
         await db.SaveChangesAsync();
         var updatedAt = await db.MistakeItems.AsNoTracking().OrderBy(i => i.Id).Select(i => i.UpdatedAt).ToListAsync();
+        // The receipt is in the application's format: the caller scope already sees the retained row through it.
+        await using (var scoped = database.CreateContext())
+        {
+            scoped.ConversationCallerScope = "school";
+            Assert.True(await scoped.MistakeItems.AnyAsync(i => i.Id == retained.Id));
+        }
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(23, upgraded.FromVersion);
-        Assert.Equal(24, upgraded.ToVersion);
+        Assert.Equal(25, upgraded.ToVersion);
         Assert.Equal(updatedAt, await db.MistakeItems.AsNoTracking().OrderBy(i => i.Id).Select(i => i.UpdatedAt).ToListAsync());
 
         using (var row = await ReadAsync(db, extraction.Id))
@@ -79,7 +83,7 @@ public sealed class UnifiedMistakeSchemaPostgresTests
 
         using (var row = await ReadAsync(db, retained.Id))
         {
-            // The task is gone; its caller is recovered from the deletion receipt's owner hash.
+            // The task is gone; v25 recovers its caller from the deletion receipt's owner hash.
             Assert.Equal("school", row.RootElement.GetProperty("caller").GetString());
             var file = Assert.Single(row.RootElement.GetProperty("detail").GetProperty("retainedFiles").EnumerateArray());
             Assert.Equal(retainedCrop, file.GetProperty("path").GetString());
@@ -184,11 +188,13 @@ public sealed class UnifiedMistakeSchemaPostgresTests
     [Fact]
     public async Task DowngradeIsRefusedWithoutChangingTheDatabase()
     {
-        await using var database = await PostgresTestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
-        var exception = await Assert.ThrowsAnyAsync<Exception>(() => db.GetService<IMigrator>().MigrateAsync(ImageVariantSchema.Migration));
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync(UnifiedMistakeSchema.Migration);
+        var exception = await Assert.ThrowsAnyAsync<Exception>(() => migrator.MigrateAsync(ImageVariantSchema.Migration));
         Assert.Contains("unified_mistake_source_irreversible", exception.ToString());
-        Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);
+        Assert.Equal(24, (await DatabaseInitializer.UpgradeToTargetAsync(db)).FromVersion);
     }
 
     [Fact]

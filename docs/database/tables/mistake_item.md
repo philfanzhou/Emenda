@@ -24,6 +24,7 @@
 
 v24 起，`source_kind`、`source_caller`、`content`、`source_detail` 由触发器 `trg_mistake_item_source`
 从 `analysis_snapshot`、`conversation_*`、`source_upload_id`、`source_regions` 推导，应用代码暂不读写它们。
+任务已删除的提取错题，`source_caller` 由 v25 迁移从删除回执的 `owner_hash` 反查；反查不到时为 NULL。
 `content` 的结构：
 
 ```json

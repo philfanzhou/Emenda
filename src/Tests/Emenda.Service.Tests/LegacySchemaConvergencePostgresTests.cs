@@ -340,8 +340,8 @@ public sealed class LegacySchemaConvergencePostgresTests
                 (await Assert.ThrowsAsync<PostgresException>(() => database.ExecuteAsync(statement))).MessageText);
         // The latest correction migration is forward-only; no downgrade can reach the archive migration.
         var before = await database.SnapshotAsync();
-        // The unified mistake source is now the latest forward-only migration.
-        Assert.Contains("unified_mistake_source_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
+        // The extraction caller recovery is now the latest forward-only migration.
+        Assert.Contains("extraction_caller_recovery_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
             context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration))).MessageText);
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(3, (await database.ArchiveAsync()).Count);

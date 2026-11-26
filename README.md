@@ -86,7 +86,8 @@ Every mistake now also carries one source-independent shape: `source_kind` (`ext
 or `legacy`), `source_caller`, `content` (question text and an `images` list matching `source_regions`
 in order, each marked as a question image or an original) and `source_detail`. In this version a database
 trigger derives them from the existing columns, which stay authoritative; the API is unchanged. The
-upgrade is forward-only and backfills existing rows automatically. See the
+upgrade is forward-only and backfills existing rows automatically; schema v25 resolves the caller of
+mistakes whose extraction task was deleted earlier. See the
 [unified mistake intake design](docs/design/UnifiedMistakeIntake.md).
 
 ### Database schema v20
