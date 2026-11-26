@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace Emenda.Service.Tests;
@@ -22,6 +23,8 @@ public sealed class ConversationEndpointSecurityTests
     public async Task CollectionSurfaceRejectsUntrustedCallerKeysAndBrowserHeadersBeforeDependencies(string path)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
+        // The appsettings copy in the test output no longer carries a Logging section.
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         var authorization = new Mock<IConversationAuthorization>(MockBehavior.Strict);
         var database = new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql("Host=127.0.0.1;Port=1;Database=never;Username=fixture").Options;
         builder.Services.AddSingleton(new ConversationCollectionOptions { Enabled = true, CollectionKey = new string('c', 64) });
@@ -50,6 +53,8 @@ public sealed class ConversationEndpointSecurityTests
     public async Task AdmissionDistinguishesExplicitDenialFromAuthorizationOutage(bool outage, HttpStatusCode status)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
+        // The appsettings copy in the test output no longer carries a Logging section.
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         var authorization = new Mock<IConversationAuthorization>();
         var setup = authorization.Setup(a => a.AllowedAsync("actor", "learner", "owner", It.IsAny<CancellationToken>()));
         if (outage) setup.ThrowsAsync(new HttpRequestException("unavailable")); else setup.ReturnsAsync(false);
