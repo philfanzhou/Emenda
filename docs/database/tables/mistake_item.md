@@ -17,6 +17,30 @@
 | `question_id` | `VARCHAR(36)` | NULL | — | 关联的题目ID |
 | `created_at` | `TIMESTAMPTZ` | NOT NULL | `now()` | 创建时间 |
 | `updated_at` | `TIMESTAMPTZ` | NULL, ConcurrencyCheck | — | 最后更新时间，乐观并发控制 |
+| `source_kind` | `TEXT` | NOT NULL, CHECK | 触发器推导 | 来源：`extraction` / `conversation` / `legacy` |
+| `source_caller` | `TEXT` | NULL | 触发器推导 | 所属产品调用方；legacy 为 NULL |
+| `content` | `JSONB` | NOT NULL | 触发器推导 | 统一题目内容（见下方说明） |
+| `source_detail` | `JSONB` | NULL, CHECK | 触发器推导 | 来源明细；legacy 为 NULL，其余必有 |
+
+v24 起，`source_kind`、`source_caller`、`content`、`source_detail` 由触发器 `trg_mistake_item_source`
+从 `analysis_snapshot`、`conversation_*`、`source_upload_id`、`source_regions` 推导，应用代码暂不读写它们。
+`content` 的结构：
+
+```json
+{
+  "version": 1,
+  "statement": "题干，未知为 null",
+  "studentAnswer": "学生作答，未知为 null",
+  "referenceAnswer": "参考答案，未知为 null",
+  "explanation": "解析，答疑来源为 null",
+  "evidence": "判错依据，未知为 null",
+  "knowledgePoints": [],
+  "images": [{ "path": "mistakes/...", "role": "question 或 source", "box": [x1, y1, x2, y2] }]
+}
+```
+
+`content.images[i].path` 始终等于 `source_regions[i].sourceImagePath`。`role=question` 是题目图，
+`role=source` 是答疑中的原图（仅作证据）。设计见 [UnifiedMistakeIntake](../../design/UnifiedMistakeIntake.md)。
 
 ## 索引
 

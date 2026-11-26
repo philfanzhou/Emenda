@@ -42,7 +42,7 @@ public sealed class ImageVariantSchemaPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(22, upgraded.FromVersion);
-        Assert.Equal(23, upgraded.ToVersion);
+        Assert.Equal(24, upgraded.ToVersion);
         var queued = await db.Database.SqlQuery<string>($"SELECT path AS \"Value\" FROM image_variant_task ORDER BY path COLLATE \"C\"").ToListAsync();
         Assert.Equal(new[] { legacy, conversation, source.Path, crop.Path }.Order(StringComparer.Ordinal), queued);
         Assert.False(db.Database.HasPendingModelChanges());
