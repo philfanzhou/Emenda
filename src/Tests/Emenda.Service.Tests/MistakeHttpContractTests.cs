@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Emenda.Host;
 using Emenda.HttpContracts;
 
@@ -136,6 +137,8 @@ public sealed class MistakeHttpContractTests
     public async Task PublisherWorksWithoutAnyBusinessRegistrationAndCancellationCannotCallInfrastructureAsync()
     {
         var builder = WebApplication.CreateBuilder();
+        // The appsettings copy in the test output no longer carries a Logging section.
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         builder.WebHost.UseTestServer();
         await using var app = builder.Build();
         app.MapMistakeContractEndpoints();
