@@ -135,6 +135,7 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         var prior = await db.ConversationMistakeReceipts.Where(r => r.SourceKey == key).OrderByDescending(r => r.Position).ToListAsync(ct);
         var id = new Guid(Convert.FromHexString(key[..32]));
         var existing = (await db.MistakeItems.FromSqlInterpolated($"SELECT * FROM mistake_item WHERE id={id} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
+        // The pipeline's own working state: an earlier event of this packet may have changed it in memory, before the save re-derives source_detail.
         var previous = existing?.ConversationSource == null ? null : JsonSerializer.Deserialize<ConversationQuestionSnapshot>(existing.ConversationSource, ConversationExport.Json);
         var selectedImages = images.Where(i => i.AssetId is { } asset ? q.AssetIds.Contains(asset) : q.SourcePositions.Contains(i.SourcePosition) || i.SourcePosition == q.Attempt?.Position).ToArray();
         var selectedSources = packet.Sources.Where(s => q.SourcePositions.Contains(s.Position) || s.Position == q.Attempt?.Position).Select(s => new ConversationQuestionSource(s.Position, s.Content)).ToArray();
@@ -166,7 +167,14 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
             entity.ConversationSource = serialized; entity.ConversationActive = activeError != null;
             entity.SourceRegions = snapshot.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).DistinctBy(i => i.SourceImagePath).ToList();
             entity.UpdatedAt = timestamp;
-            if (existing == null) db.MistakeItems.Add(entity);
+            if (existing == null)
+            {
+                db.MistakeItems.Add(entity);
+                // Like extraction publication, a collected mistake starts its process history with a Created entry.
+                db.ProcessLogs.Add(new() { Id = Guid.NewGuid(), MistakeItemId = id, StudentId = job.StudentId, Action = (int)ProcessAction.Created,
+                    CreatedAt = timestamp, Details = JsonSerializer.Serialize(new { operation = "conversation_collected", conversationId = packet.ConversationId,
+                        questionId = q.Id, position = item.Position }, ConversationExport.Json) });
+            }
             foreach (var receipt in prior) receipt.Observation = "{}";
             observation = null;
             status = q.RetractsMistake ? "retracted" : existing == null ? "collected" : "updated";

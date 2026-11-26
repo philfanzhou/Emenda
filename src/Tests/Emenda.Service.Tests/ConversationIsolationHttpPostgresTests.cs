@@ -51,9 +51,10 @@ public sealed class ConversationIsolationHttpPostgresTests
         Assert.Equal(HttpStatusCode.OK, ownDetail.StatusCode);
         using var foreignDetail = await foreign.GetAsync($"/api/mistakes/{f.ItemId:D}");
         Assert.Equal(HttpStatusCode.NotFound, foreignDetail.StatusCode);
-        foreach (var (route, field) in new[] { ("practices", "practices"), ("process-logs", "logs") })
+        // The collected mistake's history starts with its Created entry, followed by the seeded one.
+        foreach (var (route, field, count) in new[] { ("practices", "practices", 1), ("process-logs", "logs", 2) })
         {
-            Assert.Single((await Data(own, $"/api/mistakes/{f.ItemId:D}/{route}")).GetProperty(field).EnumerateArray());
+            Assert.Equal(count, (await Data(own, $"/api/mistakes/{f.ItemId:D}/{route}")).GetProperty(field).GetArrayLength());
             Assert.Empty((await Data(foreign, $"/api/mistakes/{f.ItemId:D}/{route}")).GetProperty(field).EnumerateArray());
         }
 

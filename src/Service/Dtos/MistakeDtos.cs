@@ -52,7 +52,34 @@ public class MistakeItemDto
     public string QuestionId { get; set; } = string.Empty;
     public string CreatedAt { get; set; } = string.Empty;
     public string UpdatedAt { get; set; } = string.Empty;
+    /// <summary>mistake-http-v7: extraction, conversation or legacy.</summary>
+    public string SourceKind { get; set; } = MistakeSourceKinds.Legacy;
+    /// <summary>mistake-http-v7: the question in one shape for every source; images match sourceRegions one to one.</summary>
+    public MistakeContentDto Content { get; set; } = MistakeContentDto.Empty;
 }
+
+/// <summary>
+/// The unified question content (content version 1). A text member is null when the source has no such text
+/// or when it is withheld: an extraction mistake shows its text only while pending review or confirmed.
+/// </summary>
+public sealed record MistakeContentDto(
+    int Version,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)] string? Statement,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)] string? StudentAnswer,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)] string? ReferenceAnswer,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)] string? Explanation,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)] string? Evidence,
+    IReadOnlyList<string> KnowledgePoints,
+    IReadOnlyList<MistakeContentImageDto> Images)
+{
+    public static MistakeContentDto Empty { get; } = new(1, null, null, null, null, null, [], []);
+}
+
+/// <summary>One image of <see cref="MistakeContentDto"/>: role is "question" (the question crop) or "source" (an original kept as evidence).</summary>
+public sealed record MistakeContentImageDto(
+    string Path,
+    string Role,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)] int[]? Box);
 
 public sealed record MistakeAnalysisSnapshotDto(string Statement, string StudentAnswer, string ReferenceAnswer,
     string Explanation, string Evidence, int SourceVersion);

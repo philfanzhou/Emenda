@@ -67,11 +67,11 @@ public static partial class MistakeHttpEndpoints
 
         // Conversation-backed items are caller-scoped; only an authenticated
         // product caller may read them.
-        if (item.ConversationSource != null && !IsProductCaller(user))
+        if (item.SourceKind == MistakeSourceKinds.Conversation && !IsProductCaller(user))
             return ErrorKind("authentication_required", 401);
 
         var detail = MapMistakeItemDto(item);
-        if (item.ConversationSource is null && item.AnalysisSnapshot is { } snapshot &&
+        if (item.SourceKind == MistakeSourceKinds.Extraction && item.AnalysisSnapshot is { } snapshot &&
             detail.ReviewStatus is ReviewStatus.PendingReview or ReviewStatus.Confirmed)
             detail.AnalysisSnapshot = JsonSerializer.Deserialize<MistakeAnalysisSnapshotDto>(snapshot, JsonSerializerOptions.Web);
 
@@ -196,9 +196,9 @@ public static partial class MistakeHttpEndpoints
             return MistakeHttpResponse.BadRequest("审核结果只能是确认或退回");
 
         var beforeReview = await mistakeService.GetMistakeItemAsync(id);
-        if (beforeReview?.SourceUploadId?.StartsWith("extract:", StringComparison.Ordinal) == true)
+        if (beforeReview?.SourceKind == MistakeSourceKinds.Extraction)
             return ErrorKind("extraction_review_endpoint_required", 409);
-        var conversation = beforeReview?.ConversationSource != null;
+        var conversation = beforeReview?.SourceKind == MistakeSourceKinds.Conversation;
         if (conversation && !IsProductCaller(user))
             return ErrorKind("authentication_required", 401);
 
@@ -535,7 +535,40 @@ public static partial class MistakeHttpEndpoints
             dto.SourceRegions.Add(regionDto);
         }
 
+        dto.SourceKind = item.SourceKind;
+        dto.Content = MapContent(item, dto.ReviewStatus);
         return dto;
+    }
+
+    // Text exposure follows mistake-http-v6: conversation text travels with conversationSource, while an
+    // extraction mistake's text (v6 analysisSnapshot) is shown only while it is pending review or confirmed.
+    // Images are always listed; their paths are already public through sourceRegions.
+    internal static MistakeContentDto MapContent(MistakeItemModel item, ReviewStatus status)
+    {
+        if (string.IsNullOrEmpty(item.Content)) return MistakeContentDto.Empty;
+        using var document = JsonDocument.Parse(item.Content);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return MistakeContentDto.Empty;
+        var showText = item.SourceKind != MistakeSourceKinds.Extraction
+            || status is ReviewStatus.PendingReview or ReviewStatus.Confirmed;
+        string? Text(string name) => showText && root.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        var points = showText && root.TryGetProperty("knowledgePoints", out var list) && list.ValueKind == JsonValueKind.Array
+            ? list.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.String).Select(p => p.GetString()!).ToArray()
+            : [];
+        var images = root.TryGetProperty("images", out var array) && array.ValueKind == JsonValueKind.Array
+            ? array.EnumerateArray().Where(i => i.ValueKind == JsonValueKind.Object).Select(image =>
+            {
+                var path = image.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : string.Empty;
+                var role = image.TryGetProperty("role", out var r) && r.GetString() == "source" ? "source" : "question";
+                int[]? box = image.TryGetProperty("box", out var b) && b.ValueKind == JsonValueKind.Array && b.GetArrayLength() == 4
+                    && b.EnumerateArray().All(v => v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out _))
+                    ? b.EnumerateArray().Select(v => v.GetInt32()).ToArray() : null;
+                return new MistakeContentImageDto(path, role, box);
+            }).ToArray()
+            : [];
+        return new MistakeContentDto(1, Text("statement"), Text("studentAnswer"), Text("referenceAnswer"),
+            Text("explanation"), Text("evidence"), points, images);
     }
 
     private static MistakePracticeDto MapPracticeDto(MistakePracticeModel practice)

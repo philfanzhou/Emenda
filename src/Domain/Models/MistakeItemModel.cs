@@ -19,6 +19,11 @@ public class MistakeItemModel
     public DateTimeOffset? ReviewedAt { get; set; }
     public string? RootCause { get; set; }
     public string? AnalysisSnapshot { get; init; }
+    /// <summary>extraction, conversation or legacy; derived by the store, never written through the model.</summary>
+    public string SourceKind { get; init; } = MistakeSourceKinds.Legacy;
+    public string? SourceCaller { get; init; }
+    /// <summary>The unified question content as JSON (content version 1); derived by the store.</summary>
+    public string? Content { get; init; }
     // 注意：历史上存在 Type（int 1-6 枚举，对应"错误类型"）字段，
     // 因无法覆盖全部错题场景已于 2026 年 6 月下线。
     public string? QuestionId { get; set; }

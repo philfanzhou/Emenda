@@ -4,7 +4,7 @@ v6 is the standalone-only surface: it removes the legacy upload/manual-add intak
 
 > The sections below were written for v3–v5 and still describe platform-era strict/resource authorization and managed-source behaviour; for v6 the published JSON is authoritative.
 
-[mistake-http-v6.json](./mistake-http-v6.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 Portals 文档 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
+[mistake-http-v7.json](./mistake-http-v7.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 Portals 文档 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
 
 ## Worksheet mistake detail
 
@@ -14,9 +14,19 @@ The detail does not read the extraction job or call a model. An adopted correcti
 
 Schema v21 backfills unset snapshots from the matching current extraction revision only when all five text fields are recoverable. Stop old extraction-writing instances before upgrading: pre-v21 publishers do not maintain the item snapshot.
 
+## Unified source shape (mistake-http-v7)
+
+v7 adds two required members to every `MistakeItemDto` (detail, lists, by-upload) and changes nothing else; every v6 member keeps its meaning and is still returned.
+
+- `sourceKind`: `extraction`, `conversation` or `legacy`. Use it instead of parsing the `extract:` prefix of `sourceUploadId` or testing whether `conversationSource` is present.
+- `content`: `version` (1), `statement`, `studentAnswer`, `referenceAnswer`, `explanation`, `evidence`, `knowledgePoints` and `images`. Text a source does not have is `null` (`explanation` exists only for extraction, `knowledgePoints` only for conversation). An extraction mistake shows its text only while pending review or confirmed, exactly like v6 `analysisSnapshot`; conversation text follows `conversationSource`.
+- `content.images[i]` is the object behind `GET /api/mistakes/{id}/images/{i}` (it matches `sourceRegions[i]`). `role` is `question` for the question image to display and `source` for an original kept as evidence (conversation mistakes); `box` is `[x1, y1, x2, y2]` inside the original when known.
+
+Consumers can move from `analysisSnapshot`/`conversationSource` to `content` at their own pace; the v6 members are removed only in a later contract version. See [the unified intake design](../design/UnifiedMistakeIntake.md).
+
 ## 取得发布版本
 
-匿名 `GET /contracts/mistake-http-v6.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。Historical v1–v5 (and `emenda-intake-v1`) continue to publish their exact bytes; latest-version links point to v6 (`emenda-extraction-v1` for the intake contract).`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。
+匿名 `GET /contracts/mistake-http-v7.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。Historical v1–v6 (and `emenda-intake-v1`) continue to publish their exact bytes; latest-version links point to v7 (`emenda-extraction-v1` for the intake contract).`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。
 
 规格嵌入 `Mistake.Service` 发布程序集；Host 从该资源返回内容，Dockerfile 显式带入源 artifact。运行时无需 checkout、文档目录或特定工作目录。共享客户端也嵌入同一源 artifact，并仅 source-link 不依赖 Domain/Database 的纯 schema 校验器；它不引用服务 DTO 或服务项目。
 

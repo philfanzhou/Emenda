@@ -42,20 +42,13 @@ public sealed class UnifiedMistakeSchemaPostgresTests
         var (conversation, _) = Conversation("school");
         var legacy = Item("0f4c1a2e-legacy", "mistakes/2026/06/08/upload_0.jpg");
         legacy.SourceRegions[0].BoundingBox = new() { X1 = 1, Y1 = 2, X2 = 30, Y2 = 40 };
-        db.MistakeItems.AddRange(extraction, retained, conversation, legacy);
-        await db.SaveChangesAsync();
-        var updatedAt = await db.MistakeItems.AsNoTracking().OrderBy(i => i.Id).Select(i => i.UpdatedAt).ToListAsync();
-        // The receipt is in the application's format: the caller scope already sees the retained row through it.
-        await using (var scoped = database.CreateContext())
-        {
-            scoped.ConversationCallerScope = "school";
-            Assert.True(await scoped.MistakeItems.AnyAsync(i => i.Id == retained.Id));
-        }
+        await PreUnifiedRows.InsertAsync(db, extraction, retained, conversation, legacy);
+        var updatedAt = await UpdatedAtAsync(db);
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(23, upgraded.FromVersion);
         Assert.Equal(25, upgraded.ToVersion);
-        Assert.Equal(updatedAt, await db.MistakeItems.AsNoTracking().OrderBy(i => i.Id).Select(i => i.UpdatedAt).ToListAsync());
+        Assert.Equal(updatedAt, await UpdatedAtAsync(db));
 
         using (var row = await ReadAsync(db, extraction.Id))
         {
@@ -238,6 +231,10 @@ public sealed class UnifiedMistakeSchemaPostgresTests
         item.ConversationSource = source;
         return (item, source);
     }
+
+    // Raw SQL: below v24 the EF query filter would name the unified columns.
+    private static Task<List<DateTimeOffset?>> UpdatedAtAsync(MistakeDbContext db) =>
+        db.Database.SqlQuery<DateTimeOffset?>($"SELECT updated_at AS \"Value\" FROM mistake_item ORDER BY id").ToListAsync();
 
     private static async Task<JsonDocument> ReadAsync(MistakeDbContext db, Guid id) =>
         JsonDocument.Parse(await db.Database.SqlQuery<string>($"""

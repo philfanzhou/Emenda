@@ -52,6 +52,28 @@ public class MistakeItemEntity
     [Column("analysis_snapshot", TypeName = "jsonb")]
     public string? AnalysisSnapshot { get; set; }
 
+    // The unified shape (schema v24). MistakeMaterializer derives these four columns from the
+    // source-specific ones on every EF save, and trg_mistake_item_source applies the same mapping
+    // in the database, so a value assigned here directly never survives a save. Read them; do not write them.
+
+    /// <summary><see cref="MistakeSource.Extraction"/>, <see cref="MistakeSource.Conversation"/> or <see cref="MistakeSource.Legacy"/>.</summary>
+    [Column("source_kind")]
+    [Required]
+    public string SourceKind { get; set; } = MistakeSource.Legacy;
+
+    /// <summary>The owning product caller; NULL for legacy rows and unresolved deleted-task extractions.</summary>
+    [Column("source_caller")]
+    public string? SourceCaller { get; set; }
+
+    /// <summary>The question as one JSON shape whose <c>images</c> match <see cref="SourceRegions"/> one to one.</summary>
+    [Column("content", TypeName = "jsonb")]
+    [Required]
+    public string Content { get; set; } = MistakeSource.EmptyContent;
+
+    /// <summary>Source-only data: an extraction's task and retained files, or the conversation evidence; NULL for legacy.</summary>
+    [Column("source_detail", TypeName = "jsonb")]
+    public string? SourceDetail { get; set; }
+
     // 注意：历史上存在 [Column("type")] 的"错误类型"字段（int 1-6 枚举），
     // 因无法覆盖全部错题场景已于 2026 年 6 月下线，相关 DB 列通过迁移文件删除。
     // 未来若需要 tag 能力，请通过新列承载而非复用此 tag 号。

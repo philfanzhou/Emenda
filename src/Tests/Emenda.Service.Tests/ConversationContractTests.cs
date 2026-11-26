@@ -36,8 +36,7 @@ public sealed class ConversationContractTests
     public void V6RetainsEveryUnremovedV5OperationAndSchemaWithDeclaredAuthorizationAndWorksheetDetailChanges()
     {
         var previous = Resource("mistake-http-v5");
-        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
-        Assert.Equal("mistake-http-v6", MistakeHttpContract.Version);
+        var current = Resource("mistake-http-v6");
         var removed = current["x-ruoyu"]!["versionChange"]!["changedLocations"]!.AsArray()
             .Select(value => value!.GetValue<string>()).Where(value => value.StartsWith('/') || value.Contains(" /")).ToHashSet();
         var retained = 0;
@@ -71,6 +70,27 @@ public sealed class ConversationContractTests
                 Assert.True(candidate["properties"]!.AsObject().Remove("analysisSnapshot"));
             Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"]![schema.Key], candidate), schema.Key);
         }
+    }
+
+    [Fact]
+    public void V7OnlyAddsTheUnifiedSourceShapeToV6()
+    {
+        var previous = Resource("mistake-http-v6");
+        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
+        Assert.Equal("mistake-http-v7", MistakeHttpContract.Version);
+        Assert.True(JsonNode.DeepEquals(previous["paths"], current["paths"]));
+        var schemas = current["components"]!["schemas"]!.DeepClone().AsObject();
+        Assert.True(schemas.Remove("MistakeContent"));
+        Assert.True(schemas.Remove("MistakeContentImage"));
+        var item = schemas["MistakeItemDto"]!.AsObject();
+        Assert.True(item["properties"]!.AsObject().Remove("sourceKind"));
+        Assert.True(item["properties"]!.AsObject().Remove("content"));
+        var required = item["required"]!.AsArray();
+        Assert.Equal(["sourceKind", "content"], required.Skip(required.Count - 2).Select(v => v!.GetValue<string>()));
+        required.RemoveAt(required.Count - 1);
+        required.RemoveAt(required.Count - 1);
+        Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"], schemas));
+        Assert.Equal("mistake-http-v6", current["x-ruoyu"]!["versionChange"]!["previousVersion"]!.GetValue<string>());
     }
 
     private static JsonNode Resource(string version)

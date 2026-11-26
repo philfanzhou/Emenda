@@ -27,6 +27,7 @@ COPY docs/Integration/mistake-http-v3.json docs/Integration/mistake-http-v3.json
 COPY docs/Integration/mistake-http-v4.json docs/Integration/mistake-http-v4.json
 COPY docs/Integration/mistake-http-v5.json docs/Integration/mistake-http-v5.json
 COPY docs/Integration/mistake-http-v6.json docs/Integration/mistake-http-v6.json
+COPY docs/Integration/mistake-http-v7.json docs/Integration/mistake-http-v7.json
 COPY docs/Integration/emenda-intake-v1.json docs/Integration/emenda-intake-v1.json
 COPY docs/Integration/emenda-extraction-v1.json docs/Integration/emenda-extraction-v1.json
 COPY docs/Integration/emenda-extraction-v2.json docs/Integration/emenda-extraction-v2.json

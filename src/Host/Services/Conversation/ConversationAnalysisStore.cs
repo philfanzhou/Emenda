@@ -21,11 +21,11 @@ public sealed class ConversationAnalysisStore(DbContextOptions<MistakeDbContext>
         await using var db = new MistakeDbContext(options);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var item = (await db.MistakeItems.FromSqlInterpolated($"SELECT * FROM mistake_item WHERE id={itemId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
-        if (item?.ConversationSource == null || item.ConversationCaller != caller || item.StudentId != input.StudentId || item.ReviewStatus != (int)ReviewStatus.Confirmed
+        if (item is not { SourceKind: MistakeSource.Conversation, SourceDetail: not null } || item.SourceCaller != caller || item.StudentId != input.StudentId || item.ReviewStatus != (int)ReviewStatus.Confirmed
             && (item.ReviewStatus != (int)ReviewStatus.PendingReview || !item.ConversationActive)) throw new UnauthorizedAccessException();
         var provenance = await db.ConversationCollections.AsNoTracking().Where(j => j.CallerName == caller && j.StudentId == input.StudentId).OrderByDescending(j => j.CreatedAt).FirstOrDefaultAsync(ct);
         if (provenance == null || !await authorization.AllowedAsync(input.ActorId, input.StudentId, provenance.OwnerId, ct)) throw new UnauthorizedAccessException();
-        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource, ConversationExport.Json) ?? throw new InvalidDataException("Missing evidence.");
+        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.SourceDetail, ConversationExport.Json) ?? throw new InvalidDataException("Missing evidence.");
         if (snapshot.EvidenceHash(item.Subject, item.ReviewStatus, item.RootCause,
             item.SourceRegions.Select(r => new ConversationEvidenceRegion(r.SourceImagePath, r.BoundingBox is { } b ? [b.X1, b.Y1, b.X2, b.Y2] : null))) != input.EvidenceHash) return false;
         if (snapshot.Analysis is { } old && old.EvidenceHash == input.EvidenceHash && old.Version == input.Version && old.Model == input.Model) return true;

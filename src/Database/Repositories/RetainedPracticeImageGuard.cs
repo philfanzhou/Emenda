@@ -18,16 +18,16 @@ internal static class RetainedPracticeImageGuard
                 : db.MistakeItems.Where(i => i.Id == group.Key);
             var item = await query.AsNoTracking().SingleOrDefaultAsync(ct)
                 ?? throw new MistakeConflictException("source_managed");
-            if (!item.SourceUploadId.StartsWith("extract:", StringComparison.Ordinal) ||
-                !Guid.TryParseExact(item.SourceUploadId.AsSpan(8), "N", out var jobId))
-                continue;
+            if (MistakeSource.ExtractionJobId(item) is not { } jobId) continue;
             if (!await db.ExtractionDeletions.AnyAsync(d => d.JobId == jobId, ct)) continue;
 
-            using var analysis = JsonDocument.Parse(item.AnalysisSnapshot ?? "{}");
             HashSet<string> allowed;
-            if (analysis.RootElement.TryGetProperty("retainedFiles", out var files))
-                allowed = files.EnumerateArray().Select(f => f.GetProperty("path").GetString()!)
+            if (MistakeSource.RetainedFiles(item) is { } manifest)
+            {
+                using var files = JsonDocument.Parse(manifest);
+                allowed = files.RootElement.EnumerateArray().Select(f => f.GetProperty("path").GetString()!)
                     .ToHashSet(StringComparer.Ordinal);
+            }
             else
             {
                 // rc.12 has no file manifest: only reuse this item's existing references.
