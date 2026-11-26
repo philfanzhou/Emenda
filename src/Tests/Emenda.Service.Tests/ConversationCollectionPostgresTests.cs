@@ -5,6 +5,7 @@ using Npgsql;
 using Emenda.Common.Oss;
 using Emenda.Database;
 using Emenda.Database.Repositories;
+using Emenda.Domain.Models;
 using Emenda.Host.Services.Conversation;
 using Emenda.HttpContracts;
 
@@ -24,6 +25,11 @@ public sealed class ConversationCollectionPostgresTests
             var item = await db.MistakeItems.SingleAsync(); Assert.Empty(item.SourceUploadId); Assert.Empty(item.SourceRegions); Assert.True(item.ConversationActive);
             var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
             Assert.Equal("2 + 2 = ?", snapshot.Statement); Assert.Equal("5", snapshot.StudentAttempt!.Quote);
+            // The unified shape is materialized on the same write, and the history starts with one Created entry.
+            Assert.Equal(MistakeSource.Conversation, item.SourceKind); Assert.Equal(item.ConversationCaller, item.SourceCaller);
+            using (var content = JsonDocument.Parse(item.Content)) Assert.Equal("5", content.RootElement.GetProperty("studentAnswer").GetString());
+            var created = Assert.Single(await db.ProcessLogs.Where(l => l.MistakeItemId == item.Id).ToListAsync());
+            Assert.Equal((int)ProcessAction.Created, created.Action); Assert.Contains("conversation_collected", created.Details);
             var repository = new MistakeItemRepository(db);
             Assert.Single((await repository.GetListAsync(f.Student, 0, 0, 4, 1, 20)).Items);
             Assert.Empty((await repository.GetListAsync(f.Student, 0, 0, 2, 1, 20)).Items);

@@ -66,10 +66,10 @@ and the [paired AI Tutor implementation](integrations/ai-tutor/README.md) before
 
 ### HTTP contracts
 
-The lifecycle contract is [mistake-http-v6](docs/Integration/mistake-http-v6.json) and the
+The lifecycle contract is [mistake-http-v7](docs/Integration/mistake-http-v7.json) and the
 extraction contract is [emenda-extraction-v2](docs/Integration/emenda-extraction-v2.json);
 both are served anonymously under `GET /contracts/{version}.json`. Earlier published
-documents (`mistake-http-v1`…`v5`, `emenda-intake-v1`, `emenda-extraction-v1`) stay available as historical versions.
+documents (`mistake-http-v1`…`v6`, `emenda-intake-v1`, `emenda-extraction-v1`) stay available as historical versions.
 
 ### Display sizes (schema v23)
 
@@ -80,14 +80,16 @@ removed together with their parent, including when an administrator deletes a ta
 mistakes keep their crops and thumbnails. Schema v23 queues all existing images, so current tasks and
 confirmed mistakes are backfilled automatically. See [Display sizes](docs/Integration/ImageVariants.md).
 
-### Unified mistake source (schema v24)
+### Unified mistake source (schema v24, contract v7)
 
-Every mistake now also carries one source-independent shape: `source_kind` (`extraction`, `conversation`
+Every mistake carries one source-independent shape: `source_kind` (`extraction`, `conversation`
 or `legacy`), `source_caller`, `content` (question text and an `images` list matching `source_regions`
-in order, each marked as a question image or an original) and `source_detail`. In this version a database
-trigger derives them from the existing columns, which stay authoritative; the API is unchanged. The
-upgrade is forward-only and backfills existing rows automatically; schema v25 resolves the caller of
-mistakes whose extraction task was deleted earlier. See the
+in order, each marked as a question image or an original) and `source_detail`. The database trigger and
+the application's `MistakeMaterializer` derive them from the source-specific columns with one mapping;
+caller scoping, source checks and archive reads use them, and `mistake-http-v7` returns `sourceKind` and
+`content` on every mistake next to the unchanged v6 fields. The v24 upgrade is forward-only and backfills
+existing rows automatically; schema v25 resolves the caller of mistakes whose extraction task was deleted
+earlier; contract v7 needs no schema change. See the
 [unified mistake intake design](docs/design/UnifiedMistakeIntake.md).
 
 ### Database schema v20

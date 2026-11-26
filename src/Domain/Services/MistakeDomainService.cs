@@ -151,10 +151,10 @@ public class MistakeDomainService : IMistakeDomainService
         item.UpdatedAt = DateTimeOffset.UtcNow;
 
         var result = await _mistakeItemRepository.UpdateAsync(item);
-        if (result)
-            await _unitOfWork.SaveChangesAsync();
-
-        return result ? item : null;
+        if (!result) return null;
+        await _unitOfWork.SaveChangesAsync();
+        // Re-read so the response carries the source shape the store derived from the saved regions.
+        return await _mistakeItemRepository.GetByIdAsync(id) ?? item;
     }
 
     public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null)

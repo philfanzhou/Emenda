@@ -31,14 +31,13 @@ public sealed class ImageVariantSchemaPostgresTests
         db.ExtractionObjects.Add(new ExtractionObjectEntity { Path = crop.Path, JobId = jobId, Pending = false, Legacy = false, NextAttempt = DateTimeOffset.UtcNow });
         await db.SaveChangesAsync();
         const string legacy = "mistakes/2025/06/14/def/image.jpg", conversation = "mistakes/conversation/abc/def/question.png";
-        db.MistakeItems.AddRange(
+        await PreUnifiedRows.InsertAsync(db,
             new() { Id = itemId, StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = $"extract:{jobId:N}", QuestionId = draft.Id.ToString(),
                 SourceRegions = [new() { SourceImagePath = crop.Path }], ReviewStatus = 2 },
             new() { Id = Guid.NewGuid(), StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = "legacy", QuestionId = "q",
                 SourceRegions = [new() { SourceImagePath = legacy }, new() { SourceImagePath = "mistakes/2025/06/14/def/image_small.jpg" }], ReviewStatus = 2 },
             new() { Id = Guid.NewGuid(), StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = "conversation", QuestionId = "c",
                 SourceRegions = [new() { SourceImagePath = conversation }], ReviewStatus = 1 });
-        await db.SaveChangesAsync();
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(22, upgraded.FromVersion);

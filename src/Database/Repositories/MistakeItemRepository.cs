@@ -67,14 +67,14 @@ public class MistakeItemRepository : IMistakeItemRepository
     /// </summary>
     private async Task EnsureIdentityAsync(MistakeItemEntity stored, MistakeItemModel proposed, CancellationToken ct)
     {
-        if (stored.ConversationSource != null && (proposed.StudentId != stored.StudentId
+        if (stored.SourceKind == MistakeSource.Conversation && (proposed.StudentId != stored.StudentId
             || proposed.SourceUploadId != stored.SourceUploadId || proposed.ConversationCaller != stored.ConversationCaller
             || proposed.ConversationSource != stored.ConversationSource || proposed.ConversationActive != stored.ConversationActive))
             throw new MistakeConflictException("conversation_identity");
         if ((proposed.StudentId != stored.StudentId || proposed.SourceUploadId != stored.SourceUploadId
              || proposed.QuestionId != stored.QuestionId
              || !SameRegions(MapSourceRegions(proposed.SourceRegions), stored.SourceRegions))
-            && (stored.SourceUploadId.StartsWith("extract:", StringComparison.Ordinal)
+            && (stored.SourceKind == MistakeSource.Extraction
                 || await _dbContext.ExtractionQuestions.AnyAsync(q => q.ItemId == stored.Id, ct)))
             throw new MistakeConflictException("source_managed");
     }
@@ -120,7 +120,7 @@ public class MistakeItemRepository : IMistakeItemRepository
 
         if (subject > 0) query = query.Where(m => m.Subject == subject);
         if (grade > 0) query = query.Where(m => m.Grade == grade);
-        if (reviewStatus == 4) query = query.Where(m => m.ReviewStatus == (int)ReviewStatus.Confirmed || m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationActive && m.ConversationSource != null);
+        if (reviewStatus == 4) query = query.Where(m => m.ReviewStatus == (int)ReviewStatus.Confirmed || m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationActive && m.SourceKind == MistakeSource.Conversation);
         else if (reviewStatus > 0) query = query.Where(m => m.ReviewStatus == reviewStatus);
 
         var totalCount = await query.CountAsync();
@@ -136,7 +136,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
     {
         var query = _dbContext.MistakeItems
-            .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview && m.ConversationSource == null);
+            .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview && m.SourceKind != MistakeSource.Conversation);
 
         if (subjects != null && subjects.Count > 0)
         {
@@ -221,6 +221,9 @@ public class MistakeItemRepository : IMistakeItemRepository
             ReviewedAt = entity.ReviewedAt,
             RootCause = entity.RootCause,
             AnalysisSnapshot = analysisSnapshot,
+            SourceKind = entity.SourceKind,
+            SourceCaller = entity.SourceCaller,
+            Content = entity.Content,
             QuestionId = entity.QuestionId,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

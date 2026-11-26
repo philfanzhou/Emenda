@@ -54,9 +54,7 @@ public sealed partial class ExtractionService
     {
         var item = await db.MistakeItems.AsNoTracking().SingleOrDefaultAsync(i =>
             i.Id == itemId && i.ReviewStatus == (int)ReviewStatus.Confirmed, ct);
-        var source = item?.SourceUploadId;
-        if (source is null || source.Length != 40 || !source.StartsWith("extract:", StringComparison.Ordinal) ||
-            !Guid.TryParseExact(source.AsSpan(8), "N", out var jobId))
+        if (item is null || MistakeSource.ExtractionJobId(item) is not { } jobId)
             throw new ExtractionException("not_found", 404);
         var ownerHash = ExtractionRules.Hash(Owner(access));
         if (!await db.ExtractionDeletions.AnyAsync(d => d.JobId == jobId &&
@@ -69,10 +67,9 @@ public sealed partial class ExtractionService
         Guid jobId, string path, CancellationToken ct)
     {
         if (!IsJobObjectPath(jobId, path)) throw new ExtractionException("not_found", 404);
-        using var analysis = JsonDocument.Parse(item.AnalysisSnapshot ?? "{}");
-        if (analysis.RootElement.TryGetProperty("retainedFiles", out var manifest))
+        if (MistakeSource.RetainedFiles(item) is { } manifest)
         {
-            var file = manifest.Deserialize<List<RetainedFile>>(ExtractionRules.Json)?.SingleOrDefault(f => f.Path == path)
+            var file = JsonSerializer.Deserialize<List<RetainedFile>>(manifest, ExtractionRules.Json)?.SingleOrDefault(f => f.Path == path)
                 ?? throw new ExtractionException("not_found", 404);
             if (file.ContentType is not ("image/png" or "image/jpeg") || file.Length <= 0 ||
                 file.Sha256.Length != 64 || !file.Sha256.All(char.IsAsciiHexDigit))

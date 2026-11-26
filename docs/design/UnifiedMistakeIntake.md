@@ -1,6 +1,6 @@
 # 统一错题入库模型设计
 
-状态：阶段 A 已实现（schema v24，v0.1.1-rc.17；v25 修正已删任务的调用方反查） · 阶段 B、C 待做
+状态：阶段 A 已实现（schema v24，v0.1.1-rc.17；v25 修正已删任务的调用方反查，rc.18） · 阶段 B 已实现（契约 mistake-http-v7，v0.1.1-rc.19，无 schema 变更） · 阶段 C 待 Portal 切到 v7 后进行
 
 ## 1. 背景与目标
 
@@ -161,6 +161,17 @@ public sealed record MistakeCandidate(
 
 Materializer 在**阶段 B** 引入。阶段 A 不改两条管道的代码，新列由数据库触发器从旧列推导（见 7.1）。
 
+**阶段 B 的实际实现**（与上面的草案不同，原因见 7.2）：
+
+- `MistakeMaterializer`（`src/Database/MistakeMaterializer.cs`）挂在 `MistakeDbContext.SaveChanges[Async]` 上：
+  每次 EF 保存新增或修改的 `mistake_item`，都由它从来源专属列推导出 `source_kind`、`source_caller`、`content`、`source_detail`。
+  两条管道和通用仓储都经过它，不需要各自构造候选对象；被跟踪的实体在保存后就带着与数据库一致的新列值。
+- 映射规则与触发器 `derive_mistake_item_source` 逐项相同（包括 JSON null 与缺失的区别、`jsonb_strip_nulls`、
+  已删任务保留原调用方）。`MistakeMaterializerParityPostgresTests` 对同一批写入逐行比对两边的结果，任何一边改了映射都会失败。
+- 触发器保留，继续覆盖原生 SQL 写入，并保证数据库里的值永远按这套规则得出。
+- P6：答疑错题首次入库时也写一条 Created 处理日志（`operation=conversation_collected`）。
+- 图片变体入队仍留在两条管道里：两边入队的时机（提取只入队新增裁图、答疑在上传后入队）各有理由，搬进 Materializer 没有收益。
+
 ## 6. 读取侧改动
 
 | 位置 | 现在 | 改后 |
@@ -171,6 +182,17 @@ Materializer 在**阶段 B** 引入。阶段 A 不改两条管道的代码，新
 | 通用审核接口 | 前缀 + `conversation_source != null` | `source_kind` |
 | 待审核分组 | `conversation_source == null` | `source_kind <> 'conversation'` |
 | DTO / 契约 | v6：`analysisSnapshot`、`conversationSource` | **v7**：新增 `sourceKind`、`content`；v6 两个字段继续输出（由新列派生），直到 Portal 切完 |
+
+阶段 B 已全部切换（rc.19）。另外答疑模型分析写回的归属校验和 evidence 快照（`ConversationAnalysisStore`）也改为读新列；
+`source_detail` 与 `conversation_source` 逐字节相同，evidence hash 不受影响。答疑管道合并时读取的上一版快照（`ConversationCollectionStore`）
+仍读 `conversation_source`：同一批次里前一个事件可能已在内存中改了它，而 `source_detail` 要到保存时才重新推导。
+调用方过滤器的新旧等价性由 `CallerScopeFilterPostgresTests` 按全部归属情形（遗留、各调用方任务、管理员任务、已删任务已解析/未解析/他人、
+无效任务号、各调用方答疑、无调用方答疑）逐个调用方比对。
+
+两处与表格不同的取舍：
+- v6 的 `analysisSnapshot`、`conversationSource` 仍从旧列读取（旧列在阶段 B 照常写入，内容相同），阶段 C 删旧列时再改。
+- `content` 的文字可见范围沿用 v6：提取错题只在待审核或已确认时给出文字（同 `analysisSnapshot`），答疑错题同 `conversationSource`；
+  图片列表始终给出。列表接口也返回 `content`。
 
 ## 7. 数据迁移
 
@@ -235,7 +257,16 @@ WHERE m.source_upload_id LIKE 'extract:%'
 - 发布契约 v7：新增 `sourceKind`、`content`，v6 字段由新列派生继续输出。
 - 旧列继续写，确保回退到阶段 A 的代码时数据一致。
 
-**回滚**：回退代码版本即可，不涉及 schema。
+**实际实现（v0.1.1-rc.19）**：上面第一条按“回滚不涉及 schema”的要求调整为**保留触发器**。改触发器（只校验或删除）
+本身就是 schema 变更：新版本号会让 rc.18 的严格校验器拒绝启动，回退就不再是“换回镜像”这么简单。因此阶段 B：
+
+- 数据库仍由触发器 `trg_mistake_item_source` 推导新列；应用侧的 `MistakeMaterializer` 在每次 EF 保存时用同一套规则写出新列
+  （见第 5 节），两边由一致性测试锁定。数据库里的新列因此始终由旧列唯一决定，阶段 B 和阶段 A 的代码看到的数据完全一样。
+- 实体映射新列（`SourceKind`、`SourceCaller`、`Content`、`SourceDetail`），第 6 节的读取点全部改读新列，契约升到 v7。
+- 没有新迁移，schema 仍是 v25。
+- “新列成为权威数据、触发器改为只校验或移除”挪到阶段 C：届时旧列被删除，触发器的推导来源也随之消失，必须一起处理。
+
+**回滚**：直接换回 rc.18 镜像即可，schema 不变，数据不需要任何处理。
 
 ### 7.3 阶段 C：收缩（Portal 切到 v7 且稳定运行一个版本后）
 
@@ -249,7 +280,7 @@ WHERE m.source_upload_id LIKE 'extract:%'
 | 步骤 | Emenda | Ruoyu Portal |
 |---|---|---|
 | 1 | 阶段 A（rc.17）：加列、回填、触发器推导 | 无需改动 |
-| 2 | 阶段 B：Materializer、切读，发布契约 v7 | 无需改动（v6 字段仍在） |
+| 2 | 阶段 B（rc.19）：Materializer、切读，发布契约 v7 | 无需改动（v6 字段仍在） |
 | 3 | — | 改为读 `content` / `sourceKind`，图片按 `content.images[i].role` 区分题目图和原图 |
 | 4 | 阶段 C：删旧列，契约 v8 | 确认不再读 v6 字段 |
 
@@ -275,7 +306,7 @@ WHERE m.source_upload_id LIKE 'extract:%'
 | PR | 内容 | 状态 |
 |---|---|---|
 | 1 | 阶段 A：v24 迁移、触发器推导、回填、迁移内校验、严格校验器登记 | 已完成（rc.17） |
-| 1a | v25：按回执的真实哈希格式补回已删任务的调用方（test2 发现 2 条） | 已完成 |
-| 2 | 阶段 B：`MistakeMaterializer`、实体映射新列、读取侧切换、契约 v7 | 待做 |
+| 1a | v25：按回执的真实哈希格式补回已删任务的调用方（test2 发现 2 条） | 已完成（rc.18） |
+| 2 | 阶段 B：`MistakeMaterializer`、实体映射新列、读取侧切换、契约 v7 | 已完成（rc.19） |
 | 3 | Ruoyu Portal 适配 v7 | 待做 |
 | 4 | 阶段 C：删除旧列、契约 v8、闲置表清理 | Portal 稳定后 |

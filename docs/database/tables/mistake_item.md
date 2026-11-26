@@ -23,7 +23,7 @@
 | `source_detail` | `JSONB` | NULL, CHECK | 触发器推导 | 来源明细；legacy 为 NULL，其余必有 |
 
 v24 起，`source_kind`、`source_caller`、`content`、`source_detail` 由触发器 `trg_mistake_item_source`
-从 `analysis_snapshot`、`conversation_*`、`source_upload_id`、`source_regions` 推导，应用代码暂不读写它们。
+从 `analysis_snapshot`、`conversation_*`、`source_upload_id`、`source_regions` 推导。阶段 B（rc.19）起应用在每次 EF 保存时由 `MistakeMaterializer` 按同一规则写出它们，读取侧（调用方过滤、来源判断、归档清单、API `sourceKind`/`content`）改读这四列；旧列照常写入。
 任务已删除的提取错题，`source_caller` 由 v25 迁移从删除回执的 `owner_hash` 反查；反查不到时为 NULL。
 `content` 的结构：
 

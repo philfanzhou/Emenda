@@ -37,9 +37,9 @@ public static class MistakeImageEndpoints
             var item = await db.MistakeItems.AsNoTracking().SingleOrDefaultAsync(i => i.Id == id, ct);
             if (item is null || index < 0 || index >= item.SourceRegions.Count) return Error("not_found", 404);
             var path = item.SourceRegions[index].SourceImagePath ?? "";
-            if (item.SourceUploadId?.StartsWith("extract:", StringComparison.Ordinal) == true)
+            if (item.SourceKind == MistakeSource.Extraction)
             {
-                if (!Guid.TryParseExact(item.SourceUploadId["extract:".Length..], "N", out var jobId)) return Error("not_found", 404);
+                if (MistakeSource.ExtractionJobId(item) is not { } jobId) return Error("not_found", 404);
                 var access = new ExtractionAccess(caller, caller);
                 ExtractionJobView job;
                 try { job = await extraction.GetAsync(access, jobId, ct); }

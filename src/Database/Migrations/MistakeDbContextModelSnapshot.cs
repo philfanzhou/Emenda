@@ -609,6 +609,11 @@ namespace Emenda.Database.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("analysis_snapshot");
 
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("content");
+
                     b.Property<bool>("ConversationActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -652,6 +657,19 @@ namespace Emenda.Database.Migrations
                     b.Property<string>("RootCause")
                         .HasColumnType("text")
                         .HasColumnName("root_cause");
+
+                    b.Property<string>("SourceCaller")
+                        .HasColumnType("text")
+                        .HasColumnName("source_caller");
+
+                    b.Property<string>("SourceDetail")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("source_detail");
+
+                    b.Property<string>("SourceKind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source_kind");
 
                     b.Property<string>("SourceRegions")
                         .IsRequired()

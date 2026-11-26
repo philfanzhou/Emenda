@@ -49,6 +49,19 @@ public class MistakeDbContext : DbContext
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    // Every EF write of a mistake goes through MistakeMaterializer, which derives the unified source columns.
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        MistakeMaterializer.Materialize(this);
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        await MistakeMaterializer.MaterializeAsync(this, cancellationToken).ConfigureAwait(false);
+        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken).ConfigureAwait(false);
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -56,13 +69,14 @@ public class MistakeDbContext : DbContext
         MistakeAnalysisSchema.Configure(modelBuilder);
         ConversationCollectionModel.Configure(modelBuilder);
         modelBuilder.Entity<MistakeItemEntity>().Property(e => e.ConversationActive).HasDefaultValue(false);
+        // Legacy rows belong to no caller. Every other row is owned by its source_caller; an extraction whose task was
+        // deleted before its caller could be resolved (source_caller NULL) still matches its deletion receipt.
         modelBuilder.Entity<MistakeItemEntity>().HasQueryFilter(e => ConversationCallerScope == null
-            || (e.ConversationSource == null || e.ConversationCaller == ConversationCallerScope)
-            && (!e.SourceUploadId.StartsWith("extract:")
-                || ExtractionJobs.Any(job => e.SourceUploadId == "extract:" + job.Id.ToString().Replace("-", "")
-                    && job.Caller == "caller:" + ConversationCallerScope)
-                || ExtractionDeletions.Any(deletion => e.SourceUploadId == "extract:" + deletion.JobId.ToString().Replace("-", "")
-                    && deletion.OwnerHash == ExtractionCallerOwnerHash)));
+            || e.SourceKind == MistakeSource.Legacy
+            || e.SourceCaller == ConversationCallerScope
+            || e.SourceKind == MistakeSource.Extraction && e.SourceCaller == null
+                && ExtractionDeletions.Any(deletion => e.SourceUploadId == "extract:" + deletion.JobId.ToString().Replace("-", "")
+                    && deletion.OwnerHash == ExtractionCallerOwnerHash));
         modelBuilder.Entity<MistakePracticeEntity>().HasQueryFilter(e => ConversationCallerScope == null
             || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         modelBuilder.Entity<ProcessLogEntity>().HasQueryFilter(e => ConversationCallerScope == null
