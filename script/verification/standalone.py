@@ -309,23 +309,15 @@ def envelope(result):
 
 
 def host_env(fixture):
-    return {"ASPNETCORE_ENVIRONMENT": "Standalone", "DOTNET_ENVIRONMENT": "Standalone",
-            "Emenda__Runtime__Mode": "Standalone", "Emenda__Database__SchemaOwnership": "Own",
-            "ConnectionStrings__Emenda": "Host=" + fixture["containers"]["pg"] + ";Port=5432;Database=emenda;Username=emenda;Password=" + fixture["pg_password"],
-            "Emenda__Security__Enabled": "true", "Emenda__Security__AllowAnonymous": "false",
+    return {"ConnectionStrings__Emenda": "Host=" + fixture["containers"]["pg"] + ";Port=5432;Database=emenda;Username=emenda;Password=" + fixture["pg_password"],
+            "Emenda__Security__AllowAnonymous": "false",
             "Emenda__Security__Callers__0__Name": "verification-a", "Emenda__Security__Callers__0__ApiKey": fixture["api_keys"][0],
             "Emenda__Security__Callers__1__Name": "verification-b", "Emenda__Security__Callers__1__ApiKey": fixture["api_keys"][1],
             "Emenda__Security__DynamicCallers__Path": "/tmp/emenda-verification-callers.json",
-            "Mistake__Http__Port": "5007", "Mistake__Student__Enabled": "false",
-            "Mistake__Workers__UploadPollingWorker__Enabled": "false", "Mistake__Workers__ReanalyzeJobHostedService__Enabled": "false",
-            "Mistake__Workers__ReanalyzeJobCleanupService__Enabled": "false", "Mistake__Layout__Enabled": "false",
-            "Mistake__SourceIntake__Enabled": "false", "Mistake__SourceTargets__Enabled": "false",
-            "Mistake__SourceReturns__Enabled": "false", "Mistake__SourceHandoffs__Enabled": "false", "Mistake__LegacyReturns__Enabled": "false",
+            "Mistake__Http__Port": "5007", "Mistake__Layout__Enabled": "false",
             "Oss__InternalEndpoint": fixture["containers"]["s3"] + ":8333", "Oss__InternalSecure": "false",
             "Oss__AccessKey": fixture["s3_access_key"], "Oss__SecretKey": fixture["s3_secret_key"], "Oss__BucketName": fixture["bucket"],
-            "Oss__PublicBaseUrl": "http://" + fixture["s3_endpoint"],
-            "VlAnalyzer__ApiKey": fixture["vl_key"], "VlAnalyzer__BaseUrl": "http://" + fixture["containers"]["vl"] + ":8080/v1",
-            "VlAnalyzer__Model": "verification-deterministic", "VlAnalyzer__MaxRetries": "0", "VlAnalyzer__TimeoutSeconds": "10"}
+            "Oss__PublicBaseUrl": "http://" + fixture["s3_endpoint"]}
 
 
 def start_host(path, fixture, host_dir):

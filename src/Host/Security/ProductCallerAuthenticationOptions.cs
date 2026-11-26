@@ -1,8 +1,7 @@
 namespace Emenda.Host.Security;
 
 /// <summary>
-/// Product-owned inbound authentication for standalone deployments
-/// (<c>Emenda:Runtime:Mode=Standalone</c>). Callers authenticate with a static
+/// Product-owned inbound authentication. Callers authenticate with a static
 /// per-caller credential; the product does not depend on the platform identity
 /// provider. The authority to act for a student remains the caller's
 /// responsibility (ADR-0031 decision 2).
@@ -11,8 +10,6 @@ public sealed class ProductCallerAuthenticationOptions
 {
     public const string SectionName = "Emenda:Security";
     public const string ApiKeyHeaderName = "X-Emenda-Api-Key";
-
-    public bool Enabled { get; set; } = true;
 
     /// <summary>
     /// Local-development escape hatch only. Every deployment reachable by

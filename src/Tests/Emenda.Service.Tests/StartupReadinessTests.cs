@@ -20,17 +20,17 @@ namespace Emenda.Service.Tests;
 /// Product readiness: a deployment must report ready with exactly the
 /// components it actually wired (database and object storage), and the
 /// caller-credential configuration must fail startup when it has no usable
-/// credential. Removed platform settings fail startup instead of being ignored.
+/// credential.
 /// </summary>
-public sealed class StandaloneReadinessTests
+public sealed class StartupReadinessTests
 {
     private const string CallerName = "readiness-tests";
     private const string CallerKey = "readiness-test-api-key-0123456789";
 
     [Fact]
-    public async Task StandaloneMode_ReadinessReportsOnlyDatabaseAndObjectStorageAsync()
+    public async Task Readiness_ReportsOnlyDatabaseAndObjectStorageAsync()
     {
-        using var factory = new StandaloneReadinessWebApplicationFactory();
+        using var factory = new ReadinessWebApplicationFactory();
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync("/health/ready");
@@ -47,12 +47,11 @@ public sealed class StandaloneReadinessTests
     }
 
     [Fact]
-    public void StandaloneCallerAuthentication_FailsWithoutAnyCredential()
+    public void CallerAuthentication_FailsWithoutAnyCredential()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Emenda:Security:Enabled"] = "true",
                 ["Emenda:Security:AllowAnonymous"] = "false"
             })
             .Build();
@@ -65,12 +64,11 @@ public sealed class StandaloneReadinessTests
     }
 
     [Fact]
-    public void StandaloneCallerAuthentication_AllowsAnonymousOnlyForLocalDevelopment()
+    public void CallerAuthentication_AllowsAnonymousOnlyForLocalDevelopment()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Emenda:Security:Enabled"] = "true",
                 ["Emenda:Security:AllowAnonymous"] = "true"
             })
             .Build();
@@ -82,14 +80,10 @@ public sealed class StandaloneReadinessTests
     }
 
     [Fact]
-    public void StandaloneMode_RequiresExplicitEmendaConnection()
+    public void Startup_RequiresExplicitEmendaConnection()
     {
-        // Standalone must resolve only ConnectionStrings:Emenda. The inherited
-        // ConnectionStrings:Default (the legacy platform example, pointing at
-        // the running mistake database) is never used implicitly: connecting to
-        // the legacy database is a deliberate coexistence decision declared
-        // through the explicit Emenda connection.
-        using var factory = new StandaloneStartupFailureWebApplicationFactory(
+        // Only ConnectionStrings:Emenda is resolved; ConnectionStrings:Default is never used implicitly.
+        using var factory = new StartupFailureWebApplicationFactory(
             environmentOverrides: settings => settings.Remove("ConnectionStrings__Emenda"));
 
         Action act = () => factory.CreateClient();
@@ -98,54 +92,29 @@ public sealed class StandaloneReadinessTests
             .WithMessage("*ConnectionStrings:Emenda is required*");
     }
 
-    [Theory]
-    [InlineData("Mistake__ConfigMode", "Local", "*Mistake:ConfigMode (Local/Platform) was removed*")]
-    [InlineData("Mistake__ConfigMode", "Platform", "*Mistake:ConfigMode (Local/Platform) was removed*")]
-    [InlineData("Emenda__Runtime__Mode", "Platform", "*Emenda:Runtime:Mode only accepts Standalone*")]
-    [InlineData("Emenda__Database__SchemaOwnership", "Shared", "*SchemaOwnership=Shared was removed*")]
-    [InlineData("Emenda__Database__SchemaOwnership", "Owned", "*must be Own (found 'Owned')*")]
-    public void RemovedRuntimeSettings_FailStartup(string key, string value, string message)
-    {
-        using var factory = new StandaloneStartupFailureWebApplicationFactory(
-            extraEnvironment: new Dictionary<string, string?> { [key] = value });
-
-        Action act = () => factory.CreateClient();
-
-        act.Should().Throw<InvalidOperationException>().WithMessage(message);
-    }
-
-    private sealed class StandaloneStartupFailureWebApplicationFactory : WebApplicationFactory<Program>
+    private sealed class StartupFailureWebApplicationFactory : WebApplicationFactory<Program>
     {
         private readonly Action<Dictionary<string, string?>>? _environmentOverrides;
-        private readonly IReadOnlyDictionary<string, string?> _extraEnvironment;
 
         private static readonly string[] OwnedEnvironmentKeys =
         [
-            "Emenda__Runtime__Mode",
-            "Mistake__ConfigMode",
-            "Emenda__Database__SchemaOwnership",
             "Emenda__Security__Callers__0__Name",
             "Emenda__Security__Callers__0__ApiKey",
             "ConnectionStrings__Emenda",
         ];
 
-        public StandaloneStartupFailureWebApplicationFactory(
-            IReadOnlyDictionary<string, string?>? extraEnvironment = null,
+        public StartupFailureWebApplicationFactory(
             Action<Dictionary<string, string?>>? environmentOverrides = null)
         {
-            _extraEnvironment = extraEnvironment ?? new Dictionary<string, string?>();
             _environmentOverrides = environmentOverrides;
 
             var settings = new Dictionary<string, string?>
             {
-                ["Emenda__Database__SchemaOwnership"] = null,
                 ["Emenda__Security__Callers__0__Name"] = CallerName,
                 ["Emenda__Security__Callers__0__ApiKey"] = CallerKey,
                 ["ConnectionStrings__Emenda"] =
                     "Host=127.0.0.1;Port=5432;Database=emenda_startup_failure_tests;Username=emenda;Password=startup-failure-tests-only",
             };
-            foreach (var pair in _extraEnvironment)
-                settings[pair.Key] = pair.Value;
             _environmentOverrides?.Invoke(settings);
             foreach (var pair in settings)
                 Environment.SetEnvironmentVariable(pair.Key, pair.Value);
@@ -171,7 +140,7 @@ public sealed class StandaloneReadinessTests
         }
     }
 
-    private sealed class StandaloneReadinessWebApplicationFactory : WebApplicationFactory<Program>
+    private sealed class ReadinessWebApplicationFactory : WebApplicationFactory<Program>
     {
         private readonly string _ossRoot =
             Path.Combine(Path.GetTempPath(), $"emenda-readiness-tests-{Guid.NewGuid():N}");
@@ -189,7 +158,7 @@ public sealed class StandaloneReadinessTests
             "Oss__PublicBaseUrl",
         ];
 
-        public StandaloneReadinessWebApplicationFactory()
+        public ReadinessWebApplicationFactory()
         {
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__Name", CallerName);
             Environment.SetEnvironmentVariable("Emenda__Security__Callers__0__ApiKey", CallerKey);

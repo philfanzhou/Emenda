@@ -32,11 +32,6 @@ require_env() {
     fi
 }
 
-if [ -n "${EMENDA_SCHEMA_OWNERSHIP:-}" ] && [ "${EMENDA_SCHEMA_OWNERSHIP}" != "Own" ]; then
-    echo "Error: EMENDA_SCHEMA_OWNERSHIP=${EMENDA_SCHEMA_OWNERSHIP} is no longer supported; Emenda requires a dedicated database it owns. Unset it." >&2
-    exit 1
-fi
-
 require_env EMENDA_DB_CONNECTION
 require_env EMENDA_API_KEY
 require_env OSS_INTERNAL_ENDPOINT

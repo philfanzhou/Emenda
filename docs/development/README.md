@@ -2,7 +2,7 @@
 
 | 文档 | 用途 |
 |------|------|
-| [StandaloneDeployment.md](./StandaloneDeployment.md) | 容器部署、必需配置、健康检查与 API 示例 |
+| [Deployment.md](./Deployment.md) | 容器部署、必需配置、健康检查与 API 示例 |
 | [AdminConsole.md](./AdminConsole.md) | SignaCore 管理控制台与调用方凭据 |
 | [BackupRestoreDrill.md](./BackupRestoreDrill.md) | PostgreSQL 15 隔离备份、恢复与校验演练 |
 | [MinimalSourceRehearsal.md](./MinimalSourceRehearsal.md) | 最小源码包 manifest 与仓库外构建/测试/镜像预演 |

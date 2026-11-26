@@ -10,7 +10,7 @@ extracted from the Ruoyu.Study platform and now an independent open-source produ
 | [README.md](../README.md) | Product overview, configuration, intake paths, contracts and schema |
 | [SECURITY.md](../SECURITY.md) | Reporting a vulnerability and deployment security expectations |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Local build/test workflow and pull-request expectations |
-| [Standalone deployment](./development/StandaloneDeployment.md) | Container deployment, required configuration, health checks and API examples |
+| [Deployment](./development/Deployment.md) | Container deployment, required configuration, health checks and API examples |
 | [Automation and releases](./development/Automation.md) | CI/CodeQL/Dependabot workflows, GHCR image tags and the release process |
 | [Lifecycle contract](./Integration/mistake-http-v6.json) | Current `/api/mistakes` lifecycle wire (review, practice, process logs, presigned and sized image reads, conversation collection) |
 | [Display sizes](./Integration/ImageVariants.md) | Image kinds, thumbnail sizes, generation, automatic backfill and cleanup with task deletion |

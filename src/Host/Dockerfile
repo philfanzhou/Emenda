@@ -46,13 +46,13 @@ LABEL org.opencontainers.image.title="Emenda" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${APP_REVISION}" \
       org.opencontainers.image.channel="${APP_CHANNEL}"
-ENV ASPNETCORE_ENVIRONMENT=Standalone
 ENV APP_VERSION=${APP_VERSION}
 ENV APP_REVISION=${APP_REVISION}
 ENV APP_CHANNEL=${APP_CHANNEL}
 # Volume-mountable state directory: the dynamic caller credential file and
 # future admin-console state live here so they survive container replacement.
 RUN mkdir -p /app/data
+ENV Emenda__Security__DynamicCallers__Path=/app/data/emenda-callers.json
 VOLUME /app/data
 COPY --from=build /app/publish .
 

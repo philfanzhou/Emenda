@@ -1,6 +1,6 @@
 # Mistake 对象存储集成
 
-Emenda 通过 `IOssService` 直连一个私有 S3 兼容桶（`Oss:*` 配置，见[部署说明](../../development/StandaloneDeployment.md)），只读写本产品的 `mistakes/` 前缀。图片与练习的数据库主责在 Emenda，学生引用是调用方的不透明 ID，不建立外库 FK。
+Emenda 通过 `IOssService` 直连一个私有 S3 兼容桶（`Oss:*` 配置，见[部署说明](../../development/Deployment.md)），只读写本产品的 `mistakes/` 前缀。图片与练习的数据库主责在 Emenda，学生引用是调用方的不透明 ID，不建立外库 FK。
 
 ## 写入路径
 

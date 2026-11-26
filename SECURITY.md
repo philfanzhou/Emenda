@@ -18,7 +18,7 @@ after the report is triaged.
 
 Emenda stores learner mistake data, including images. Treat every deployment as sensitive:
 
-- Never expose the API without caller authentication. Standalone mode requires a
+- Never expose the API without caller authentication. Emenda requires a
   per-caller credential under `Emenda:Security:Callers`; anonymous access is a local
   development-only escape hatch.
 - Keep the object-storage bucket private. Pre-signed URLs are bearer capabilities and
