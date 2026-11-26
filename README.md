@@ -80,6 +80,15 @@ removed together with their parent, including when an administrator deletes a ta
 mistakes keep their crops and thumbnails. Schema v23 queues all existing images, so current tasks and
 confirmed mistakes are backfilled automatically. See [Display sizes](docs/Integration/ImageVariants.md).
 
+### Unified mistake source (schema v24)
+
+Every mistake now also carries one source-independent shape: `source_kind` (`extraction`, `conversation`
+or `legacy`), `source_caller`, `content` (question text and an `images` list matching `source_regions`
+in order, each marked as a question image or an original) and `source_detail`. In this version a database
+trigger derives them from the existing columns, which stay authoritative; the API is unchanged. The
+upgrade is forward-only and backfills existing rows automatically. See the
+[unified mistake intake design](docs/design/UnifiedMistakeIntake.md).
+
 ### Database schema v20
 
 Schema v20 adds persistent AI proposals, original-question supplements and crop cleanup.

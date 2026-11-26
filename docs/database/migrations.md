@@ -265,3 +265,23 @@ even where an analysis report exists, and jobs left Pending/Running stay in that
 Down raises `retired_source_schema_irreversible`; v19 is forward-only. Downgrade tests of
 earlier migrations therefore start from an explicit v18 migration instead of the target.
 Regression coverage: `RetiredSourceSchemaPostgresTests`.
+
+## 20261126000000_UnifiedMistakeSource
+
+Schema v24. Every mistake gets one source-independent shape next to its source-specific columns:
+`source_kind` (`extraction`, `conversation`, `legacy`), `source_caller`, `content` (the question as
+one JSON shape whose `images` list matches `source_regions` one to one and in order) and
+`source_detail` (an extraction's task and retained-file manifest, or a conversation's evidence
+snapshot byte for byte). See [docs/design/UnifiedMistakeIntake.md](../design/UnifiedMistakeIntake.md).
+
+In this version the existing columns (`analysis_snapshot`, `conversation_*`, `source_upload_id`,
+`source_regions`) stay authoritative. The trigger `trg_mistake_item_source` (function
+`derive_mistake_item_source`) derives the new columns on every insert and update, so every writer,
+including raw SQL, keeps them consistent and a value written to a derived column directly is
+replaced. The upgrade fills existing rows through the same trigger without touching `updated_at`,
+resolves the caller of an extraction whose task was already deleted from its deletion receipt's
+owner hash, and refuses to commit if any row's images disagree with its `source_regions`.
+
+Down raises `unified_mistake_source_irreversible`; v24 is forward-only. A manual rollback only has
+to drop the trigger, the function and the four columns and remove the history row, because the
+derived columns hold no data of their own. Regression coverage: `UnifiedMistakeSchemaPostgresTests`.
