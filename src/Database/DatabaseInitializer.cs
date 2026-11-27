@@ -17,7 +17,7 @@ public static partial class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
-    private const int TargetVersion = 27;
+    private const int TargetVersion = 28;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -247,9 +247,9 @@ public static partial class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(IdleAnalysisRemovalSchema.Migration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(RetiredIntakeTablesSchema.Migration, cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {IdleAnalysisRemovalSchema.Migration}");
+                steps.Add($"migrate to {RetiredIntakeTablesSchema.Migration}");
             }
 
             archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -375,11 +375,12 @@ public static partial class DatabaseInitializer
         var callerRecoveryHistory = new HashSet<string>(unifiedHistory, StringComparer.Ordinal) { $"{ExtractionCallerRecoverySchema.Migration}|8.0.11" };
         var contractionHistory = new HashSet<string>(callerRecoveryHistory, StringComparer.Ordinal) { $"{UnifiedSourceContractionSchema.Migration}|8.0.11" };
         var idleAnalysisHistory = new HashSet<string>(contractionHistory, StringComparer.Ordinal) { $"{IdleAnalysisRemovalSchema.Migration}|8.0.11" };
+        var retiredIntakeHistory = new HashSet<string>(idleAnalysisHistory, StringComparer.Ordinal) { $"{RetiredIntakeTablesSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : history.SetEquals(correctionsHistory) ? 20 : history.SetEquals(worksheetAnalysisHistory) ? 21 : history.SetEquals(extractionDeletionHistory) ? 22 : history.SetEquals(variantHistory) ? 23 : history.SetEquals(unifiedHistory) ? 24 : history.SetEquals(callerRecoveryHistory) ? 25 : history.SetEquals(contractionHistory) ? 26 : history.SetEquals(idleAnalysisHistory) ? 27 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : history.SetEquals(correctionsHistory) ? 20 : history.SetEquals(worksheetAnalysisHistory) ? 21 : history.SetEquals(extractionDeletionHistory) ? 22 : history.SetEquals(variantHistory) ? 23 : history.SetEquals(unifiedHistory) ? 24 : history.SetEquals(callerRecoveryHistory) ? 25 : history.SetEquals(contractionHistory) ? 26 : history.SetEquals(idleAnalysisHistory) ? 27 : history.SetEquals(retiredIntakeHistory) ? 28 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
         // Name the leftover directly instead of reporting it as a routine or relation mismatch.
@@ -395,7 +396,7 @@ public static partial class DatabaseInitializer
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
-        var expectedTables = version >= 3 ? ExpectedTables :
+        var expectedTables = RetiredIntakeTablesSchema.ReanalyzePresent(version) ? ExpectedTables :
             Without(ExpectedTables, "reanalyze_job");
         expectedTables = new HashSet<string>(expectedTables, StringComparer.Ordinal);
         if (managed && version >= 6) expectedTables.UnionWith(SourceIntakeCatalog.Tables);
@@ -406,7 +407,7 @@ public static partial class DatabaseInitializer
         if (version >= 11) expectedTables.UnionWith(LegacyArchiveSchema.Relations);
         if (managed && version >= 12) expectedTables.UnionWith(LegacyReturnCatalog.Tables);
         if (managed && version >= 13) expectedTables.UnionWith(LayoutJobCatalog.Tables);
-        if (version >= 15) expectedTables.Add("product_intake_request");
+        if (RetiredIntakeTablesSchema.IntakePresent(version)) expectedTables.Add("product_intake_request");
         if (version >= 16) expectedTables.UnionWith(ExtractionSchema.Tables);
         if (MistakeAnalysisSchema.Present(version)) expectedTables.Add("mistake_analysis");
         if (version >= 18) expectedTables.UnionWith(ConversationMistakeSchema.Tables);
@@ -432,7 +433,7 @@ public static partial class DatabaseInitializer
         if (version >= 11) expectedColumns.UnionWith(LegacyArchiveSchema.Columns);
         if (managed && version >= 12) expectedColumns.UnionWith(LegacyReturnCatalog.Columns);
         if (managed && version >= 13) expectedColumns.UnionWith(LayoutJobCatalog.Columns);
-        if (version >= 15) expectedColumns.UnionWith(ProductIntakeSchema.Columns);
+        if (RetiredIntakeTablesSchema.IntakePresent(version)) expectedColumns.UnionWith(ProductIntakeSchema.Columns);
         if (version >= 16) expectedColumns.UnionWith(ExtractionSchema.Columns);
         if (MistakeAnalysisSchema.Present(version)) expectedColumns.UnionWith(MistakeAnalysisSchema.Columns);
         if (version >= 18) expectedColumns.UnionWith(ConversationMistakeSchema.Columns);
@@ -446,7 +447,7 @@ public static partial class DatabaseInitializer
         if (version >= 23) expectedColumns.UnionWith(ImageVariantSchema.Columns);
         if (version >= 24) expectedColumns.UnionWith(UnifiedMistakeSchema.Columns);
         if (version >= 26) expectedColumns.ExceptWith(UnifiedSourceContractionSchema.DroppedColumns);
-        if (version < 3)
+        if (!RetiredIntakeTablesSchema.ReanalyzePresent(version))
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
         else if (version < 5)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|owner_id|", StringComparison.Ordinal)
@@ -486,9 +487,9 @@ public static partial class DatabaseInitializer
                 JOIN pg_class c ON c.oid=d.adrelid
             WHERE c.relnamespace='public'::regnamespace ORDER BY c.relname,a.attname
             """, cancellationToken).ConfigureAwait(false);
-        var expectedDefaults = version >= 5
+        var expectedDefaults = !RetiredIntakeTablesSchema.ReanalyzePresent(version) ? Set("") : version >= 5
             ? Set("reanalyze_job|status|1\nreanalyze_job|attempt|0\nreanalyze_job|fencing_version|0")
-            : version >= 3 ? Set("reanalyze_job|status|1") : Set("");
+            : Set("reanalyze_job|status|1");
         if (version >= 16) expectedDefaults.UnionWith(ExtractionSchema.Defaults);
         if (version >= 18) expectedDefaults.Add("mistake_item|conversation_active|false");
         mismatch = Compare("column default", expectedDefaults, defaults);
@@ -524,14 +525,14 @@ public static partial class DatabaseInitializer
         if (version >= 11) expectedIndexes.UnionWith(LegacyArchiveSchema.Indexes);
         if (managed && version >= 12) expectedIndexes.UnionWith(LegacyReturnCatalog.Indexes);
         if (managed && version >= 13) expectedIndexes.UnionWith(LayoutJobCatalog.Indexes);
-        if (version >= 15) expectedIndexes.Add("PK_product_intake_request|product_intake_request|request_id|U");
+        if (RetiredIntakeTablesSchema.IntakePresent(version)) expectedIndexes.Add("PK_product_intake_request|product_intake_request|request_id|U");
         if (version >= 16) expectedIndexes.UnionWith(ExtractionSchema.Indexes);
         if (MistakeAnalysisSchema.Present(version)) expectedIndexes.Add("PK_mistake_analysis|mistake_analysis|mistake_item_id|U");
         if (version >= 18) expectedIndexes.UnionWith(ConversationMistakeSchema.Indexes);
         if (version >= 20) expectedIndexes.UnionWith(ExtractionCorrectionsSchema.Indexes);
         if (version >= 22) expectedIndexes.UnionWith(ExtractionDeletionSchema.Indexes);
         if (version >= 23) expectedIndexes.UnionWith(ImageVariantSchema.Indexes);
-        if (version < 3)
+        if (!RetiredIntakeTablesSchema.ReanalyzePresent(version))
             expectedIndexes.RemoveWhere(index => index.Contains("|reanalyze_job|", StringComparison.Ordinal));
         if (version < 2)
             expectedIndexes.Remove("IX_process_log_student_id|process_log|student_id|N");
@@ -566,7 +567,7 @@ public static partial class DatabaseInitializer
             WHERE c.connamespace='public'::regnamespace AND (c.contype <> 'n' OR NOT c.convalidated)
             ORDER BY c.conname
             """, cancellationToken).ConfigureAwait(false);
-        var expectedConstraints = version >= 3 ? ExpectedConstraints :
+        var expectedConstraints = RetiredIntakeTablesSchema.ReanalyzePresent(version) ? ExpectedConstraints :
             Without(ExpectedConstraints, "PK_reanalyze_job|p|id|-|-|-|V");
         expectedConstraints = new HashSet<string>(expectedConstraints,StringComparer.Ordinal);
         if (managed && version >= 6) expectedConstraints.UnionWith(SourceIntakeCatalog.Constraints);
@@ -577,7 +578,7 @@ public static partial class DatabaseInitializer
         if (version >= 11) expectedConstraints.UnionWith(LegacyArchiveSchema.Constraints);
         if (managed && version >= 12) expectedConstraints.UnionWith(LegacyReturnCatalog.Constraints);
         if (managed && version >= 13) expectedConstraints.UnionWith(LayoutJobCatalog.Constraints);
-        if (version >= 15) expectedConstraints.Add("PK_product_intake_request|p|request_id|-|-|-|V");
+        if (RetiredIntakeTablesSchema.IntakePresent(version)) expectedConstraints.Add("PK_product_intake_request|p|request_id|-|-|-|V");
         if (MistakeAnalysisSchema.Present(version))
         {
             expectedConstraints.Add("PK_mistake_analysis|p|mistake_item_id|-|-|-|V");

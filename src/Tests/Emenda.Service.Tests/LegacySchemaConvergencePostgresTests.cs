@@ -340,8 +340,8 @@ public sealed class LegacySchemaConvergencePostgresTests
                 (await Assert.ThrowsAsync<PostgresException>(() => database.ExecuteAsync(statement))).MessageText);
         // The latest correction migration is forward-only; no downgrade can reach the archive migration.
         var before = await database.SnapshotAsync();
-        // The idle analysis removal is now the latest forward-only migration.
-        Assert.Contains("idle_mistake_analysis_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
+        // The retired intake table removal is now the latest forward-only migration.
+        Assert.Contains("retired_intake_tables_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
             context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration))).MessageText);
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(3, (await database.ArchiveAsync()).Count);
