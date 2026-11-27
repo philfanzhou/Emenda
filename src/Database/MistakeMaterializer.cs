@@ -6,7 +6,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Emenda.Database;
 
-/// <summary>Values of <c>mistake_item.source_kind</c> and readers of the unified source columns (schema v24).</summary>
+/// <summary>
+/// Values of <c>mistake_item.source_kind</c>, and the only writers and readers of what each source owns in the
+/// unified columns (schema v26 dropped <c>analysis_snapshot</c>, <c>conversation_source</c> and <c>conversation_caller</c>).
+/// </summary>
 public static class MistakeSource
 {
     public const string Extraction = Emenda.Domain.Models.MistakeSourceKinds.Extraction;
@@ -14,6 +17,66 @@ public static class MistakeSource
     public const string Legacy = Emenda.Domain.Models.MistakeSourceKinds.Legacy;
 
     internal const string EmptyContent = "{}";
+
+    // The text members an extraction analysis keeps in content (formerly analysis_snapshot, schema v21).
+    private static readonly string[] AnalysisText = ["statement", "studentAnswer", "referenceAnswer", "explanation", "evidence"];
+
+    /// <summary>Makes the row a conversation mistake owned by <paramref name="caller"/>, with its complete evidence snapshot.</summary>
+    public static void SetConversation(MistakeItemEntity item, string? caller, string snapshot)
+    {
+        item.SourceKind = Conversation;
+        item.SourceCaller = caller;
+        item.SourceDetail = snapshot;
+    }
+
+    /// <summary>The evidence snapshot of a conversation mistake, byte for byte as collected; otherwise null.</summary>
+    public static string? ConversationSnapshot(MistakeItemEntity item) => item.SourceKind == Conversation ? item.SourceDetail : null;
+
+    /// <summary>
+    /// Replaces an extraction mistake's analysis: <paramref name="snapshot"/> is the former <c>analysis_snapshot</c> JSON
+    /// (<c>statement</c>, <c>studentAnswer</c>, <c>referenceAnswer</c>, <c>explanation</c>, <c>evidence</c>,
+    /// <c>sourceVersion</c> and, after task deletion, <c>retainedFiles</c>). Its text goes to <c>content</c>, the rest to
+    /// <c>source_detail</c>; null removes the analysis, as a NULL snapshot did.
+    /// </summary>
+    public static void SetAnalysis(MistakeItemEntity item, string? snapshot)
+    {
+        var analysis = snapshot is null ? null : JsonNode.Parse(snapshot) as JsonObject
+            ?? throw new ArgumentException("An extraction analysis is a JSON object.", nameof(snapshot));
+        var content = Object(item.Content);
+        foreach (var name in AnalysisText) content[name] = analysis?[name]?.DeepClone();
+        item.Content = content.ToJsonString();
+        var detail = Object(item.SourceDetail);
+        detail.Remove("sourceVersion");
+        detail.Remove("retainedFiles");
+        if (analysis?["sourceVersion"] is { } version) detail["sourceVersion"] = version.DeepClone();
+        if (analysis?["retainedFiles"] is { } files) detail["retainedFiles"] = files.DeepClone();
+        item.SourceDetail = detail.ToJsonString();
+    }
+
+    /// <summary>
+    /// The analysis of an extraction mistake in the former <c>analysis_snapshot</c> shape, or null when it has none
+    /// (every analysis carries its <c>sourceVersion</c>).
+    /// </summary>
+    public static string? Analysis(MistakeItemEntity item)
+    {
+        if (item.SourceKind == Conversation) return null;
+        var detail = Object(item.SourceDetail);
+        if (detail["sourceVersion"] is not { } version) return null;
+        var content = Object(item.Content);
+        var analysis = new JsonObject();
+        foreach (var name in AnalysisText) analysis[name] = content[name]?.DeepClone();
+        analysis["sourceVersion"] = version.DeepClone();
+        if (detail["retainedFiles"] is { } files) analysis["retainedFiles"] = files.DeepClone();
+        return analysis.ToJsonString();
+    }
+
+    /// <summary>Records the archived file manifest an extraction mistake keeps after its task is deleted.</summary>
+    public static void SetRetainedFiles(MistakeItemEntity item, JsonNode files)
+    {
+        var detail = Object(item.SourceDetail);
+        detail["retainedFiles"] = files.DeepClone();
+        item.SourceDetail = detail.ToJsonString();
+    }
 
     /// <summary>The extraction task of an extraction mistake, from <c>source_detail.jobId</c>.</summary>
     public static Guid? ExtractionJobId(MistakeItemEntity item)
@@ -33,17 +96,19 @@ public static class MistakeSource
         return detail.RootElement.ValueKind == JsonValueKind.Object
             && detail.RootElement.TryGetProperty("retainedFiles", out var files) ? files.GetRawText() : null;
     }
+
+    internal static JsonObject Object(string? json) =>
+        json is not null && JsonNode.Parse(json) is JsonObject value ? value : new JsonObject();
 }
 
 /// <summary>
-/// Writes the unified source shape of every <c>mistake_item</c> row an EF save inserts or updates.
+/// Completes the unified source shape of every <c>mistake_item</c> row an EF save inserts or updates.
 /// <para>
-/// Both intake pipelines (extraction publication and conversation collection) and every other EF writer
-/// keep writing their source-specific columns; this component derives <c>source_kind</c>,
-/// <c>source_caller</c>, <c>content</c> and <c>source_detail</c> from them in one place, so the tracked entity
-/// carries the same values the database stores. The trigger <c>trg_mistake_item_source</c> applies the identical
-/// mapping inside PostgreSQL (and covers raw SQL writers); <c>MistakeMaterializerParityPostgresTests</c> keeps the
-/// two in lockstep. Keep this class and <see cref="UnifiedMistakeSchema"/>'s function body in sync.
+/// Since schema v26 the unified columns are the record. The pipelines write what only they know through
+/// <see cref="MistakeSource"/>: a conversation's kind, caller and evidence, an extraction's analysis text and
+/// retained files. This component derives the rest the way the v24 trigger did: <c>extraction</c> or <c>legacy</c>
+/// from the source id, the extraction task and its caller, <c>source_detail</c>'s task members, the content text of a
+/// conversation (from its evidence) and the content images, which match <c>source_regions</c> one to one.
 /// </para>
 /// </summary>
 public static partial class MistakeMaterializer
@@ -93,27 +158,29 @@ public static partial class MistakeMaterializer
     }
 
     private static bool IsExtraction(MistakeItemEntity item) =>
-        item.ConversationSource is null && item.SourceUploadId?.StartsWith("extract:", StringComparison.Ordinal) == true;
+        item.SourceKind != MistakeSource.Conversation && item.SourceUploadId?.StartsWith("extract:", StringComparison.Ordinal) == true;
 
     private static Guid? JobId(MistakeItemEntity item) =>
         IsExtraction(item) && item.SourceUploadId.Length >= 8 && JobText().IsMatch(item.SourceUploadId[8..])
             ? Guid.ParseExact(item.SourceUploadId[8..], "N") : null;
 
-    /// <summary>Derives the unified columns of one row; <paramref name="jobCallers"/> maps task ids to product callers.</summary>
+    /// <summary>Completes the unified columns of one row; <paramref name="jobCallers"/> maps task ids to product callers.</summary>
     internal static void Apply(MistakeItemEntity item, IReadOnlyDictionary<Guid, string?> jobCallers)
     {
-        var evidence = item.ConversationSource is null ? null : JsonNode.Parse(item.ConversationSource);
-        JsonNode? snapshot = null;
-        if (item.ConversationSource is not null)
+        var conversation = item.SourceKind == MistakeSource.Conversation;
+        // A conversation keeps the caller and evidence its pipeline set; the evidence supplies its text and image roles.
+        var evidence = conversation && item.SourceDetail is not null ? JsonNode.Parse(item.SourceDetail) : null;
+        // An extraction's text is its own: the analysis its pipeline wrote into content.
+        JsonNode? analysis = null;
+        if (conversation)
         {
-            item.SourceKind = MistakeSource.Conversation;
-            item.SourceCaller = item.ConversationCaller;
-            item.SourceDetail = item.ConversationSource;
+            // Kind, caller and source_detail are already the conversation's own.
         }
         else if (IsExtraction(item))
         {
             item.SourceKind = MistakeSource.Extraction;
-            snapshot = item.AnalysisSnapshot is null ? null : JsonNode.Parse(item.AnalysisSnapshot);
+            analysis = MistakeSource.Object(item.Content);
+            var stored = MistakeSource.Object(item.SourceDetail);
             var job = JobId(item);
             // A deleted task leaves only an owner hash, so the caller resolved earlier is kept.
             item.SourceCaller = (job is { } id ? jobCallers.GetValueOrDefault(id) : null) ?? item.SourceCaller;
@@ -121,8 +188,8 @@ public static partial class MistakeMaterializer
             {
                 ["jobId"] = job?.ToString("D"),
                 ["questionId"] = item.QuestionId,
-                ["sourceVersion"] = Field(snapshot, "sourceVersion").Value?.DeepClone(),
-                ["retainedFiles"] = Field(snapshot, "retainedFiles").Value?.DeepClone()
+                ["sourceVersion"] = Field(stored, "sourceVersion").Value?.DeepClone(),
+                ["retainedFiles"] = Field(stored, "retainedFiles").Value?.DeepClone()
             };
             item.SourceDetail = StripNulls(detail)!.ToJsonString();
         }
@@ -154,11 +221,11 @@ public static partial class MistakeMaterializer
         item.Content = new JsonObject
         {
             ["version"] = 1,
-            ["statement"] = Coalesce(Field(evidence, "statement"), Field(snapshot, "statement")),
-            ["studentAnswer"] = Coalesce(Field(attempt, "quote"), Field(snapshot, "studentAnswer")),
-            ["referenceAnswer"] = Coalesce(Field(evidence, "referenceAnswer"), Field(snapshot, "referenceAnswer")),
-            ["explanation"] = Field(snapshot, "explanation").Value?.DeepClone(),
-            ["evidence"] = Coalesce(Field(evidence, "evidence"), Field(snapshot, "evidence")),
+            ["statement"] = Coalesce(Field(evidence, "statement"), Field(analysis, "statement")),
+            ["studentAnswer"] = Coalesce(Field(attempt, "quote"), Field(analysis, "studentAnswer")),
+            ["referenceAnswer"] = Coalesce(Field(evidence, "referenceAnswer"), Field(analysis, "referenceAnswer")),
+            ["explanation"] = Field(analysis, "explanation").Value?.DeepClone(),
+            ["evidence"] = Coalesce(Field(evidence, "evidence"), Field(analysis, "evidence")),
             ["knowledgePoints"] = Field(evidence, "knowledgePoints").Value is JsonArray points ? points.DeepClone() : new JsonArray(),
             ["images"] = images
         }.ToJsonString();

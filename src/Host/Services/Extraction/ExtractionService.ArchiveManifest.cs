@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using Emenda.Database;
 using Emenda.Database.Entities;
 using Emenda.Service.Intake;
@@ -15,7 +14,7 @@ public sealed partial class ExtractionService
     {
         if (retained.Count == 0) return;
         // Keep exact object identities before the manifests disappear, including older crop names.
-        // This private JSON member is not part of MistakeAnalysisSnapshotDto or its HTTP response.
+        // The manifest is kept in source_detail.retainedFiles, which no HTTP response exposes.
         var sources = Sources(job);
         foreach (var json in await db.ExtractionSupplements.Where(s => s.JobId == job.Id).Select(s => s.SourcesJson).ToListAsync(ct))
             sources.AddRange(ExtractionRules.Read<List<ExtractionSource>>(json));
@@ -44,9 +43,7 @@ public sealed partial class ExtractionService
                 }
                 manifest.Add(file);
             }
-            var analysis = JsonNode.Parse(item.AnalysisSnapshot!)!.AsObject();
-            analysis["retainedFiles"] = System.Text.Json.JsonSerializer.SerializeToNode(manifest, ExtractionRules.Json);
-            item.AnalysisSnapshot = analysis.ToJsonString(ExtractionRules.Json);
+            MistakeSource.SetRetainedFiles(item, System.Text.Json.JsonSerializer.SerializeToNode(manifest, ExtractionRules.Json)!);
         }
     }
 }

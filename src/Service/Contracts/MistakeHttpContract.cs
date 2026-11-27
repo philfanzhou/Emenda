@@ -13,7 +13,7 @@ namespace Emenda.HttpContracts;
 /// </summary>
 public static class MistakeHttpContract
 {
-    public const string Version = "mistake-http-v7";
+    public const string Version = "mistake-http-v8";
     private static readonly byte[] Bytes = ReadBytes();
     private static readonly JsonDocument Contract = JsonDocument.Parse(Bytes);
     public static string Sha256 { get; } = Convert.ToHexString(SHA256.HashData(Bytes)).ToLowerInvariant();

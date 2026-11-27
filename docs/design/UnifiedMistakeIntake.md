@@ -1,6 +1,6 @@
 # 统一错题入库模型设计
 
-状态：阶段 A 已实现（schema v24，v0.1.1-rc.17；v25 修正已删任务的调用方反查，rc.18） · 阶段 B 已实现（契约 mistake-http-v7，v0.1.1-rc.19，无 schema 变更） · 阶段 C 待 Portal 切到 v7 后进行
+状态：阶段 A 已实现（schema v24，v0.1.1-rc.17；v25 修正已删任务的调用方反查，rc.18） · 阶段 B 已实现（契约 mistake-http-v7，v0.1.1-rc.19，无 schema 变更） · Portal 已切到 v7（Ruoyu.Study !360） · 阶段 C 已实现（schema v26，契约 mistake-http-v8）
 
 ## 1. 背景与目标
 
@@ -169,6 +169,8 @@ Materializer 在**阶段 B** 引入。阶段 A 不改两条管道的代码，新
 - 映射规则与触发器 `derive_mistake_item_source` 逐项相同（包括 JSON null 与缺失的区别、`jsonb_strip_nulls`、
   已删任务保留原调用方）。`MistakeMaterializerParityPostgresTests` 对同一批写入逐行比对两边的结果，任何一边改了映射都会失败。
 - 触发器保留，继续覆盖原生 SQL 写入，并保证数据库里的值永远按这套规则得出。
+- 阶段 C（schema v26）删除了旧列和触发器：管道改经 `MistakeSource` 直接写新列里自己独有的部分，Materializer 只补全
+  可推导的部分（见 7.3 的实际实现）；一致性测试改为对比 v26 写入路径和 v25 库上的触发器。
 - P6：答疑错题首次入库时也写一条 Created 处理日志（`operation=conversation_collected`）。
 - 图片变体入队仍留在两条管道里：两边入队的时机（提取只入队新增裁图、答疑在上传后入队）各有理由，搬进 Materializer 没有收益。
 
@@ -277,6 +279,27 @@ WHERE m.source_upload_id LIKE 'extract:%'
   `content` 不含这些。删列后改为从 `source_detail` 输出同样的 `conversationSource`（两者逐字节相同），或在 v8 换成等价的 `sourceDetail`。
 - 同时评估清理 P7 中的闲置表 `mistake_analysis`、`reanalyze_job.analysis_input`。
 
+**实际实现（schema v26，迁移 `20261128000000_DropSourceSpecificMistakeColumns`，契约 mistake-http-v8）**：
+
+- 新列成为唯一记录。管道通过 `MistakeSource` 写各自独有的部分：答疑写 `SetConversation`（kind、调用方、证据快照），
+  提取写 `SetAnalysis`（分析文字进 `content`，`sourceVersion` 进 `source_detail`；null 等同于原来清空快照）和
+  `SetRetainedFiles`（任务删除时的文件清单）。`MistakeMaterializer` 在每次保存时按 v24 触发器的规则补全其余部分：
+  非答疑行由来源 id 定为 `extraction` 或 `legacy`、提取任务及其调用方、`source_detail` 的 `jobId`/`questionId`、
+  答疑的题目文字（取自证据）和 `content.images`。读取旧值改用 `MistakeSource.ConversationSnapshot` / `Analysis`。
+- `MistakeMaterializerParityPostgresTests` 改为对比两条写入路径：同一份来源数据，在 v26 库上经 EF 保存，
+  在 v25 库上按旧列插入并由触发器推导，两边存下的四列逐一相等。
+- v26 迁移先逐行校验旧列能从新列原样还原（见 migrations.md），有任何一行不满足就抛
+  `unified_mistake_contraction_mismatch`，事务回滚、数据库不变；校验通过后删触发器、函数和三列。
+  `conversation_active` 不是来源数据，保留。
+- **与上面计划的差异**：Down 不做“检查后还原”，而是和 v20、v22–v25 一样直接拒绝（`unified_mistake_contraction_irreversible`）。
+  旧列虽然可以从新列还原，但服务没有执行降级迁移的入口，真正可用的回退路径只有备份恢复；为此单独写一套降级 SQL 收益很小。
+- 契约 v8 只去掉 `analysisSnapshot`（文字就是 `content`，可见性不变），`conversationSource` 保留、改从 `source_detail`
+  输出（方案 A）。v7 里 `analysisSnapshot` 是可选字段，所以 v8 的响应同时满足 v7，钉在 v7 的 Portal 不用改。
+- 闲置表 `mistake_analysis`、`reanalyze_job.analysis_input` 的清理不在本阶段，另开 PR。
+
+**回滚**：v26 是单向迁移，rc.20 及更早的版本无法在 v26 的库上启动。升级前必须先备份数据库；
+回退时停服务，用升级前的备份恢复数据库，再换回旧镜像。升级后新写入的数据会随之丢失，所以出现问题时应尽早决定。
+
 ## 8. 发布顺序
 
 | 步骤 | Emenda | Ruoyu Portal |
@@ -284,7 +307,7 @@ WHERE m.source_upload_id LIKE 'extract:%'
 | 1 | 阶段 A（rc.17）：加列、回填、触发器推导 | 无需改动 |
 | 2 | 阶段 B（rc.19）：Materializer、切读，发布契约 v7 | 无需改动（v6 字段仍在） |
 | 3 | — | 改为读 `content` / `sourceKind`，图片按 `content.images[i].role` 区分题目图和原图 |
-| 4 | 阶段 C：删旧列，契约 v8 | 确认不再读 v6 字段 |
+| 4 | 阶段 C：删旧列，契约 v8（升级前备份） | 无需改动：Portal 不读 `analysisSnapshot`，`conversationSource` 继续输出 |
 
 ## 9. 风险
 
@@ -298,7 +321,7 @@ WHERE m.source_upload_id LIKE 'extract:%'
 
 ## 10. 待确认事项
 
-1. Portal 接入 v7 的排期（决定阶段 C 什么时候做）。
+1. ~~Portal 接入 v7 的排期~~：已完成（Ruoyu.Study !360，test2 和 55.10 已升级）。
 2. ~~生产库里是否还有 `legacy` 行~~：有 68 行（见 7.0），`legacy` 类型保留。
 3. 答疑错题的原图（`role=source`）是否要在错题详情里展示给学生/老师，还是只作为证据保留。
 4. 题目配图是否沿用 `content.images` 加 `role=figure`，等配图议题重新讨论时确定。
@@ -310,5 +333,6 @@ WHERE m.source_upload_id LIKE 'extract:%'
 | 1 | 阶段 A：v24 迁移、触发器推导、回填、迁移内校验、严格校验器登记 | 已完成（rc.17） |
 | 1a | v25：按回执的真实哈希格式补回已删任务的调用方（test2 发现 2 条） | 已完成（rc.18） |
 | 2 | 阶段 B：`MistakeMaterializer`、实体映射新列、读取侧切换、契约 v7 | 已完成（rc.19） |
-| 3 | Ruoyu Portal 适配 v7：读 `sourceKind`/`content`，不再读 `analysisSnapshot`；`conversationSource` 只用于答疑独有的明细 | 进行中 |
-| 4 | 阶段 C：删除旧列、契约 v8、闲置表清理 | Portal 稳定后 |
+| 3 | Ruoyu Portal 适配 v7：读 `sourceKind`/`content`，不再读 `analysisSnapshot`；`conversationSource` 只用于答疑独有的明细 | 已完成（Ruoyu.Study !360） |
+| 4 | 阶段 C：schema v26 删除旧列和触发器、契约 v8 | 已完成 |
+| 5 | 闲置表 `mistake_analysis`、`reanalyze_job.analysis_input` 清理 | 待做 |

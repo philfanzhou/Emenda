@@ -87,8 +87,8 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         await using (var context = db.CreateContext())
         {
             var items = await context.MistakeItems.AsNoTracking().ToDictionaryAsync(item => item.Id);
-            Assert.Null(items[job.Questions[0].ItemId!.Value].AnalysisSnapshot);
-            using var retainedAnalysis = JsonDocument.Parse(items[job.Questions[1].ItemId!.Value].AnalysisSnapshot!);
+            Assert.Null(MistakeSource.Analysis(items[job.Questions[0].ItemId!.Value]));
+            using var retainedAnalysis = JsonDocument.Parse(MistakeSource.Analysis(items[job.Questions[1].ItemId!.Value])!);
             Assert.Equal("Other subject", retainedAnalysis.RootElement.GetProperty("statement").GetString());
             Assert.Equal(job.Version, retainedAnalysis.RootElement.GetProperty("sourceVersion").GetInt32());
             await context.Database.ExecuteSqlRawAsync("DROP TRIGGER fail_revision ON extraction_revision; DROP FUNCTION fail_revision(); UPDATE extraction_object SET next_attempt=clock_timestamp();");
@@ -147,7 +147,7 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         await using (var context = db.CreateContext())
         {
             Assert.Equal(4, await context.ExtractionObjects.CountAsync());
-            using var pending = JsonDocument.Parse((await context.MistakeItems.SingleAsync()).AnalysisSnapshot!);
+            using var pending = JsonDocument.Parse(MistakeSource.Analysis((await context.MistakeItems.SingleAsync()))!);
             Assert.Equal("Mistake", pending.RootElement.GetProperty("statement").GetString());
             Assert.Equal(job.Version, pending.RootElement.GetProperty("sourceVersion").GetInt32());
         }
@@ -169,7 +169,7 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         await using var check = db.CreateContext();
         var item = await check.MistakeItems.SingleAsync();
         Assert.Equal(1, item.ReviewStatus);
-        using var analysis = JsonDocument.Parse(item.AnalysisSnapshot!);
+        using var analysis = JsonDocument.Parse(MistakeSource.Analysis(item)!);
         Assert.Equal("Complete mistake statement", analysis.RootElement.GetProperty("statement").GetString());
         Assert.Equal(read.Version, analysis.RootElement.GetProperty("sourceVersion").GetInt32());
     }

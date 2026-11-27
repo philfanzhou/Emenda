@@ -4,9 +4,11 @@ v6 is the standalone-only surface: it removes the legacy upload/manual-add intak
 
 > The sections below were written for v3–v5 and still describe platform-era strict/resource authorization and managed-source behaviour; for v6 the published JSON is authoritative.
 
-[mistake-http-v7.json](./mistake-http-v7.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 Portals 文档 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
+[mistake-http-v8.json](./mistake-http-v8.json) 是当前 `/api/mistakes` 业务 wire 的唯一机器规格：OpenAPI 3.1、JSON Schema 2020-12 与显式 `x-ruoyu` 条件语义。人读文档不另建字段 catalog；旧 Portals 文档 中已标注过期的 gRPC 叙述不能用作当前 HTTP/managed 模式的 oracle。其他 namespace 由规格中的 `otherNamespaces` 单独登记；`/api/integrations/storage-audit/references` 曾属 StorageReferences v1，该端点已按 ADR-0030 第 4 步删除；不可变的 v3 规格仍登记这一 namespace，但服务不再提供它。
 
 ## Worksheet mistake detail
+
+> Since mistake-http-v8 the analysis is returned only as `content` (see below); `analysisSnapshot` was removed. This section describes the analysis as v6/v7 returned it; its visibility rules apply to `content` unchanged.
 
 Read `GET /api/mistakes/{id}` using the existing product caller boundary and the **mistake item ID**, not the worksheet job or question ID. Pending and confirmed worksheet items with saved analysis include `data.analysisSnapshot`: `statement`, `studentAnswer` (the original visible attempt), `referenceAnswer`, `explanation` (possibly `""`), `evidence`, and `sourceVersion`. `rootCause` is a separate reviewer field; an empty cause does not mean the judgment has no evidence. Render these fields as untrusted text.
 
@@ -24,9 +26,15 @@ v7 adds two required members to every `MistakeItemDto` (detail, lists, by-upload
 
 Consumers can move from `analysisSnapshot`/`conversationSource` to `content` at their own pace; the v6 members are removed only in a later contract version. See [the unified intake design](../design/UnifiedMistakeIntake.md).
 
+## Extraction analysis only in content (mistake-http-v8)
+
+v8 removes `analysisSnapshot` from `MistakeItemDto` and changes nothing else. Its text is `content` (`statement`, `studentAnswer`, `referenceAnswer`, `explanation`, `evidence`) with the same visibility: shown while an extraction mistake is pending review or confirmed, `null` otherwise. `sourceVersion` is no longer returned. Because `analysisSnapshot` was optional in v7, every v8 response is also a valid v7 response, so a consumer pinned to v7 keeps working.
+
+`conversationSource` stays: it carries what only the conversation evidence has (attempts, the evidence hash inputs and the saved analysis). Since schema v26 it is served from `source_detail`, byte for byte the snapshot that was collected.
+
 ## 取得发布版本
 
-匿名 `GET /contracts/mistake-http-v7.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。Historical v1–v6 (and `emenda-intake-v1`) continue to publish their exact bytes; latest-version links point to v7 (`emenda-extraction-v1` for the intake contract).`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。
+匿名 `GET /contracts/mistake-http-v8.json` 返回发布资源的精确 UTF-8 bytes，`Content-Type: application/json`、以内容 SHA256 为值的带引号 ETag、`Cache-Control: public, no-cache`。`If-None-Match` 支持 weak tag、列表与 `*`；命中返回空 body 的 304。Historical v1–v7 (and `emenda-intake-v1`) continue to publish their exact bytes; latest-version links point to v8 (`emenda-extraction-v1` for the intake contract).`/contracts/emenda-extraction-v1.json` 独立发布并保持可读。未知版本返回 404，取消请求尊重 RequestAborted。入口在业务 `/api` 组之外，compatibility、strict、resource 模式均可读取，不读取 DB、Student、OSS、当前用户或运行配置。
 
 规格嵌入 `Mistake.Service` 发布程序集；Host 从该资源返回内容，Dockerfile 显式带入源 artifact。运行时无需 checkout、文档目录或特定工作目录。共享客户端也嵌入同一源 artifact，并仅 source-link 不依赖 Domain/Database 的纯 schema 校验器；它不引用服务 DTO 或服务项目。
 

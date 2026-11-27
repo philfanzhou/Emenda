@@ -67,15 +67,15 @@ public sealed class SourceIdentityGuardTests
         var db = scope.ServiceProvider.GetRequiredService<MistakeDbContext>();
         var id = Guid.NewGuid();
         var jobId = Guid.NewGuid();
-        db.MistakeItems.Add(new MistakeItemEntity
+        var item = new MistakeItemEntity
         {
             Id = id, StudentId = "owner-student", Subject = 2, Grade = 7,
             SourceUploadId = conversation ? "conversation:source" : $"extract:{jobId:N}",
             SourceRegions = [new SourceRegionEntry { SourceImagePath = "mistakes/extractions/original.png" }],
-            ReviewStatus = (int)ReviewStatus.PendingReview, CreatedAt = DateTimeOffset.UtcNow,
-            ConversationSource = conversation ? "{}" : null,
-            ConversationCaller = conversation ? StandaloneWebApplicationFactory.CallerName : null
-        });
+            ReviewStatus = (int)ReviewStatus.PendingReview, CreatedAt = DateTimeOffset.UtcNow
+        };
+        if (conversation) MistakeSource.SetConversation(item, StandaloneWebApplicationFactory.CallerName, "{}");
+        db.MistakeItems.Add(item);
         if (!conversation)
         {
             db.ExtractionJobs.Add(new ExtractionJobEntity { Id = jobId, Caller = "caller:" + StandaloneWebApplicationFactory.CallerName,

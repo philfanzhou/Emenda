@@ -33,21 +33,22 @@ public sealed class UnifiedMistakeSchemaPostgresTests
         var crop = $"mistakes/extractions/{liveJob:N}/retained/crop.png";
         var extraction = Item($"extract:{liveJob:N}", crop);
         extraction.QuestionId = Guid.NewGuid().ToString();
-        extraction.AnalysisSnapshot = Analysis;
         var retainedCrop = $"mistakes/extractions/{deletedJob:N}/retained/crop.png";
         var retained = Item($"extract:{deletedJob:N}", retainedCrop);
-        retained.AnalysisSnapshot = Analysis.Replace("\"sourceVersion\":3", $$"""
+        var retainedAnalysis = Analysis.Replace("\"sourceVersion\":3", $$"""
             "sourceVersion":2,"retainedFiles":[{"path":"{{retainedCrop}}","contentType":"image/png","length":4,"sha256":"{{new string('c', 64)}}"}]
             """.Trim());
-        var (conversation, _) = Conversation("school");
+        var (conversation, conversationSource) = Conversation("school");
         var legacy = Item("0f4c1a2e-legacy", "mistakes/2026/06/08/upload_0.jpg");
         legacy.SourceRegions[0].BoundingBox = new() { X1 = 1, Y1 = 2, X2 = 30, Y2 = 40 };
-        await PreUnifiedRows.InsertAsync(db, extraction, retained, conversation, legacy);
+        await PreUnifiedRows.InsertAsync(db, new(extraction, Analysis), new(retained, retainedAnalysis),
+            new(conversation, ConversationSource: conversationSource, ConversationCaller: "school"), new(legacy));
         var updatedAt = await UpdatedAtAsync(db);
 
+        // v24 derives the unified columns, v25 recovers deleted-task callers, v26 drops the old columns.
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(23, upgraded.FromVersion);
-        Assert.Equal(25, upgraded.ToVersion);
+        Assert.Equal(26, upgraded.ToVersion);
         Assert.Equal(updatedAt, await UpdatedAtAsync(db));
 
         using (var row = await ReadAsync(db, extraction.Id))
@@ -90,7 +91,7 @@ public sealed class UnifiedMistakeSchemaPostgresTests
             Assert.Equal("school", root.GetProperty("caller").GetString());
             // The evidence snapshot moves byte for byte, so conversation evidence hashes stay valid.
             Assert.True(await db.Database.SqlQuery<bool>(
-                $"SELECT source_detail=conversation_source AS \"Value\" FROM mistake_item WHERE id={conversation.Id}").SingleAsync());
+                $"SELECT source_detail={conversationSource}::jsonb AS \"Value\" FROM mistake_item WHERE id={conversation.Id}").SingleAsync());
             var content = root.GetProperty("content");
             Assert.Equal("Solve x+1=3", content.GetProperty("statement").GetString());
             Assert.Equal("x=1", content.GetProperty("studentAnswer").GetString());
@@ -122,7 +123,7 @@ public sealed class UnifiedMistakeSchemaPostgresTests
     }
 
     [Fact]
-    public async Task EveryWriterKeepsTheDerivedColumnsCurrent()
+    public async Task EveryEfWriterCompletesTheUnifiedShape()
     {
         await using var database = await PostgresTestDatabase.CreateAsync();
         await using var db = database.CreateContext();
@@ -137,14 +138,15 @@ public sealed class UnifiedMistakeSchemaPostgresTests
 
         using (var row = await ReadAsync(db, item.Id))
         {
+            Assert.Equal("extraction", row.RootElement.GetProperty("kind").GetString());
             Assert.Equal("school", row.RootElement.GetProperty("caller").GetString());
             Assert.Equal(JsonValueKind.Null, row.RootElement.GetProperty("content").GetProperty("statement").ValueKind);
         }
         using (var row = await ReadAsync(db, conversation.Id))
             Assert.Equal("tutor", row.RootElement.GetProperty("caller").GetString());
 
-        // A correction rewrites the analysis and the crops; the derived shape follows in the same statement.
-        item.AnalysisSnapshot = Analysis;
+        // A correction rewrites the analysis and the crops; the shape follows in the same save.
+        MistakeSource.SetAnalysis(item, Analysis);
         item.SourceRegions = [new() { SourceImagePath = $"mistakes/extractions/{job:N}/retained/b.png" },
             new() { SourceImagePath = $"mistakes/extractions/{job:N}/retained/c.png" }];
         await db.SaveChangesAsync();
@@ -154,28 +156,24 @@ public sealed class UnifiedMistakeSchemaPostgresTests
             Assert.Equal("2+2=?", content.GetProperty("statement").GetString());
             Assert.Equal(new[] { "b.png", "c.png" }, content.GetProperty("images").EnumerateArray()
                 .Select(i => Path.GetFileName(i.GetProperty("path").GetString())));
+            Assert.Equal(3, row.RootElement.GetProperty("detail").GetProperty("sourceVersion").GetInt32());
         }
-
-        // Raw SQL writers are covered too, and a caller resolved earlier survives once its task is gone.
-        var orphan = Guid.NewGuid();
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at,source_caller)
-            VALUES ({orphan},'s',2,4,{$"extract:{Guid.NewGuid():N}"},'[]'::jsonb,2,now(),'kept')
-            """);
-        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE mistake_item SET root_cause='reviewed' WHERE id={orphan}");
-        using (var row = await ReadAsync(db, orphan))
+        await using (var read = database.CreateContext())
         {
-            Assert.Equal("extraction", row.RootElement.GetProperty("kind").GetString());
-            Assert.Equal("kept", row.RootElement.GetProperty("caller").GetString());
+            var stored = await read.MistakeItems.SingleAsync(i => i.Id == item.Id);
+            Assert.True(JsonElement.DeepEquals(JsonDocument.Parse(Analysis).RootElement,
+                JsonDocument.Parse(MistakeSource.Analysis(stored)!).RootElement));
         }
 
-        // Derived columns cannot be set independently of the authoritative ones.
-        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE mistake_item SET source_kind='legacy', content='{{}}'::jsonb WHERE id={item.Id}");
+        // Removing the analysis clears its text and version, as a NULL snapshot did.
+        MistakeSource.SetAnalysis(item, null);
+        await db.SaveChangesAsync();
         using (var row = await ReadAsync(db, item.Id))
         {
-            Assert.Equal("extraction", row.RootElement.GetProperty("kind").GetString());
-            Assert.Equal("2+2=?", row.RootElement.GetProperty("content").GetProperty("statement").GetString());
+            Assert.Equal(JsonValueKind.Null, row.RootElement.GetProperty("content").GetProperty("statement").ValueKind);
+            Assert.False(row.RootElement.GetProperty("detail").TryGetProperty("sourceVersion", out _));
         }
+        Assert.Null(MistakeSource.Analysis(item));
     }
 
     [Fact]
@@ -193,8 +191,10 @@ public sealed class UnifiedMistakeSchemaPostgresTests
     [Fact]
     public async Task ExactClassifierRejectsAMissingDerivationTrigger()
     {
-        await using var database = await PostgresTestDatabase.CreateAsync();
+        // The trigger belongs to v24 and v25; v26 drops it with the columns it read.
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
+        await db.GetService<IMigrator>().MigrateAsync(ExtractionCallerRecoverySchema.Migration);
         await db.Database.ExecuteSqlRawAsync("DROP TRIGGER trg_mistake_item_source ON mistake_item");
         await Assert.ThrowsAsync<InvalidOperationException>(() => DatabaseInitializer.UpgradeToTargetAsync(db));
     }
@@ -226,9 +226,8 @@ public sealed class UnifiedMistakeSchemaPostgresTests
             """;
         var item = Item("", original, crop);
         item.ReviewStatus = 1;
-        item.ConversationCaller = caller;
         item.ConversationActive = true;
-        item.ConversationSource = source;
+        MistakeSource.SetConversation(item, caller, source);
         return (item, source);
     }
 

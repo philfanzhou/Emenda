@@ -76,8 +76,7 @@ public sealed class ConversationContractTests
     public void V7OnlyAddsTheUnifiedSourceShapeToV6()
     {
         var previous = Resource("mistake-http-v6");
-        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
-        Assert.Equal("mistake-http-v7", MistakeHttpContract.Version);
+        var current = Resource("mistake-http-v7");
         Assert.True(JsonNode.DeepEquals(previous["paths"], current["paths"]));
         var schemas = current["components"]!["schemas"]!.DeepClone().AsObject();
         Assert.True(schemas.Remove("MistakeContent"));
@@ -91,6 +90,26 @@ public sealed class ConversationContractTests
         required.RemoveAt(required.Count - 1);
         Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"], schemas));
         Assert.Equal("mistake-http-v6", current["x-ruoyu"]!["versionChange"]!["previousVersion"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void V8OnlyRemovesTheExtractionAnalysisFromV7()
+    {
+        var previous = Resource("mistake-http-v7");
+        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
+        Assert.Equal("mistake-http-v8", MistakeHttpContract.Version);
+        Assert.True(JsonNode.DeepEquals(previous["paths"], current["paths"]));
+        var schemas = previous["components"]!["schemas"]!.DeepClone().AsObject();
+        var item = schemas["MistakeItemDto"]!.AsObject();
+        Assert.True(item["properties"]!.AsObject().Remove("analysisSnapshot"));
+        Assert.DoesNotContain("analysisSnapshot", item["required"]!.AsArray().Select(v => v!.GetValue<string>()));
+        var content = schemas["MistakeContent"]!.AsObject();
+        content["description"] = current["components"]!["schemas"]!["MistakeContent"]!["description"]!.DeepClone();
+        Assert.True(JsonNode.DeepEquals(current["components"]!["schemas"], schemas));
+        Assert.Equal("mistake-http-v7", current["x-ruoyu"]!["versionChange"]!["previousVersion"]!.GetValue<string>());
+        // Every v8 response is a valid v7 response: the removed member was optional and nothing else changed.
+        Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"]!["MistakeItemDto"]!["required"],
+            current["components"]!["schemas"]!["MistakeItemDto"]!["required"]));
     }
 
     private static JsonNode Resource(string version)

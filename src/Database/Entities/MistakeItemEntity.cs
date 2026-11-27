@@ -12,9 +12,7 @@ public class MistakeItemEntity
     [Column("id")]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    [Column("conversation_source", TypeName = "jsonb")] public string? ConversationSource { get; set; }
     [Column("conversation_active")] public bool ConversationActive { get; set; }
-    [Column("conversation_caller")] public string? ConversationCaller { get; set; }
 
     [Column("student_id")]
     [Required]
@@ -49,12 +47,10 @@ public class MistakeItemEntity
     [Column("root_cause")]
     public string? RootCause { get; set; }
 
-    [Column("analysis_snapshot", TypeName = "jsonb")]
-    public string? AnalysisSnapshot { get; set; }
-
-    // The unified shape (schema v24). MistakeMaterializer derives these four columns from the
-    // source-specific ones on every EF save, and trg_mistake_item_source applies the same mapping
-    // in the database, so a value assigned here directly never survives a save. Read them; do not write them.
+    // The unified source (schema v26 dropped the source-specific columns analysis_snapshot,
+    // conversation_source and conversation_caller). Write the source through MistakeSource
+    // (SetConversation, SetAnalysis, SetRetainedFiles); MistakeMaterializer completes the rest on every EF save:
+    // the kind of a non-conversation row, the extraction task and caller, and the content images.
 
     /// <summary><see cref="MistakeSource.Extraction"/>, <see cref="MistakeSource.Conversation"/> or <see cref="MistakeSource.Legacy"/>.</summary>
     [Column("source_kind")]

@@ -6,6 +6,7 @@
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v5.json" LogicalName="mistake-http-v5.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v6.json" LogicalName="mistake-http-v6.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v7.json" LogicalName="mistake-http-v7.json" />
+    <EmbeddedResource Include="../../docs/Integration/mistake-http-v8.json" LogicalName="mistake-http-v8.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v4.json" LogicalName="mistake-http-v4.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v3.json" LogicalName="mistake-http-v3.json" />
     <EmbeddedResource Include="../../docs/Integration/emenda-intake-v1.json" LogicalName="emenda-intake-v1.json" />

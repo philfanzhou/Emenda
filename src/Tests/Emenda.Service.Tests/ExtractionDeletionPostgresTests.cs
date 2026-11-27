@@ -54,7 +54,7 @@ public sealed class ExtractionDeletionPostgresTests
             item.ReviewStatus = (int)ReviewStatus.Confirmed;
             item.ReviewerId = "synthetic-reviewer";
             item.RootCause = "Retained explanation";
-            item.AnalysisSnapshot = null; // simulate pre-backfill analysis still available in the current revision
+            MistakeSource.SetAnalysis(item, null); // simulate pre-backfill analysis still available in the current revision
             if (allConfirmed || rejected)
                 (await db.MistakeItems.SingleAsync(i => i.Id == secondId)).ReviewStatus =
                     (int)(allConfirmed ? ReviewStatus.Confirmed : ReviewStatus.Rejected);
@@ -90,7 +90,7 @@ public sealed class ExtractionDeletionPostgresTests
             Assert.Equal("synthetic-reviewer", item.ReviewerId);
             Assert.Equal("Retained explanation", item.RootCause);
             Assert.Equal(confirmedPath, Assert.Single(item.SourceRegions).SourceImagePath);
-            using var analysis = JsonDocument.Parse(item.AnalysisSnapshot!);
+            using var analysis = JsonDocument.Parse(MistakeSource.Analysis(item)!);
             Assert.Equal("Synthetic question 1", analysis.RootElement.GetProperty("statement").GetString());
             Assert.Equal("3", analysis.RootElement.GetProperty("studentAnswer").GetString());
             Assert.Equal("2", analysis.RootElement.GetProperty("referenceAnswer").GetString());
@@ -173,7 +173,7 @@ public sealed class ExtractionDeletionPostgresTests
             """);
         var upgrade = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(21, upgrade.FromVersion);
-        Assert.Equal(25, upgrade.ToVersion);
+        Assert.Equal(26, upgrade.ToVersion);
         Assert.False(db.Database.HasPendingModelChanges());
         var service = Service(database, new(0));
         Assert.Equal(id, (await service.SubmitAsync(Caller, new("student", 6, "legacy", [image, image]))).Id);
@@ -263,7 +263,7 @@ public sealed class ExtractionDeletionPostgresTests
         if (oldReceipt)
         {
             await using var db = database.CreateContext();
-            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE mistake_item SET analysis_snapshot=analysis_snapshot-'retainedFiles' WHERE id={itemId}");
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE mistake_item SET source_detail=source_detail-'retainedFiles' WHERE id={itemId}");
         }
         Assert.Equal(expectedCrop, await service.ReadRetainedCropAsync(Caller, itemId, 0, default));
         Assert.Equal(404, (await Assert.ThrowsAsync<ExtractionException>(() =>

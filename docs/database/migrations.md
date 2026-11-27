@@ -302,3 +302,27 @@ trigger keeps a recovered caller on later writes because the task no longer exis
 
 Down raises `extraction_caller_recovery_irreversible`; v25 is forward-only. A manual rollback only removes the
 history row. Regression coverage: `ExtractionCallerRecoveryPostgresTests`.
+
+## 20261128000000_DropSourceSpecificMistakeColumns
+
+Schema v26 (unified intake phase C). The unified columns become the record: the migration drops
+`analysis_snapshot`, `conversation_source` and `conversation_caller` together with the v24 trigger
+`trg_mistake_item_source` and its function `derive_mistake_item_source`. `conversation_active` stays.
+
+No value is lost. Before dropping anything the migration checks every row and raises
+`unified_mistake_contraction_mismatch` (nothing changes, the upgrade transaction rolls back) unless:
+
+- a conversation row's `source_detail` equals its `conversation_source` and its `source_caller` its
+  `conversation_caller`, and no other row has either;
+- an extraction row's `analysis_snapshot` is an object with only the known members (`statement`,
+  `studentAnswer`, `referenceAnswer`, `explanation`, `evidence`, a numeric `sourceVersion`, `retainedFiles`),
+  whose text members equal `content`'s and whose `sourceVersion`/`retainedFiles` equal `source_detail`'s; an
+  extraction without a snapshot has none of these; no other row has a snapshot.
+
+From v26 the pipelines write a mistake's source through `MistakeSource` (`SetConversation`, `SetAnalysis`,
+`SetRetainedFiles`) and `MistakeMaterializer` completes the rest on every EF save, with the v24 trigger's
+rules (`MistakeMaterializerParityPostgresTests` compares the two on a v26 and a v25 database).
+
+Down raises `unified_mistake_contraction_irreversible`; v26 is forward-only, and the previous application
+cannot run on it. **Take a backup before upgrading**: recovery to rc.20 or earlier is restoring that backup
+(see the design document). Regression coverage: `UnifiedSourceContractionPostgresTests`.

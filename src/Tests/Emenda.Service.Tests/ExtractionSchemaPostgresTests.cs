@@ -22,7 +22,7 @@ public sealed class ExtractionSchemaPostgresTests
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now())");
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
         result.FromVersion.Should().Be(15);
-        result.ToVersion.Should().Be(25);
+        result.ToVersion.Should().Be(26);
         (await db.MistakeItems.SingleAsync()).Id.Should().Be(itemId);
         (await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded.Should().BeFalse();
         (await db.Database.GetAppliedMigrationsAsync()).Should().Contain("20261116000000_AddExtractions");
@@ -47,7 +47,7 @@ public sealed class ExtractionSchemaPostgresTests
         await db.SaveChangesAsync();
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         upgraded.FromVersion.Should().Be(16);
-        upgraded.ToVersion.Should().Be(25);
+        upgraded.ToVersion.Should().Be(26);
         db.ChangeTracker.Clear();
         (await db.ExtractionJobs.SingleAsync()).SourcesJson.Should().Contain("original-digest");
         (await db.ExtractionRevisions.SingleAsync()).RequestKey.Should().Be(receipt.RequestKey);
@@ -72,7 +72,7 @@ public sealed class ExtractionSchemaPostgresTests
         (await db.ExtractionJobs.SingleAsync()).SourcesJson.Should().Be("[]");
         (await db.ExtractionJobs.SingleAsync()).RetryKeysJson.Should().Be("[]");
         (await db.ExtractionRevisions.SingleAsync()).RequestKey.Should().Be(revision.RequestKey);
-        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now())");
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,created_at,source_kind,content) VALUES ({itemId},'existing',1,7,'source','[]'::jsonb,1,now(),'legacy',jsonb_build_object('version',1,'images','[]'::jsonb))");
         await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM mistake_item WHERE id={itemId}");
         (await db.ExtractionQuestions.SingleAsync()).ItemId.Should().Be(itemId);
         await RejectAsync(db, $"INSERT INTO extraction_job SELECT '{Guid.NewGuid()}'::uuid,caller,source_key,payload_hash,student_id,grade,status,version,sources_json,layout_json,candidate_json,error_code,created_at,updated_at,owner_id,fence,lease_until,attempt,last_retry_key,retry_keys_json,content_hash FROM extraction_job", PostgresErrorCodes.UniqueViolation);

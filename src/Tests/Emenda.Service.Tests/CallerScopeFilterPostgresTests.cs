@@ -7,7 +7,8 @@ namespace Emenda.Service.Tests;
 /// <summary>
 /// The caller-scope query filter reads source_kind/source_caller since phase B of the unified intake. For every
 /// ownership case it must show each caller exactly the rows the previous filter (conversation_caller plus the
-/// extraction task and deletion-receipt subqueries, reproduced here in SQL) showed.
+/// extraction task and deletion-receipt subqueries, reproduced here in SQL) showed. Since schema v26 the conversation
+/// columns are gone; their values are source_detail and source_caller of the conversation rows, which v26 checked.
 /// </summary>
 public sealed class CallerScopeFilterPostgresTests
 {
@@ -55,7 +56,7 @@ public sealed class CallerScopeFilterPostgresTests
             var hash = ExtractionCallerRecoveryPostgresTests.OwnerHash(scope);
             var previous = await db.Database.SqlQuery<Guid>($"""
                 SELECT e.id AS "Value" FROM mistake_item e
-                WHERE (e.conversation_source IS NULL OR e.conversation_caller = {scope})
+                WHERE (e.source_kind <> 'conversation' OR e.source_caller = {scope})
                   AND (e.source_upload_id NOT LIKE 'extract:%'
                     OR EXISTS (SELECT 1 FROM extraction_job j
                         WHERE e.source_upload_id = 'extract:' || replace(j.id::text, '-', '') AND j.caller = 'caller:' || {scope})
@@ -93,8 +94,7 @@ public sealed class CallerScopeFilterPostgresTests
     private static MistakeItemEntity Conversation(string? caller)
     {
         var item = Item("");
-        item.ConversationCaller = caller;
-        item.ConversationSource = """{"version":1,"statement":"s"}""";
+        MistakeSource.SetConversation(item, caller, """{"version":1,"statement":"s"}""");
         return item;
     }
 }

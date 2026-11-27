@@ -46,7 +46,7 @@ schema v23 升级会把现有任务的原图（含已接受补图）、当前版
 
 ## 合同
 
-- [mistake-http-v7](mistake-http-v7.json)：错题新增 `content.images[i].role`（`question` 题目图 / `source` 原图），与 `/images/{i}` 的下标一一对应；图片接口本身不变。
+- [mistake-http-v7](mistake-http-v7.json)（v8 沿用）：错题新增 `content.images[i].role`（`question` 题目图 / `source` 原图），与 `/images/{i}` 的下标一一对应；图片接口本身不变。
 - [mistake-http-v6](mistake-http-v6.json)：新增 `GET /api/mistakes/{id}/images/{index}?size=`（按错题读取，统一覆盖切题、对话和旧错题，任务删除后的保留错题也可读；`no-store`）；签名接口统一尺寸词表，对话图可在通过归属校验后签名缩略图。
 - [emenda-extraction-v2](emenda-extraction-v2.json)：原图、裁图和保留裁图读取增加 `size`（`Cache-Control: private, max-age=86400`）。
 

@@ -341,7 +341,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         // The latest correction migration is forward-only; no downgrade can reach the archive migration.
         var before = await database.SnapshotAsync();
         // The extraction caller recovery is now the latest forward-only migration.
-        Assert.Contains("extraction_caller_recovery_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
+        Assert.Contains("unified_mistake_contraction_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
             context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration))).MessageText);
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(3, (await database.ArchiveAsync()).Count);
@@ -435,7 +435,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.Equal(oldPractices, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'image_paths')::text FROM mistake_practice p"));
         Assert.Equal(oldLogs, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'action'-'student_id')::text FROM process_log p"));
         Assert.True(await database.ScalarAsync<bool>("SELECT bool_and(action=CASE details WHEN 'created' THEN 1 WHEN 'old-action-2' THEN 2 WHEN 'old-action-3' THEN 5 WHEN 'old-action-4' THEN 6 END) FROM process_log"));
-        Assert.True(await database.ScalarAsync<bool>("SELECT bool_and(to_jsonb(i)-'source_kind'-'source_caller'-'content'-'source_detail'-'source_regions'-'source_upload_id'-'reviewer_id'-'reviewed_at'-'root_cause'-'review_status'-'analysis_snapshot'-'conversation_source'-'conversation_caller'-'conversation_active'=a.payload-'date'-'type'-'status' AND i.review_status=(a.payload->>'status')::integer AND i.analysis_snapshot IS NULL AND i.conversation_source IS NULL AND i.conversation_caller IS NULL AND NOT i.conversation_active) FROM mistake_item i JOIN legacy_archive a ON a.source_key=i.id::text WHERE a.reason='legacy_mistake_converted'"));
+        Assert.True(await database.ScalarAsync<bool>("SELECT bool_and(to_jsonb(i)-'source_kind'-'source_caller'-'content'-'source_detail'-'source_regions'-'source_upload_id'-'reviewer_id'-'reviewed_at'-'root_cause'-'review_status'-'conversation_active'=a.payload-'date'-'type'-'status' AND i.review_status=(a.payload->>'status')::integer AND NOT i.conversation_active) FROM mistake_item i JOIN legacy_archive a ON a.source_key=i.id::text WHERE a.reason='legacy_mistake_converted'"));
         Assert.Equal(4L, await database.ScalarAsync<long>($"SELECT count(*) FROM process_log WHERE mistake_item_id='{Item2}' AND action IN (1,2,5,6)"));
         Assert.Equal(Item1, await database.ScalarAsync<Guid>("SELECT mistake_item_id FROM mistake_practice"));
         Assert.Equal("[\"mistakes/s1/p.jpg\"]", await database.ScalarAsync<string>("SELECT image_paths::text FROM mistake_practice"));
@@ -446,7 +446,7 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.Equal(mixed ? 1L : 0L, await database.ScalarAsync<long>("SELECT count(*) FROM legacy_archive WHERE reason='legacy_mistake_superseded'"));
         Assert.Equal(mixed ? 2L : 0L, await database.ScalarAsync<long>("SELECT count(*) FROM legacy_archive WHERE source_table='mistake_item'"));
         if (mixed)
-            Assert.Equal(existing, await database.ScalarAsync<string>($"SELECT jsonb_object_agg(id::text,to_jsonb(i)-'source_kind'-'source_caller'-'content'-'source_detail'-'root_cause'-'source_regions'-'analysis_snapshot'-'conversation_source'-'conversation_caller'-'conversation_active' || jsonb_build_object('review_comment',root_cause))::text FROM mistake_item i WHERE id IN ('{Item1}','{Item3}')"));
+            Assert.Equal(existing, await database.ScalarAsync<string>($"SELECT jsonb_object_agg(id::text,to_jsonb(i)-'source_kind'-'source_caller'-'content'-'source_detail'-'root_cause'-'source_regions'-'conversation_active' || jsonb_build_object('review_comment',root_cause))::text FROM mistake_item i WHERE id IN ('{Item1}','{Item3}')"));
         await using var read = database.CreateContext();
         var repository = new MistakeItemRepository(read);
         var item = await repository.GetByIdAsync(Item1);

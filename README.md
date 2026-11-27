@@ -66,10 +66,10 @@ and the [paired AI Tutor implementation](integrations/ai-tutor/README.md) before
 
 ### HTTP contracts
 
-The lifecycle contract is [mistake-http-v7](docs/Integration/mistake-http-v7.json) and the
+The lifecycle contract is [mistake-http-v8](docs/Integration/mistake-http-v8.json) and the
 extraction contract is [emenda-extraction-v2](docs/Integration/emenda-extraction-v2.json);
 both are served anonymously under `GET /contracts/{version}.json`. Earlier published
-documents (`mistake-http-v1`…`v6`, `emenda-intake-v1`, `emenda-extraction-v1`) stay available as historical versions.
+documents (`mistake-http-v1`…`v7`, `emenda-intake-v1`, `emenda-extraction-v1`) stay available as historical versions.
 
 ### Display sizes (schema v23)
 
@@ -80,7 +80,7 @@ removed together with their parent, including when an administrator deletes a ta
 mistakes keep their crops and thumbnails. Schema v23 queues all existing images, so current tasks and
 confirmed mistakes are backfilled automatically. See [Display sizes](docs/Integration/ImageVariants.md).
 
-### Unified mistake source (schema v24, contract v7)
+### Unified mistake source (schema v24–v26, contracts v7–v8)
 
 Every mistake carries one source-independent shape: `source_kind` (`extraction`, `conversation`
 or `legacy`), `source_caller`, `content` (question text and an `images` list matching `source_regions`
@@ -89,7 +89,10 @@ the application's `MistakeMaterializer` derive them from the source-specific col
 caller scoping, source checks and archive reads use them, and `mistake-http-v7` returns `sourceKind` and
 `content` on every mistake next to the unchanged v6 fields. The v24 upgrade is forward-only and backfills
 existing rows automatically; schema v25 resolves the caller of mistakes whose extraction task was deleted
-earlier; contract v7 needs no schema change. See the
+earlier; contract v7 needs no schema change. Schema v26 makes these columns the only record: it checks that
+every old value is recoverable from them, then drops `analysis_snapshot`, `conversation_source`,
+`conversation_caller` and the trigger. It is forward-only, so back up the database before upgrading. Contract
+v8 no longer returns `analysisSnapshot` (its text is `content`); every v8 response is also valid v7. See the
 [unified mistake intake design](docs/design/UnifiedMistakeIntake.md).
 
 ### Database schema v20

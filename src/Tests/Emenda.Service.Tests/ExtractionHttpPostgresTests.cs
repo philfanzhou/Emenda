@@ -218,7 +218,7 @@ public sealed class ExtractionHttpPostgresTests
         Assert.Equal(imageBefore, await owner.GetByteArrayAsync(retainedPath));
         Assert.Equal(HttpStatusCode.NotFound, (await agent.GetAsync(retainedPath)).StatusCode);
         var detail = await Data<JsonElement>(await owner.GetAsync($"/api/mistakes/{retained.ItemId}"));
-        Assert.Equal(first.Statement, detail.GetProperty("analysisSnapshot").GetProperty("statement").GetString());
+        Assert.Equal(first.Statement, detail.GetProperty("content").GetProperty("statement").GetString());
         Assert.Equal(other.Id, Assert.Single((await Data<ExtractionSummaryPage>(await agent.GetAsync(ops))).Items).Id);
         Assert.Equal(HttpStatusCode.OK, (await agent.GetAsync($"{ops}/{job.Id}/deletion")).StatusCode);
         await callers.UpdateAsync("agent-fixture", null, null, canOperateExtractions: false);
