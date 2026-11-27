@@ -1,8 +1,9 @@
-using Microsoft.EntityFrameworkCore;
-using Emenda.Database.Entities;
-
 namespace Emenda.Database;
 
+/// <summary>
+/// Schema v15 added <c>product_intake_request</c> for the receipts of <c>/api/intake/uploads</c>, retired in v19;
+/// schema v28 (<see cref="RetiredIntakeTablesSchema"/>) archives any remaining rows and drops the table.
+/// </summary>
 public static class ProductIntakeSchema
 {
     public const string Migration = "20261111000000_AddProductIntakeRequests";
@@ -37,7 +38,4 @@ public static class ProductIntakeSchema
         "product_intake_request|response|jsonb|Y",
         "product_intake_request|created_at|timestamp with time zone|N"
     ];
-
-    internal static void Configure(ModelBuilder modelBuilder) =>
-        modelBuilder.Entity<ProductIntakeRequestEntity>().Property(e => e.RequestId).ValueGeneratedNever();
 }

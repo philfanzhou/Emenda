@@ -33,8 +33,6 @@ public class MistakeDbContext : DbContext
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
     public DbSet<ConversationCollectionEntity> ConversationCollections => Set<ConversationCollectionEntity>();
     public DbSet<ConversationMistakeReceiptEntity> ConversationMistakeReceipts => Set<ConversationMistakeReceiptEntity>();
-    public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
-    public DbSet<ProductIntakeRequestEntity> ProductIntakeRequests => Set<ProductIntakeRequestEntity>();
     public DbSet<ExtractionJobEntity> ExtractionJobs => Set<ExtractionJobEntity>();
     public DbSet<ExtractionDeletionEntity> ExtractionDeletions => Set<ExtractionDeletionEntity>();
     public DbSet<ExtractionQuestionEntity> ExtractionQuestions => Set<ExtractionQuestionEntity>();
@@ -64,7 +62,6 @@ public class MistakeDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        ProductIntakeSchema.Configure(modelBuilder);
         ConversationCollectionModel.Configure(modelBuilder);
         modelBuilder.Entity<MistakeItemEntity>().Property(e => e.ConversationActive).HasDefaultValue(false);
         // Legacy rows belong to no caller. Every other row is owned by its source_caller; an extraction whose task was
@@ -142,15 +139,6 @@ public class MistakeDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.MistakeItemId)
                   .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<ReanalyzeJobEntity>(entity =>
-        {
-            entity.Property(e => e.Id).ValueGeneratedNever();
-
-            entity.HasIndex(e => new { e.Status, e.CreatedAt });
-            entity.HasIndex(e => new { e.ReviewerId, e.Status });
-            entity.HasIndex(e => e.CompletedAt);
         });
     }
 }

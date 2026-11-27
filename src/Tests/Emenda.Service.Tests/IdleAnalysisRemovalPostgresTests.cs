@@ -27,26 +27,25 @@ public sealed class IdleAnalysisRemovalPostgresTests
             """);
         var reanalyzeColumns = await ColumnsAsync(db, "reanalyze_job");
 
-        var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
-        Assert.Equal(26, upgraded.FromVersion);
-        Assert.Equal(27, upgraded.ToVersion);
+        await db.GetService<IMigrator>().MigrateAsync(IdleAnalysisRemovalSchema.Migration);
         Assert.False(await AnalysisTableAsync(db));
         Assert.Equal(reanalyzeColumns.Where(c => c != "analysis_input"), await ColumnsAsync(db, "reanalyze_job"));
         Assert.Equal("kept", (await db.MistakeItems.AsNoTracking().SingleAsync()).RootCause);
-        Assert.Equal(1, await db.ReanalyzeJobs.CountAsync());
-        Assert.False(db.Database.HasPendingModelChanges());
-        Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);
+        Assert.Equal(1, await db.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM reanalyze_job").SingleAsync());
+        // The exact classifier accepts the v27 shape and upgrades it on to the target.
+        Assert.Equal(27, (await DatabaseInitializer.UpgradeToTargetAsync(db)).FromVersion);
     }
 
     [Fact]
     public async Task DowngradeIsRefusedWithoutChangingTheDatabase()
     {
-        await using var database = await PostgresTestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
+        await db.GetService<IMigrator>().MigrateAsync(IdleAnalysisRemovalSchema.Migration);
         var exception = await Assert.ThrowsAnyAsync<Exception>(() => db.GetService<IMigrator>().MigrateAsync(UnifiedSourceContractionSchema.Migration));
         Assert.Contains("idle_mistake_analysis_irreversible", exception.ToString());
         Assert.False(await AnalysisTableAsync(db));
-        Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);
+        Assert.Equal(27, (await DatabaseInitializer.UpgradeToTargetAsync(db)).FromVersion);
     }
 
     [Theory]

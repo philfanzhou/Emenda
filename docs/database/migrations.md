@@ -248,7 +248,7 @@ standalone-only product. In one statement batch inside the startup upgrade trans
 
 Mistakes, practices, process logs, extraction jobs/questions/revisions, conversation data,
 `legacy_archive`, `mistake_analysis`, `reanalyze_job` and `product_intake_request` are not
-touched. The remaining public routines are `guard_extraction_retention`,
+touched (v27 and v28 later remove the last three). The remaining public routines are `guard_extraction_retention`,
 `guard_extraction_revision` and `guard_legacy_archive`.
 
 In a standalone deployment these tables could not be written (they required the removed
@@ -332,10 +332,25 @@ cannot run on it. **Take a backup before upgrading**: recovery to rc.20 or earli
 
 Schema v27 drops `mistake_analysis` and `reanalyze_job.analysis_input` (schema v17). The VL structured analysis
 that used them was retired in v19, and no code has read or written them since. `reanalyze_job` itself and
-`product_intake_request` stay.
+`product_intake_request` stay until v28.
 
 The migration raises `idle_mistake_analysis_present` (nothing changes, the upgrade transaction rolls back) while
 `mistake_analysis` has a row or any `reanalyze_job.analysis_input` is not NULL (a JSON `null` counts). Both
 deployed environments had neither. Down raises `idle_mistake_analysis_irreversible`: v27 is forward-only like
 v26. EF runs each migration in its own transaction, so a reversible step here would let a downgrade attempt change
 the database before v26 refused it. Regression coverage: `IdleAnalysisRemovalPostgresTests`.
+
+## 20261130000000_DropRetiredReanalyzeAndIntakeTables
+
+Schema v28 drops `reanalyze_job` (VL reanalysis, v3/v5) and `product_intake_request` (receipts of the retired
+`/api/intake/uploads`, v15). Both features were removed in v19, and no code has read or written the tables since.
+
+`reanalyze_job` belongs to the oldest schemas, so older databases can still carry reanalysis history. Instead of
+refusing such a database, the migration locks both tables and copies every row unchanged into `legacy_archive`
+(`kind` `row`, `payload` `to_jsonb` of the row, `source_key` the `id` or `request_id`, `reason`
+`reanalyze_job_retired` or `product_intake_request_retired`), then drops the tables with their keys and indexes.
+Both deployed environments had no rows, so nothing was archived there.
+
+Down raises `retired_intake_tables_irreversible`; v28 is forward-only like v26 and v27. The strict classifier
+expects `reanalyze_job` only from v3 to v27 and `product_intake_request` only from v15 to v27. Regression coverage:
+`RetiredIntakeTablesPostgresTests`.

@@ -96,7 +96,8 @@ v8 no longer returns `analysisSnapshot` (its text is `content`); every v8 respon
 [unified mistake intake design](docs/design/UnifiedMistakeIntake.md).
 
 Schema v27 drops the unused `mistake_analysis` table and `reanalyze_job.analysis_input` (left from the analysis
-retired in v19); the upgrade refuses to run while either holds data.
+retired in v19); the upgrade refuses to run while either holds data. Schema v28 drops the retired `reanalyze_job`
+and `product_intake_request` tables after copying any remaining rows into `legacy_archive`.
 
 ### Database schema v20
 

@@ -83,9 +83,9 @@ extraction and conversation data are untouched. v19 is forward-only: restore a b
 instead of migrating down. Back up the complete database and credential volume before
 upgrading a deployed instance. See [migration history](../database/migrations.md).
 
-A nonempty `product_intake_request` table (receipts of the removed `/api/intake/uploads`
-API) is retained; it blocks downgrading past its creation. Existing items remain accessible
-through their IDs and source references.
+Schema v28 drops `product_intake_request` (receipts of the removed `/api/intake/uploads` API)
+and `reanalyze_job` (the removed VL reanalysis); any remaining rows are copied unchanged into
+`legacy_archive` first. Existing items remain accessible through their IDs and source references.
 
 ### PostgreSQL 18 catalog compatibility
 
