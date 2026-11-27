@@ -2,11 +2,10 @@
 
 ## 服务级需求
 
-- 提供错题记录的全生命周期 gRPC 服务（创建、审核、管理、练习、分析）
+- 提供错题记录的全生命周期 gRPC 服务（创建、审核、管理、分析）
 - 支持从 student 服务自动分发创建错题（SubmitMistakeUpload）
 - 支持教师逐条审核 + 整批完成审核流程，审核时可修正科目/年级
 - 审核完成后自动迁移 OSS 图片（uploads/ → mistakes/）
-- 支持错题练习记录追踪，仅已确认错题可添加练习
 - 支持错题处理过程日志
 - 支持 OSS 垃圾清理审计（GetAllReferencedImagePaths）
 - 数据库：PostgreSQL（Npgsql provider）
@@ -27,8 +26,6 @@
 | MistakeManagement | 手动添加错题条目 | modules/MistakeManagement/AddMistakeItem/ |
 | MistakeManagement | 更新错题条目 | [modules/MistakeManagement/UpdateMistakeItem/](../modules/MistakeManagement/UpdateMistakeItem/01-FEATURE.md) |
 | MistakeManagement | 删除错题条目 | [modules/MistakeManagement/DeleteMistakeItem/](../modules/MistakeManagement/DeleteMistakeItem/01-FEATURE.md) |
-| MistakePractice | 添加练习记录 | [modules/MistakePractice/AddMistakePractice/](../modules/MistakePractice/AddMistakePractice/01-FEATURE.md) |
-| MistakePractice | 查询练习记录 | [modules/MistakePractice/GetMistakePractices/](../modules/MistakePractice/GetMistakePractices/01-FEATURE.md) |
 | MistakeProcessLogging | 记录处理日志 | [modules/MistakeProcessLogging/LogMistakeProcess/](../modules/MistakeProcessLogging/LogMistakeProcess/01-FEATURE.md) |
 | MistakeProcessLogging | 查询处理历史 | [modules/MistakeProcessLogging/GetMistakeProcessHistory/](../modules/MistakeProcessLogging/GetMistakeProcessHistory/01-FEATURE.md) |
 | ImagePathQuery | 获取所有引用图片路径 | [modules/ImagePathQuery/GetAllReferencedImagePaths/](../modules/ImagePathQuery/GetAllReferencedImagePaths/01-FEATURE.md) |

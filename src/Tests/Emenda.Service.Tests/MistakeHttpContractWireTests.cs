@@ -51,16 +51,14 @@ public sealed class MistakeHttpContractWireTests
         await Send("GET", "/api/mistakes/pending-reviews?page=1&size=10&subjects=invalid,1");
         await Send("PUT", "/api/mistakes/" + id, new { sourceRegions = Array.Empty<object>(), subject = 2 });
         await Send("POST", "/api/mistakes/" + id + "/review", new { reviewStatus = 2, reviewerId = "synthetic-actor" });
-        await Send("POST", "/api/mistakes/" + id + "/practices", new { studentId = "synthetic-student", isCorrect = false, imagePaths = Array.Empty<string>() });
-        await Send("GET", "/api/mistakes/" + id + "/practices");
-        await Send("POST", "/api/mistakes/" + id + "/process-logs", new { studentId = "synthetic-student", action = 6 });
+        await Send("POST", "/api/mistakes/" + id + "/process-logs", new { studentId = "synthetic-student", action = 2 });
         await Send("GET", "/api/mistakes/" + id + "/process-logs");
         await Send("POST", "/api/mistakes/presigned-url", new { objectPath = "mistakes/synthetic.png", expirySeconds = 0 });
         await Send("DELETE", "/api/mistakes/" + id);
         var missingDelete = await Send("DELETE", "/api/mistakes/" + id);
         missingDelete.GetProperty("success").GetBoolean().Should().BeTrue();
         missingDelete.GetProperty("data").GetProperty("success").GetBoolean().Should().BeFalse();
-        visited.Should().HaveCount(12);
+        visited.Should().HaveCount(10);
     }
 
     [Theory]

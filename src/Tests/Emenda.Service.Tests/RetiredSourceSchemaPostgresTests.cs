@@ -33,7 +33,7 @@ public sealed class RetiredSourceSchemaPostgresTests
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
 
         Assert.Equal(18, result.FromVersion);
-        Assert.Equal(28, result.ToVersion);
+        Assert.Equal(29, result.ToVersion);
         Assert.Equal("retained cause", (await db.MistakeItems.AsNoTracking().SingleAsync()).RootCause);
         Assert.Equal(1, await Scalar<long>(database, "SELECT count(*) FROM process_log"));
         Assert.False(await Scalar<bool>(database, "SELECT to_regclass('public.mistake_analysis') IS NOT NULL"));
@@ -42,7 +42,7 @@ public sealed class RetiredSourceSchemaPostgresTests
         Assert.Equal("guard_extraction_deletion_receipt,guard_extraction_object_reference,guard_extraction_retention,guard_extraction_revision,guard_legacy_archive",
             await Scalar<string>(database, "SELECT string_agg(proname, ',' ORDER BY proname) FROM pg_proc WHERE pronamespace='public'::regnamespace"));
         // v26 dropped the v24 derivation trigger on mistake_item; the reference guards remain.
-        Assert.Equal(2L, await Scalar<long>(database, """
+        Assert.Equal(1L, await Scalar<long>(database, """
             SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
             WHERE NOT t.tgisinternal AND c.relname IN ('mistake_item','mistake_practice','process_log','reanalyze_job')
             """));

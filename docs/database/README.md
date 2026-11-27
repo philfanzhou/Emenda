@@ -11,14 +11,12 @@ Schema 18 adds `20261118000000_AddConversationMistakes` after the preserved sche
 | 表名 | 说明 | 详细文档 |
 |------|------|----------|
 | `mistake_item` | 错题条目，核心业务表 | [tables/mistake_item.md](./tables/mistake_item.md) |
-| `mistake_practice` | 错题练习记录 | [tables/mistake_practice.md](./tables/mistake_practice.md) |
 | `process_log` | 处理日志，记录错题生命周期 | [tables/process_log.md](./tables/process_log.md) |
 | `legacy_archive` | 旧结构收敛时被移除或改写数据的只追加归档 | [tables/legacy_archive.md](./tables/legacy_archive.md) |
 
 ## 实体关系
 
 ```
-mistake_item (1) ────< (N) mistake_practice  [CASCADE]
 mistake_item (1) ────< (N) process_log       [CASCADE]
 ```
 
@@ -44,8 +42,6 @@ mistake_item (1) ────< (N) process_log       [CASCADE]
 | 2 | Analyzed | 分析 |
 | 3 | ReviewConfirmed | 审核确认 |
 | 4 | ReviewRejected | 审核退回 |
-| 5 | Practiced | 练习 |
-| 6 | Mastered | 已掌握 |
 
 ## 迁移历史
 

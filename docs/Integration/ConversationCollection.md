@@ -26,14 +26,14 @@ When enabling the feature, supply an independent 32–256-character `CollectionK
 
 Every collection route requires the existing middleware-verified `X-Emenda-Api-Key` caller matching `CallerName`, plus `X-Question-Collection-Key`. Browser `Origin` and `Sec-Fetch-Site` headers are rejected. Anonymous development authentication does not grant collection access.
 
-The v5 wire is published at `/contracts/mistake-http-v5.json`. All successful collection responses retain the original `success/data` envelope:
+The current wire contract is published at `/contracts/mistake-http-v9.json`. All successful collection responses retain the original `success/data` envelope:
 
 - `POST /api/mistakes/conversation-collections`: `{operationId, studentId, grade, actorId, ownerId}`. Grade is 0–12. Student IDs are opaque nonempty strings, maximum 36 characters; actor IDs maximum 128; owner IDs maximum 256. Identity fields cannot contain control characters. Portal derives these fields from the current authenticated account/student, never from browser assertions.
 - `GET /api/mistakes/conversation-collections/{operationId}?studentId=...&actorId=...`: current authorized status/result, scoped by caller, actor, operation and student. Foreign operations return no job fields.
 - `POST /api/mistakes/conversation-collections/stop`: `{studentId, actorId}`. Locks accepted work and stops only Tutor operations already marked stopped after a history clear. Newly started, uncleared operations continue.
 - `POST /api/mistakes/{itemId}/conversation-analysis`: `{studentId, actorId, evidenceHash, version, model, content}`. Version is 1; model is 1–32 ASCII letters/digits/hyphens; content is nonblank and at most 8000 Unicode runes. Conditional save verifies caller/student ownership and the exact current evidence hash. Teacher root-cause analysis remains separate.
 
-An existing operation UUID cannot be rebound to another caller, actor, student, owner or grade. Receipts, deterministic item IDs and image directories are caller-scoped. HTTP queries exclude conversation records belonging to other callers, including list counts, practices, process logs and structured analysis. Reanalysis status reads also require a currently visible parent; permanent receipts suppress orphaned conversation jobs after deletion, while deleted legacy-job history and trusted null-scope background workers retain their original behavior.
+An existing operation UUID cannot be rebound to another caller, actor, student, owner or grade. Receipts, deterministic item IDs and image directories are caller-scoped. HTTP queries exclude conversation records belonging to other callers, including list counts, process logs and structured analysis. Reanalysis status reads also require a currently visible parent; permanent receipts suppress orphaned conversation jobs after deletion, while deleted legacy-job history and trusted null-scope background workers retain their original behavior.
 
 ## Current authorization and failures
 

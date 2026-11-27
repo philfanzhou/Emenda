@@ -1,0 +1,4045 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Mistake HTTP contract",
+    "version": "mistake-http-v9",
+    "description": "Extraction-backed mistakes and their logs and analyses are scoped to the original product caller, including after task deletion. Student authorization remains the trusted BFF's responsibility."
+  },
+  "paths": {
+    "/api/mistakes/{id}/images/{index}": {
+      "get": {
+        "operationId": "GetMistakeImage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "x-ruoyu-route-constraint": "int"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "large",
+                "original",
+                "medium",
+                "small",
+                "thumbnail"
+              ],
+              "default": "full"
+            },
+            "description": "Display size. full (default; large/original are aliases) returns the stored bytes; medium (800px), small (400px) and thumbnail (200px) return an upright JPEG fitted to that long edge, never enlarged. Missing variants are rendered on demand from the verified original. Any other value is 400 invalid_size."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image bytes: variants are image/jpeg; full keeps the stored media type.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stored image cannot be read or decoded (errorKind image_unavailable).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "errors": "IntakeError errorKind: invalid_size 400, not_found 404, conversation_image_forbidden 403, image_unavailable 503",
+            "integrity": "extraction crops are digest-verified before any byte or variant is served; variants are caches derived from the verified parent"
+          }
+        },
+        "description": "Bytes of the index-th picture of one mistake (zero-based sourceRegions order) at a display size. Extraction mistakes read the current crop through the owning caller's job, or the retained archive after the task was deleted; conversation mistakes require the owning product caller and canonical path; legacy mistakes read their stored image. Responses are not cacheable because a correction may replace the picture behind the same address."
+      }
+    },
+    "/api/mistakes/{id}": {
+      "get": {
+        "operationId": "GetMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "notfound": "404message envelope; resource or managed owner authorization"
+          }
+        }
+      },
+      "put": {
+        "operationId": "UpdateMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "patch": "blank student/nonpositive subject/grade => unchanged; empty regions => unchanged, not clear; managed history/binding guards409"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMistakeItemRequest"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "DeleteMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeBooleanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "completion": "HTTP200 outertrue innerfalse means item missing; managed/history restrictions409, never authorizes source deletion"
+          }
+        }
+      }
+    },
+    "/api/mistakes/by-upload/{sourceUploadId}": {
+      "get": {
+        "operationId": "GetMistakeItemsByUpload",
+        "parameters": [
+          {
+            "name": "sourceUploadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "x-ruoyu-route-constraint": "none"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemsByUploadResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "scope": "resource or managed item ownership; managed anonymous401;200items may empty"
+          }
+        }
+      }
+    },
+    "/api/mistakes": {
+      "get": {
+        "operationId": "GetMistakeItemList",
+        "parameters": [
+          {
+            "name": "studentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "grade",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "reviewStatus",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "0: all; 1-3: stored review status; 4: learner-visible confirmed uploads and complete active automatic conversation items. 4 is never a stored review status."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeMistakeItemPageResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "pagination": "page<=0=>1; size<=0=>10; size>100=>100; raw integer query parameters are required bindings",
+            "scope": "resource or existing managed student scope applies owner filtering; anonymous managed401; no student defaults to allowed learners under resource"
+          }
+        }
+      }
+    },
+    "/api/mistakes/pending-reviews": {
+      "get": {
+        "operationId": "GetPendingReviewUploads",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "subjects",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePendingReviewUploadListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "pagination": "page<=0=>1; size<=0=>10; size>100=>100",
+            "subjects": "comma-separated positive integers; invalid tokens ignored; empty valid list becomes no filter"
+          }
+        }
+      }
+    },
+    "/api/mistakes/{id}/review": {
+      "post": {
+        "operationId": "ReviewMistakeItem",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeReviewMistakeItemResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "validation": "reviewStatus only Confirmed2/Rejected3, reviewer bound under resource or managed",
+            "completion": "managed and enabled legacy accepted Rejected202 innerfalse return_pending while Capturing/Prepared/Sending; only durableCompleted200 innertrue; exact existingCompleted authenticated replay200, canonical conflict409",
+            "disabled": "SourceReturns or LegacyReturns off503 before new effects; legacy new/pending503 without intent/lease/OSS/Student writes; completed exact history replay remains authenticated; enabling legacy requires Student, strict/resource, RS256 service credentials and normal HTTPS before DB/OSS",
+            "history": "managed and legacy return retains item/log/receipt, all source/candidate bytes and frozen payload; reserved target protected409"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewMistakeItemRequest"
+              }
+            }
+          }
+        },
+        "description": "Conversation items require a trusted product caller or authorized teacher reviewer. Rejection is local, preserves snapshots/images and does not invoke upload return workflows; optional returnReason is a local review explanation (maximum 2000 characters). Omitted rootCause preserves the conversation teacher analysis. Existing upload and extraction review rules remain unchanged."
+      }
+    },
+    "/api/mistakes/{id}/process-logs": {
+      "post": {
+        "operationId": "LogMistakeProcess",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeBooleanResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "validation": "learner-only owner binding under resource/managed; route id authoritative; absent details=>empty; numeric action persists per legacy input semantics"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogMistakeProcessRequest"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "GetMistakeProcessHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "x-ruoyu-route-constraint": "guid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopeProcessLogListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "empty": "missing item may200 empty list; dates millisecondUTC or empty; process action numeric legacy values not artificially normalized"
+          }
+        }
+      }
+    },
+    "/api/mistakes/presigned-url": {
+      "post": {
+        "operationId": "GetPresignedUrl",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Actual success or explicit inner business outcome; check inner success/state when present.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopePresignedUrlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Application validation JSON or framework malformed/missing binding; framework may send empty/plaintext body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/MessageError"
+                        },
+                        {
+                          "$ref": "#/components/schemas/IntakeError"
+                        }
+                      ]
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProblemDetails"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "401": {
+            "description": "Missing or invalid product caller credential, or a conversation-backed item read without its product caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "403": {
+            "description": "Conversation or extraction object access denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "404": {
+            "description": "Application not found; route constraint mismatch may be empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "x-ruoyu-empty-or-non-json": true
+          },
+          "405": {
+            "description": "Framework method mismatch, empty body and Allow header."
+          },
+          "409": {
+            "description": "Canonical replay, source/target/return/handoff/history/lease guards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Known database unavailable or disabled Student/managed capability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/IntakeError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unmapped server error/cancellation/transport loss; empty or non-JSON body, never completion evidence.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "500": {
+            "description": "OSS generation failure envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EmendaApiKey": []
+          }
+        ],
+        "x-ruoyu": {
+          "authorization": {
+            "caller": "authenticated product caller (X-Emenda-Api-Key); the caller owns student authorization",
+            "conversation": "conversation-backed items additionally require the owning product caller"
+          },
+          "semantics": {
+            "validation": "exact Ordinal mistakes/ prefix for legacy; size is one closed vocabulary: full (default, aliases large/original), medium, small, thumbnail; any other size is 400 invalid_size and a variant path cannot be the parent of another variant; expiry<=0=>3600",
+            "conversation": "a conversation original or crop may be signed at any size, but only after the canonical parent passes the owning-caller reference check; the variant itself is never a signable parent",
+            "managed": "verified managed source path may be uploads/; full only; always authenticated owner; reserved unverified targets denied",
+            "capability": "short-lived bearer URL; never log URL or infer readability from object existence;404 missing object;500message on ordinary OSS generation failure"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetPresignedUrlRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mistakes/conversation-collections": {
+      "post": {
+        "operationId": "AdmitConversationCollection",
+        "security": [
+          {
+            "EmendaApiKey": [],
+            "QuestionCollectionKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "operationId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "studentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 36
+                  },
+                  "grade": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0,
+                    "maximum": 12
+                  },
+                  "actorId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "ownerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "studentId",
+                  "grade",
+                  "actorId",
+                  "ownerId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "operationId": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "operationId"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Rejected or unavailable; no learning data returned."
+          },
+          "400": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "401": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "403": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "404": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "405": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "409": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "503": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          }
+        },
+        "x-ruoyu": {
+          "enabledBy": "ConversationCollection.Enabled",
+          "authorization": "authenticated product caller matching CallerName plus independent service key",
+          "semantics": {
+            "scope": "current student association rechecked; independent service key required; no user credential persisted",
+            "completion": "durable receipts only; unknown writes are not claimed rolled back; stopped histories do not create new collected items after clear completion"
+          }
+        }
+      }
+    },
+    "/api/mistakes/conversation-collections/{id}": {
+      "get": {
+        "operationId": "GetConversationCollection",
+        "security": [
+          {
+            "EmendaApiKey": [],
+            "QuestionCollectionKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "studentId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "operationId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "studentId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 36
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending",
+                            "running",
+                            "completed",
+                            "failed",
+                            "stopped"
+                          ]
+                        },
+                        "errorCode": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 100
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "result": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "collected": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10
+                                },
+                                "updated": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10
+                                },
+                                "retracted": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 10
+                                }
+                              },
+                              "required": [
+                                "collected",
+                                "updated",
+                                "retracted"
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "studentId",
+                        "status",
+                        "errorCode"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Rejected or unavailable; no learning data returned."
+          },
+          "400": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "401": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "403": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "404": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "405": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "409": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "503": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          }
+        },
+        "x-ruoyu": {
+          "enabledBy": "ConversationCollection.Enabled",
+          "authorization": "authenticated product caller matching CallerName plus independent service key",
+          "semantics": {
+            "scope": "current student association rechecked; independent service key required; no user credential persisted",
+            "completion": "durable receipts only; unknown writes are not claimed rolled back; stopped histories do not create new collected items after clear completion"
+          }
+        }
+      }
+    },
+    "/api/mistakes/{id}/conversation-analysis": {
+      "post": {
+        "operationId": "SaveConversationAnalysis",
+        "security": [
+          {
+            "EmendaApiKey": [],
+            "QuestionCollectionKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "studentId",
+                  "evidenceHash",
+                  "version",
+                  "model",
+                  "content",
+                  "actorId"
+                ],
+                "properties": {
+                  "studentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 36
+                  },
+                  "evidenceHash": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "enum": [
+                      1
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9-]+$"
+                  },
+                  "content": {
+                    "type": "string",
+                    "maxLength": 8000,
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "actorId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Version-checked analysis saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "saved",
+                        "evidenceHash"
+                      ],
+                      "properties": {
+                        "saved": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "evidenceHash": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Rejected, stale evidence or unavailable; no analysis saved."
+          },
+          "400": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "401": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "403": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "404": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "405": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "409": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "503": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          }
+        },
+        "x-ruoyu": {
+          "enabledBy": "ConversationCollection.Enabled",
+          "authorization": "authenticated product caller matching CallerName plus independent service key",
+          "semantics": {
+            "scope": "current student association rechecked; independent service key required; no user credential persisted",
+            "completion": "durable receipts only; unknown writes are not claimed rolled back; stopped histories do not create new collected items after clear completion"
+          }
+        }
+      }
+    },
+    "/api/mistakes/conversation-collections/stop": {
+      "post": {
+        "operationId": "StopClearedConversationCollections",
+        "security": [
+          {
+            "EmendaApiKey": [],
+            "QuestionCollectionKey": []
+          }
+        ],
+        "description": "After Tutor history clear, wait for accepted task commits and stop only pending/running operations whose source export is stopped. New conversations remain eligible. Retry is safe.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "studentId",
+                  "actorId"
+                ],
+                "properties": {
+                  "studentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 36
+                  },
+                  "actorId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clear barrier acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "stopped"
+                      ],
+                      "properties": {
+                        "stopped": {
+                          "type": "boolean",
+                          "const": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Unauthorized, unavailable or partially completed; do not report history clear as fully complete."
+          },
+          "400": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "401": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "403": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "404": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "405": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "409": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          },
+          "503": {
+            "description": "Rejected, unavailable or framework error; no learning data returned."
+          }
+        },
+        "x-ruoyu": {
+          "enabledBy": "ConversationCollection.Enabled",
+          "authorization": "authenticated product caller matching CallerName plus independent service key",
+          "semantics": {
+            "scope": "current student association rechecked; independent service key required; no user credential persisted",
+            "completion": "durable receipts only; unknown writes are not claimed rolled back; stopped histories do not create new collected items after clear completion"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BoundingBoxDto": {
+        "type": "object",
+        "properties": {
+          "x1": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "y1": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "x2": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "y2": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "x1",
+          "y1",
+          "x2",
+          "y2"
+        ],
+        "additionalProperties": true
+      },
+      "SourceRegionDto": {
+        "type": "object",
+        "properties": {
+          "sourceImagePath": {
+            "type": "string"
+          },
+          "boundingBox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundingBoxDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sourceImagePath",
+          "boundingBox"
+        ],
+        "additionalProperties": true
+      },
+      "PageMetaDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalPages": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "page",
+          "size",
+          "totalCount",
+          "totalPages"
+        ],
+        "additionalProperties": true
+      },
+      "MistakeItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sourceUploadId": {
+            "type": "string"
+          },
+          "sourceRegions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceRegionDto"
+            }
+          },
+          "reviewStatus": {
+            "type": "integer",
+            "enum": [
+              0,
+              1,
+              2,
+              3
+            ]
+          },
+          "reviewerId": {
+            "type": "string"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "rootCause": {
+            "type": "string"
+          },
+          "questionId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "conversationSource": {
+            "$ref": "#/components/schemas/ConversationQuestionSnapshot"
+          },
+          "conversationActive": {
+            "type": "boolean"
+          },
+          "sourceKind": {
+            "description": "Where the mistake came from: extraction (automatic extraction task), conversation (AI Tutor conversation collection) or legacy (platform-era upload, owned by no caller).",
+            "type": "string",
+            "enum": [
+              "extraction",
+              "conversation",
+              "legacy"
+            ]
+          },
+          "content": {
+            "$ref": "#/components/schemas/MistakeContent"
+          }
+        },
+        "required": [
+          "id",
+          "studentId",
+          "subject",
+          "grade",
+          "sourceUploadId",
+          "sourceRegions",
+          "reviewStatus",
+          "reviewerId",
+          "reviewedAt",
+          "rootCause",
+          "questionId",
+          "createdAt",
+          "updatedAt",
+          "sourceKind",
+          "content"
+        ],
+        "additionalProperties": true
+      },
+      "MistakeContent": {
+        "description": "The question in one shape for every source (content version 1). A text member is null when the source has none or when it is withheld: an extraction mistake shows its text only while pending review or confirmed; conversation text follows conversationSource. explanation is extraction-only; knowledgePoints is conversation-only and otherwise empty.",
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": 1
+          },
+          "statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "studentAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "referenceAnswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "knowledgePoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "images": {
+            "description": "Matches sourceRegions one to one and in order: images[i] is the object behind GET /api/mistakes/{id}/images/{i}.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MistakeContentImage"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "statement",
+          "studentAnswer",
+          "referenceAnswer",
+          "explanation",
+          "evidence",
+          "knowledgePoints",
+          "images"
+        ],
+        "additionalProperties": true
+      },
+      "MistakeContentImage": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "role": {
+            "description": "question: the question image to display. source: an original page or photo kept as evidence (conversation mistakes).",
+            "type": "string",
+            "enum": [
+              "question",
+              "source"
+            ]
+          },
+          "box": {
+            "description": "[x1, y1, x2, y2] of the question inside its original when known, otherwise null.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "role",
+          "box"
+        ],
+        "additionalProperties": true
+      },
+      "MistakeItemPageResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MistakeItemDto"
+            }
+          },
+          "pageMeta": {
+            "$ref": "#/components/schemas/PageMetaDto"
+          }
+        },
+        "required": [
+          "items",
+          "pageMeta"
+        ],
+        "additionalProperties": true
+      },
+      "PendingReviewUploadDto": {
+        "type": "object",
+        "properties": {
+          "sourceUploadId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pendingCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "earliestCreatedAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          }
+        },
+        "required": [
+          "sourceUploadId",
+          "studentId",
+          "subject",
+          "grade",
+          "pendingCount",
+          "totalCount",
+          "earliestCreatedAt"
+        ],
+        "additionalProperties": true
+      },
+      "PendingReviewUploadListResponse": {
+        "type": "object",
+        "properties": {
+          "uploads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingReviewUploadDto"
+            }
+          },
+          "pageMeta": {
+            "$ref": "#/components/schemas/PageMetaDto"
+          }
+        },
+        "required": [
+          "uploads",
+          "pageMeta"
+        ],
+        "additionalProperties": true
+      },
+      "ReviewMistakeItemRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "reviewStatus": {
+            "type": "integer",
+            "x-ruoyu-binding-default": 0,
+            "x-ruoyu-business-values": [
+              2,
+              3
+            ]
+          },
+          "reviewerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "rootCause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "returnReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "ReviewMistakeItemResponse": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "returnState": {
+            "type": "string",
+            "enum": [
+              "Capturing",
+              "Prepared",
+              "Unknown",
+              "Sending",
+              "Conflict",
+              "Completed"
+            ]
+          },
+          "confirmedRecordId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorKind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string"
+          },
+          "sourceUploadId": {
+            "type": "string"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "removedImagePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "errorMessage",
+          "sourceUploadId",
+          "studentId",
+          "removedImagePaths"
+        ],
+        "additionalProperties": true
+      },
+      "UpdateMistakeItemRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "subject": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "grade": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "sourceRegions": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InputSourceRegion"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": []
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "LogMistakeProcessRequest": {
+        "type": "object",
+        "properties": {
+          "mistakeItemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "studentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "action": {
+            "type": "integer",
+            "x-ruoyu-known-values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              7
+            ],
+            "x-ruoyu-binding-default": 0,
+            "x-ruoyu-business-values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              7
+            ]
+          },
+          "details": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "ProcessLogDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mistakeItemId": {
+            "type": "string"
+          },
+          "action": {
+            "type": "integer",
+            "x-ruoyu-known-values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7
+            ]
+          },
+          "details": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "pattern": "^(|\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d(?:\\.\\d+)?(?:Z|[+-]\\d\\d:\\d\\d))$"
+          },
+          "studentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mistakeItemId",
+          "action",
+          "details",
+          "createdAt",
+          "studentId"
+        ],
+        "additionalProperties": true
+      },
+      "ProcessLogListResponse": {
+        "type": "object",
+        "properties": {
+          "logs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProcessLogDto"
+            }
+          }
+        },
+        "required": [
+          "logs"
+        ],
+        "additionalProperties": true
+      },
+      "GetPresignedUrlRequest": {
+        "type": "object",
+        "properties": {
+          "objectPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "expirySeconds": {
+            "type": "integer",
+            "format": "int32",
+            "x-ruoyu-binding-default": 0
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "PresignedUrlResponse": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "expirySeconds": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "required": [
+          "url",
+          "expirySeconds"
+        ],
+        "additionalProperties": true
+      },
+      "MistakeItemsByUploadResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MistakeItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": true
+      },
+      "BooleanResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "additionalProperties": true
+      },
+      "MessageError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": false
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "additionalProperties": true
+      },
+      "IntakeError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": false
+          },
+          "errorKind": {
+            "type": "string"
+          },
+          "conflictingItemIds": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "success",
+          "errorKind"
+        ],
+        "additionalProperties": true
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Framework binding ProblemDetails when configured; empty/non-JSON is also allowed by the response content alternatives."
+      },
+      "EnvelopeMistakeItemDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakeItemDto"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeMistakeItemPageResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakeItemPageResult"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopePendingReviewUploadListResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PendingReviewUploadListResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeReviewMistakeItemResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReviewMistakeItemResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeProcessLogListResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ProcessLogListResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopePresignedUrlResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PresignedUrlResponse"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeMistakeItemsByUploadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/MistakeItemsByUploadResult"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "EnvelopeBooleanResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/BooleanResult"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "additionalProperties": true
+      },
+      "InputSourceRegion": {
+        "type": "object",
+        "properties": {
+          "sourceImagePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": ""
+          },
+          "boundingBox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundingBoxDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-ruoyu-binding-default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "ConversationStudentAttempt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "quote": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "assetId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "position",
+          "quote",
+          "assetId"
+        ]
+      },
+      "ConversationQuestionSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "position",
+          "content"
+        ]
+      },
+      "ConversationQuestionImage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourcePosition": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "assetId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "box": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "maxItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sourcePosition",
+          "assetId",
+          "path",
+          "box"
+        ]
+      },
+      "ConversationQuestionAnalysis": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evidenceHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9-]+$"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 8000,
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "evidenceHash",
+          "version",
+          "model",
+          "content"
+        ]
+      },
+      "ConversationQuestionSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "questionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "materializedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "statement": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "studentAttempt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationStudentAttempt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "referenceAnswer": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "knowledgePoints": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 10
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationQuestionSource"
+            },
+            "maxItems": 80
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConversationQuestionImage"
+            },
+            "maxItems": 100
+          },
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationQuestionAnalysis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "recordedAtPosition",
+                "attempt",
+                "outcome",
+                "evidence"
+              ],
+              "properties": {
+                "recordedAtPosition": {
+                  "type": "integer"
+                },
+                "attempt": {
+                  "$ref": "#/components/schemas/ConversationStudentAttempt"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "incorrect",
+                    "correct",
+                    "unknown"
+                  ]
+                },
+                "evidence": {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                "retractsMistake": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "maxItems": 80
+          }
+        },
+        "required": [
+          "version",
+          "conversationId",
+          "questionId",
+          "position",
+          "materializedAt",
+          "statement",
+          "studentAttempt",
+          "evidence",
+          "referenceAnswer",
+          "knowledgePoints",
+          "sources",
+          "images",
+          "attempts",
+          "analysis"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "EmendaApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Emenda-Api-Key"
+      },
+      "QuestionCollectionKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Question-Collection-Key"
+      }
+    }
+  },
+  "x-ruoyu": {
+    "businessPredicate": "/api/mistakes",
+    "businessOperationCount": 15,
+    "ops": {
+      "GET /": {
+        "authorization": "anonymous",
+        "content": "text/plain"
+      },
+      "GET /health/live": {
+        "authorization": "anonymous",
+        "dependencyCalls": false
+      },
+      "GET /health/ready": {
+        "authorization": "anonymous",
+        "status": [
+          200,
+          503
+        ],
+        "dependencies": "fixed startup DB/OSS snapshot plus StructaDoc when layout detection is enabled"
+      },
+      "GET /contracts/mistake-http-v9.json": {
+        "authorization": "anonymous",
+        "content": "application/json",
+        "etag": "quoted lowercase SHA256 of exact embedded bytes; If-None-Match weak/list/* allowed;304 empty",
+        "dependencyCalls": false,
+        "unknownVersion": 404
+      }
+    },
+    "otherNamespaces": {
+      "/contracts": "versioned machine artifacts",
+      "/health": "operational probes",
+      "/": "operational banner",
+      "/api/intake/extractions": "automatic extraction intake (emenda-extraction-v1)",
+      "/api/ops/extractions": "cross-caller extraction operations (emenda-extraction-v3; requires an explicit operations grant)",
+      "/admin": "SignaCore administrator console and its session-bound API"
+    },
+    "compatibility": {
+      "additionalFields": "allowed; required response fields/types/known enums cannot silently change",
+      "breaking": "new version + retain original path/compatibility window",
+      "nonGuarantees": [
+        "not proof of all business invariants",
+        "not a physicalGC authorization",
+        "not replacement of fixed immutable source/return/handoff protocol",
+        "ordinary legacy list failure-to-empty behavior not rewritten"
+      ]
+    },
+    "consumerMethods": 14,
+    "frameworkErrors": "binding400, route404, method405, unmapped500 or cancellation may be empty/nonJSON; never fabricate unified envelope",
+    "sensitiveExamples": "none; no real IDs, keys, presigned URLs, credentials or current data",
+    "versionChange": {
+      "previousVersion": "mistake-http-v8",
+      "previousArtifact": "mistake-http-v8.json",
+      "changedLocations": [
+        "/api/mistakes/{id}/practices",
+        "components.schemas.LogMistakeProcessRequest"
+      ],
+      "reason": "Emenda records evidence, original answers, analysis and review. Subsequent practice is outside this service."
+    }
+  }
+}

@@ -35,8 +35,8 @@
 | 2 | Analyzed | 分析 |
 | 3 | ReviewConfirmed | 审核确认 |
 | 4 | ReviewRejected | 审核退回 |
-| 5 | Practiced | 练习 |
-| 6 | Mastered | 已掌握 |
+| 5 | Practiced | Historical entries only |
+| 6 | Mastered | Historical entries only |
 
 ## 导航属性
 

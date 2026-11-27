@@ -51,9 +51,6 @@ public sealed partial class ExtractionService
         db.Database.SqlQuery<string>($"""
             SELECT r->>'sourceImagePath' AS "Value" FROM mistake_item m, jsonb_array_elements(m.source_regions) r
                 WHERE r->>'sourceImagePath'=ANY({paths})
-            UNION
-            SELECT path FROM mistake_practice p, jsonb_array_elements_text(p.image_paths) path
-                WHERE path=ANY({paths})
             """).ToListAsync(ct);
 
     private static string JobStoragePrefix(Guid id) => $"mistakes/extractions/{id:N}/";

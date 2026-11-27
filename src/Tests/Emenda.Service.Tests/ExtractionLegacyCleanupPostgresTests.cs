@@ -90,37 +90,36 @@ public sealed class ExtractionLegacyCleanupPostgresTests
     }
 
     [Fact]
-    public async Task InventoryDoesNotRetireObjectsReferencedByConfirmedItemsOrPractice()
+    public async Task InventoryDoesNotRetireObjectsReferencedByConfirmedItems()
     {
         await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database);
         var job = await SubmitAsync(service);
         var itemId = Assert.Single(job.Questions).ItemId!.Value;
         var retainedCrop = LegacyCrop(job.Id);
-        var practiceCrop = LegacyCrop(job.Id);
+        var unreferencedCrop = LegacyCrop(job.Id);
         await PutAsync(database, retainedCrop);
-        await PutAsync(database, practiceCrop);
+        await PutAsync(database, unreferencedCrop);
         await using (var db = database.CreateContext())
         {
-            foreach (var path in new[] { retainedCrop, practiceCrop })
+            foreach (var path in new[] { retainedCrop, unreferencedCrop })
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO extraction_object(path,job_id,pending,legacy,attempts,next_attempt) VALUES ({path},{job.Id},false,false,0,clock_timestamp())");
             var item = await db.MistakeItems.SingleAsync(i => i.Id == itemId);
             item.ReviewStatus = (int)ReviewStatus.Confirmed;
             Assert.Single(item.SourceRegions).SourceImagePath = retainedCrop;
-            db.MistakePractices.Add(new() { Id = Guid.NewGuid(), MistakeItemId = itemId, StudentId = "student", ImagePaths = [practiceCrop] });
             await db.SaveChangesAsync();
             // Reproduce historical references whose old snapshot/queue inventory was lost.
-            await db.ExtractionObjects.Where(o => o.Path == retainedCrop || o.Path == practiceCrop).ExecuteDeleteAsync();
+            await db.ExtractionObjects.Where(o => o.Path == retainedCrop || o.Path == unreferencedCrop).ExecuteDeleteAsync();
         }
 
         await service.DeleteAsync(Admin, job.Id);
         await service.RunCleanupAsync();
 
         Assert.True(await database.Files.ObjectExistsAsync(retainedCrop));
-        Assert.True(await database.Files.ObjectExistsAsync(practiceCrop));
+        Assert.False(await database.Files.ObjectExistsAsync(unreferencedCrop));
         Assert.Equal("Completed", (await service.GetDeletionAsync(Admin, job.Id)).Status);
         database.Oss.Verify(o => o.DeleteDerivedAsync(retainedCrop), Times.Never);
-        database.Oss.Verify(o => o.DeleteDerivedAsync(practiceCrop), Times.Never);
+        database.Oss.Verify(o => o.DeleteDerivedAsync(unreferencedCrop), Times.Once);
     }
 
     [Fact]

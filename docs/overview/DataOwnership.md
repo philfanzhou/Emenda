@@ -12,20 +12,12 @@ mistake 服务对以下表拥有完整的 CRUD 权限和生命周期管理责任
 - 审核状态流转: PendingReview → Confirmed / Rejected
 - **mistake 是此表的唯一写入者**
 
-### mistake_practice
-
-- 8 字段，主键 UUID
-- JSONB 字段: `image_paths`（练习图片路径）
-- FK → mistake_item (CASCADE DELETE)
-- 3 个索引
-- 仅允许为 Confirmed 状态的错题添加练习记录
-
 ### process_log
 
 - 5 字段，主键 UUID
 - FK → mistake_item (CASCADE DELETE)
 - 2 个索引
-- 记录错题全生命周期操作: Created → Analyzed → ReviewConfirmed/ReviewRejected → Practiced → Mastered
+- 记录错题全生命周期操作: Created → Analyzed → ReviewConfirmed/ReviewRejected
 
 ## 本服务引用的外部数据（只读引用，不双写）
 

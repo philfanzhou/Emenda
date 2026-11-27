@@ -52,15 +52,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.Equal(before.Items.Order(), (await check.MistakeItems.Select(row => row.Id).ToListAsync()).Order());
         var orphanPractices = before.Practices.Where(p => !before.Items.Contains(p.Parent)).Select(p => p.Id).ToHashSet();
         var orphanLogs = before.Logs.Where(l => !before.Items.Contains(l.Parent)).Select(l => l.Id).ToHashSet();
-        var practices = await check.MistakePractices.ToListAsync();
-        Assert.Equal(before.Practices.Where(p => !orphanPractices.Contains(p.Id)).Select(p => p.Id).Order(),
-            practices.Select(p => p.Id).Order());
-        foreach (var practice in practices)
-        {
-            var original = before.Practices.Single(p => p.Id == practice.Id);
-            Assert.Equal(original.Parent, practice.MistakeItemId);
-            Assert.Equal(StringArrayOrEmpty(original.Paths), practice.ImagePaths);
-        }
         var logs = await check.ProcessLogs.ToListAsync();
         Assert.Equal(before.Logs.Where(l => !orphanLogs.Contains(l.Id)).Select(l => l.Id).Order(), logs.Select(l => l.Id).Order());
         Assert.All(logs, log => Assert.Equal(before.Logs.Single(l => l.Id == log.Id).Parent, log.MistakeItemId));
@@ -322,8 +313,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.Equal(1, result.FromVersion);
         Assert.Equal(1, result.ResetImagePaths);
         Assert.Equal(1, result.ArchivedRows);
-        Assert.Empty((await context.MistakePractices.SingleAsync(p => p.Id == invalid)).ImagePaths);
-        Assert.Equal(new[] { "uploads/a" }, (await context.MistakePractices.SingleAsync(p => p.Id == valid)).ImagePaths);
         var row = Assert.Single(await database.ArchiveAsync());
         Assert.Equal(("mistake_practice", invalid.ToString(), "invalid_value"), (row.Table, row.Key, row.Kind));
     }
@@ -340,8 +329,7 @@ public sealed class LegacySchemaConvergencePostgresTests
                 (await Assert.ThrowsAsync<PostgresException>(() => database.ExecuteAsync(statement))).MessageText);
         // The latest correction migration is forward-only; no downgrade can reach the archive migration.
         var before = await database.SnapshotAsync();
-        // The retired intake table removal is now the latest forward-only migration.
-        Assert.Contains("retired_intake_tables_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
+        Assert.Contains("mistake_practice_retirement_irreversible", (await Assert.ThrowsAsync<PostgresException>(() =>
             context.GetService<IMigrator>().MigrateAsync(LegacyArchiveSchema.Migration))).MessageText);
         Assert.Equal(before, await database.SnapshotAsync());
         Assert.Equal(3, (await database.ArchiveAsync()).Count);
@@ -422,7 +410,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         await using var database = await IsolatedDatabase.CreateAsync();
         await BuildShapeAsync(database, shape);
         var oldItems = await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(m))::text FROM mistake m");
-        var oldPractices = await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_id'-'image_paths')::text FROM mistake_practice p");
         var oldLogs = await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_id'-'action')::text FROM process_log p");
         var mixed = shape.StartsWith("M-", StringComparison.Ordinal);
         var existing = mixed ? await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(i)-'type'-'source_image_path'-'bbox_x1'-'bbox_y1'-'bbox_x2'-'bbox_y2'-'question_number'-'question_text'-'student_answer'-'ai_confidence'-'source_regions')::text FROM mistake_item i") : null;
@@ -432,13 +419,11 @@ public sealed class LegacySchemaConvergencePostgresTests
             Assert.Equal(count, result.ArchivedRows);
         }
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('public.mistake') IS NOT NULL"));
-        Assert.Equal(oldPractices, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'image_paths')::text FROM mistake_practice p"));
+        Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('public.mistake_practice') IS NULL"));
         Assert.Equal(oldLogs, await database.ScalarAsync<string>("SELECT jsonb_object_agg(id::text,to_jsonb(p)-'mistake_item_id'-'action'-'student_id')::text FROM process_log p"));
         Assert.True(await database.ScalarAsync<bool>("SELECT bool_and(action=CASE details WHEN 'created' THEN 1 WHEN 'old-action-2' THEN 2 WHEN 'old-action-3' THEN 5 WHEN 'old-action-4' THEN 6 END) FROM process_log"));
         Assert.True(await database.ScalarAsync<bool>("SELECT bool_and(to_jsonb(i)-'source_kind'-'source_caller'-'content'-'source_detail'-'source_regions'-'source_upload_id'-'reviewer_id'-'reviewed_at'-'root_cause'-'review_status'-'conversation_active'=a.payload-'date'-'type'-'status' AND i.review_status=(a.payload->>'status')::integer AND NOT i.conversation_active) FROM mistake_item i JOIN legacy_archive a ON a.source_key=i.id::text WHERE a.reason='legacy_mistake_converted'"));
         Assert.Equal(4L, await database.ScalarAsync<long>($"SELECT count(*) FROM process_log WHERE mistake_item_id='{Item2}' AND action IN (1,2,5,6)"));
-        Assert.Equal(Item1, await database.ScalarAsync<Guid>("SELECT mistake_item_id FROM mistake_practice"));
-        Assert.Equal("[\"mistakes/s1/p.jpg\"]", await database.ScalarAsync<string>("SELECT image_paths::text FROM mistake_practice"));
         Assert.Equal(2, await database.ScalarAsync<int>($"SELECT review_status FROM mistake_item WHERE id='{Item2}'"));
         Assert.Equal("", await database.ScalarAsync<string>($"SELECT source_upload_id FROM mistake_item WHERE id='{Item2}'"));
         Assert.Equal(oldItems, await database.ScalarAsync<string>("SELECT jsonb_object_agg(source_key,payload)::text FROM legacy_archive WHERE source_table='mistake'"));

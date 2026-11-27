@@ -94,12 +94,6 @@ public static partial class ExtractionEndpoints
         group.MapGet("/retained/{itemId:guid}/images/{index:int}",
             async (HttpContext http, Guid itemId, int index, string? size, ExtractionService service, CancellationToken ct) =>
                 Image(http, await service.ReadRetainedCropAsync(Access(http, administrator), itemId, index, size, ct)));
-        group.MapGet("/retained/{itemId:guid}/practices/{practiceId:guid}/images/{index:int}",
-            async (HttpContext http, Guid itemId, Guid practiceId, int index, ExtractionService service, CancellationToken ct) =>
-            {
-                var image = await service.ReadRetainedPracticeImageAsync(Access(http, administrator), itemId, practiceId, index, ct);
-                return Results.File(image.Bytes, image.ContentType);
-            });
         group.MapGet("", async (HttpContext http, string? studentId, int? page, IExtractionService service, CancellationToken ct) =>
             Ok(await service.ListAsync(Access(http, administrator), studentId, page ?? 1, ct)));
         group.MapGet("/{id:guid}", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>

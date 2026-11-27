@@ -19,10 +19,9 @@ public class ImagePathsMigrationPostgresTests
 
         await context.Database.MigrateAsync();
         // reanalyze_job is created by v3 and dropped again by v28.
-        Assert.Equal(3, await database.ScalarAsync<int>(
+        Assert.Equal(2, await database.ScalarAsync<int>(
             "SELECT count(*)::integer FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('mistake_item','mistake_practice','process_log','reanalyze_job')"));
-        Assert.Equal("jsonb", await database.ScalarAsync<string>(
-            "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='mistake_practice' AND column_name='image_paths'"));
+        Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('public.mistake_practice') IS NULL"));
         Assert.Equal(1, await database.ScalarAsync<int>(
             "SELECT count(*)::integer FROM information_schema.columns WHERE table_schema='public' AND table_name='mistake_item' AND column_name='root_cause'"));
         await context.Database.MigrateAsync();
@@ -55,9 +54,10 @@ public class ImagePathsMigrationPostgresTests
         await migrator.MigrateAsync(Conversion);
         await AssertConvertedAsync(database, itemId, practiceId, logId, secondPracticeId);
 
-        var before = await database.ScalarAsync<string>("SELECT image_paths::text FROM mistake_practice WHERE id=@id", new NpgsqlParameter("id", secondPracticeId));
         await context.Database.MigrateAsync();
-        Assert.Equal(before, await database.ScalarAsync<string>("SELECT image_paths::text FROM mistake_practice WHERE id=@id", new NpgsqlParameter("id", secondPracticeId)));
+        Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('public.mistake_practice') IS NULL"));
+        Assert.Equal(itemId, (await context.MistakeItems.SingleAsync()).Id);
+        Assert.Equal(logId, (await context.ProcessLogs.SingleAsync()).Id);
     }
 
     [Fact]

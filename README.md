@@ -6,8 +6,8 @@
 
 Self-hosted, AI-driven mistake management service for learning platforms.
 
-Emenda owns the mistake lifecycle: intake, AI-assisted image analysis, review, practice
-tracking and process history. It is extracted from the [Ruoyu.Study](https://gitee.com/philfanzhou/Ruoyu.Study)
+Emenda owns the mistake lifecycle: intake, original questions and answers, AI-assisted error analysis,
+review and process history. It is extracted from the [Ruoyu.Study](https://gitee.com/philfanzhou/Ruoyu.Study)
 platform, where it ran as the Mistake service; the git history of that service is preserved
 in this repository.
 
@@ -66,10 +66,18 @@ and the [paired AI Tutor implementation](integrations/ai-tutor/README.md) before
 
 ### HTTP contracts
 
-The lifecycle contract is [mistake-http-v8](docs/Integration/mistake-http-v8.json) and the
-extraction contract is [emenda-extraction-v2](docs/Integration/emenda-extraction-v2.json);
+The lifecycle contract is [mistake-http-v9](docs/Integration/mistake-http-v9.json) and the
+extraction contract is [emenda-extraction-v3](docs/Integration/emenda-extraction-v3.json);
 both are served anonymously under `GET /contracts/{version}.json`. Earlier published
-documents (`mistake-http-v1`…`v7`, `emenda-intake-v1`, `emenda-extraction-v1`) stay available as historical versions.
+documents (`mistake-http-v1` through `v8`, `emenda-intake-v1`, `emenda-extraction-v1` and `v2`) stay available as historical versions.
+
+### Original answers and review (schema v29)
+
+Schema v29 drops the practice table and its attachment routes. An original answer stays in
+the mistake content with the question, reference answer, explanation and evidence. Review
+records the confirmed root cause. A retained confirmed mistake keeps its referenced crops
+after task deletion. Upgrade Portal clients before the service. Restoring a pre-upgrade
+database backup and its matching image is required to roll back this migration.
 
 ### Display sizes (schema v23)
 

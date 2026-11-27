@@ -29,7 +29,6 @@ public class MistakeDbContext : DbContext
     private string? ExtractionCallerOwnerHash { get; set; }
 
     public DbSet<MistakeItemEntity> MistakeItems { get; set; } = null!;
-    public DbSet<MistakePracticeEntity> MistakePractices { get; set; } = null!;
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
     public DbSet<ConversationCollectionEntity> ConversationCollections => Set<ConversationCollectionEntity>();
     public DbSet<ConversationMistakeReceiptEntity> ConversationMistakeReceipts => Set<ConversationMistakeReceiptEntity>();
@@ -72,8 +71,6 @@ public class MistakeDbContext : DbContext
             || e.SourceKind == MistakeSource.Extraction && e.SourceCaller == null
                 && ExtractionDeletions.Any(deletion => e.SourceUploadId == "extract:" + deletion.JobId.ToString().Replace("-", "")
                     && deletion.OwnerHash == ExtractionCallerOwnerHash));
-        modelBuilder.Entity<MistakePracticeEntity>().HasQueryFilter(e => ConversationCallerScope == null
-            || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         modelBuilder.Entity<ProcessLogEntity>().HasQueryFilter(e => ConversationCallerScope == null
             || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         ExtractionModel.Configure(modelBuilder);
@@ -99,32 +96,6 @@ public class MistakeDbContext : DbContext
                     v => JsonSerializer.Deserialize<List<SourceRegionEntry>>(v, JsonOptions) ?? new())
                 .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(sourceRegionComparer);
-        });
-
-        var imagePathsComparer = new ValueComparer<List<string>>(
-            (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
-            c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-            c => c.ToList());
-
-        modelBuilder.Entity<MistakePracticeEntity>(entity =>
-        {
-            entity.Property(e => e.Id).ValueGeneratedNever();
-
-            entity.HasIndex(e => e.MistakeItemId);
-            entity.HasIndex(e => e.StudentId);
-            entity.HasIndex(e => e.PracticeDate);
-
-            entity.HasOne(e => e.MistakeItem)
-                  .WithMany()
-                  .HasForeignKey(e => e.MistakeItemId)
-                  .OnDelete(DeleteBehavior.Cascade);
-
-            entity.Property(e => e.ImagePaths)
-                .HasConversion(
-                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                    v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>())
-                .HasColumnType("jsonb")
-                .Metadata.SetValueComparer(imagePathsComparer);
         });
 
         modelBuilder.Entity<ProcessLogEntity>(entity =>

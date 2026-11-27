@@ -123,7 +123,7 @@ Mistakes enter through the AI Tutor-backed paths only:
 - `POST /api/intake/extractions` — asynchronous automatic extraction (StructaDoc layout plus
   AI Tutor recognition and judgement). It defaults off; see
   [Automatic extraction](../modules/AutomaticExtraction.md) for configuration, limits and
-  the `emenda-extraction-v1` contract.
+  the `emenda-extraction-v3` contract.
 - `/api/mistakes/conversation-collections` — conversation collection, default off; see
   [Conversation collection](../Integration/ConversationCollection.md).
 
@@ -131,7 +131,7 @@ The removed entry points `POST /api/intake/uploads`, `POST /api/mistakes/upload`
 `POST /api/mistakes` are no longer mapped.
 
 The lifecycle routes under `/api/mistakes` support review, partial update, deletion,
-practice, process logs and presigned reads. Rejection persists `Rejected` and its process
+process logs and presigned reads. Rejection persists `Rejected` and its process
 log without moving images. Extraction-generated items are reviewed through
 `/api/intake/extractions/{id}/questions/{questionId}/review`.
 
@@ -146,8 +146,8 @@ upgrade, so the first start after upgrading backfills thumbnails without manual 
 |---|---|---|
 | `GET /health/live` | Anonymous | Process liveness |
 | `GET /health/ready` | Anonymous | DB/S3, plus StructaDoc when layout detection is enabled |
-| `GET /contracts/mistake-http-v8.json` | Anonymous | Lifecycle contract |
-| `GET /contracts/emenda-extraction-v1.json` | Anonymous | Extraction intake contract |
+| `GET /contracts/mistake-http-v9.json` | Anonymous | Lifecycle contract |
+| `GET /contracts/emenda-extraction-v3.json` | Anonymous | Extraction intake contract |
 | `/api/*` | `X-Emenda-Api-Key` | Trusted backend business requests |
 
 Earlier contracts (`mistake-http-v1`…`v5`, `emenda-intake-v1`) remain available with an
@@ -157,3 +157,5 @@ Readiness does not prove upload permissions, public signed-image routing or comp
 business processing. [Standalone Verification](StandaloneVerification.md) still exercises
 the removed `/api/intake/uploads` path and must be ported to extraction before it can be
 used again.
+
+Schema v29 retires the practice table and practice routes. Roll out Portal clients that only consume mistake analysis and review before upgrading Emenda. Restore the pre-upgrade database and matching service image together for rollback.

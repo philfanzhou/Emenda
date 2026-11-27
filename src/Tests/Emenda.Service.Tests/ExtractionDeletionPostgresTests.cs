@@ -47,7 +47,6 @@ public sealed class ExtractionDeletionPostgresTests
             new(Guid.NewGuid(), supplement.Version, firstId, [Image(2), Image(3)]));
         var supplementPath = addition.Sources[0].Path;
         var orphanSupplement = addition.Sources[1].Path;
-        var practiceId = Guid.NewGuid();
         await using (var db = database.CreateContext())
         {
             var item = await db.MistakeItems.SingleAsync(i => i.Id == firstId);
@@ -58,7 +57,6 @@ public sealed class ExtractionDeletionPostgresTests
             if (allConfirmed || rejected)
                 (await db.MistakeItems.SingleAsync(i => i.Id == secondId)).ReviewStatus =
                     (int)(allConfirmed ? ReviewStatus.Confirmed : ReviewStatus.Rejected);
-            db.MistakePractices.Add(new() { Id = practiceId, MistakeItemId = firstId, StudentId = "student", ImagePaths = [supplementPath] });
             await db.SaveChangesAsync();
         }
         var confirmedPath = Assert.Single(first.Images).Path;
@@ -68,7 +66,7 @@ public sealed class ExtractionDeletionPostgresTests
         var receipt = await service.DeleteAsync(Admin, job.Id);
         Assert.Equal(allConfirmed ? 0 : 1, receipt.DeletedMistakes);
         Assert.Equal(allConfirmed ? 2 : 1, receipt.RetainedConfirmed);
-        Assert.Equal(allConfirmed ? 2 : 3, receipt.PendingObjects);
+        Assert.Equal(allConfirmed ? 3 : 4, receipt.PendingObjects);
         Assert.Equal("Pending", receipt.Status);
         Assert.Equal(receipt, await service.DeleteAsync(Admin, job.Id));
         Assert.Equal(404, (await Assert.ThrowsAsync<ExtractionException>(() => service.GetAsync(Admin, job.Id))).Status);
@@ -81,7 +79,7 @@ public sealed class ExtractionDeletionPostgresTests
         Assert.Equal("Failed", failed.Status);
         Assert.Equal(1, failed.PendingObjects);
         Assert.True(await database.Files.ObjectExistsAsync(confirmedPath));
-        Assert.True(await database.Files.ObjectExistsAsync(supplementPath));
+        Assert.False(await database.Files.ObjectExistsAsync(supplementPath));
         Assert.False(await database.Files.ObjectExistsAsync(orphanSupplement));
         Assert.Equal(allConfirmed, await database.Files.ObjectExistsAsync(otherPath));
         await using (var db = database.CreateContext())
@@ -96,7 +94,6 @@ public sealed class ExtractionDeletionPostgresTests
             Assert.Equal("2", analysis.RootElement.GetProperty("referenceAnswer").GetString());
             Assert.True(await db.ProcessLogs.AnyAsync(i => i.MistakeItemId == firstId));
             Assert.Equal(allConfirmed, await db.ProcessLogs.AnyAsync(i => i.MistakeItemId == secondId));
-            Assert.Equal(practiceId, (await db.MistakePractices.SingleAsync()).Id);
             Assert.Empty(await db.ExtractionQuestions.ToListAsync());
             Assert.Empty(await db.ExtractionRevisions.ToListAsync());
             Assert.Empty(await db.ExtractionSupplements.ToListAsync());
@@ -173,7 +170,7 @@ public sealed class ExtractionDeletionPostgresTests
             """);
         var upgrade = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(21, upgrade.FromVersion);
-        Assert.Equal(28, upgrade.ToVersion);
+        Assert.Equal(29, upgrade.ToVersion);
         Assert.False(db.Database.HasPendingModelChanges());
         var service = Service(database, new(0));
         Assert.Equal(id, (await service.SubmitAsync(Caller, new("student", 6, "legacy", [image, image]))).Id);
@@ -218,7 +215,7 @@ public sealed class ExtractionDeletionPostgresTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public async Task RetainedCropAndPracticeAttachmentRemainReadableWithOwnerAuthorization(bool legacyCrop, bool oldReceipt)
+    public async Task RetainedCropRemainsReadableWithOwnerAuthorization(bool legacyCrop, bool oldReceipt)
     {
         await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database, new(1));
@@ -229,13 +226,6 @@ public sealed class ExtractionDeletionPostgresTests
         var itemId = question.ItemId!.Value;
         var crop = Assert.Single(question.Images);
         var expectedCrop = (await service.ReadCropAsync(Caller, job.Id, question.Question.Id, job.Version, 0)).Bytes;
-        var request = await service.RequestSupplementAsync(Caller, job.Id, question.Question.Id,
-            new(Guid.NewGuid(), job.Version, itemId, "Synthetic practice attachment"));
-        var attachment = Image(2);
-        var supplement = await service.AppendSupplementAsync(Caller, job.Id, question.Question.Id, request.Id,
-            new(Guid.NewGuid(), request.Version, itemId, [attachment]));
-        job = await service.GetAsync(Caller, job.Id);
-        var practiceId = Guid.NewGuid();
         await using (var db = database.CreateContext())
         {
             var item = await db.MistakeItems.SingleAsync(i => i.Id == itemId);
@@ -254,8 +244,6 @@ public sealed class ExtractionDeletionPostgresTests
                 item.SourceRegions.Single().SourceImagePath = path;
             }
             item.ReviewStatus = (int)ReviewStatus.Confirmed;
-            db.MistakePractices.Add(new() { Id = practiceId, MistakeItemId = itemId, StudentId = "student",
-                ImagePaths = [Assert.Single(supplement.Sources).Path] });
             await db.SaveChangesAsync();
         }
         await service.DeleteAsync(Admin, job.Id);
@@ -273,14 +261,10 @@ public sealed class ExtractionDeletionPostgresTests
             services => Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<IOssService>(services, database.Oss.Object)));
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
-        var route = $"/api/intake/extractions/retained/{itemId}/practices/{practiceId}/images/0";
+        var route = $"/api/intake/extractions/retained/{itemId}/images/0";
         using var response = await client.GetAsync(route);
         Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(attachment.Content, await response.Content.ReadAsByteArrayAsync());
-        Assert.Equal(System.Net.HttpStatusCode.NotFound,
-            (await client.GetAsync(route.Replace(practiceId.ToString(), Guid.NewGuid().ToString()))).StatusCode);
-        Assert.Equal(404, (await Assert.ThrowsAsync<ExtractionException>(() =>
-            service.ReadRetainedPracticeImageAsync(new("other", "other"), itemId, practiceId, 0, default))).Status);
+        Assert.Equal(expectedCrop, await response.Content.ReadAsByteArrayAsync());
         await using (var db = database.CreateContext())
         {
             var path = (await db.MistakeItems.SingleAsync(i => i.Id == itemId)).SourceRegions.Single().SourceImagePath;
@@ -291,53 +275,6 @@ public sealed class ExtractionDeletionPostgresTests
             service.ReadRetainedCropAsync(Caller, itemId, 0, default))).Status);
     }
 
-    [Fact]
-    public async Task PracticesStagedBeforeArchivalAreRevalidatedAndUnreadableAttachmentsReturnConflict()
-    {
-        await using var database = await PostgresTestDatabase.CreateAsync();
-        var service = Service(database, new(2));
-        var staged = await service.SubmitAsync(Caller, new("student", 4, "late-practice", [Image(1)]));
-        await service.RunQueuedAsync(default);
-        var job = await service.GetAsync(Caller, staged.Id);
-        var first = job.Questions[0];
-        var second = job.Questions[1];
-        await using (var db = database.CreateContext())
-        {
-            foreach (var item in await db.MistakeItems.ToListAsync()) item.ReviewStatus = (int)ReviewStatus.Confirmed;
-            await db.SaveChangesAsync();
-        }
-        var expected = (await service.ReadCropAsync(Caller, job.Id, first.Question.Id, job.Version, 0)).Bytes;
-        await using var lateWriter = database.CreateContext();
-        await lateWriter.MistakeItems.SingleAsync(i => i.Id == first.ItemId); // tracked before archival
-        lateWriter.MistakePractices.Add(new() { Id = Guid.NewGuid(), MistakeItemId = first.ItemId!.Value,
-            StudentId = "student", ImagePaths = [Assert.Single(second.Images).Path] });
-        await service.DeleteAsync(Admin, job.Id);
-        var conflict = await Assert.ThrowsAsync<Emenda.Domain.Services.MistakeConflictException>(() =>
-            new Emenda.Database.Repositories.UnitOfWork(lateWriter).SaveChangesAsync());
-        Assert.Equal("retained_image_not_recorded", conflict.Code);
-
-        using var root = new ExtractionHostFixture(database.Connection, callerName: Caller.Caller);
-        using var factory = root.WithWebHostBuilder(builder => Microsoft.AspNetCore.TestHost.WebHostBuilderExtensions.ConfigureTestServices(builder,
-            services => Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddSingleton<IOssService>(services, database.Oss.Object)));
-        using var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
-        var route = $"/api/mistakes/{first.ItemId}/practices";
-        using var denied = await System.Net.Http.Json.HttpClientJsonExtensions.PostAsJsonAsync(client, route,
-            new { studentId = "student", imagePaths = new[] { second.Images[0].Path } });
-        Assert.Equal(System.Net.HttpStatusCode.Conflict, denied.StatusCode);
-        using var error = JsonDocument.Parse(await denied.Content.ReadAsStringAsync());
-        Assert.Equal("retained_image_not_recorded", error.RootElement.GetProperty("errorKind").GetString());
-        Emenda.HttpContracts.MistakeHttpContract.ValidateResponse("POST", route, (int)denied.StatusCode, error.RootElement);
-        using var accepted = await System.Net.Http.Json.HttpClientJsonExtensions.PostAsJsonAsync(client, route,
-            new { studentId = "student", imagePaths = new[] { first.Images[0].Path } });
-        Assert.Equal(System.Net.HttpStatusCode.OK, accepted.StatusCode);
-        using var result = JsonDocument.Parse(await accepted.Content.ReadAsStringAsync());
-        var practiceId = result.RootElement.GetProperty("data").GetProperty("id").GetGuid();
-        var image = await client.GetByteArrayAsync($"/api/intake/extractions/retained/{first.ItemId}/practices/{practiceId}/images/0");
-        Assert.Equal(expected, image);
-        await using var stored = database.CreateContext();
-        Assert.Single(await stored.MistakePractices.ToListAsync());
-    }
 
     private static ExtractionService Service(PostgresTestDatabase db, Analyzer analyzer) => new(
         new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(db.Connection).Options, db.Oss.Object, analyzer,

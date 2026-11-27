@@ -22,20 +22,17 @@ public class MistakeConflictException : Exception
 public class MistakeDomainService : IMistakeDomainService
 {
     private readonly IMistakeItemRepository _mistakeItemRepository;
-    private readonly IMistakePracticeRepository _mistakePracticeRepository;
     private readonly IProcessLogRepository _processLogRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<MistakeDomainService> _logger;
 
     public MistakeDomainService(
         IMistakeItemRepository mistakeItemRepository,
-        IMistakePracticeRepository mistakePracticeRepository,
         IProcessLogRepository processLogRepository,
         IUnitOfWork unitOfWork,
         ILogger<MistakeDomainService> logger)
     {
         _mistakeItemRepository = mistakeItemRepository;
-        _mistakePracticeRepository = mistakePracticeRepository;
         _processLogRepository = processLogRepository;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -126,7 +123,6 @@ public class MistakeDomainService : IMistakeDomainService
         var item = await _mistakeItemRepository.GetByIdAsync(id);
         if (item == null) return false;
 
-        await _mistakePracticeRepository.RemoveByMistakeItemIdAsync(id);
         await _processLogRepository.RemoveByMistakeItemIdAsync(id);
         await _mistakeItemRepository.DeleteAsync(id);
         await _unitOfWork.SaveChangesAsync();
@@ -155,39 +151,6 @@ public class MistakeDomainService : IMistakeDomainService
         await _unitOfWork.SaveChangesAsync();
         // Re-read so the response carries the source shape the store derived from the saved regions.
         return await _mistakeItemRepository.GetByIdAsync(id) ?? item;
-    }
-
-    public async Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null)
-    {
-        var item = await _mistakeItemRepository.GetByIdAsync(practice.MistakeItemId);
-        if (item == null)
-        {
-            throw new MistakeValidationException("错题条目不存在");
-        }
-
-        if (item.ReviewStatus != (int)ReviewStatus.Confirmed)
-        {
-            throw new MistakeValidationException("只能对已确认的错题进行练习");
-        }
-
-        practice.Id = Guid.NewGuid();
-        practice.PracticeDate = DateTimeOffset.UtcNow;
-
-        if (imagePaths != null && imagePaths.Count > 0)
-        {
-            practice.ImagePaths = imagePaths;
-        }
-
-        await _mistakePracticeRepository.AddAsync(practice);
-        await AddProcessLogAsync(item.Id, ProcessAction.Practiced, "Student practiced mistake", item.StudentId);
-        await _unitOfWork.SaveChangesAsync();
-
-        return practice;
-    }
-
-    public async Task<List<MistakePracticeModel>> GetPracticesAsync(Guid mistakeItemId)
-    {
-        return await _mistakePracticeRepository.GetByMistakeItemIdAsync(mistakeItemId);
     }
 
     public async Task<bool> LogMistakeProcessAsync(Guid mistakeItemId, string studentId, ProcessAction action, string details)

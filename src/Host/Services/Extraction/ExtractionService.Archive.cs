@@ -37,18 +37,6 @@ public sealed partial class ExtractionService
             Emenda.Common.Oss.ImageVariants.ContentType);
     }
 
-    public async Task<(byte[] Bytes, string ContentType)> ReadRetainedPracticeImageAsync(ExtractionAccess access,
-        Guid itemId, Guid practiceId, int index, CancellationToken ct)
-    {
-        if (index < 0) throw new ExtractionException("not_found", 404);
-        await using var db = Open();
-        var (item, jobId) = await RetainedItemAsync(db, access, itemId, ct);
-        var practice = await db.MistakePractices.AsNoTracking().SingleOrDefaultAsync(p =>
-            p.Id == practiceId && p.MistakeItemId == itemId, ct);
-        if (practice is null || index >= practice.ImagePaths.Count) throw new ExtractionException("not_found", 404);
-        return await ReadRetainedFileAsync(item, jobId, practice.ImagePaths[index], ct);
-    }
-
     private static async Task<(MistakeItemEntity Item, Guid JobId)> RetainedItemAsync(MistakeDbContext db,
         ExtractionAccess access, Guid itemId, CancellationToken ct)
     {

@@ -23,13 +23,9 @@ public sealed partial class ExtractionService
         foreach (var json in await db.ExtractionRevisions.Where(r => r.JobId == job.Id).Select(r => r.SnapshotJson).ToListAsync(ct))
             foreach (var crop in ExtractionRules.Read<ExtractionSnapshot>(json).Questions.SelectMany(q => q.Images))
                 files[crop.Path] = new(crop.Path, "image/png", crop.Length, crop.Sha256);
-        var ids = retained.Select(i => i.Id).ToArray();
-        var practices = (await db.MistakePractices.AsNoTracking().Where(p => ids.Contains(p.MistakeItemId)).ToListAsync(ct))
-            .ToLookup(p => p.MistakeItemId);
         foreach (var item in retained)
         {
             var paths = item.SourceRegions.Select(r => r.SourceImagePath)
-                .Concat(practices[item.Id].SelectMany(p => p.ImagePaths))
                 .Where(p => p.StartsWith(JobStoragePrefix(job.Id), StringComparison.Ordinal)).Distinct(StringComparer.Ordinal);
             var manifest = new List<RetainedFile>();
             foreach (var path in paths)

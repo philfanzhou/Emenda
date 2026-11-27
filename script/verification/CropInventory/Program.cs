@@ -54,9 +54,6 @@ try
     await foreach (var item in db.MistakeItems.AsNoTracking().AsAsyncEnumerable())
     foreach (var region in item.SourceRegions)
         live.Add(region.SourceImagePath);
-    var practiceImages = new HashSet<string>(StringComparer.Ordinal);
-    await foreach (var practice in db.MistakePractices.AsNoTracking().AsAsyncEnumerable())
-        practiceImages.UnionWith(practice.ImagePaths);
     await transaction.CommitAsync();
 
     using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
@@ -86,10 +83,10 @@ try
         if (objectVersions.Count >= 1000000) throw new InvalidDataException();
         objectVersions.Add((item.Key, item.VersionId ?? "null", checked((long)item.Size)));
     }
-    var candidates = current.Concat(historical).Except(originals).Except(live).Except(practiceImages)
+    var candidates = current.Concat(historical).Except(originals).Except(live)
         .Where(p => p.StartsWith("mistakes/extractions/", StringComparison.Ordinal) && p.Contains("/versions/", StringComparison.Ordinal))
         .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-    var retained = originals.Concat(current).Concat(historical).Concat(live).Concat(practiceImages).ToHashSet(StringComparer.Ordinal);
+    var retained = originals.Concat(current).Concat(historical).Concat(live).ToHashSet(StringComparer.Ordinal);
     Console.WriteLine(JsonSerializer.Serialize(new
     {
         observedAtUtc = DateTimeOffset.UtcNow, readOnly = true, jobs = jobs.Count, revisions = revisions.Count,
@@ -97,7 +94,6 @@ try
         currentCrops = Summary(current), historyOnlyCrops = Summary(historical.Except(current).Except(live)),
         currentMistakeCrops = Summary(live.Where(p => p.StartsWith("mistakes/extractions/", StringComparison.Ordinal))),
         outsideManifestsNeedsReview = Summary(objects.Keys.Except(retained)),
-        practiceImages = Summary(practiceImages.Where(p => p.StartsWith("mistakes/extractions/", StringComparison.Ordinal))),
         prospectiveCurrentOnlyRetirement = Summary(candidates),
         retirementCandidates = candidates.Select(path => new { path, currentBytes = objects.GetValueOrDefault(path),
             contentVersions = objectVersions.Where(v => v.Path == path).Select(v => new { version = v.Version, bytes = v.Bytes }).ToList() }),

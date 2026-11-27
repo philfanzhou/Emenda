@@ -640,54 +640,6 @@ namespace Emenda.Database.Migrations
                     b.ToTable("mistake_item");
                 });
 
-            modelBuilder.Entity("Emenda.Database.Entities.MistakePracticeEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Comments")
-                        .HasColumnType("text")
-                        .HasColumnName("comments");
-
-                    b.Property<string>("ImagePaths")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("image_paths");
-
-                    b.Property<bool>("IsCorrect")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_correct");
-
-                    b.Property<Guid>("MistakeItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("mistake_item_id");
-
-                    b.Property<DateTimeOffset>("PracticeDate")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("practice_date");
-
-                    b.Property<string>("StudentAnswer")
-                        .HasColumnType("text")
-                        .HasColumnName("student_answer");
-
-                    b.Property<string>("StudentId")
-                        .IsRequired()
-                        .HasMaxLength(36)
-                        .HasColumnType("character varying(36)")
-                        .HasColumnName("student_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MistakeItemId");
-
-                    b.HasIndex("PracticeDate");
-
-                    b.HasIndex("StudentId");
-
-                    b.ToTable("mistake_practice");
-                });
-
             modelBuilder.Entity("Emenda.Database.Entities.ProcessLogEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -744,17 +696,6 @@ namespace Emenda.Database.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_extraction_revision_job");
-                });
-
-            modelBuilder.Entity("Emenda.Database.Entities.MistakePracticeEntity", b =>
-                {
-                    b.HasOne("Emenda.Database.Entities.MistakeItemEntity", "MistakeItem")
-                        .WithMany()
-                        .HasForeignKey("MistakeItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("MistakeItem");
                 });
 
             modelBuilder.Entity("Emenda.Database.Entities.ProcessLogEntity", b =>

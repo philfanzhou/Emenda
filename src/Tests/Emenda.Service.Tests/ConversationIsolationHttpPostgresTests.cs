@@ -35,7 +35,6 @@ public sealed class ConversationIsolationHttpPostgresTests
         await using var f = await Fixture.CreateAsync();
         await using (var db = f.Database.CreateContext())
         {
-            db.MistakePractices.Add(new() { MistakeItemId = f.ItemId, StudentId = Student, StudentAnswer = "private attempt" });
             db.ProcessLogs.Add(new() { MistakeItemId = f.ItemId, StudentId = Student, Action = 1, Details = "private history" });
             await db.SaveChangesAsync();
         }
@@ -52,22 +51,16 @@ public sealed class ConversationIsolationHttpPostgresTests
         using var foreignDetail = await foreign.GetAsync($"/api/mistakes/{f.ItemId:D}");
         Assert.Equal(HttpStatusCode.NotFound, foreignDetail.StatusCode);
         // The collected mistake's history starts with its Created entry, followed by the seeded one.
-        foreach (var (route, field, count) in new[] { ("practices", "practices", 1), ("process-logs", "logs", 2) })
-        {
-            Assert.Equal(count, (await Data(own, $"/api/mistakes/{f.ItemId:D}/{route}")).GetProperty(field).GetArrayLength());
-            Assert.Empty((await Data(foreign, $"/api/mistakes/{f.ItemId:D}/{route}")).GetProperty(field).EnumerateArray());
-        }
+        Assert.Equal(2, (await Data(own, $"/api/mistakes/{f.ItemId:D}/process-logs")).GetProperty("logs").GetArrayLength());
+        Assert.Empty((await Data(foreign, $"/api/mistakes/{f.ItemId:D}/process-logs")).GetProperty("logs").EnumerateArray());
 
         // Null scope is the trusted background path; nonconversation rows retain legacy visibility.
         await using var legacyDb = f.Database.CreateContext();
         var legacy = new MistakeItemEntity { StudentId = Student, Subject = 2, Grade = 3, ReviewStatus = 1, CreatedAt = DateTimeOffset.UtcNow };
         legacyDb.MistakeItems.Add(legacy);
-        legacyDb.MistakePractices.Add(new() { MistakeItemId = legacy.Id, StudentId = Student });
         legacyDb.ProcessLogs.Add(new() { MistakeItemId = legacy.Id, StudentId = Student, Action = 1 });
         await legacyDb.SaveChangesAsync();
-        Assert.Equal(2, await legacyDb.MistakePractices.CountAsync());
         legacyDb.ChangeTracker.Clear(); legacyDb.ConversationCallerScope = OtherCaller;
-        Assert.Single(await legacyDb.MistakePractices.Include(p => p.MistakeItem).ToListAsync());
         Assert.Single(await legacyDb.ProcessLogs.Include(p => p.MistakeItem).ToListAsync());
     }
 

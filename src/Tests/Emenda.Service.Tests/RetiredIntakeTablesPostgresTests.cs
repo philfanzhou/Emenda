@@ -35,7 +35,7 @@ public sealed class RetiredIntakeTablesPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(27, upgraded.FromVersion);
-        Assert.Equal(28, upgraded.ToVersion);
+        Assert.Equal(29, upgraded.ToVersion);
         Assert.False(await TableAsync(db, "reanalyze_job"));
         Assert.False(await TableAsync(db, "product_intake_request"));
         Assert.Equal(jobs, await ArchivedAsync(db, "reanalyze_job", RetiredIntakeTablesSchema.ReanalyzeReason));
@@ -67,13 +67,14 @@ public sealed class RetiredIntakeTablesPostgresTests
     [Fact]
     public async Task DowngradeIsRefusedWithoutChangingTheDatabase()
     {
-        await using var database = await PostgresTestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
+        await db.GetService<IMigrator>().MigrateAsync(RetiredIntakeTablesSchema.Migration);
         var exception = await Assert.ThrowsAnyAsync<Exception>(() => db.GetService<IMigrator>().MigrateAsync(IdleAnalysisRemovalSchema.Migration));
         Assert.Contains("retired_intake_tables_irreversible", exception.ToString());
         Assert.False(await TableAsync(db, "reanalyze_job"));
         Assert.False(await TableAsync(db, "product_intake_request"));
-        Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);
+        Assert.Equal(28, (await DatabaseInitializer.UpgradeToTargetAsync(db)).FromVersion);
     }
 
     private static async Task<Guid> InsertItemAsync(MistakeDbContext db)

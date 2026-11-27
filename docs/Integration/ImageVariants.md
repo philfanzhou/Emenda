@@ -6,7 +6,7 @@
 
 | 种类 | 对象路径 | 生命周期 | 读取入口 |
 |---|---|---|---|
-| 旧错题图 / 练习图 | `mistakes/yyyy/...` | 随错题 | `POST /api/mistakes/presigned-url`、`GET /api/mistakes/{id}/images/{index}` |
+| 旧错题图 | `mistakes/yyyy/...` | 随错题 | `POST /api/mistakes/presigned-url`、`GET /api/mistakes/{id}/images/{index}` |
 | 切题原图 | `mistakes/extractions/{job}/originals/{source}.{jpg,png}` | 随任务长期保留；管理员/运维删除任务后回收 | `GET /api/intake/extractions/{id}/sources/{sourceId}` |
 | 补图原图 | `mistakes/extractions/{job}/supplements/{s}/originals/...` | 接受后同原图；未接受的由回收队列清理 | 同上（接受后成为任务原图） |
 | 当前错题裁图 | `mistakes/extractions/{job}/versions/{request}/{region}-{sha256}.png` | 只保留当前错题；纠偏、改判或删错题后回收；删除任务时，已确认错题的裁图保留归档，其余回收 | `GET .../questions/{questionId}/images/{version}/{index}`、删除任务后 `GET .../retained/{itemId}/images/{index}`、`GET /api/mistakes/{id}/images/{index}` |
