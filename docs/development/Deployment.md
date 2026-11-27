@@ -21,6 +21,17 @@ runs in the default `Production` ASP.NET Core environment and keeps the dynamic 
 | Public pre-signed URL base | `OSS_PUBLIC_BASE_URL` (required) | `Oss:PublicBaseUrl` |
 | Host port | `EMENDA_HTTP_PORT` (default `5007`) | published container port `5007` |
 | Image | `EMENDA_IMAGE` (default local `emenda:latest`) | container image |
+| Container log rotation | `EMENDA_LOG_MAX_SIZE` (default `20m`), `EMENDA_LOG_MAX_FILE` (default `3`) | docker `json-file` `max-size` / `max-file` |
+| Extra host ports | `EMENDA_EXTRA_HTTP_PORTS` (space separated) | more published ports for container port `5007` |
+| Reverse proxy headers | `EMENDA_FORWARDED_HEADERS` | `ASPNETCORE_FORWARDEDHEADERS_ENABLED` |
+| Worksheet extraction | `EMENDA_EXTRACTION_ENABLED`; then `EMENDA_TUTOR_BASE_URL`, `EMENDA_TUTOR_API_KEY` (required), `EMENDA_EXTRACTION_CLEANUP_LEGACY_OBJECTS` | `Emenda:Extraction:*` ([Automatic extraction](../modules/AutomaticExtraction.md)) |
+| Layout detection | `EMENDA_LAYOUT_ENABLED`; then `EMENDA_LAYOUT_BASE_URL`, `EMENDA_LAYOUT_API_KEY` (required), `EMENDA_LAYOUT_PER_IMAGE_BUDGET_SECONDS` | `Mistake:Layout:*` ([StructaDoc](../Integration/StructaDoc.md)) |
+| Portal student assertions | `EMENDA_STUDENT_ASSERTION_ISSUER`; then `EMENDA_STUDENT_ASSERTION_AUDIENCE`, `EMENDA_STUDENT_ASSERTION_PUBLIC_KEY_FILE` (a PEM file; required), `EMENDA_STUDENT_ASSERTION_CALLER` (default the caller name) | `Emenda:Security:PortalStudentAssertions:0:*` ([Integration](../Integration/README.md)) |
+| Conversation collection | `EMENDA_CONVERSATION_ENABLED`; then `EMENDA_CONVERSATION_TUTOR_URL`, `EMENDA_CONVERSATION_AUTHORIZATION_BASE_URL`, `EMENDA_CONVERSATION_COLLECTION_KEY` (required), `EMENDA_CONVERSATION_CALLER` (default the caller name) | `Emenda:ConversationCollection:*` ([Conversation collection](../Integration/ConversationCollection.md)) |
+
+`start.sh` is the deployment entry point for Emenda; product repositories only call its API and do not start it.
+Each optional capability stays off unless its switch is set, and the script refuses to start when the switch is set
+but a required setting is missing.
 
 The connection is explicit; there is no fallback connection.
 Callers must be trusted application backends. `X-Emenda-Api-Key` identifies the backend, not

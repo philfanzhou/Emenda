@@ -61,9 +61,66 @@ if [ -n "$(docker ps -aq --filter "name=^/${CONTAINER_NAME}$")" ]; then
     docker rm "$CONTAINER_NAME"
 fi
 
+# Optional capabilities. Each is off unless its switch is set, and then requires its own settings.
+optional=()
+require_all() {
+    local feature="$1"; shift
+    for name in "$@"; do
+        if [ -z "${!name:-}" ]; then
+            echo "Error: $name is required when $feature is enabled." >&2
+            exit 1
+        fi
+    done
+}
+# Worksheet extraction (AI Tutor recognition).
+if [ -n "${EMENDA_EXTRACTION_ENABLED:-}" ]; then
+    require_all EMENDA_EXTRACTION_ENABLED EMENDA_TUTOR_BASE_URL EMENDA_TUTOR_API_KEY
+    optional+=(-e "Emenda__Extraction__Enabled=${EMENDA_EXTRACTION_ENABLED}"
+                -e "Emenda__Extraction__TutorBaseUrl=${EMENDA_TUTOR_BASE_URL}"
+                -e "Emenda__Extraction__TutorApiKey=${EMENDA_TUTOR_API_KEY}")
+    [ -n "${EMENDA_EXTRACTION_CLEANUP_LEGACY_OBJECTS:-}" ] &&
+        optional+=(-e "Emenda__Extraction__CleanupLegacyObjects=${EMENDA_EXTRACTION_CLEANUP_LEGACY_OBJECTS}")
+fi
+# StructaDoc layout detection for automatic crops.
+if [ -n "${EMENDA_LAYOUT_ENABLED:-}" ]; then
+    require_all EMENDA_LAYOUT_ENABLED EMENDA_LAYOUT_BASE_URL EMENDA_LAYOUT_API_KEY
+    optional+=(-e "Mistake__Layout__Enabled=${EMENDA_LAYOUT_ENABLED}"
+               -e "Mistake__Layout__BaseUrl=${EMENDA_LAYOUT_BASE_URL}"
+               -e "Mistake__Layout__ApiKey=${EMENDA_LAYOUT_API_KEY}")
+    [ -n "${EMENDA_LAYOUT_PER_IMAGE_BUDGET_SECONDS:-}" ] &&
+        optional+=(-e "Mistake__Layout__PerImageBudgetSeconds=${EMENDA_LAYOUT_PER_IMAGE_BUDGET_SECONDS}")
+fi
+# Signed student assertions from the Portal, verified with the Portal's public key (a PEM file).
+if [ -n "${EMENDA_STUDENT_ASSERTION_ISSUER:-}" ]; then
+    require_all EMENDA_STUDENT_ASSERTION_ISSUER EMENDA_STUDENT_ASSERTION_AUDIENCE EMENDA_STUDENT_ASSERTION_PUBLIC_KEY_FILE
+    if [ ! -f "$EMENDA_STUDENT_ASSERTION_PUBLIC_KEY_FILE" ]; then
+        echo "Error: EMENDA_STUDENT_ASSERTION_PUBLIC_KEY_FILE is not a file." >&2
+        exit 1
+    fi
+    optional+=(-e "Emenda__Security__PortalStudentAssertions__0__CallerName=${EMENDA_STUDENT_ASSERTION_CALLER:-${EMENDA_CALLER_NAME:-platform}}"
+               -e "Emenda__Security__PortalStudentAssertions__0__Issuer=${EMENDA_STUDENT_ASSERTION_ISSUER}"
+               -e "Emenda__Security__PortalStudentAssertions__0__Audience=${EMENDA_STUDENT_ASSERTION_AUDIENCE}"
+               -e "Emenda__Security__PortalStudentAssertions__0__PublicKeyPem=$(cat "$EMENDA_STUDENT_ASSERTION_PUBLIC_KEY_FILE")")
+fi
+# AI Tutor conversation collection (see docs/Integration/ConversationCollection.md).
+if [ -n "${EMENDA_CONVERSATION_ENABLED:-}" ]; then
+    require_all EMENDA_CONVERSATION_ENABLED EMENDA_CONVERSATION_TUTOR_URL EMENDA_CONVERSATION_AUTHORIZATION_BASE_URL EMENDA_CONVERSATION_COLLECTION_KEY
+    optional+=(-e "Emenda__ConversationCollection__Enabled=${EMENDA_CONVERSATION_ENABLED}"
+               -e "Emenda__ConversationCollection__CallerName=${EMENDA_CONVERSATION_CALLER:-${EMENDA_CALLER_NAME:-platform}}"
+               -e "Emenda__ConversationCollection__TutorUrl=${EMENDA_CONVERSATION_TUTOR_URL}"
+               -e "Emenda__ConversationCollection__AuthorizationBaseUrl=${EMENDA_CONVERSATION_AUTHORIZATION_BASE_URL}"
+               -e "Emenda__ConversationCollection__CollectionKey=${EMENDA_CONVERSATION_COLLECTION_KEY}")
+fi
+# Behind a reverse proxy that sets X-Forwarded-*.
+[ -n "${EMENDA_FORWARDED_HEADERS:-}" ] && optional+=(-e "ASPNETCORE_FORWARDEDHEADERS_ENABLED=${EMENDA_FORWARDED_HEADERS}")
+# Additional host ports for the same listener, space separated.
+for extra in ${EMENDA_EXTRA_HTTP_PORTS:-}; do optional+=(-p "${extra}:5007"); done
+
 docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
+  --log-opt max-size="${EMENDA_LOG_MAX_SIZE:-20m}" \
+  --log-opt max-file="${EMENDA_LOG_MAX_FILE:-3}" \
   -p "${PORT}:5007" \
   -v "$DATA_MOUNT" \
   -e TZ="${TZ:-Asia/Shanghai}" \
@@ -83,4 +140,5 @@ docker run -d \
   -e Oss__SecretKey="${OSS_SECRET_KEY}" \
   -e Oss__BucketName="${OSS_BUCKET_NAME}" \
   -e Oss__PublicBaseUrl="${OSS_PUBLIC_BASE_URL}" \
+  "${optional[@]}" \
   "$IMAGE_NAME"
