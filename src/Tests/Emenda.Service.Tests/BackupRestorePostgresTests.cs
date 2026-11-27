@@ -172,7 +172,12 @@ public sealed class BackupRestorePostgresTests
         var practice = Guid.NewGuid();
         var log = Guid.NewGuid();
         var cause = targetVersion ? "root_cause" : "review_comment";
-        await drill.ExecuteAsync(drill.Source, $"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,{cause},created_at) VALUES ('{item}','student-A',1,7,'Upload/大小写','[{{\"path\":\"Pictures/中文/A.JPG\"}}]'::jsonb,1,'合成原因',now())");
+        // Since v26 no trigger fills the unified source columns; a raw writer on such a schema states them.
+        var unified = await drill.ScalarAsync(drill.Source,
+            "SELECT count(*) FROM information_schema.columns WHERE table_name='mistake_item' AND column_name='source_kind'") != "0";
+        var unifiedColumns = unified ? ",source_kind,content" : "";
+        var unifiedValues = unified ? ",'legacy','{\"version\":1,\"images\":[]}'::jsonb" : "";
+        await drill.ExecuteAsync(drill.Source, $"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,{cause},created_at{unifiedColumns}) VALUES ('{item}','student-A',1,7,'Upload/大小写','[{{\"path\":\"Pictures/中文/A.JPG\"}}]'::jsonb,1,'合成原因',now(){unifiedValues})");
         await drill.ExecuteAsync(drill.Source, $"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{practice}','{item}','student-A',now(),'[\"Pictures/中文/A.JPG\",\"pictures/a.jpg\"]',false)");
         await drill.ExecuteAsync(drill.Source, $"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-A',now(),'[]',true)");
         if (targetVersion)

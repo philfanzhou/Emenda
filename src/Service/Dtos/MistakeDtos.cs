@@ -37,8 +37,6 @@ public class MistakeItemDto
     public Emenda.HttpContracts.ConversationQuestionSnapshot? ConversationSource { get; set; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool ConversationActive { get; set; }
-    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    public MistakeAnalysisSnapshotDto? AnalysisSnapshot { get; set; }
     public string Id { get; set; } = string.Empty;
     public string StudentId { get; set; } = string.Empty;
     public int Subject { get; set; }
@@ -81,6 +79,10 @@ public sealed record MistakeContentImageDto(
     string Role,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.Never)] int[]? Box);
 
+/// <summary>
+/// An extraction mistake's analysis as the extraction pipeline records it (the former analysis_snapshot shape).
+/// Not part of any HTTP response since mistake-http-v8; clients read <see cref="MistakeItemDto.Content"/>.
+/// </summary>
 public sealed record MistakeAnalysisSnapshotDto(string Statement, string StudentAnswer, string ReferenceAnswer,
     string Explanation, string Evidence, int SourceVersion);
 

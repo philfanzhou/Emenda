@@ -10,20 +10,19 @@ public class MistakeItemModel
     public int Subject { get; set; }
     public int Grade { get; set; }
     public string SourceUploadId { get; set; } = string.Empty;
-    public string? ConversationCaller { get; set; }
-    public string? ConversationSource { get; set; }
     public bool ConversationActive { get; set; }
     public List<SourceRegionModel> SourceRegions { get; set; } = new();
     public int ReviewStatus { get; set; }
     public string? ReviewerId { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }
     public string? RootCause { get; set; }
-    public string? AnalysisSnapshot { get; init; }
-    /// <summary>extraction, conversation or legacy; derived by the store, never written through the model.</summary>
+    /// <summary>extraction, conversation or legacy; owned by the source pipelines, never written through the model.</summary>
     public string SourceKind { get; init; } = MistakeSourceKinds.Legacy;
     public string? SourceCaller { get; init; }
     /// <summary>The unified question content as JSON (content version 1); derived by the store.</summary>
     public string? Content { get; init; }
+    /// <summary>Source-only data as JSON: an extraction's task, analysis version and retained files, or a conversation's evidence snapshot.</summary>
+    public string? SourceDetail { get; init; }
     // 注意：历史上存在 Type（int 1-6 枚举，对应"错误类型"）字段，
     // 因无法覆盖全部错题场景已于 2026 年 6 月下线。
     public string? QuestionId { get; set; }

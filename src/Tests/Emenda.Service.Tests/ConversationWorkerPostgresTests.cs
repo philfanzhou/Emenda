@@ -49,10 +49,10 @@ public sealed class ConversationWorkerPostgresTests
         Assert.Null(job.LeaseId);
         var item = await db.MistakeItems.SingleAsync();
         Assert.Equal(student, item.StudentId);
-        Assert.Equal("platform", item.ConversationCaller);
+        Assert.Equal("platform", item.SourceCaller);
         Assert.Equal("", item.SourceUploadId);
         Assert.True(item.ConversationActive);
-        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
         Assert.Equal("2 + 2 = ?", snapshot.Statement);
         Assert.Equal("5", snapshot.StudentAttempt!.Quote);
         Assert.Single(await db.ConversationMistakeReceipts.ToListAsync());

@@ -605,10 +605,6 @@ namespace Emenda.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("AnalysisSnapshot")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("analysis_snapshot");
-
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("jsonb")
@@ -619,14 +615,6 @@ namespace Emenda.Database.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("conversation_active");
-
-                    b.Property<string>("ConversationCaller")
-                        .HasColumnType("text")
-                        .HasColumnName("conversation_caller");
-
-                    b.Property<string>("ConversationSource")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("conversation_source");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")

@@ -13,7 +13,7 @@ public sealed class CatalogStartupPostgresTests
         await using var context = CreateContext(database);
         await context.Database.MigrateAsync();
         var id = Guid.NewGuid();
-        await context.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at) VALUES ({id},'catalog-student',1,7,'catalog-source','[]'::jsonb,1,'retained',now())");
+        await context.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at,source_kind,content) VALUES ({id},'catalog-student',1,7,'catalog-source','[]'::jsonb,1,'retained',now(),'legacy',jsonb_build_object('version',1,'images','[]'::jsonb))");
         var before = await ConstraintsAsync(context);
         var history = (await context.Database.GetAppliedMigrationsAsync()).ToArray();
 

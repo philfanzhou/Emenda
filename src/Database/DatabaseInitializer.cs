@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Emenda.Database;
 
-public static class DatabaseInitializer
+public static partial class DatabaseInitializer
 {
     private const string Initial = "20260514051544_InitialCreate";
     private const string ProcessLog = "20260612030015_AddStudentIdToProcessLog";
@@ -17,7 +17,7 @@ public static class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
-    private const int TargetVersion = 25;
+    private const int TargetVersion = 26;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -247,9 +247,9 @@ public static class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(ExtractionCallerRecoverySchema.Migration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(UnifiedSourceContractionSchema.Migration, cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {ExtractionCallerRecoverySchema.Migration}");
+                steps.Add($"migrate to {UnifiedSourceContractionSchema.Migration}");
             }
 
             archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -275,9 +275,16 @@ public static class DatabaseInitializer
     }
 
     // Provider messages can quote row values, so only our own diagnostics and the SQLSTATE are surfaced.
+    // A migration's own guard (RAISE with a bare identifier such as unified_mistake_contraction_mismatch) names its
+    // reason; any other database message may carry data and is reduced to its SQLSTATE.
     private static string Reason(Exception error) =>
         error is UpgradeStepException ? error.Message :
+        error is Npgsql.PostgresException { SqlState: "P0001" } raised && GuardReason().IsMatch(raised.MessageText)
+            ? $"SQLSTATE P0001 {raised.MessageText}" :
         error is DbException { SqlState: not null } dbError ? $"SQLSTATE {dbError.SqlState}" : error.GetType().Name;
+
+    [System.Text.RegularExpressions.GeneratedRegex("^[a-z][a-z_]{0,62}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]
+    private static partial System.Text.RegularExpressions.Regex GuardReason();
 
     private static Task<int> InsertRootCauseHistoryAsync(MistakeDbContext context, CancellationToken cancellationToken) =>
         context.Database.ExecuteSqlRawAsync(
@@ -366,11 +373,12 @@ public static class DatabaseInitializer
         var variantHistory = new HashSet<string>(extractionDeletionHistory, StringComparer.Ordinal) { $"{ImageVariantSchema.Migration}|8.0.11" };
         var unifiedHistory = new HashSet<string>(variantHistory, StringComparer.Ordinal) { $"{UnifiedMistakeSchema.Migration}|8.0.11" };
         var callerRecoveryHistory = new HashSet<string>(unifiedHistory, StringComparer.Ordinal) { $"{ExtractionCallerRecoverySchema.Migration}|8.0.11" };
+        var contractionHistory = new HashSet<string>(callerRecoveryHistory, StringComparer.Ordinal) { $"{UnifiedSourceContractionSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : history.SetEquals(correctionsHistory) ? 20 : history.SetEquals(worksheetAnalysisHistory) ? 21 : history.SetEquals(extractionDeletionHistory) ? 22 : history.SetEquals(variantHistory) ? 23 : history.SetEquals(unifiedHistory) ? 24 : history.SetEquals(callerRecoveryHistory) ? 25 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : history.SetEquals(correctionsHistory) ? 20 : history.SetEquals(worksheetAnalysisHistory) ? 21 : history.SetEquals(extractionDeletionHistory) ? 22 : history.SetEquals(variantHistory) ? 23 : history.SetEquals(unifiedHistory) ? 24 : history.SetEquals(callerRecoveryHistory) ? 25 : history.SetEquals(contractionHistory) ? 26 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
         // Name the leftover directly instead of reporting it as a routine or relation mismatch.
@@ -382,7 +390,7 @@ public static class DatabaseInitializer
         var managed = version < 19;
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version>=24);
+            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version is >= 24 and < 26);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
@@ -436,6 +444,7 @@ public static class DatabaseInitializer
         }
         if (version >= 23) expectedColumns.UnionWith(ImageVariantSchema.Columns);
         if (version >= 24) expectedColumns.UnionWith(UnifiedMistakeSchema.Columns);
+        if (version >= 26) expectedColumns.ExceptWith(UnifiedSourceContractionSchema.DroppedColumns);
         if (version < 3)
             expectedColumns.RemoveWhere(column => column.StartsWith("reanalyze_job|", StringComparison.Ordinal));
         else if (version < 5)
@@ -490,7 +499,7 @@ public static class DatabaseInitializer
             """, cancellationToken).ConfigureAwait(false);
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version>=24);
+            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version is >= 24 and < 26);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (triggers.Count > 0) return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");

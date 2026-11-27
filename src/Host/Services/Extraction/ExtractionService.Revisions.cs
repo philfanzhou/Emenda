@@ -128,8 +128,8 @@ public sealed partial class ExtractionService
                 item = new() { Id = Guid.NewGuid(), StudentId = job.StudentId, Subject = proposed.Question.Subject,
                     Grade = proposed.Question.Grade ?? 0, SourceUploadId = $"extract:{job.Id:N}", QuestionId = row.Id.ToString("D"),
                     SourceRegions = proposed.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).ToList(),
-                    AnalysisSnapshot = SerializeAnalysis(proposed.Question, job.Version + 1),
                     ReviewStatus = (int)ReviewStatus.PendingReview, CreatedAt = now };
+                MistakeSource.SetAnalysis(item, SerializeAnalysis(proposed.Question, job.Version + 1));
                 row.ItemId = item.Id;
                 db.MistakeItems.Add(item);
                 db.ProcessLogs.Add(new() { Id = Guid.NewGuid(), MistakeItemId = item.Id, StudentId = job.StudentId,
@@ -144,8 +144,8 @@ public sealed partial class ExtractionService
                 item.Grade = proposed.Question.Grade ?? 0;
                 item.SourceRegions = proposed.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).ToList();
                 item.ReviewStatus = proposed.Question.Outcome == "incorrect" ? (int)ReviewStatus.PendingReview : (int)ReviewStatus.Rejected;
-                item.AnalysisSnapshot = proposed.Question.Outcome == "incorrect"
-                    ? SerializeAnalysis(proposed.Question, job.Version + 1) : null;
+                MistakeSource.SetAnalysis(item, proposed.Question.Outcome == "incorrect"
+                    ? SerializeAnalysis(proposed.Question, job.Version + 1) : null);
                 item.ReviewerId = null;
                 item.ReviewedAt = null;
                 item.RootCause = null;
@@ -162,7 +162,7 @@ public sealed partial class ExtractionService
             RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
             item.SourceRegions = [];
             item.ReviewStatus = (int)ReviewStatus.Rejected;
-            item.AnalysisSnapshot = null;
+            MistakeSource.SetAnalysis(item, null);
             item.ReviewerId = null;
             item.ReviewedAt = null;
             item.RootCause = null;

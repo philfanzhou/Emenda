@@ -10,8 +10,9 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Emenda.Service.Tests;
 
 /// <summary>
-/// mistake-http-v7: every mistake response carries sourceKind and content, derived by MistakeMaterializer on save
-/// (here on the in-memory provider, which has no database trigger), and validates against the pinned contract.
+/// Every mistake response carries sourceKind and content (since mistake-http-v7), completed by MistakeMaterializer on
+/// save (here on the in-memory provider), and validates against the pinned contract. Since v8 the extraction analysis is
+/// content alone: there is no analysisSnapshot.
 /// </summary>
 public sealed class UnifiedMistakeContentHttpTests
 {
@@ -47,17 +48,16 @@ public sealed class UnifiedMistakeContentHttpTests
             pending = Add(db, $"extract:{job:N}", (int)ReviewStatus.PendingReview, crop, i =>
             {
                 i.QuestionId = Guid.NewGuid().ToString();
-                i.AnalysisSnapshot = JsonSerializer.Serialize(new { statement = "2+2=?", studentAnswer = "5", referenceAnswer = "4",
-                    explanation = "Add the units", evidence = "Wrote 5", sourceVersion = 2 });
+                MistakeSource.SetAnalysis(i, JsonSerializer.Serialize(new { statement = "2+2=?", studentAnswer = "5", referenceAnswer = "4",
+                    explanation = "Add the units", evidence = "Wrote 5", sourceVersion = 2 }));
             });
             rejected = Add(db, $"extract:{job:N}", (int)ReviewStatus.Rejected, crop, i =>
-                i.AnalysisSnapshot = JsonSerializer.Serialize(new { statement = "hidden", studentAnswer = "hidden", referenceAnswer = "hidden",
-                    explanation = "hidden", evidence = "hidden", sourceVersion = 2 }));
+                MistakeSource.SetAnalysis(i, JsonSerializer.Serialize(new { statement = "hidden", studentAnswer = "hidden", referenceAnswer = "hidden",
+                    explanation = "hidden", evidence = "hidden", sourceVersion = 2 })));
             conversation = Add(db, "", (int)ReviewStatus.PendingReview, original, i =>
             {
                 i.SourceRegions.Add(new() { SourceImagePath = questionCrop });
-                i.ConversationCaller = StandaloneWebApplicationFactory.CallerName;
-                i.ConversationSource = snapshot;
+                MistakeSource.SetConversation(i, StandaloneWebApplicationFactory.CallerName, snapshot);
                 i.ConversationActive = true;
             });
             legacy = Add(db, "legacy-upload", (int)ReviewStatus.Confirmed, "mistakes/2026/06/08/upload_0.jpg",
@@ -68,6 +68,7 @@ public sealed class UnifiedMistakeContentHttpTests
         using (var item = await GetAsync(client, $"/api/mistakes/{pending}"))
         {
             Assert.Equal("extraction", item.RootElement.GetProperty("sourceKind").GetString());
+            Assert.False(item.RootElement.TryGetProperty("analysisSnapshot", out _));
             var content = item.RootElement.GetProperty("content");
             Assert.Equal("2+2=?", content.GetProperty("statement").GetString());
             Assert.Equal("5", content.GetProperty("studentAnswer").GetString());
@@ -78,7 +79,7 @@ public sealed class UnifiedMistakeContentHttpTests
             Assert.Equal(JsonValueKind.Null, image.GetProperty("box").ValueKind);
         }
 
-        // As analysisSnapshot in v6, a rejected extraction mistake does not expose its text; its images stay listed.
+        // A rejected extraction mistake does not expose its text (as since v6); its images stay listed.
         using (var item = await GetAsync(client, $"/api/mistakes/{rejected}"))
         {
             var content = item.RootElement.GetProperty("content");
@@ -99,7 +100,7 @@ public sealed class UnifiedMistakeContentHttpTests
             Assert.Equal(new[] { original, questionCrop }, images.Select(i => i.GetProperty("path").GetString()));
             Assert.Equal(new[] { "source", "question" }, images.Select(i => i.GetProperty("role").GetString()));
             Assert.Equal(new[] { 10, 20, 300, 400 }, images[1].GetProperty("box").EnumerateArray().Select(v => v.GetInt32()));
-            // The v6 field is still returned.
+            // The conversation snapshot is still returned, now served from source_detail.
             Assert.Equal("Solve x+1=3", item.RootElement.GetProperty("conversationSource").GetProperty("statement").GetString());
         }
 

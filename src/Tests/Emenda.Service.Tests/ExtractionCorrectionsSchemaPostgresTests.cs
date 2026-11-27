@@ -46,7 +46,7 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
         await db.SaveChangesAsync();
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(19, upgraded.FromVersion);
-        Assert.Equal(25, upgraded.ToVersion);
+        Assert.Equal(26, upgraded.ToVersion);
         db.ChangeTracker.Clear();
         Assert.Equal(source, JsonSerializer.Deserialize<List<ExtractionSource>>((await db.ExtractionJobs.SingleAsync()).SourcesJson, json)!.Single());
         Assert.Null((await db.ExtractionJobs.SingleAsync()).CandidateJson);
@@ -58,7 +58,7 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
         Assert.DoesNotContain(oldCrop.Path, (await db.ProcessLogs.SingleAsync()).Details!);
         Assert.Equal(1, await db.MistakePractices.CountAsync());
         Assert.Equal(2, (await db.MistakeItems.SingleAsync()).ReviewStatus);
-        using var analysis = JsonDocument.Parse((await db.MistakeItems.SingleAsync()).AnalysisSnapshot!);
+        using var analysis = JsonDocument.Parse(MistakeSource.Analysis((await db.MistakeItems.SingleAsync()))!);
         Assert.Equal(2, analysis.RootElement.GetProperty("sourceVersion").GetInt32());
         Assert.Equal("Visible 3 differs from 2", analysis.RootElement.GetProperty("evidence").GetString());
         Assert.True((await db.ExtractionObjects.SingleAsync(o => o.Path == oldCrop.Path)).Legacy);
@@ -104,25 +104,31 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
             SnapshotJson = snapshot, Actor = "teacher", Reason = "supplement", Model = "supplement_upload", CreatedAt = DateTimeOffset.UtcNow });
         await db.SaveChangesAsync();
 
+        await db.GetService<IMigrator>().MigrateAsync(WorksheetAnalysisSchema.Migration);
+        var expected = """{"statement":"6 × 4","studentAnswer":"20","referenceAnswer":"24","explanation":"","evidence":"20 is 4 short","sourceVersion":3}""";
+        Assert.True(await db.Database.SqlQuery<bool>(
+            $"SELECT analysis_snapshot={expected}::jsonb AS \"Value\" FROM mistake_item WHERE id={recoverable.Id}").SingleAsync());
+        Assert.Equal(0, await db.Database.SqlQuery<int>($"""
+            SELECT count(*)::int AS "Value" FROM mistake_item WHERE analysis_snapshot IS NOT NULL AND id IN ({orphan.Id},{incomplete.Id},{inactive.Id})
+            """).SingleAsync());
+        // A row whose analysis changed afterwards is never overwritten by a repeated backfill.
+        var newer = """{"statement":"6 × 4","studentAnswer":"21","referenceAnswer":"24","explanation":"","evidence":"21 is 3 short","sourceVersion":4}""";
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE mistake_item SET analysis_snapshot={newer}::jsonb WHERE id={recoverable.Id}");
+        Assert.Equal(0, await db.Database.ExecuteSqlRawAsync(WorksheetAnalysisSchema.Backfill));
+        Assert.Equal(0, await db.Database.ExecuteSqlRawAsync(WorksheetAnalysisSchema.Backfill));
+
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
-        Assert.Equal(20, upgraded.FromVersion);
-        Assert.Equal(25, upgraded.ToVersion);
+        Assert.Equal(21, upgraded.FromVersion);
+        Assert.Equal(26, upgraded.ToVersion);
         var items = await db.MistakeItems.AsNoTracking().ToDictionaryAsync(item => item.Id);
         var recovered = items[recoverable.Id];
         Assert.Equal(jobSource, recovered.SourceUploadId);
         Assert.Equal(recoverable.QuestionId.ToString(), recovered.QuestionId);
         Assert.Equal("Kept reviewer note", recovered.RootCause);
         Assert.Equal(2, recovered.ReviewStatus);
-        var expected = """{"statement":"6 × 4","studentAnswer":"20","referenceAnswer":"24","explanation":"","evidence":"20 is 4 short","sourceVersion":3}""";
-        Assert.True(JsonElement.DeepEquals(JsonSerializer.Deserialize<JsonElement>(expected), JsonSerializer.Deserialize<JsonElement>(recovered.AnalysisSnapshot!)));
-        Assert.All(new[] { orphan.Id, incomplete.Id, inactive.Id }, id => Assert.Null(items[id].AnalysisSnapshot));
-
-        var newer = """{"statement":"6 × 4","studentAnswer":"21","referenceAnswer":"24","explanation":"","evidence":"21 is 3 short","sourceVersion":4}""";
-        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE mistake_item SET analysis_snapshot={newer}::jsonb WHERE id={recoverable.Id}");
-        Assert.Equal(0, await db.Database.ExecuteSqlRawAsync(WorksheetAnalysisSchema.Backfill));
-        Assert.Equal(0, await db.Database.ExecuteSqlRawAsync(WorksheetAnalysisSchema.Backfill));
-        var persisted = await db.MistakeItems.Where(item => item.Id == recoverable.Id).Select(item => item.AnalysisSnapshot).SingleAsync();
-        Assert.True(JsonElement.DeepEquals(JsonSerializer.Deserialize<JsonElement>(newer), JsonSerializer.Deserialize<JsonElement>(persisted!)));
+        // v26 kept the analysis exactly; it now lives in content and source_detail.
+        Assert.True(JsonElement.DeepEquals(JsonSerializer.Deserialize<JsonElement>(newer), JsonSerializer.Deserialize<JsonElement>(MistakeSource.Analysis(recovered)!)));
+        Assert.All(new[] { orphan.Id, incomplete.Id, inactive.Id }, id => Assert.Null(MistakeSource.Analysis(items[id])));
         Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);
     }
 }

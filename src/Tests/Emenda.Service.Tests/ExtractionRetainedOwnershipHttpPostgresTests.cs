@@ -38,7 +38,7 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
         var route = $"/api/mistakes/{item.Id:D}";
 
         var detail = await DataAsync(await owner.GetAsync(route));
-        Assert.Equal(Statement, detail.GetProperty("analysisSnapshot").GetProperty("statement").GetString());
+        Assert.Equal(Statement, detail.GetProperty("content").GetProperty("statement").GetString());
         Assert.Equal(HttpStatusCode.NotFound, (await foreign.GetAsync(route)).StatusCode);
         var listPath = $"/api/mistakes?studentId={Student}&subject=0&grade=0&reviewStatus=0&page=1&size=20";
         Assert.Single((await DataAsync(await owner.GetAsync(listPath))).GetProperty("items").EnumerateArray());
@@ -70,7 +70,7 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
             new { sourceRegions = new[] { new { sourceImagePath = "foreign/crop.png" } } })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync(route, new { grade = 5 })).StatusCode);
         Assert.Equal(Statement, (await DataAsync(await owner.GetAsync(route)))
-            .GetProperty("analysisSnapshot").GetProperty("statement").GetString());
+            .GetProperty("content").GetProperty("statement").GetString());
 
         await using var db = database.CreateContext();
         Assert.Equal(Student, (await db.MistakeItems.SingleAsync()).StudentId);
@@ -155,11 +155,11 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
             StudentId = Student, Subject = 2, Grade = 3, SourceUploadId = $"extract:{jobId:N}",
             QuestionId = questionId.ToString("D"), ReviewStatus = (int)ReviewStatus.Confirmed,
             SourceRegions = [new() { SourceImagePath = $"mistakes/extractions/{jobId:N}/versions/crop.png",
-                BoundingBox = new() { X1 = 0, Y1 = 0, X2 = 100, Y2 = 100 } }],
-            // Existing rc12 archives have this snapshot but no question row or retainedImages metadata.
-            AnalysisSnapshot = JsonSerializer.Serialize(new { statement = Statement, studentAnswer = "3",
-                referenceAnswer = "2", explanation = "Private explanation", evidence = "Private evidence", sourceVersion = 1 })
+                BoundingBox = new() { X1 = 0, Y1 = 0, X2 = 100, Y2 = 100 } }]
         };
+        // Existing rc12 archives have this analysis but no question row or retainedImages metadata.
+        MistakeSource.SetAnalysis(item, JsonSerializer.Serialize(new { statement = Statement, studentAnswer = "3",
+            referenceAnswer = "2", explanation = "Private explanation", evidence = "Private evidence", sourceVersion = 1 }));
         db.ExtractionObjects.Add(new()
         {
             Path = item.SourceRegions[0].SourceImagePath, JobId = jobId,

@@ -32,16 +32,16 @@ public sealed class ImageVariantSchemaPostgresTests
         await db.SaveChangesAsync();
         const string legacy = "mistakes/2025/06/14/def/image.jpg", conversation = "mistakes/conversation/abc/def/question.png";
         await PreUnifiedRows.InsertAsync(db,
-            new() { Id = itemId, StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = $"extract:{jobId:N}", QuestionId = draft.Id.ToString(),
-                SourceRegions = [new() { SourceImagePath = crop.Path }], ReviewStatus = 2 },
-            new() { Id = Guid.NewGuid(), StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = "legacy", QuestionId = "q",
-                SourceRegions = [new() { SourceImagePath = legacy }, new() { SourceImagePath = "mistakes/2025/06/14/def/image_small.jpg" }], ReviewStatus = 2 },
-            new() { Id = Guid.NewGuid(), StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = "conversation", QuestionId = "c",
-                SourceRegions = [new() { SourceImagePath = conversation }], ReviewStatus = 1 });
+            new(new() { Id = itemId, StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = $"extract:{jobId:N}", QuestionId = draft.Id.ToString(),
+                SourceRegions = [new() { SourceImagePath = crop.Path }], ReviewStatus = 2 }),
+            new(new() { Id = Guid.NewGuid(), StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = "legacy", QuestionId = "q",
+                SourceRegions = [new() { SourceImagePath = legacy }, new() { SourceImagePath = "mistakes/2025/06/14/def/image_small.jpg" }], ReviewStatus = 2 }),
+            new(new() { Id = Guid.NewGuid(), StudentId = "s", Subject = 2, Grade = 4, SourceUploadId = "conversation", QuestionId = "c",
+                SourceRegions = [new() { SourceImagePath = conversation }], ReviewStatus = 1 }));
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(22, upgraded.FromVersion);
-        Assert.Equal(25, upgraded.ToVersion);
+        Assert.Equal(26, upgraded.ToVersion);
         var queued = await db.Database.SqlQuery<string>($"SELECT path AS \"Value\" FROM image_variant_task ORDER BY path COLLATE \"C\"").ToListAsync();
         Assert.Equal(new[] { legacy, conversation, source.Path, crop.Path }.Order(StringComparer.Ordinal), queued);
         Assert.False(db.Database.HasPendingModelChanges());

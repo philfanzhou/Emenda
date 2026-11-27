@@ -70,12 +70,7 @@ public static partial class MistakeHttpEndpoints
         if (item.SourceKind == MistakeSourceKinds.Conversation && !IsProductCaller(user))
             return ErrorKind("authentication_required", 401);
 
-        var detail = MapMistakeItemDto(item);
-        if (item.SourceKind == MistakeSourceKinds.Extraction && item.AnalysisSnapshot is { } snapshot &&
-            detail.ReviewStatus is ReviewStatus.PendingReview or ReviewStatus.Confirmed)
-            detail.AnalysisSnapshot = JsonSerializer.Deserialize<MistakeAnalysisSnapshotDto>(snapshot, JsonSerializerOptions.Web);
-
-        return MistakeHttpResponse.Ok(detail);
+        return MistakeHttpResponse.Ok(MapMistakeItemDto(item));
     }
 
     // GET /api/mistakes/by-upload/{sourceUploadId}
@@ -492,7 +487,9 @@ public static partial class MistakeHttpEndpoints
     {
         var dto = new MistakeItemDto
         {
-            ConversationSource = item.ConversationSource == null ? null : System.Text.Json.JsonSerializer.Deserialize<Emenda.HttpContracts.ConversationQuestionSnapshot>(item.ConversationSource, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
+            // A conversation's evidence snapshot is its source_detail, byte for byte.
+            ConversationSource = item.SourceKind != MistakeSourceKinds.Conversation || item.SourceDetail == null ? null
+                : System.Text.Json.JsonSerializer.Deserialize<Emenda.HttpContracts.ConversationQuestionSnapshot>(item.SourceDetail, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
             ConversationActive = item.ConversationActive,
             Id = item.Id.ToString(),
             StudentId = item.StudentId ?? string.Empty,
@@ -540,8 +537,8 @@ public static partial class MistakeHttpEndpoints
         return dto;
     }
 
-    // Text exposure follows mistake-http-v6: conversation text travels with conversationSource, while an
-    // extraction mistake's text (v6 analysisSnapshot) is shown only while it is pending review or confirmed.
+    // Text exposure (unchanged since mistake-http-v6): conversation text travels with conversationSource, while an
+    // extraction mistake's text is shown only while it is pending review or confirmed.
     // Images are always listed; their paths are already public through sourceRegions.
     internal static MistakeContentDto MapContent(MistakeItemModel item, ReviewStatus status)
     {

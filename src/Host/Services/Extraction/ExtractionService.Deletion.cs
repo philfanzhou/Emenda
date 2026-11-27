@@ -40,14 +40,14 @@ public sealed partial class ExtractionService
         var retained = items.Where(i => i.ReviewStatus == (int)ReviewStatus.Confirmed).ToList();
         var deleted = items.Where(i => i.ReviewStatus != (int)ReviewStatus.Confirmed).Select(i => i.Id).ToArray();
         var snapshot = await CurrentSnapshotAsync(db, job, ct);
-        foreach (var item in retained.Where(i => i.AnalysisSnapshot is null))
+        foreach (var item in retained.Where(i => MistakeSource.Analysis(i) is null))
         {
             var view = snapshot.Questions.SingleOrDefault(q => q.ItemId == item.Id && q.Question.Id.ToString("D") == item.QuestionId);
             if (view?.Question is not { Outcome: "incorrect" } question || item.StudentId != job.StudentId ||
                 string.IsNullOrWhiteSpace(question.Statement) || string.IsNullOrWhiteSpace(question.StudentAnswer) ||
                 string.IsNullOrWhiteSpace(question.ReferenceAnswer) || string.IsNullOrWhiteSpace(question.Evidence))
                 throw new ExtractionException("retained_analysis_unavailable", 409);
-            item.AnalysisSnapshot = SerializeAnalysis(question, job.Version);
+            MistakeSource.SetAnalysis(item, SerializeAnalysis(question, job.Version));
         }
         await RetainFilesAsync(db, job, retained, ct);
         await db.SaveChangesAsync(ct);

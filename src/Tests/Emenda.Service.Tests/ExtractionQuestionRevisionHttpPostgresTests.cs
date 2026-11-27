@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Emenda.Database;
 using Emenda.Domain.Models;
 using Emenda.HttpContracts;
 using Emenda.Host.Services.Extraction;
@@ -48,8 +49,9 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
             """);
         var archived = await DataAsync<JsonElement>(await caller.GetAsync($"/api/mistakes/{item}"));
         Assert.Equal((int)ReviewStatus.Confirmed, archived.GetProperty("reviewStatus").GetInt32());
-        AssertAnalysis(archived.GetProperty("analysisSnapshot"), "Missed question 33", "3", "2",
-            "Add one and one", "Actual attempt is 3 rather than 2", added.Version);
+        AssertAnalysis(archived.GetProperty("content"), "Missed question 33", "3", "2",
+            "Add one and one", "Actual attempt is 3 rather than 2");
+        await AssertAnalysisVersionAsync(database, item, added.Version);
     }
 
     [Fact]
@@ -133,10 +135,11 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal((int)ReviewStatus.PendingReview, pending.GetProperty("reviewStatus").GetInt32());
         Assert.Equal($"extract:{job.Id:N}", pending.GetProperty("sourceUploadId").GetString());
         Assert.Equal(target.Question.Id.ToString("D"), pending.GetProperty("questionId").GetString());
-        AssertAnalysis(pending.GetProperty("analysisSnapshot"), "1 + 1 = ?", "3", "2",
-            "Add one and one", "Actual attempt is 3 rather than 2", 1);
+        AssertAnalysis(pending.GetProperty("content"), "1 + 1 = ?", "3", "2",
+            "Add one and one", "Actual attempt is 3 rather than 2");
+        await AssertAnalysisVersionAsync(database, target.ItemId!.Value, 1);
         var otherBefore = (await DataAsync<JsonElement>(await caller.GetAsync($"/api/mistakes/{other.ItemId}")))
-            .GetProperty("analysisSnapshot").GetRawText();
+            .GetProperty("content").GetRawText();
         await using (var db = database.CreateContext())
         {
             var item = await db.MistakeItems.SingleAsync(i => i.Id == other.ItemId);
@@ -153,7 +156,7 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         var confirmed = await DataAsync<JsonElement>(await caller.GetAsync(detailRoute));
         Assert.Equal((int)ReviewStatus.Confirmed, confirmed.GetProperty("reviewStatus").GetInt32());
         Assert.Equal("", confirmed.GetProperty("rootCause").GetString());
-        Assert.Equal(pending.GetProperty("analysisSnapshot").GetRawText(), confirmed.GetProperty("analysisSnapshot").GetRawText());
+        Assert.Equal(pending.GetProperty("content").GetRawText(), confirmed.GetProperty("content").GetRawText());
         var request = new ExtractionQuestionRevisionRequest(Guid.NewGuid(), job.Version, "Complete the target crop",
             target.Question with { StudentAnswer = "4", Explanation = "", Evidence = "The visible attempt is 4, not 2",
                 Regions = [target.Question.Regions[0] with { X1 = .5 }] });
@@ -180,17 +183,18 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Contains("version_conflict", await staleReview.Content.ReadAsStringAsync());
         var correctedDetail = await DataAsync<JsonElement>(await caller.GetAsync(detailRoute));
         Assert.Equal((int)ReviewStatus.PendingReview, correctedDetail.GetProperty("reviewStatus").GetInt32());
-        AssertAnalysis(correctedDetail.GetProperty("analysisSnapshot"), "1 + 1 = ?", "4", "2", "",
-            "The visible attempt is 4, not 2", corrected.Version);
+        AssertAnalysis(correctedDetail.GetProperty("content"), "1 + 1 = ?", "4", "2", "",
+            "The visible attempt is 4, not 2");
+        await AssertAnalysisVersionAsync(database, target.ItemId!.Value, corrected.Version);
         Assert.Equal(otherBefore, (await DataAsync<JsonElement>(await caller.GetAsync($"/api/mistakes/{other.ItemId}")))
-            .GetProperty("analysisSnapshot").GetRawText());
+            .GetProperty("content").GetRawText());
         using var reapproved = await caller.PostAsJsonAsync(route + "/review", originalReview with { ExpectedVersion = corrected.Version });
         Assert.Equal(HttpStatusCode.OK, reapproved.StatusCode);
         using var practice = await caller.PostAsJsonAsync(detailRoute + "/practices",
             new { studentId = job.StudentId, studentAnswer = "2", isCorrect = true, imagePaths = Array.Empty<string>() });
         Assert.Equal(HttpStatusCode.OK, practice.StatusCode);
-        Assert.Equal(correctedDetail.GetProperty("analysisSnapshot").GetRawText(),
-            (await DataAsync<JsonElement>(await caller.GetAsync(detailRoute))).GetProperty("analysisSnapshot").GetRawText());
+        Assert.Equal(correctedDetail.GetProperty("content").GetRawText(),
+            (await DataAsync<JsonElement>(await caller.GetAsync(detailRoute))).GetProperty("content").GetRawText());
         var byUpload = await DataAsync<JsonElement>(await caller.GetAsync($"/api/mistakes/by-upload/extract:{job.Id:N}"));
         Assert.Equal(2, byUpload.GetProperty("items").GetArrayLength());
         Assert.All(byUpload.GetProperty("items").EnumerateArray(), item => Assert.False(item.TryGetProperty("analysisSnapshot", out _)));
@@ -203,7 +207,8 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(target.ItemId, changed.Question.ItemId);
         await using (var db = database.CreateContext())
             Assert.Equal((int)ReviewStatus.Rejected, (await db.MistakeItems.SingleAsync(i => i.Id == target.ItemId)).ReviewStatus);
-        Assert.False((await DataAsync<JsonElement>(await caller.GetAsync(detailRoute))).TryGetProperty("analysisSnapshot", out _));
+        var rejectedContent = (await DataAsync<JsonElement>(await caller.GetAsync(detailRoute))).GetProperty("content");
+        Assert.Equal(JsonValueKind.Null, rejectedContent.GetProperty("statement").ValueKind);
 
         using var replayResponse = await caller.PutAsJsonAsync(route, request);
         var replayText = await replayResponse.Content.ReadAsStringAsync();
@@ -287,7 +292,7 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         var job = await SeedAsync(factory);
         var target = job.Questions[0];
         var detail = $"/api/mistakes/{target.ItemId}";
-        var originalAnalysis = (await DataAsync<JsonElement>(await caller.GetAsync(detail))).GetProperty("analysisSnapshot").GetRawText();
+        var originalAnalysis = (await DataAsync<JsonElement>(await caller.GetAsync(detail))).GetProperty("content").GetRawText();
         var root = $"/api/intake/extractions/{job.Id}";
         var request = new ExtractionProposalRequest(Guid.NewGuid(), job.Version, "Check the missing margin", "questions", [target.Question.Id], [], []);
         using var denied = await anonymous.PostAsJsonAsync(root + "/proposals", request);
@@ -296,7 +301,7 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(HttpStatusCode.Forbidden, csrf.StatusCode);
         var candidate = await DataAsync<ExtractionProposalView>(await caller.PostAsJsonAsync(root + "/proposals", request));
         Assert.Equal("Pending", candidate.Status);
-        Assert.Equal(originalAnalysis, (await DataAsync<JsonElement>(await caller.GetAsync(detail))).GetProperty("analysisSnapshot").GetRawText());
+        Assert.Equal(originalAnalysis, (await DataAsync<JsonElement>(await caller.GetAsync(detail))).GetProperty("content").GetRawText());
         var candidates = await DataAsync<List<ExtractionProposalView>>(await caller.GetAsync(root + "/proposals"));
         Assert.Contains(candidates, p => p.Id == candidate.Id);
         var supplement = await DataAsync<ExtractionSupplementView>(await caller.PostAsJsonAsync(
@@ -319,7 +324,7 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(target.ItemId, current.Questions[0].ItemId);
         Assert.Null(current.Questions[0].Supplement);
         Assert.Equal(JsonSerializer.Serialize(job.Questions[1].Question), JsonSerializer.Serialize(current.Questions[1].Question));
-        Assert.Equal(originalAnalysis, (await DataAsync<JsonElement>(await caller.GetAsync(detail))).GetProperty("analysisSnapshot").GetRawText());
+        Assert.Equal(originalAnalysis, (await DataAsync<JsonElement>(await caller.GetAsync(detail))).GetProperty("content").GetRawText());
         var retired = current.Questions[0].Images[0].Path;
         var corrected = await DataAsync<ExtractionJobView>(await caller.PutAsJsonAsync(root + "/questions",
             new ExtractionRevisionRequest(Guid.NewGuid(), current.Version, "Replace both shared references before checking retirement",
@@ -333,15 +338,23 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Contains("extraction_object_retired", await invalidReference.Content.ReadAsStringAsync());
     }
 
-    private static void AssertAnalysis(JsonElement snapshot, string statement, string attempt, string answer,
-        string explanation, string evidence, int version)
+    private static void AssertAnalysis(JsonElement content, string statement, string attempt, string answer,
+        string explanation, string evidence)
     {
-        Assert.Equal(statement, snapshot.GetProperty("statement").GetString());
-        Assert.Equal(attempt, snapshot.GetProperty("studentAnswer").GetString());
-        Assert.Equal(answer, snapshot.GetProperty("referenceAnswer").GetString());
-        Assert.Equal(explanation, snapshot.GetProperty("explanation").GetString());
-        Assert.Equal(evidence, snapshot.GetProperty("evidence").GetString());
-        Assert.Equal(version, snapshot.GetProperty("sourceVersion").GetInt32());
+        Assert.Equal(statement, content.GetProperty("statement").GetString());
+        Assert.Equal(attempt, content.GetProperty("studentAnswer").GetString());
+        Assert.Equal(answer, content.GetProperty("referenceAnswer").GetString());
+        Assert.Equal(explanation, content.GetProperty("explanation").GetString());
+        Assert.Equal(evidence, content.GetProperty("evidence").GetString());
+    }
+
+    // The revision an analysis came from is not on the wire since mistake-http-v8; it stays in source_detail.
+    private static async Task AssertAnalysisVersionAsync(PostgresTestDatabase database, Guid item, int version)
+    {
+        await using var db = database.CreateContext();
+        var stored = await db.MistakeItems.IgnoreQueryFilters().AsNoTracking().SingleAsync(i => i.Id == item);
+        using var analysis = JsonDocument.Parse(MistakeSource.Analysis(stored)!);
+        Assert.Equal(version, analysis.RootElement.GetProperty("sourceVersion").GetInt32());
     }
 
     private static HttpClient Caller(ExtractionHostFixture factory)

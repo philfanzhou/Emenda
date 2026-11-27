@@ -45,7 +45,7 @@ public sealed class ExtractionCallerRecoveryPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(24, upgraded.FromVersion);
-        Assert.Equal(25, upgraded.ToVersion);
+        Assert.Equal(26, upgraded.ToVersion);
         Assert.Equal("school", await CallerAsync(db, school));
         // A name the database cannot hash exactly is never compared, so the a+b row is not handed to that other caller;
         // it stays NULL and stays visible through the receipt.
@@ -62,11 +62,12 @@ public sealed class ExtractionCallerRecoveryPostgresTests
     [Fact]
     public async Task DowngradeIsRefusedWithoutChangingTheDatabase()
     {
-        await using var database = await PostgresTestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
+        await db.GetService<IMigrator>().MigrateAsync(ExtractionCallerRecoverySchema.Migration);
         var exception = await Assert.ThrowsAnyAsync<Exception>(() => db.GetService<IMigrator>().MigrateAsync(UnifiedMistakeSchema.Migration));
         Assert.Contains("extraction_caller_recovery_irreversible", exception.ToString());
-        Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);
+        Assert.Equal(25, (await DatabaseInitializer.UpgradeToTargetAsync(db)).FromVersion);
     }
 
     private static async Task<Guid> RetainedAsync(MistakeDbContext db, string caller)

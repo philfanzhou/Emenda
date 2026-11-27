@@ -23,10 +23,10 @@ public sealed class ConversationCollectionPostgresTests
         {
             Assert.Equal(1, await db.MistakeItems.CountAsync()); Assert.Equal(1, await db.ConversationMistakeReceipts.CountAsync());
             var item = await db.MistakeItems.SingleAsync(); Assert.Empty(item.SourceUploadId); Assert.Empty(item.SourceRegions); Assert.True(item.ConversationActive);
-            var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+            var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
             Assert.Equal("2 + 2 = ?", snapshot.Statement); Assert.Equal("5", snapshot.StudentAttempt!.Quote);
             // The unified shape is materialized on the same write, and the history starts with one Created entry.
-            Assert.Equal(MistakeSource.Conversation, item.SourceKind); Assert.Equal(item.ConversationCaller, item.SourceCaller);
+            Assert.Equal(MistakeSource.Conversation, item.SourceKind); Assert.NotNull(item.SourceCaller);
             using (var content = JsonDocument.Parse(item.Content)) Assert.Equal("5", content.RootElement.GetProperty("studentAnswer").GetString());
             var created = Assert.Single(await db.ProcessLogs.Where(l => l.MistakeItemId == item.Id).ToListAsync());
             Assert.Equal((int)ProcessAction.Created, created.Action); Assert.Contains("conversation_collected", created.Details);
@@ -50,7 +50,7 @@ public sealed class ConversationCollectionPostgresTests
         await f.Receive(f.Packet(position: 4, outcome: "correct", retract: true));
         await f.Receive(f.Packet(position: 3));
         await using var recheck = f.Open(); var item = await recheck.MistakeItems.SingleAsync();
-        Assert.False(item.ConversationActive); Assert.Equal(4, JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!.Position);
+        Assert.False(item.ConversationActive); Assert.Equal(4, JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!.Position);
         Assert.Empty((await new MistakeItemRepository(recheck).GetListAsync(f.Student, 0, 0, 4, 1, 20)).Items);
     }
 
@@ -98,7 +98,7 @@ public sealed class ConversationCollectionPostgresTests
         await f.Receive(f.Packet());
         await using var db = f.Open(); var item = await db.MistakeItems.SingleAsync();
         Assert.True(item.ConversationActive);
-        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
         Assert.Equal("5", snapshot.StudentAttempt!.Quote);
         Assert.Contains(snapshot.Attempts, a => a.Attempt.Quote == "5" && a.Outcome == "incorrect");
         if (correct) Assert.Contains(snapshot.Attempts, a => a.Attempt.Quote == "4" && a.Outcome == "correct");
@@ -111,7 +111,7 @@ public sealed class ConversationCollectionPostgresTests
         await using var f = await Fixture.CreateAsync(); await f.Receive(f.Packet());
         await f.Receive(f.Packet(position: 2, outcome: "correct", answer: "4", attemptPosition: 2));
         await using var db = f.Open(); var item = await db.MistakeItems.SingleAsync();
-        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
         Assert.True(item.ConversationActive); Assert.Equal("5", snapshot.StudentAttempt!.Quote);
         Assert.Collection(snapshot.Attempts, a => Assert.Equal("5", a.Attempt.Quote), a => { Assert.Equal("4", a.Attempt.Quote); Assert.Equal("correct", a.Outcome); });
     }
@@ -140,7 +140,7 @@ public sealed class ConversationCollectionPostgresTests
         await f.Receive(f.Packet()); await f.Receive(f.Packet(position: 2, answer: "6", attemptPosition: 2));
         if (!correctionArrivesFirst) await f.Receive(correction);
         await using var db = f.Open(); var item = await db.MistakeItems.SingleAsync();
-        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
         Assert.True(item.ConversationActive); Assert.Equal("5", snapshot.StudentAttempt!.Quote);
         Assert.Contains(snapshot.Attempts, a => a.RetractsMistake && a.Attempt.Quote == "6");
     }
@@ -174,21 +174,21 @@ public sealed class ConversationCollectionPostgresTests
         await using (var db = f.Open())
         {
             var item = await db.MistakeItems.SingleAsync(); id = item.Id;
-            var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+            var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
             hash = snapshot.EvidenceHash(item.Subject, item.ReviewStatus, item.RootCause, []);
         }
         Assert.True(await f.Analysis(id, hash));
         await using (var db = f.Open())
         {
             var item = await db.MistakeItems.SingleAsync(); item.RootCause = "Teacher correction"; item.UpdatedAt = DateTimeOffset.UtcNow.AddSeconds(1); await db.SaveChangesAsync();
-            var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+            var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
             var changed = snapshot.EvidenceHash(item.Subject, item.ReviewStatus, item.RootCause, []); Assert.NotEqual(hash, changed);
             Assert.False(await f.Analysis(id, hash)); hash = changed;
         }
         Assert.True(await f.Analysis(id, hash)); await f.Receive(f.Packet(position: 2, answer: "6", attemptPosition: 2));
         await using var check = f.Open(); var saved = await check.MistakeItems.SingleAsync();
         Assert.Equal("Teacher correction", saved.RootCause);
-        Assert.DoesNotContain(JsonSerializer.Deserialize<ConversationQuestionSnapshot>(saved.ConversationSource!, ConversationExport.Json)!.Attempts, a => a.Attempt.Quote == "6");
+        Assert.DoesNotContain(JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(saved)!, ConversationExport.Json)!.Attempts, a => a.Attempt.Quote == "6");
     }
 
     [Theory]
@@ -206,7 +206,7 @@ public sealed class ConversationCollectionPostgresTests
             Events = [packet.Events[0] with { Question = packet.Events[0].Question with { SourcePositions = [0, 4], AssetIds = [asset.Id] } }] };
         await f.Receive(packet); f.SourceCurrent = false; await f.Stop();
         await using var db = f.Open(); var item = await db.MistakeItems.SingleAsync();
-        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!;
+        var snapshot = JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!;
         Assert.Equal(2, snapshot.Images.Length); Assert.Equal(2, item.SourceRegions.Count);
         Assert.Equal(crop.Data, await f.Image(snapshot.Images.Single(i => i.AssetId == asset.Id).Path));
         Assert.Equal(originalBytes, await f.Image(snapshot.Images.Single(i => i.AssetId == null).Path));
@@ -239,7 +239,7 @@ public sealed class ConversationCollectionPostgresTests
         await using (var db = f.Open()) Assert.Empty(await db.MistakeItems.ToListAsync());
         f.FingerprintCurrent = true; await f.Retry(packet with { Events = [other] });
         await using var check = f.Open(); var item = await check.MistakeItems.SingleAsync();
-        Assert.Equal(question, JsonSerializer.Deserialize<ConversationQuestionSnapshot>(item.ConversationSource!, ConversationExport.Json)!.QuestionId);
+        Assert.Equal(question, JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(item)!, ConversationExport.Json)!.QuestionId);
         Assert.Single(await check.ConversationCollections.ToListAsync()); Assert.Equal("completed", (await check.ConversationCollections.SingleAsync()).Status);
     }
 
@@ -258,7 +258,7 @@ public sealed class ConversationCollectionPostgresTests
         await f.Receive(f.Packet(position: 2, answer: "6", attemptPosition: 2));
         await using var check = f.Open(); var retained = await check.MistakeItems.SingleAsync();
         Assert.Equal(reviewStatus, retained.ReviewStatus); Assert.Equal("Teacher retained explanation", retained.RootCause);
-        Assert.Equal("5", JsonSerializer.Deserialize<ConversationQuestionSnapshot>(retained.ConversationSource!, ConversationExport.Json)!.StudentAttempt!.Quote);
+        Assert.Equal("5", JsonSerializer.Deserialize<ConversationQuestionSnapshot>(MistakeSource.ConversationSnapshot(retained)!, ConversationExport.Json)!.StudentAttempt!.Quote);
         Assert.Contains(await check.ConversationMistakeReceipts.ToListAsync(), r => r.Status == "reviewed");
     }
 
@@ -286,7 +286,7 @@ public sealed class ConversationCollectionPostgresTests
         Assert.Equal(2, await db.MistakeItems.CountAsync());
         Assert.Equal(2, await db.ConversationMistakeReceipts.CountAsync());
         db.ConversationCallerScope = "platform";
-        Assert.Equal("platform", (await db.MistakeItems.SingleAsync()).ConversationCaller);
+        Assert.Equal("platform", (await db.MistakeItems.SingleAsync()).SourceCaller);
         db.ChangeTracker.Clear(); db.ConversationCallerScope = "unrelated";
         Assert.Empty(await db.MistakeItems.ToListAsync());
     }

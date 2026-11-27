@@ -30,7 +30,7 @@ public sealed class ConversationAnalysisStore(DbContextOptions<MistakeDbContext>
             item.SourceRegions.Select(r => new ConversationEvidenceRegion(r.SourceImagePath, r.BoundingBox is { } b ? [b.X1, b.Y1, b.X2, b.Y2] : null))) != input.EvidenceHash) return false;
         if (snapshot.Analysis is { } old && old.EvidenceHash == input.EvidenceHash && old.Version == input.Version && old.Model == input.Model) return true;
         var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        item.ConversationSource = JsonSerializer.Serialize(snapshot with { MaterializedAt = snapshot.MaterializedAt == item.UpdatedAt ? timestamp : snapshot.MaterializedAt,
+        item.SourceDetail = JsonSerializer.Serialize(snapshot with { MaterializedAt = snapshot.MaterializedAt == item.UpdatedAt ? timestamp : snapshot.MaterializedAt,
             Analysis = new(input.EvidenceHash, input.Version, input.Model, input.Content) }, ConversationExport.Json);
         item.UpdatedAt = timestamp;
         await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct); return true;

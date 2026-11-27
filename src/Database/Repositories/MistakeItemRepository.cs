@@ -29,7 +29,7 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<MistakeItemModel?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var entity = await _dbContext.MistakeItems.SingleOrDefaultAsync(item => item.Id == id, ct);
-        return entity != null ? MapToModel(entity, entity.AnalysisSnapshot) : null;
+        return entity != null ? MapToModel(entity) : null;
     }
 
     public async Task<bool> UpdateAsync(MistakeItemModel model, CancellationToken ct = default)
@@ -42,8 +42,6 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.Subject = model.Subject;
         entity.Grade = model.Grade;
         entity.SourceUploadId = model.SourceUploadId;
-        entity.ConversationCaller = model.ConversationCaller;
-        entity.ConversationSource = model.ConversationSource;
         entity.ConversationActive = model.ConversationActive;
         entity.SourceRegions = MapSourceRegions(model.SourceRegions);
         entity.ReviewStatus = model.ReviewStatus;
@@ -53,9 +51,9 @@ public class MistakeItemRepository : IMistakeItemRepository
         entity.QuestionId = model.QuestionId;
         entity.UpdatedAt = model.UpdatedAt;
 
+        // The source (kind, caller, content text, source_detail) belongs to its pipeline; the materializer
+        // recomputes only what follows from the fields above, such as the content images.
         _dbContext.MistakeItems.Update(entity);
-        // Only extraction publication and backfill own this column.
-        _dbContext.Entry(entity).Property(e => e.AnalysisSnapshot).IsModified = false;
         return true;
     }
 
@@ -68,8 +66,8 @@ public class MistakeItemRepository : IMistakeItemRepository
     private async Task EnsureIdentityAsync(MistakeItemEntity stored, MistakeItemModel proposed, CancellationToken ct)
     {
         if (stored.SourceKind == MistakeSource.Conversation && (proposed.StudentId != stored.StudentId
-            || proposed.SourceUploadId != stored.SourceUploadId || proposed.ConversationCaller != stored.ConversationCaller
-            || proposed.ConversationSource != stored.ConversationSource || proposed.ConversationActive != stored.ConversationActive))
+            || proposed.SourceUploadId != stored.SourceUploadId || proposed.SourceCaller != stored.SourceCaller
+            || proposed.SourceDetail != stored.SourceDetail || proposed.ConversationActive != stored.ConversationActive))
             throw new MistakeConflictException("conversation_identity");
         if ((proposed.StudentId != stored.StudentId || proposed.SourceUploadId != stored.SourceUploadId
              || proposed.QuestionId != stored.QuestionId
@@ -175,8 +173,6 @@ public class MistakeItemRepository : IMistakeItemRepository
             Subject = model.Subject,
             Grade = model.Grade,
             SourceUploadId = model.SourceUploadId,
-            ConversationCaller = model.ConversationCaller,
-            ConversationSource = model.ConversationSource,
             ConversationActive = model.ConversationActive,
             SourceRegions = MapSourceRegions(model.SourceRegions),
             ReviewStatus = model.ReviewStatus,
@@ -189,9 +185,7 @@ public class MistakeItemRepository : IMistakeItemRepository
         };
     }
 
-    private static MistakeItemModel MapToModel(MistakeItemEntity entity) => MapToModel(entity, null);
-
-    private static MistakeItemModel MapToModel(MistakeItemEntity entity, string? analysisSnapshot)
+    private static MistakeItemModel MapToModel(MistakeItemEntity entity)
     {
         return new MistakeItemModel
         {
@@ -200,8 +194,6 @@ public class MistakeItemRepository : IMistakeItemRepository
             Subject = entity.Subject,
             Grade = entity.Grade,
             SourceUploadId = entity.SourceUploadId,
-            ConversationCaller = entity.ConversationCaller,
-            ConversationSource = entity.ConversationSource,
             ConversationActive = entity.ConversationActive,
             SourceRegions = entity.SourceRegions?.Select(r => new SourceRegionModel
             {
@@ -220,10 +212,10 @@ public class MistakeItemRepository : IMistakeItemRepository
             ReviewerId = entity.ReviewerId,
             ReviewedAt = entity.ReviewedAt,
             RootCause = entity.RootCause,
-            AnalysisSnapshot = analysisSnapshot,
             SourceKind = entity.SourceKind,
             SourceCaller = entity.SourceCaller,
             Content = entity.Content,
+            SourceDetail = entity.SourceDetail,
             QuestionId = entity.QuestionId,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
@@ -250,8 +242,8 @@ public class MistakeItemRepository : IMistakeItemRepository
     public async Task<bool> IsConversationObjectReferencedAsync(string objectPath, string caller, CancellationToken ct = default)
     {
         return await _dbContext.Database.SqlQuery<bool>($"""
-            SELECT EXISTS(SELECT 1 FROM mistake_item WHERE conversation_source IS NOT NULL
-              AND conversation_caller={caller}
+            SELECT EXISTS(SELECT 1 FROM mistake_item WHERE source_kind='conversation'
+              AND source_caller={caller}
               AND source_regions @> jsonb_build_array(jsonb_build_object('sourceImagePath', {objectPath}))) AS "Value"
             """).SingleAsync(ct);
     }

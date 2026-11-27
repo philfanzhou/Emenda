@@ -135,8 +135,8 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         var prior = await db.ConversationMistakeReceipts.Where(r => r.SourceKey == key).OrderByDescending(r => r.Position).ToListAsync(ct);
         var id = new Guid(Convert.FromHexString(key[..32]));
         var existing = (await db.MistakeItems.FromSqlInterpolated($"SELECT * FROM mistake_item WHERE id={id} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
-        // The pipeline's own working state: an earlier event of this packet may have changed it in memory, before the save re-derives source_detail.
-        var previous = existing?.ConversationSource == null ? null : JsonSerializer.Deserialize<ConversationQuestionSnapshot>(existing.ConversationSource, ConversationExport.Json);
+        var snapshotJson = existing == null ? null : MistakeSource.ConversationSnapshot(existing);
+        var previous = snapshotJson == null ? null : JsonSerializer.Deserialize<ConversationQuestionSnapshot>(snapshotJson, ConversationExport.Json);
         var selectedImages = images.Where(i => i.AssetId is { } asset ? q.AssetIds.Contains(asset) : q.SourcePositions.Contains(i.SourcePosition) || i.SourcePosition == q.Attempt?.Position).ToArray();
         var selectedSources = packet.Sources.Where(s => q.SourcePositions.Contains(s.Position) || s.Position == q.Attempt?.Position).Select(s => new ConversationQuestionSource(s.Position, s.Content)).ToArray();
         var observation = q.Attempt == null ? null : new Observation(new(item.Position, q.Attempt, q.Outcome, q.Evidence ?? "", q.RetractsMistake), selectedSources, selectedImages,
@@ -161,10 +161,12 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
                 KnowledgePoints = later ? previous!.KnowledgePoints : q.KnowledgePoints,
                 Sources = (previous?.Sources ?? []).Concat(observations.SelectMany(o => o.Sources)).Concat(selectedSources).DistinctBy(s => s.Position).ToArray(),
                 Images = (previous?.Images ?? []).Concat(observations.SelectMany(o => o.Images)).Concat(selectedImages).DistinctBy(i => (i.SourcePosition, i.AssetId, i.Path)).ToArray(), Attempts = attempts };
-            var entity = existing ?? new MistakeItemEntity { Id = id, StudentId = job.StudentId, ConversationCaller = job.CallerName, Subject = q.Subject, Grade = job.Grade, ReviewStatus = (int)ReviewStatus.PendingReview, CreatedAt = DateTimeOffset.UtcNow };
+            var entity = existing ?? new MistakeItemEntity { Id = id, StudentId = job.StudentId, Subject = q.Subject, Grade = job.Grade, ReviewStatus = (int)ReviewStatus.PendingReview, CreatedAt = DateTimeOffset.UtcNow };
             var serialized = JsonSerializer.Serialize(snapshot, ConversationExport.Json);
             if (snapshot.Images.Length > 100 || System.Text.Encoding.UTF8.GetByteCount(serialized) > 256 * 1024) throw new InvalidDataException("Conversation snapshot exceeds its budget.");
-            entity.ConversationSource = serialized; entity.ConversationActive = activeError != null;
+            // A collected mistake keeps the caller that first collected it.
+            MistakeSource.SetConversation(entity, existing == null ? job.CallerName : existing.SourceCaller, serialized);
+            entity.ConversationActive = activeError != null;
             entity.SourceRegions = snapshot.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).DistinctBy(i => i.SourceImagePath).ToList();
             entity.UpdatedAt = timestamp;
             if (existing == null)
