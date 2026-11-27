@@ -1,6 +1,6 @@
 # 数据库文档
 
-Schema 19 (`20261122000000_DropManagedSourceTables`) removes the platform-era managed source tables (`source_*`, `legacy_return*`, `layout_job*`) and their guard triggers; the upgrade refuses to run while any of them holds a row. `mistake_analysis`, `reanalyze_job` and `product_intake_request` are retained as data although no current code path writes them. See [migration history](./migrations.md).
+Schema 19 (`20261122000000_DropManagedSourceTables`) removes the platform-era managed source tables (`source_*`, `legacy_return*`, `layout_job*`) and their guard triggers; the upgrade refuses to run while any of them holds a row. `reanalyze_job` and `product_intake_request` are retained as data although no current code path writes them; schema 27 (`20261129000000_DropIdleMistakeAnalysis`) drops the unused `mistake_analysis` table and `reanalyze_job.analysis_input`, refusing while either holds data. See [migration history](./migrations.md).
 
 Schema 18 adds `20261118000000_AddConversationMistakes` after the preserved schema-17 structured-analysis migration. Conversation jobs persist caller/actor/student/owner scope and leases; permanent receipts prevent replay after deletion; mistake snapshots remain independent of chat history. See [Conversation collection](../Integration/ConversationCollection.md).
 

@@ -256,7 +256,8 @@ platform strict/resource authorization), so they are expected to be empty. A dat
 still carries platform-era managed source data must not be upgraded: keep the previous
 release and export that data first.
 
-`mistake_analysis` and `reanalyze_job` are kept as data only: the VL structured analysis and
+`mistake_analysis` and `reanalyze_job` are kept as data only (v27 later drops the empty `mistake_analysis`
+and `reanalyze_job.analysis_input`): the VL structured analysis and
 reanalysis features were removed with v19, so no code reads or writes them. Reports stay
 queryable in the database but are no longer served, a review may now set `root_cause` freely
 even where an analysis report exists, and jobs left Pending/Running stay in that state
@@ -326,3 +327,15 @@ rules (`MistakeMaterializerParityPostgresTests` compares the two on a v26 and a 
 Down raises `unified_mistake_contraction_irreversible`; v26 is forward-only, and the previous application
 cannot run on it. **Take a backup before upgrading**: recovery to rc.20 or earlier is restoring that backup
 (see the design document). Regression coverage: `UnifiedSourceContractionPostgresTests`.
+
+## 20261129000000_DropIdleMistakeAnalysis
+
+Schema v27 drops `mistake_analysis` and `reanalyze_job.analysis_input` (schema v17). The VL structured analysis
+that used them was retired in v19, and no code has read or written them since. `reanalyze_job` itself and
+`product_intake_request` stay.
+
+The migration raises `idle_mistake_analysis_present` (nothing changes, the upgrade transaction rolls back) while
+`mistake_analysis` has a row or any `reanalyze_job.analysis_input` is not NULL (a JSON `null` counts). Both
+deployed environments had neither. Down raises `idle_mistake_analysis_irreversible`: v27 is forward-only like
+v26. EF runs each migration in its own transaction, so a reversible step here would let a downgrade attempt change
+the database before v26 refused it. Regression coverage: `IdleAnalysisRemovalPostgresTests`.

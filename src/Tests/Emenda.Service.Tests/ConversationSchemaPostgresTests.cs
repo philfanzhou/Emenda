@@ -8,20 +8,17 @@ namespace Emenda.Service.Tests;
 public sealed class ConversationSchemaPostgresTests
 {
     [Fact]
-    public async Task Version17UpgradeRetainsStructuredAnalysisAndVerifiesExactTarget()
+    public async Task Version17UpgradeKeepsMistakesDropsTheIdleAnalysisAndVerifiesExactTarget()
     {
         await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
         await db.GetService<IMigrator>().MigrateAsync(MistakeAnalysisSchema.Migration);
         var id = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at) VALUES ({id},'existing',2,3,'legacy','[]'::jsonb,1,'Teacher retained',now())");
-        var feedback = """["Teacher feedback"]""";
-        var report = """{"summary":"Retained report"}""";
-        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_analysis(mistake_item_id,revision,teacher_feedback,draft_report) VALUES ({id},7,{feedback}::jsonb,{report}::jsonb)");
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
-        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(26, upgraded.ToVersion);
+        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(27, upgraded.ToVersion);
         Assert.Equal("Teacher retained", (await db.MistakeItems.SingleAsync()).RootCause);
-        Assert.Equal(7, (await db.MistakeAnalyses.SingleAsync()).Revision);
+        Assert.Equal(0, await db.Database.SqlQuery<int>($"SELECT ((to_regclass('public.mistake_analysis') IS NOT NULL)::int + (SELECT count(*)::int FROM information_schema.columns WHERE table_name='reanalyze_job' AND column_name='analysis_input')) AS \"Value\"").SingleAsync());
         Assert.Contains(MistakeAnalysisSchema.Migration, await db.Database.GetAppliedMigrationsAsync());
         Assert.Contains(ConversationMistakeSchema.Migration, await db.Database.GetAppliedMigrationsAsync());
         Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);

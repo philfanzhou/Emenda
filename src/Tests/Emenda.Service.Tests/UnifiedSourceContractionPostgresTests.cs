@@ -50,7 +50,7 @@ public sealed class UnifiedSourceContractionPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(25, upgraded.FromVersion);
-        Assert.Equal(26, upgraded.ToVersion);
+        Assert.Equal(27, upgraded.ToVersion);
         Assert.Equal(before, await UnifiedAsync(db));
         Assert.Equal(0, await db.Database.SqlQuery<int>($"""
             SELECT count(*)::int AS "Value" FROM information_schema.columns WHERE table_schema='public' AND table_name='mistake_item'
@@ -110,11 +110,14 @@ public sealed class UnifiedSourceContractionPostgresTests
     [Fact]
     public async Task DowngradeIsRefusedWithoutChangingTheDatabase()
     {
-        await using var database = await PostgresTestDatabase.CreateAsync();
+        await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
+        await db.GetService<IMigrator>().MigrateAsync(UnifiedSourceContractionSchema.Migration);
         var exception = await Assert.ThrowsAnyAsync<Exception>(() => db.GetService<IMigrator>().MigrateAsync(ExtractionCallerRecoverySchema.Migration));
         Assert.Contains("unified_mistake_contraction_irreversible", exception.ToString());
-        Assert.False((await DatabaseInitializer.UpgradeToTargetAsync(db)).Upgraded);
+        var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
+        Assert.Equal(26, upgraded.FromVersion);
+        Assert.Equal(27, upgraded.ToVersion);
     }
 
     private static void AssertJson(string expected, string? actual)

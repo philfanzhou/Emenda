@@ -29,15 +29,14 @@ public sealed class RetiredSourceSchemaPostgresTests
             VALUES ({itemId},'s1',2,7,'extract:job','[]'::jsonb,2,'retained cause',now())
             """);
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO process_log(id,mistake_item_id,student_id,action,details,created_at) VALUES ({Guid.NewGuid()},{itemId},'s1',1,'created',now())");
-        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_analysis(mistake_item_id,revision,teacher_feedback,input_digest) VALUES ({itemId},3,'[]'::jsonb,'digest')");
 
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
 
         Assert.Equal(18, result.FromVersion);
-        Assert.Equal(26, result.ToVersion);
+        Assert.Equal(27, result.ToVersion);
         Assert.Equal("retained cause", (await db.MistakeItems.AsNoTracking().SingleAsync()).RootCause);
         Assert.Equal(1, await Scalar<long>(database, "SELECT count(*) FROM process_log"));
-        Assert.Equal(3L, await Scalar<long>(database, "SELECT revision FROM mistake_analysis"));
+        Assert.False(await Scalar<bool>(database, "SELECT to_regclass('public.mistake_analysis') IS NOT NULL"));
         foreach (var table in RetiredTables)
             Assert.False(await Scalar<bool>(database, $"SELECT to_regclass('public.{table}') IS NOT NULL"), table);
         Assert.Equal("guard_extraction_deletion_receipt,guard_extraction_object_reference,guard_extraction_retention,guard_extraction_revision,guard_legacy_archive",
