@@ -41,8 +41,6 @@ public static partial class MistakeHttpEndpoints
         group.MapPost("/mistakes/{id:guid}/review", ReviewMistakeItem);
         group.MapPut("/mistakes/{id:guid}", UpdateMistakeItem);
         group.MapDelete("/mistakes/{id:guid}", DeleteMistakeItem);
-        group.MapPost("/mistakes/{id:guid}/practices", AddMistakePractice);
-        group.MapGet("/mistakes/{id:guid}/practices", GetMistakePractices);
         group.MapPost("/mistakes/{id:guid}/process-logs", LogMistakeProcess);
         group.MapGet("/mistakes/{id:guid}/process-logs", GetMistakeProcessHistory);
         group.MapPost("/mistakes/presigned-url", GetPresignedUrl);
@@ -288,54 +286,6 @@ public static partial class MistakeHttpEndpoints
         }
     }
 
-
-    // POST /api/mistakes/{id:guid}/practices
-    private static async Task<IResult> AddMistakePractice(
-        Guid id,
-        [FromBody] AddMistakePracticeRequest request,
-        IMistakeDomainService mistakeService,
-        CancellationToken ct)
-    {
-        var practice = new MistakePracticeModel
-        {
-            MistakeItemId = id,
-            StudentId = request.StudentId,
-            StudentAnswer = request.StudentAnswer,
-            IsCorrect = request.IsCorrect,
-            Comments = request.Comments
-        };
-
-        var imagePaths = request.ImagePaths?.Count > 0
-            ? new List<string>(request.ImagePaths)
-            : null;
-
-        try
-        {
-            var result = await mistakeService.AddPracticeAsync(practice, imagePaths);
-            return MistakeHttpResponse.Ok(MapPracticeDto(result));
-        }
-        catch (MistakeConflictException ex)
-        {
-            return ErrorKind(ex.Code, 409);
-        }
-        catch (MistakeValidationException ex)
-        {
-            return MistakeHttpResponse.BadRequest(ex.Message);
-        }
-    }
-
-    // GET /api/mistakes/{id:guid}/practices
-    private static async Task<IResult> GetMistakePractices(
-        Guid id,
-        IMistakeDomainService mistakeService,
-        CancellationToken ct)
-    {
-        var practices = await mistakeService.GetPracticesAsync(id);
-        var response = new MistakePracticeListResponse();
-        response.Practices.AddRange(practices.Select(MapPracticeDto));
-        return MistakeHttpResponse.Ok(response);
-    }
-
     // POST /api/mistakes/{id:guid}/process-logs
     private static async Task<IResult> LogMistakeProcess(
         Guid id,
@@ -343,6 +293,8 @@ public static partial class MistakeHttpEndpoints
         IMistakeDomainService mistakeService,
         CancellationToken ct)
     {
+        if (!Enum.IsDefined(request.Action))
+            return MistakeHttpResponse.BadRequest("Unknown process action.");
         var success = await mistakeService.LogMistakeProcessAsync(
             id,
             request.StudentId,
@@ -566,24 +518,6 @@ public static partial class MistakeHttpEndpoints
             : [];
         return new MistakeContentDto(1, Text("statement"), Text("studentAnswer"), Text("referenceAnswer"),
             Text("explanation"), Text("evidence"), points, images);
-    }
-
-    private static MistakePracticeDto MapPracticeDto(MistakePracticeModel practice)
-    {
-        var dto = new MistakePracticeDto
-        {
-            Id = practice.Id.ToString(),
-            MistakeItemId = practice.MistakeItemId.ToString(),
-            StudentId = practice.StudentId ?? string.Empty,
-            PracticeDate = practice.PracticeDate == DateTimeOffset.MinValue
-                ? string.Empty
-                : practice.PracticeDate.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-            StudentAnswer = practice.StudentAnswer ?? string.Empty,
-            IsCorrect = practice.IsCorrect,
-            Comments = practice.Comments ?? string.Empty
-        };
-        dto.ImagePaths.AddRange(practice.ImagePaths ?? new List<string>());
-        return dto;
     }
 
     private static ProcessLogDto MapProcessLogDto(ProcessLogModel log)

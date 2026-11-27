@@ -31,7 +31,7 @@ public sealed partial class ExtractionService
         }
 
         var sourceId = $"extract:{id:N}";
-        // Review decisions and associated practice/FK writes must settle before choosing what stays.
+        // Review decisions and concurrent item writes must settle before choosing what stays.
         var items = await db.MistakeItems.FromSqlInterpolated($"""
             SELECT m.* FROM public.mistake_item m JOIN public.extraction_question q ON q.item_id=m.id
             WHERE q.job_id={id} AND m.source_upload_id={sourceId} AND m.student_id={job.StudentId}

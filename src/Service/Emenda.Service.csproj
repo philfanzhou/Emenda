@@ -7,11 +7,13 @@
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v6.json" LogicalName="mistake-http-v6.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v7.json" LogicalName="mistake-http-v7.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v8.json" LogicalName="mistake-http-v8.json" />
+    <EmbeddedResource Include="../../docs/Integration/mistake-http-v9.json" LogicalName="mistake-http-v9.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v4.json" LogicalName="mistake-http-v4.json" />
     <EmbeddedResource Include="../../docs/Integration/mistake-http-v3.json" LogicalName="mistake-http-v3.json" />
     <EmbeddedResource Include="../../docs/Integration/emenda-intake-v1.json" LogicalName="emenda-intake-v1.json" />
     <EmbeddedResource Include="../../docs/Integration/emenda-extraction-v1.json" LogicalName="emenda-extraction-v1.json" />
     <EmbeddedResource Include="../../docs/Integration/emenda-extraction-v2.json" LogicalName="emenda-extraction-v2.json" />
+    <EmbeddedResource Include="../../docs/Integration/emenda-extraction-v3.json" LogicalName="emenda-extraction-v3.json" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\Domain\Emenda.Domain.csproj" />
   </ItemGroup>

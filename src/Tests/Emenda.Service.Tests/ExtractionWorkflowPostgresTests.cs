@@ -160,19 +160,17 @@ public sealed class ExtractionWorkflowPostgresTests
     }
 
     [Fact]
-    public async Task CallerCorrection_IsAtomicAndVersioned_PreservesPracticeAndRetiresOldImages()
+    public async Task CallerCorrection_IsAtomicAndVersioned_RetiresOldImages()
     {
         await using var database = await PostgresTestDatabase.CreateAsync();
         var service = Service(database, DefaultAnalyzer());
         var job = await Completed(service);
         var q = job.Questions.Single();
         var itemId = q.ItemId!.Value;
-        var practiceId = Guid.NewGuid();
         await using (var db = database.CreateContext())
         {
             var item = await db.MistakeItems.SingleAsync();
             item.ReviewStatus = 2; item.RootCause = "teacher cause"; item.ReviewerId = "teacher";
-            db.MistakePractices.Add(new() { Id = practiceId, MistakeItemId = itemId, StudentId = "student", PracticeDate = DateTimeOffset.UtcNow, ImagePaths = [] });
             await db.SaveChangesAsync();
         }
         var oldBytes = (await service.ReadCropAsync(Admin, job.Id, q.Question.Id, 1, 0)).Bytes;
@@ -190,7 +188,6 @@ public sealed class ExtractionWorkflowPostgresTests
             var item = await db.MistakeItems.SingleAsync();
             item.ReviewStatus.Should().Be(1);
             item.RootCause.Should().BeNull();
-            (await db.MistakePractices.SingleAsync()).Id.Should().Be(practiceId);
             (await db.ProcessLogs.AnyAsync(l => l.Details!.Contains("teacher cause"))).Should().BeTrue();
         }
         var removed = await service.ReviseAsync(Admin, job.Id, new(Guid.NewGuid(), 2, "Merged into another collection", []));

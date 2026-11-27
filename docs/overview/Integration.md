@@ -19,8 +19,6 @@
 | 8 | UpdateMistakeItem | gRPC | 入 | Ruoyu.Admin | 更新错题条目 |
 | 9 | DeleteMistakeItem | gRPC | 入 | teacher_portal, user_portal | 删除错题条目 |
 | 10 | CompleteUploadReview | gRPC | 入 | teacher_portal | ~~完成整批审核~~ **已废弃**，仅保留供 LegacyClean 运维兜底 |
-| 11 | AddMistakePractice | gRPC | 入 | — | 添加练习记录 |
-| 12 | GetMistakePractices | gRPC | 入 | — | 查询练习记录 |
 | 13 | LogMistakeProcess | gRPC | 入 | — | 记录处理日志 |
 | 14 | GetMistakeProcessHistory | gRPC | 入 | — | 查询处理历史 |
 | 15 | GetAllReferencedImagePaths | gRPC | 入 | Ruoyu.Admin | 获取所有引用图片路径（OSS审计） |

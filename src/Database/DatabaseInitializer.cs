@@ -17,7 +17,7 @@ public static partial class DatabaseInitializer
     private const string RootCause = "20260929000001_RenameReviewCommentToRootCause";
     private const string Lease = "20260930000001_LeaseReanalyzeJobs";
     private const long UpgradeLockKey = 0x52554F59554D4953;
-    private const int TargetVersion = 28;
+    private const int TargetVersion = 29;
 
     private static readonly HashSet<string> ExpectedTables = Set("""
         mistake_item
@@ -247,9 +247,9 @@ public static partial class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(RetiredIntakeTablesSchema.Migration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(PracticeRemovalSchema.Migration, cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {RetiredIntakeTablesSchema.Migration}");
+                steps.Add($"migrate to {PracticeRemovalSchema.Migration}");
             }
 
             archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -376,11 +376,12 @@ public static partial class DatabaseInitializer
         var contractionHistory = new HashSet<string>(callerRecoveryHistory, StringComparer.Ordinal) { $"{UnifiedSourceContractionSchema.Migration}|8.0.11" };
         var idleAnalysisHistory = new HashSet<string>(contractionHistory, StringComparer.Ordinal) { $"{IdleAnalysisRemovalSchema.Migration}|8.0.11" };
         var retiredIntakeHistory = new HashSet<string>(idleAnalysisHistory, StringComparer.Ordinal) { $"{RetiredIntakeTablesSchema.Migration}|8.0.11" };
+        var retiredPracticeHistory = new HashSet<string>(retiredIntakeHistory, StringComparer.Ordinal) { $"{PracticeRemovalSchema.Migration}|8.0.11" };
         var version = history.SetEquals(initialHistory) ? 1 :
             history.SetEquals(processHistory) ? 2 :
             history.SetEquals(reanalyzeHistory) ? 3 :
             history.SetEquals(targetHistory) ? 4 :
-            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : history.SetEquals(correctionsHistory) ? 20 : history.SetEquals(worksheetAnalysisHistory) ? 21 : history.SetEquals(extractionDeletionHistory) ? 22 : history.SetEquals(variantHistory) ? 23 : history.SetEquals(unifiedHistory) ? 24 : history.SetEquals(callerRecoveryHistory) ? 25 : history.SetEquals(contractionHistory) ? 26 : history.SetEquals(idleAnalysisHistory) ? 27 : history.SetEquals(retiredIntakeHistory) ? 28 : 0;
+            history.SetEquals(leaseHistory) ? 5 : history.SetEquals(intakeHistory) ? 6 : history.SetEquals(sourceTargetHistory) ? 7 : history.SetEquals(sourceReturnHistory) ? 8 : history.SetEquals(sourceHandoffHistory) ? 9 : history.SetEquals(referenceHistory) ? 10 : history.SetEquals(archiveHistory) ? 11 : history.SetEquals(legacyReturnHistory) ? 12 : history.SetEquals(layoutJobHistory) ? 13 : history.SetEquals(referenceRemovalHistory) ? 14 : history.SetEquals(productIntakeHistory) ? 15 : history.SetEquals(extractionHistory) ? 16 : history.SetEquals(analysisHistory) ? 17 : history.SetEquals(conversationHistory) ? 18 : history.SetEquals(retiredSourceHistory) ? 19 : history.SetEquals(correctionsHistory) ? 20 : history.SetEquals(worksheetAnalysisHistory) ? 21 : history.SetEquals(extractionDeletionHistory) ? 22 : history.SetEquals(variantHistory) ? 23 : history.SetEquals(unifiedHistory) ? 24 : history.SetEquals(callerRecoveryHistory) ? 25 : history.SetEquals(contractionHistory) ? 26 : history.SetEquals(idleAnalysisHistory) ? 27 : history.SetEquals(retiredIntakeHistory) ? 28 : history.SetEquals(retiredPracticeHistory) ? 29 : 0;
         if (version == 0)
             return Invalid("migration history does not match a supported exact version chain.");
         // Name the leftover directly instead of reporting it as a routine or relation mismatch.
@@ -392,7 +393,7 @@ public static partial class DatabaseInitializer
         var managed = version < 19;
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version is >= 24 and < 26);
+            var diagnostic = await SourceIntakeCatalog.VerifyRoutinesAsync(connection, cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version is >= 24 and < 26, version >= 29);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
@@ -414,6 +415,7 @@ public static partial class DatabaseInitializer
         if (version >= 20) expectedTables.UnionWith(ExtractionCorrectionsSchema.Tables);
         if (version >= 22) expectedTables.Add("extraction_deletion");
         if (version >= 23) expectedTables.UnionWith(ImageVariantSchema.Tables);
+        if (version >= 29) expectedTables.Remove("mistake_practice");
         var mismatch = Compare("relation", expectedTables, relations);
         if (mismatch is not null) return Invalid(mismatch);
 
@@ -425,6 +427,7 @@ public static partial class DatabaseInitializer
               AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum
             """, cancellationToken).ConfigureAwait(false);
         var expectedColumns = new HashSet<string>(ExpectedColumns, StringComparer.Ordinal);
+        if (version >= 29) expectedColumns.RemoveWhere(column => column.StartsWith("mistake_practice|", StringComparison.Ordinal));
         if (managed && version >= 6) expectedColumns.UnionWith(SourceIntakeCatalog.Columns);
         if (managed && version >= 7) expectedColumns.UnionWith(SourceTargetCatalog.Columns);
         if (managed && version >= 8) expectedColumns.UnionWith(SourceReturnCatalog.Columns);
@@ -501,7 +504,7 @@ public static partial class DatabaseInitializer
             """, cancellationToken).ConfigureAwait(false);
         if (version >= 6)
         {
-            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version is >= 24 and < 26);
+            var diagnostic = await SourceIntakeCatalog.VerifyTriggersAsync(connection,cancellationToken,version>=7,version>=8,version>=9,StorageReferenceRemovalSchema.Present(version),version>=11,version>=12,version>=13,version>=16,managed,version>=20,version>=22,version is >= 24 and < 26, version >= 29);
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (triggers.Count > 0) return Invalid($"unexpected trigger {triggers.Order(StringComparer.Ordinal).First()}.");
@@ -517,6 +520,7 @@ public static partial class DatabaseInitializer
             WHERE tbl.relnamespace='public'::regnamespace ORDER BY idx.relname
             """, cancellationToken).ConfigureAwait(false);
         var expectedIndexes = new HashSet<string>(ExpectedIndexes, StringComparer.Ordinal);
+        if (version >= 29) expectedIndexes.RemoveWhere(index => index.Contains("|mistake_practice|", StringComparison.Ordinal));
         if (managed && version >= 6) expectedIndexes.UnionWith(SourceIntakeCatalog.Indexes);
         if (managed && version >= 7) expectedIndexes.UnionWith(SourceTargetCatalog.Indexes);
         if (managed && version >= 8) expectedIndexes.UnionWith(SourceReturnCatalog.Indexes);
@@ -570,6 +574,7 @@ public static partial class DatabaseInitializer
         var expectedConstraints = RetiredIntakeTablesSchema.ReanalyzePresent(version) ? ExpectedConstraints :
             Without(ExpectedConstraints, "PK_reanalyze_job|p|id|-|-|-|V");
         expectedConstraints = new HashSet<string>(expectedConstraints,StringComparer.Ordinal);
+        if (version >= 29) expectedConstraints.RemoveWhere(constraint => constraint.StartsWith("PK_mistake_practice|", StringComparison.Ordinal) || constraint.StartsWith("FK_mistake_practice_", StringComparison.Ordinal));
         if (managed && version >= 6) expectedConstraints.UnionWith(SourceIntakeCatalog.Constraints);
         if (managed && version >= 7) expectedConstraints.UnionWith(SourceTargetCatalog.Constraints);
         if (managed && version >= 8) expectedConstraints.UnionWith(SourceReturnCatalog.Constraints);

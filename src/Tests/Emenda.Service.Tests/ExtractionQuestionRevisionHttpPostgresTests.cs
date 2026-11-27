@@ -192,7 +192,7 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(HttpStatusCode.OK, reapproved.StatusCode);
         using var practice = await caller.PostAsJsonAsync(detailRoute + "/practices",
             new { studentId = job.StudentId, studentAnswer = "2", isCorrect = true, imagePaths = Array.Empty<string>() });
-        Assert.Equal(HttpStatusCode.OK, practice.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, practice.StatusCode);
         Assert.Equal(correctedDetail.GetProperty("content").GetRawText(),
             (await DataAsync<JsonElement>(await caller.GetAsync(detailRoute))).GetProperty("content").GetRawText());
         var byUpload = await DataAsync<JsonElement>(await caller.GetAsync($"/api/mistakes/by-upload/extract:{job.Id:N}"));
@@ -332,10 +332,6 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         using var reviewed = await caller.PostAsJsonAsync(root + $"/questions/{target.Question.Id}/review",
             new ExtractionReviewRequest(corrected.Version, target.ItemId.Value, (int)ReviewStatus.Confirmed, "teacher", null, null));
         Assert.Equal(HttpStatusCode.OK, reviewed.StatusCode);
-        using var invalidReference = await caller.PostAsJsonAsync($"/api/mistakes/{target.ItemId}/practices",
-            new { studentId = job.StudentId, studentAnswer = "2", isCorrect = true, imagePaths = new[] { retired } });
-        Assert.Equal(HttpStatusCode.Conflict, invalidReference.StatusCode);
-        Assert.Contains("extraction_object_retired", await invalidReference.Content.ReadAsStringAsync());
     }
 
     private static void AssertAnalysis(JsonElement content, string statement, string attempt, string answer,

@@ -440,11 +440,7 @@ def run(args):
         reviewed = envelope(api(fixture, "/api/mistakes/" + item["id"] + "/review", "POST",
                                {"reviewStatus": 2, "reviewerId": "verification-reviewer", "rootCause": "验收确认", "grade": 7, "subject": 2}))
         require(reviewed.get("success") is True, "Review inner success must be true")
-        practice = envelope(api(fixture, "/api/mistakes/" + item["id"] + "/practices", "POST",
-                               {"studentId": student, "studentAnswer": "42", "isCorrect": True, "comments": "isolated acceptance", "imagePaths": []}))
-        practices = envelope(api(fixture, "/api/mistakes/" + item["id"] + "/practices"))["practices"]
-        require(any(row["id"] == practice["id"] and row["studentAnswer"] == "42" and row["isCorrect"] is True for row in practices), "Practice write/read did not round-trip")
-        passed("review_and_practice_existing_http_contract")
+        passed("review_existing_http_contract")
         before = count_items(fixture)
         owned(fixture, fixture["containers"]["host"])
         docker(fixture, "restart", fixture["containers"]["host"])
@@ -452,8 +448,7 @@ def run(args):
         require(identity(completed(upload_retry(fixture, student, key, images), 2, 2)) == identity(first), "Restart lost first intake identity")
         require(identity(completed(upload_retry(fixture, student, parallel_key, images), 2, 2)) == identity(parallel[0]), "Restart lost concurrent intake identity")
         require(count_items(fixture) == before, "Restart/replay duplicated persisted items")
-        require(any(row["id"] == practice["id"] for row in envelope(api(fixture, "/api/mistakes/" + item["id"] + "/practices"))["practices"]), "Restart lost practice")
-        passed("host_restart_persisted_identity_and_practice")
+        passed("host_restart_persisted_identity")
         recovery_key = key + "-s3-recovery"
         before = count_items(fixture)
         owned(fixture, fixture["containers"]["s3"])

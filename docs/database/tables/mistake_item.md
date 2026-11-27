@@ -61,7 +61,7 @@ v26（阶段 C）起这四列就是错题来源的唯一记录：旧列 `analysi
 
 ## 外键关系
 
-- 无外键（被 [mistake_practice](./mistake_practice.md) 和 [process_log](./process_log.md) 引用）
+- 无外键（被 [process_log](./process_log.md) 引用）
 
 ## ReviewStatus 枚举
 

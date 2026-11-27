@@ -23,7 +23,5 @@ public enum ProcessAction
     Analyzed = 2,
     ReviewConfirmed = 3,
     ReviewRejected = 4,
-    Practiced = 5,
-    Mastered = 6,
     Reanalyzed = 7,
 }

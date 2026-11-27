@@ -16,8 +16,7 @@ public sealed class BackupRestorePostgresTests
     private const string Initial = "20260514051544_InitialCreate";
     private const string ProcessLog = "20260612030015_AddStudentIdToProcessLog";
     private const string Reanalyze = "20260626000000_AddReanalyzeJob";
-    // reanalyze_job is not here: the InitialCreate shape predates it and v28 drops it from the target.
-    private static readonly string[] BusinessTables = ["mistake_item", "mistake_practice", "process_log"];
+    private static readonly string[] BusinessTables = ["mistake_item", "process_log"];
 
     [Theory]
     [InlineData(false)]
@@ -45,10 +44,7 @@ public sealed class BackupRestorePostgresTests
         Assert.Equal(before, await drill.ManifestAsync(restored, true));
         await using var restoredContext = drill.Context(restored);
         await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
-        using var paths = JsonDocument.Parse(await drill.ScalarAsync(restored,
-            "SELECT image_paths::text FROM mistake_practice WHERE image_paths <> '[]'::jsonb"));
-        Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg" },
-            paths.RootElement.EnumerateArray().Select(path => path.GetString()));
+        Assert.Equal("True", await drill.ScalarAsync(restored, "SELECT to_regclass('public.mistake_practice') IS NULL"));
         Assert.Equal(before, await drill.ManifestAsync(drill.Source, true));
     }
 
@@ -76,10 +72,7 @@ public sealed class BackupRestorePostgresTests
             var upgraded = await drill.ManifestAsync(restored, true);
             Assert.StartsWith(before.RowCounts, upgraded.RowCounts);
             Assert.StartsWith(before.Ids, upgraded.Ids);
-            using var paths = JsonDocument.Parse(await drill.ScalarAsync(restored,
-                "SELECT image_paths::text FROM mistake_practice WHERE image_paths <> '[]'::jsonb"));
-            Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg" },
-                paths.RootElement.EnumerateArray().Select(path => path.GetString()));
+            Assert.Equal("True", await drill.ScalarAsync(restored, "SELECT to_regclass('public.mistake_practice') IS NULL"));
             Assert.Equal(before, await drill.ManifestAsync(drill.Source, false));
         }
         else
@@ -170,7 +163,6 @@ public sealed class BackupRestorePostgresTests
     private static async Task SeedAsync(Drill drill, bool targetVersion)
     {
         var item = Guid.NewGuid();
-        var practice = Guid.NewGuid();
         var log = Guid.NewGuid();
         var cause = targetVersion ? "root_cause" : "review_comment";
         // Since v26 no trigger fills the unified source columns; a raw writer on such a schema states them.
@@ -179,8 +171,6 @@ public sealed class BackupRestorePostgresTests
         var unifiedColumns = unified ? ",source_kind,content" : "";
         var unifiedValues = unified ? ",'legacy','{\"version\":1,\"images\":[]}'::jsonb" : "";
         await drill.ExecuteAsync(drill.Source, $"INSERT INTO mistake_item (id,student_id,subject,grade,source_upload_id,source_regions,review_status,{cause},created_at{unifiedColumns}) VALUES ('{item}','student-A',1,7,'Upload/大小写','[{{\"path\":\"Pictures/中文/A.JPG\"}}]'::jsonb,1,'合成原因',now(){unifiedValues})");
-        await drill.ExecuteAsync(drill.Source, $"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{practice}','{item}','student-A',now(),'[\"Pictures/中文/A.JPG\",\"pictures/a.jpg\"]',false)");
-        await drill.ExecuteAsync(drill.Source, $"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{Guid.NewGuid()}','{item}','student-A',now(),'[]',true)");
         if (targetVersion)
             await drill.ExecuteAsync(drill.Source, $"INSERT INTO process_log (id,mistake_item_id,student_id,action,created_at) VALUES ('{log}','{item}','student-A',1,now())");
         else

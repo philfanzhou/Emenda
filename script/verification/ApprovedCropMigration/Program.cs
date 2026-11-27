@@ -58,13 +58,11 @@ try
     if (sources.Count != 30 || current.Count != 3 || approved.Keys.Any(protectedPaths.Contains)) throw new InvalidDataException("protected_scope_changed");
     var linked = new HashSet<string>(StringComparer.Ordinal);
     await foreach (var item in db.MistakeItems.AsNoTracking().AsAsyncEnumerable().WithCancellation(ct)) linked.UnionWith(item.SourceRegions.Select(r => r.SourceImagePath));
-    await foreach (var practice in db.MistakePractices.AsNoTracking().AsAsyncEnumerable().WithCancellation(ct)) linked.UnionWith(practice.ImagePaths);
     if (approved.Keys.Any(linked.Contains)) throw new InvalidDataException("candidate_is_referenced");
     var items = await db.MistakeItems.AsNoTracking().OrderBy(i=>i.Id)
         .Select(i=>new { i.Id,i.StudentId,i.Subject,i.Grade,i.SourceUploadId,i.QuestionId,i.ReviewStatus,i.RootCause,i.ReviewerId,i.ReviewedAt,i.CreatedAt,i.UpdatedAt }).ToListAsync(ct);
-    var practices = await db.MistakePractices.AsNoTracking().OrderBy(p=>p.Id).ToListAsync(ct);
     var preservedHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
-        { items,practices,questions=snapshot.Questions.Select(q=>q.Question).ToList() },json))).ToLowerInvariant();
+        { items,questions=snapshot.Questions.Select(q=>q.Question).ToList() },json))).ToLowerInvariant();
     var objects = new Dictionary<string,long>(StringComparer.Ordinal);
     await foreach (var item in s3.ListObjectsEnumAsync(new ListObjectsArgs().WithBucket(bucket).WithPrefix($"mistakes/extractions/{id:N}/").WithRecursive(true),ct)) objects.Add(item.Key,checked((long)item.Size));
     if (mode != "verify")
@@ -124,7 +122,7 @@ try
     else
     {
         var baseline = JsonDocument.Parse(await File.ReadAllTextAsync(metadataFile,ct)).RootElement;
-        if (baseline.GetProperty("preservedHash").GetString()!=preservedHash) throw new InvalidDataException("items_reviews_or_practices_changed");
+        if (baseline.GetProperty("preservedHash").GetString()!=preservedHash) throw new InvalidDataException("items_or_reviews_changed");
         foreach (var pair in hashes) if (baseline.GetProperty("hashes").GetProperty(pair.Key).GetString()!=pair.Value) throw new InvalidDataException("backup_hash_mismatch");
         foreach (var saved in baseline.GetProperty("hashes").EnumerateObject())
         {
@@ -157,7 +155,7 @@ try
     await tx.CommitAsync(ct);
     Console.WriteLine(JsonSerializer.Serialize(new { mode,passed=true,jobId=id,version,originals=sources.Count,currentCrops=current.Count,
         protectedHashesVerified=33,approvedObjects=approved.Count,approvedBytes=approved.Values.Sum(),s3Objects=objects.Count,s3Bytes=objects.Values.Sum(),
-        preservedItems=items.Count,preservedPractices=practices.Count,preservedHash,
+        preservedItems=items.Count,preservedHash,
         database=connection.Database,databaseUser=connection.Username,backupDirectory=backup },json));
 }
 catch (Exception error)

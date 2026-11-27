@@ -30,7 +30,7 @@ internal static class SourceIntakeCatalog
         "FK_source_intake_group_created_log|f|created_log_id|process_log|id|r|V",
         "PK_source_intake_request|p|actor,action,request_key|-|-|-|V",
         "FK_source_intake_request_source_intake|f|source_upload_id,content_revision|source_intake|source_upload_id,content_revision|r|V"];
-    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false,bool deletion=false,bool unified=false)
+    internal static async Task<string?> VerifyRoutinesAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false,bool deletion=false,bool unified=false,bool retiredPractice=false)
     {
         await using var command=connection.CreateCommand();
         command.CommandTimeout=0;
@@ -58,7 +58,7 @@ internal static class SourceIntakeCatalog
         {
             bodies["guard_extraction_revision"] = ExtractionDeletionSchema.RevisionGuard;
             bodies["guard_extraction_retention"] = ExtractionDeletionSchema.RetentionGuard;
-            bodies["guard_extraction_object_reference"] = ExtractionDeletionSchema.ReferenceGuard;
+            bodies["guard_extraction_object_reference"] = retiredPractice ? PracticeRemovalSchema.ItemGuard : ExtractionDeletionSchema.ReferenceGuard;
             bodies.Add("guard_extraction_deletion_receipt", ExtractionDeletionSchema.ReceiptGuard);
         }
         if (unified) bodies.Add("derive_mistake_item_source", UnifiedMistakeSchema.Body);
@@ -73,7 +73,7 @@ internal static class SourceIntakeCatalog
         }
         return found.SetEquals(bodies.Keys) ? null : "missing source intake routine.";
     }
-    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false,bool deletion=false,bool unified=false)
+    internal static async Task<string?> VerifyTriggersAsync(DbConnection connection,CancellationToken ct,bool targets=false,bool returns=false,bool handoffs=false,bool references=false,bool archive=false,bool legacyReturns=false,bool layout=false,bool extractions=false,bool managed=true,bool corrections=false,bool deletion=false,bool unified=false,bool retiredPractice=false)
     {
         var expected=new HashSet<string>(StringComparer.Ordinal)
         {
@@ -100,6 +100,7 @@ internal static class SourceIntakeCatalog
         if(legacyReturns) expected.UnionWith(LegacyReturnSchema.Triggers);
         if(layout) expected.UnionWith(LayoutJobSchema.Triggers);
         if(corrections) expected.UnionWith(ExtractionObjectReferenceSchema.Triggers);
+        if(retiredPractice) expected.RemoveWhere(trigger => trigger.StartsWith("mistake_practice|", StringComparison.Ordinal));
         if(extractions) expected.UnionWith([
             "extraction_revision|trg_extraction_revision|27|guard_extraction_revision|False|False",
             "extraction_revision|trg_extraction_revision_truncate|34|guard_extraction_revision|False|False",

@@ -10,7 +10,7 @@ namespace Emenda.Service.Tests;
 public sealed class ExtractionCorrectionsSchemaPostgresTests
 {
     [Fact]
-    public async Task UpgradeRetiresGeometryButPreservesOriginalsReceiptsItemsAndPractice()
+    public async Task UpgradeRetiresGeometryButPreservesOriginalsReceiptsAndItems()
     {
         await using var database = await PostgresTestDatabase.CreateAsync(initialize: false);
         await using var db = database.CreateContext();
@@ -42,11 +42,10 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
                     new(draft with { Id = Guid.NewGuid(), Outcome = "correct" }, null, false, [oldCrop])]), json), Actor = "teacher", Reason = "correction", Model = "model", CreatedAt = DateTimeOffset.UtcNow });
         db.ProcessLogs.Add(new() { Id = Guid.NewGuid(), MistakeItemId = itemId, Action = 2,
             Details = JsonSerializer.Serialize(new { previous = new { sourceRegions = new[] { oldCrop.Path }, reviewStatus = 2 } }), CreatedAt = DateTimeOffset.UtcNow });
-        db.MistakePractices.Add(new() { Id = Guid.NewGuid(), MistakeItemId = itemId, StudentId = "s", ImagePaths = [] });
         await db.SaveChangesAsync();
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(19, upgraded.FromVersion);
-        Assert.Equal(28, upgraded.ToVersion);
+        Assert.Equal(29, upgraded.ToVersion);
         db.ChangeTracker.Clear();
         Assert.Equal(source, JsonSerializer.Deserialize<List<ExtractionSource>>((await db.ExtractionJobs.SingleAsync()).SourcesJson, json)!.Single());
         Assert.Null((await db.ExtractionJobs.SingleAsync()).CandidateJson);
@@ -56,7 +55,6 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
         Assert.Single(current.Questions[0].Images);
         Assert.Empty(current.Questions[1].Images);
         Assert.DoesNotContain(oldCrop.Path, (await db.ProcessLogs.SingleAsync()).Details!);
-        Assert.Equal(1, await db.MistakePractices.CountAsync());
         Assert.Equal(2, (await db.MistakeItems.SingleAsync()).ReviewStatus);
         using var analysis = JsonDocument.Parse(MistakeSource.Analysis((await db.MistakeItems.SingleAsync()))!);
         Assert.Equal(2, analysis.RootElement.GetProperty("sourceVersion").GetInt32());
@@ -119,7 +117,7 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(21, upgraded.FromVersion);
-        Assert.Equal(28, upgraded.ToVersion);
+        Assert.Equal(29, upgraded.ToVersion);
         var items = await db.MistakeItems.AsNoTracking().ToDictionaryAsync(item => item.Id);
         var recovered = items[recoverable.Id];
         Assert.Equal(jobSource, recovered.SourceUploadId);

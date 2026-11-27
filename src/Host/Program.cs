@@ -101,7 +101,6 @@ builder.Services.AddDbContext<MistakeDbContext>(options =>
 });
 
 builder.Services.AddScoped<IMistakeItemRepository, MistakeItemRepository>();
-builder.Services.AddScoped<IMistakePracticeRepository, MistakePracticeRepository>();
 builder.Services.AddScoped<IProcessLogRepository, ProcessLogRepository>();
 var conversationOptions = builder.Configuration.GetSection("Emenda:ConversationCollection")
     .Get<Emenda.Host.Services.Conversation.ConversationCollectionOptions>() ?? new();

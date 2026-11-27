@@ -29,9 +29,11 @@ COPY docs/Integration/mistake-http-v5.json docs/Integration/mistake-http-v5.json
 COPY docs/Integration/mistake-http-v6.json docs/Integration/mistake-http-v6.json
 COPY docs/Integration/mistake-http-v7.json docs/Integration/mistake-http-v7.json
 COPY docs/Integration/mistake-http-v8.json docs/Integration/mistake-http-v8.json
+COPY docs/Integration/mistake-http-v9.json docs/Integration/mistake-http-v9.json
 COPY docs/Integration/emenda-intake-v1.json docs/Integration/emenda-intake-v1.json
 COPY docs/Integration/emenda-extraction-v1.json docs/Integration/emenda-extraction-v1.json
 COPY docs/Integration/emenda-extraction-v2.json docs/Integration/emenda-extraction-v2.json
+COPY docs/Integration/emenda-extraction-v3.json docs/Integration/emenda-extraction-v3.json
 COPY vendor/Emenda.Common vendor/Emenda.Common
 
 RUN dotnet publish "src/Host/Emenda.Host.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false --no-restore

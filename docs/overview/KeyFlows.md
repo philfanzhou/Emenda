@@ -53,34 +53,3 @@
       │◀───────────────────────│                         │
       │                        │                         │
 ```
-
-## 流程3: 错题练习流程
-
-**触发条件**: 学生对已确认的错题进行练习
-**参与服务**: 前端/外部 → ruoyu.mistake
-**数据流转**: Confirmed 错题 → mistake_practice + process_log(Practiced)
-
-```
- 前端/外部                   mistake
-      │                        │
-      │ AddMistakePractice     │
-      │ (mistake_item_id,      │
-      │  student_id,           │
-      │  is_correct, ...)      │
-      │───────────────────────▶│
-      │                        │ 1. 校验错题存在且为 Confirmed
-      │                        │ 2. 创建 MistakePractice 记录
-      │                        │ 3. 记录 ProcessLog(Practiced)
-      │                        │ 4. SaveChanges
-      │                        │
-      │ Response: PracticeDto  │
-      │◀───────────────────────│
-      │                        │
-      │ GetMistakePractices    │
-      │ (mistake_item_id)      │
-      │───────────────────────▶│
-      │                        │ 查询所有练习记录
-      │ Response: practices[]  │
-      │◀───────────────────────│
-      │                        │
-```

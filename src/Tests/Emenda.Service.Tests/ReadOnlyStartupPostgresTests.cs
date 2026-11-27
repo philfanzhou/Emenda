@@ -89,11 +89,6 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
         Assert.Equal(job, Assert.Single(await ArchivedJobsAsync(context)).Key);
         Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
-        var practices = await context.MistakePractices.OrderBy(row => row.Id).ToListAsync();
-        Assert.Equal(2, practices.Count);
-        Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg", "Pictures/中文/A.JPG" },
-            practices.Single(row => row.Id == practice).ImagePaths);
-        Assert.Empty(practices.Single(row => row.Id != practice).ImagePaths);
         var target = await database.SnapshotAsync();
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(target, await database.SnapshotAsync());
@@ -121,7 +116,6 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(1, result.ResetImagePaths);
         Assert.Equal(1, result.ArchivedRows);
         Assert.DoesNotContain(value, string.Join(",", result.Steps));
-        Assert.Empty((await context.MistakePractices.SingleAsync()).ImagePaths);
         Assert.Equal($"mistake_practice|{invalid}|invalid_value|{value}|invalid_image_paths_reset", await database.ScalarAsync<string>(
             "SELECT source_table || '|' || source_key || '|' || kind || '|' || (payload->>'image_paths') || '|' || reason FROM legacy_archive"));
     }
@@ -285,7 +279,6 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Contains("rename ix_process_log_student_id", result.Steps);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Empty(await context.MistakeItems.ToListAsync());
-        Assert.Empty(await context.MistakePractices.ToListAsync());
         Assert.Empty(await context.ProcessLogs.ToListAsync());
         Assert.Empty(await ArchivedJobsAsync(context));
     }
@@ -381,10 +374,6 @@ public sealed class ReadOnlyStartupPostgresTests
     private static async Task AssertMisstampedTargetAsync(MistakeDbContext context, Guid item, Guid practice, Guid log, Guid job)
     {
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
-        var savedPractice = await context.MistakePractices.SingleAsync();
-        Assert.Equal(practice, savedPractice.Id);
-        Assert.Equal(item, savedPractice.MistakeItemId);
-        Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg", "Pictures/中文/A.JPG" }, savedPractice.ImagePaths);
         Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
         Assert.Equal(job, Assert.Single(await ArchivedJobsAsync(context)).Key);
     }
@@ -447,13 +436,9 @@ public sealed class ReadOnlyStartupPostgresTests
         // Normal startup is the upgrade entry; no command, flag or backup precondition is involved.
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         var savedItem = await context.MistakeItems.SingleAsync();
-        var savedPractice = await context.MistakePractices.SingleAsync();
         var savedLog = await context.ProcessLogs.SingleAsync();
         Assert.Equal(item, savedItem.Id);
         Assert.Equal("legacy cause", savedItem.RootCause);
-        Assert.Equal(practice, savedPractice.Id);
-        Assert.Equal(item, savedPractice.MistakeItemId);
-        Assert.Equal(new[] { "uploads/a", "uploads/b" }, savedPractice.ImagePaths);
         Assert.Equal(log, savedLog.Id);
         Assert.Equal(item, savedLog.MistakeItemId);
         Assert.Equal(version >= 2 ? "student-1" : null, savedLog.StudentId);
@@ -504,8 +489,6 @@ public sealed class ReadOnlyStartupPostgresTests
         }));
         await using var check = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(check, NullLoggerFactory.Instance);
-        Assert.Empty((await check.MistakePractices.SingleAsync(row => row.Id == practice)).ImagePaths);
-        Assert.Equal("uploads/fixed", Assert.Single((await check.MistakePractices.SingleAsync(row => row.Id == valid)).ImagePaths));
         Assert.Equal($"{practice}:invalid JSON secret", await database.ScalarAsync<string>(
             "SELECT string_agg(source_key || ':' || (payload->>'image_paths'), ',') FROM legacy_archive"));
     }
@@ -651,7 +634,6 @@ public sealed class ReadOnlyStartupPostgresTests
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
         Assert.Equal("legacy root", (await context.MistakeItems.SingleAsync()).RootCause);
-        Assert.Equal("uploads/a", Assert.Single((await context.MistakePractices.SingleAsync()).ImagePaths));
     }
 
     [Theory]
@@ -659,11 +641,10 @@ public sealed class ReadOnlyStartupPostgresTests
     [InlineData("DROP TABLE process_log", "process_log")]
     // A table retired by v28 must not come back.
     [InlineData("CREATE TABLE reanalyze_job (id uuid PRIMARY KEY)", "reanalyze_job")]
-    [InlineData("ALTER TABLE mistake_practice ALTER COLUMN image_paths TYPE text USING image_paths::text", "image_paths")]
+    [InlineData("CREATE TABLE mistake_practice (id uuid)", "mistake_practice")]
     [InlineData("ALTER TABLE mistake_item ADD COLUMN review_comment text", "review_comment")]
     [InlineData("ALTER TABLE mistake_item RENAME COLUMN root_cause TO review_comment", "root_cause")]
     [InlineData("DROP INDEX \"IX_process_log_student_id\"", "IX_process_log_student_id")]
-    [InlineData("ALTER TABLE mistake_practice DROP CONSTRAINT \"FK_mistake_practice_mistake_item_mistake_item_id\"", "FK_mistake_practice")]
     [InlineData("INSERT INTO \"__EFMigrationsHistory\" VALUES ('99999999999999_Unknown','8.0.11')", "migration history")]
     public async Task ConflictingSchemaOrHistoryIsRejectedWithoutMutation(string mutation, string diagnostic)
     {
@@ -784,7 +765,6 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(items.Order(), (await context.MistakeItems.Select(row => row.Id).ToListAsync()).Order());
         foreach (var item in items)
         {
-            Assert.Single(await context.MistakePractices.Where(row => row.MistakeItemId == item).ToListAsync());
             Assert.Single(await context.ProcessLogs.Where(row => row.MistakeItemId == item).ToListAsync());
         }
     }
@@ -973,11 +953,14 @@ public sealed class ReadOnlyStartupPostgresTests
             await using var command = new NpgsqlCommand($"""
                 SELECT
                     (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM mistake_item t) || '|' ||
-                    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM mistake_practice t) || '|' ||
                     (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM process_log t) || '|' ||
                     ({jobs})
                 """, connection);
-            return (string)(await command.ExecuteScalarAsync())!;
+            var rows = (string)(await command.ExecuteScalarAsync())!;
+            command.CommandText = "SELECT to_regclass('public.mistake_practice') IS NOT NULL";
+            if (!(bool)(await command.ExecuteScalarAsync())!) return rows;
+            command.CommandText = "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM mistake_practice t";
+            return rows + "|" + (string)(await command.ExecuteScalarAsync())!;
         }
 
         public async Task WaitForConversionPauseAsync(string applicationName)

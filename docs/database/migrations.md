@@ -354,3 +354,7 @@ Both deployed environments had no rows, so nothing was archived there.
 Down raises `retired_intake_tables_irreversible`; v28 is forward-only like v26 and v27. The strict classifier
 expects `reanalyze_job` only from v3 to v27 and `product_intake_request` only from v15 to v27. Regression coverage:
 `RetiredIntakeTablesPostgresTests`.
+
+## Schema v29
+
+The forward-only migration retires `mistake_practice` and its image-reference trigger. The item trigger continues to protect original images, supplements and crops referenced by mistake items.

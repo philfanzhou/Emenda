@@ -15,7 +15,6 @@ namespace Emenda.Domain.Tests;
 public class MistakeDomainServiceTests
 {
     private readonly Mock<IMistakeItemRepository> _mockItemRepo;
-    private readonly Mock<IMistakePracticeRepository> _mockPracticeRepo;
     private readonly Mock<IProcessLogRepository> _mockLogRepo;
     private readonly Mock<IUnitOfWork> _mockUow;
     private readonly Mock<ILogger<MistakeDomainService>> _mockLogger;
@@ -24,14 +23,12 @@ public class MistakeDomainServiceTests
     public MistakeDomainServiceTests()
     {
         _mockItemRepo = new Mock<IMistakeItemRepository>();
-        _mockPracticeRepo = new Mock<IMistakePracticeRepository>();
         _mockLogRepo = new Mock<IProcessLogRepository>();
         _mockUow = new Mock<IUnitOfWork>();
         _mockLogger = new Mock<ILogger<MistakeDomainService>>();
 
         _service = new MistakeDomainService(
             _mockItemRepo.Object,
-            _mockPracticeRepo.Object,
             _mockLogRepo.Object,
             _mockUow.Object,
             _mockLogger.Object);
@@ -95,7 +92,6 @@ public class MistakeDomainServiceTests
         var result = await _service.DeleteMistakeItemAsync(itemId);
 
         result.Should().BeTrue();
-        _mockPracticeRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
         _mockLogRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
         _mockItemRepo.Verify(x => x.DeleteAsync(itemId, It.IsAny<CancellationToken>()), Times.Once);
         _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -117,7 +113,6 @@ public class MistakeDomainServiceTests
         var result = await _service.DeleteMistakeItemAsync(itemId);
 
         result.Should().BeTrue();
-        _mockPracticeRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
         _mockLogRepo.Verify(x => x.RemoveByMistakeItemIdAsync(itemId), Times.Once);
         _mockItemRepo.Verify(x => x.DeleteAsync(itemId, It.IsAny<CancellationToken>()), Times.Once);
         _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
@@ -125,51 +120,6 @@ public class MistakeDomainServiceTests
 
 
 
-
-    [Fact]
-    public async Task AddPracticeAsync_WhenItemNotConfirmed_ShouldThrow()
-    {
-        var itemId = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = itemId,
-            ReviewStatus = (int)ReviewStatus.PendingReview
-        };
-
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-
-        var practice = new MistakePracticeModel { MistakeItemId = itemId };
-        var act = () => _service.AddPracticeAsync(practice);
-
-        await act.Should().ThrowAsync<MistakeValidationException>()
-            .WithMessage("*只能对已确认的错题进行练习*");
-    }
-
-    [Fact]
-    public async Task AddPracticeAsync_WhenItemConfirmed_ShouldAddPractice()
-    {
-        var itemId = Guid.NewGuid();
-        var item = new MistakeItemModel
-        {
-            Id = itemId,
-            ReviewStatus = (int)ReviewStatus.Confirmed
-        };
-
-        _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(item);
-
-        var practice = new MistakePracticeModel
-        {
-            MistakeItemId = itemId,
-            StudentId = "student-1",
-            IsCorrect = false
-        };
-
-        var result = await _service.AddPracticeAsync(practice);
-
-        result.Should().NotBeNull();
-        result.MistakeItemId.Should().Be(itemId);
-        _mockUow.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
 
     [Fact]
     public async Task ReviewMistakeItemAsync_WhenPending_ShouldReject()
@@ -309,13 +259,13 @@ public class MistakeDomainServiceTests
         var itemId = Guid.NewGuid();
         _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync(new MistakeItemModel { Id = itemId });
 
-        var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Mastered, "已掌握");
+        var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Analyzed, "Analysis complete");
 
         result.Should().BeTrue();
         _mockLogRepo.Verify(x => x.AddAsync(It.Is<ProcessLogModel>(log =>
             log.MistakeItemId == itemId &&
-            log.Action == (int)ProcessAction.Mastered &&
-            log.Details == "已掌握"), It.IsAny<CancellationToken>()), Times.Once);
+            log.Action == (int)ProcessAction.Analyzed &&
+            log.Details == "Analysis complete"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -324,7 +274,7 @@ public class MistakeDomainServiceTests
         var itemId = Guid.NewGuid();
         _mockItemRepo.Setup(x => x.GetByIdAsync(itemId, It.IsAny<CancellationToken>())).ReturnsAsync((MistakeItemModel?)null);
 
-        var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Mastered, "test");
+        var result = await _service.LogMistakeProcessAsync(itemId, "student-1", ProcessAction.Analyzed, "test");
 
         result.Should().BeFalse();
         _mockLogRepo.Verify(x => x.AddAsync(It.IsAny<ProcessLogModel>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -348,33 +298,6 @@ public class MistakeDomainServiceTests
         result.Should().HaveCount(2);
     }
 
-    // === GetMistakePractices 补充测试 ===
-
-    [Fact]
-    public async Task GetPracticesAsync_ShouldReturnPractices()
-    {
-        var itemId = Guid.NewGuid();
-        var practices = new List<MistakePracticeModel>
-        {
-            new() { Id = Guid.NewGuid(), MistakeItemId = itemId }
-        };
-        _mockPracticeRepo.Setup(x => x.GetByMistakeItemIdAsync(itemId)).ReturnsAsync(practices);
-
-        var result = await _service.GetPracticesAsync(itemId);
-
-        result.Should().HaveCount(1);
-    }
-
-    [Fact]
-    public async Task GetPracticesAsync_WhenNoPractices_ShouldReturnEmptyList()
-    {
-        var itemId = Guid.NewGuid();
-        _mockPracticeRepo.Setup(x => x.GetByMistakeItemIdAsync(itemId)).ReturnsAsync(new List<MistakePracticeModel>());
-
-        var result = await _service.GetPracticesAsync(itemId);
-
-        result.Should().BeEmpty();
-    }
 
     // === DeleteMistakeItem 补充测试 ===
 

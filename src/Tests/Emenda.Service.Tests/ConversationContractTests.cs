@@ -96,8 +96,7 @@ public sealed class ConversationContractTests
     public void V8OnlyRemovesTheExtractionAnalysisFromV7()
     {
         var previous = Resource("mistake-http-v7");
-        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
-        Assert.Equal("mistake-http-v8", MistakeHttpContract.Version);
+        var current = Resource("mistake-http-v8");
         Assert.True(JsonNode.DeepEquals(previous["paths"], current["paths"]));
         var schemas = previous["components"]!["schemas"]!.DeepClone().AsObject();
         var item = schemas["MistakeItemDto"]!.AsObject();
@@ -110,6 +109,16 @@ public sealed class ConversationContractTests
         // Every v8 response is a valid v7 response: the removed member was optional and nothing else changed.
         Assert.True(JsonNode.DeepEquals(previous["components"]!["schemas"]!["MistakeItemDto"]!["required"],
             current["components"]!["schemas"]!["MistakeItemDto"]!["required"]));
+    }
+
+    [Fact]
+    public void CurrentContractRetainsOriginalAnswersAndRemovesPractice()
+    {
+        var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
+        Assert.Equal("mistake-http-v9", MistakeHttpContract.Version);
+        Assert.False(current["paths"]!.AsObject().ContainsKey("/api/mistakes/{id}/practices"));
+        Assert.True(JsonNode.DeepEquals(Resource("mistake-http-v8")["components"]!["schemas"]!["MistakeContent"],
+            current["components"]!["schemas"]!["MistakeContent"]));
     }
 
     private static JsonNode Resource(string version)

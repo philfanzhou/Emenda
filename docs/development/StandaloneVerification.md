@@ -75,8 +75,8 @@ python3 script/verification/standalone.py run \
 | 冲突 | 同 caller/key 更换学生、图片字节、图片顺序或 media type，返回 `409 source_conflict`，数据库无变化 |
 | caller 作用域 | 第二调用方使用相同 sourceKey 可独立创建；不复用第一调用方的 item IDs |
 | 并发 | 六个同 caller/key 的相同请求，允许仅对 `source_in_progress` 原样重试；最终返回同一组 IDs，数据库只新增两行 |
-| 审核与练习 | 沿 `mistake-http-v3` 的 JSON 合同确认审核，检查外层及内层 success；新增练习后 GET 回读答案、结果和 ID |
-| Host 重启持久化 | 同一个实际 dotnet Host 容器 restart；ready 后重放普通及并发 key，IDs 不变、无重复，练习仍可读 |
+| Review | Confirm the item and check both the HTTP envelope and the review result for success. |
+| Host restart | Restart the same Host container, wait for readiness and replay both intake keys. Verify stable item IDs and counts. |
 | S3 故障恢复 | 停止本任务 S3 容器，上传不成功、不创建 item；恢复 S3 后用相同 key/内容完成整批，重放不重复 |
 | 分析故障恢复 | fixture 返回 503 时上传不成功、不创建 item；恢复确定性分析后相同 key/内容完整成功 |
 | 第二分组入库故障 | 仅在本任务新库临时安装触发器，以非事务 sequence 在第二次 item INSERT 抛错；响应不得报 success，item 和 process_log 数量必须与失败前完全相同；移除故障后同 key/内容恢复，最终恰好两行且重放稳定 |

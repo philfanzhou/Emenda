@@ -140,33 +140,6 @@ public class UpdateMistakeItemRequest
     public List<SourceRegionDto> SourceRegions { get; set; } = new();
 }
 
-public class AddMistakePracticeRequest
-{
-    public string MistakeItemId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public List<string> ImagePaths { get; set; } = new();
-    public string? StudentAnswer { get; set; }
-    public bool IsCorrect { get; set; }
-    public string? Comments { get; set; }
-}
-
-public class MistakePracticeDto
-{
-    public string Id { get; set; } = string.Empty;
-    public string MistakeItemId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public string PracticeDate { get; set; } = string.Empty;
-    public List<string> ImagePaths { get; set; } = new();
-    public string StudentAnswer { get; set; } = string.Empty;
-    public bool IsCorrect { get; set; }
-    public string Comments { get; set; } = string.Empty;
-}
-
-public class MistakePracticeListResponse
-{
-    public List<MistakePracticeDto> Practices { get; set; } = new();
-}
-
 public class LogMistakeProcessRequest
 {
     public string MistakeItemId { get; set; } = string.Empty;

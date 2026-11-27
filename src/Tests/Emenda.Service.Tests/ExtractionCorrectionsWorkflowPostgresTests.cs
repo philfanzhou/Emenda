@@ -196,39 +196,6 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
     }
 
     [Fact]
-    public async Task NewPracticeReferenceCannotRacePhysicalCropReclamation()
-    {
-        await using var database = await PostgresTestDatabase.CreateAsync();
-        var service = Service(database, new Analyzer());
-        var job = await Completed(service);
-        var target = job.Questions.First(q => q.Question.Outcome == "incorrect");
-        var retired = target.Images[0].Path;
-        Task? writer = null;
-        database.Oss.Setup(o => o.DeleteDerivedAsync(retired)).Returns(async () =>
-        {
-            writer = Task.Run(async () =>
-            {
-                await using var db = database.CreateContext();
-                db.MistakePractices.Add(new() { Id = Guid.NewGuid(), MistakeItemId = target.ItemId!.Value,
-                    StudentId = "student", ImagePaths = [retired] });
-                await db.SaveChangesAsync();
-            });
-            // GC committed retirement after its final reference scan, before touching S3.
-            var rejected = await Assert.ThrowsAsync<DbUpdateException>(() => writer);
-            Assert.Contains("extraction_object_retired", rejected.InnerException!.Message);
-            return await database.Oss.Object.DeleteIfExistsAsync(retired);
-        });
-        var changed = target.Question with { Regions = [target.Question.Regions[0] with { X0 = .1 }, .. target.Question.Regions.Skip(1)] };
-        await service.ReviseQuestionAsync(Caller, job.Id, target.Question.Id, new(Guid.NewGuid(), job.Version, "Replace crop", changed));
-        Assert.NotNull(writer);
-        var error = await Assert.ThrowsAsync<DbUpdateException>(() => writer);
-        Assert.Contains("extraction_object_retired", error.InnerException!.Message);
-        await using var verify = database.CreateContext();
-        Assert.False(await verify.MistakePractices.AnyAsync());
-        Assert.False(await verify.ExtractionObjects.AnyAsync(o => o.Path == retired));
-    }
-
-    [Fact]
     public async Task CanceledDeletionReceiptStillRejectsRetiredReferences_AndCleanupResumes()
     {
         await using var database = await PostgresTestDatabase.CreateAsync();
@@ -249,7 +216,8 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         await using (var db = database.CreateContext())
         {
             Assert.True((await db.ExtractionObjects.SingleAsync(o => o.Path == retired)).Pending);
-            db.MistakePractices.Add(new() { Id = Guid.NewGuid(), MistakeItemId = target.ItemId!.Value, StudentId = "student", ImagePaths = [retired] });
+            var item = await db.MistakeItems.SingleAsync(i => i.Id == target.ItemId);
+            item.SourceRegions = [new() { SourceImagePath = retired }];
             var error = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
             Assert.Contains("extraction_object_retired", error.InnerException!.Message);
         }
@@ -279,41 +247,6 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         Assert.Equal("Pending", refined.Status);
         Assert.Equal("Superseded", (await service.GetProposalAsync(Caller, job.Id, parent.Id)).Status);
         Assert.Equal(3, (await service.ListProposalsAsync(Caller, job.Id)).Count);
-    }
-
-    [Fact]
-    public async Task PracticeLocksParentBeforeObjects_SoPublicationCannotDeadlockWithItsForeignKey()
-    {
-        await using var database = await PostgresTestDatabase.CreateAsync();
-        var job = await Completed(Service(database, new Analyzer()));
-        var target = job.Questions[0];
-        await using var publisher = database.CreateContext();
-        await using var transaction = await publisher.Database.BeginTransactionAsync();
-        await publisher.Database.ExecuteSqlInterpolatedAsync($"SELECT id FROM mistake_item WHERE id={target.ItemId!.Value} FOR UPDATE");
-        var connection = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var writer = Task.Run(async () =>
-        {
-            await using var db = database.CreateContext();
-            await db.Database.OpenConnectionAsync();
-            connection.SetResult(await db.Database.SqlQuery<int>($"SELECT pg_backend_pid() AS \"Value\"").SingleAsync());
-            db.MistakePractices.Add(new() { Id = Guid.NewGuid(), MistakeItemId = target.ItemId.Value,
-                StudentId = "student", ImagePaths = [target.Images[0].Path] });
-            await db.SaveChangesAsync();
-        });
-        var pid = await connection.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var blocked = false;
-        for (var attempt = 0; attempt < 100 && !blocked; attempt++)
-        {
-            blocked = await publisher.Database.SqlQuery<bool>($"SELECT cardinality(pg_blocking_pids({pid}))>0 AS \"Value\"").SingleAsync();
-            if (!blocked) await Task.Delay(10);
-        }
-        Assert.True(blocked);
-        Assert.Equal(0, await publisher.Database.SqlQuery<int>($"SELECT count(*)::integer AS \"Value\" FROM pg_locks WHERE pid={pid} AND locktype='advisory' AND granted").SingleAsync());
-        var item = await publisher.MistakeItems.SingleAsync(i => i.Id == target.ItemId);
-        item.SourceRegions.Reverse();
-        await publisher.SaveChangesAsync();
-        await transaction.CommitAsync();
-        await writer.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     private static ExtractionService Service(PostgresTestDatabase db, Analyzer analyzer) => new(

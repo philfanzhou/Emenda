@@ -49,17 +49,12 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
             .GetProperty("items").EnumerateArray());
         Assert.Empty((await DataAsync(await foreign.GetAsync($"/api/mistakes/by-upload/{item.SourceUploadId}")))
             .GetProperty("items").EnumerateArray());
-        foreach (var (childRoute, field) in new[] { ("practices", "practices"), ("process-logs", "logs") })
-        {
-            Assert.Single((await DataAsync(await owner.GetAsync($"{route}/{childRoute}"))).GetProperty(field).EnumerateArray());
-            Assert.Empty((await DataAsync(await foreign.GetAsync($"{route}/{childRoute}"))).GetProperty(field).EnumerateArray());
-        }
+        Assert.Single((await DataAsync(await owner.GetAsync($"{route}/process-logs"))).GetProperty("logs").EnumerateArray());
+        Assert.Empty((await DataAsync(await foreign.GetAsync($"{route}/process-logs"))).GetProperty("logs").EnumerateArray());
 
         Assert.Equal(HttpStatusCode.NotFound, (await foreign.PutAsJsonAsync(route, new { grade = 5 })).StatusCode);
         var deniedDelete = await DataAsync(await foreign.DeleteAsync(route));
         Assert.False(deniedDelete.GetProperty("success").GetBoolean());
-        Assert.Equal(HttpStatusCode.BadRequest, (await foreign.PostAsJsonAsync($"{route}/practices",
-            new { studentId = Student, studentAnswer = "foreign write" })).StatusCode);
         var deniedLog = await DataAsync(await foreign.PostAsJsonAsync($"{route}/process-logs",
             new { studentId = Student, action = 1, details = "foreign write" }));
         Assert.False(deniedLog.GetProperty("success").GetBoolean());
@@ -74,7 +69,6 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
 
         await using var db = database.CreateContext();
         Assert.Equal(Student, (await db.MistakeItems.SingleAsync()).StudentId);
-        Assert.Single(await db.MistakePractices.ToListAsync());
         Assert.Single(await db.ProcessLogs.ToListAsync());
     }
 
@@ -178,7 +172,6 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
             db.ExtractionQuestions.Add(new() { Id = questionId, JobId = jobId, ItemId = item.Id, Active = true });
         }
         db.MistakeItems.Add(item);
-        db.MistakePractices.Add(new() { MistakeItemId = item.Id, StudentId = Student, StudentAnswer = "private practice" });
         db.ProcessLogs.Add(new() { MistakeItemId = item.Id, StudentId = Student, Action = 1, Details = "private history" });
         await db.SaveChangesAsync();
         return item;

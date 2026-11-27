@@ -17,8 +17,6 @@ public interface IMistakeDomainService
     Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null, string? reviewReason = null);
     Task<bool> DeleteMistakeItemAsync(Guid id);
     Task<MistakeItemModel?> UpdateMistakeItemPartialAsync(Guid id, string? studentId = null, int? subject = null, int? grade = null, List<SourceRegionModel>? sourceRegions = null);
-    Task<MistakePracticeModel> AddPracticeAsync(MistakePracticeModel practice, List<string>? imagePaths = null);
-    Task<List<MistakePracticeModel>> GetPracticesAsync(Guid mistakeItemId);
     Task<bool> LogMistakeProcessAsync(Guid mistakeItemId, string studentId, ProcessAction action, string details);
     Task<List<ProcessLogModel>> GetMistakeProcessHistoryAsync(Guid mistakeItemId);
 }

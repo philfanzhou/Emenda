@@ -1,0 +1,2779 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Emenda automatic extraction",
+    "version": "3.0.0",
+    "description": "Current-only question corrections. Originals including accepted supplements are retained; only current incorrect questions have formal crops. Retired versions retain receipts only and return 410 for geometry. Trusted BFFs authorize student and subject, filter results and bind identifiers. AI suggestions never imply adoption or review confirmation."
+  },
+  "security": [
+    {
+      "CallerKey": []
+    }
+  ],
+  "paths": {
+    "/api/intake/extractions/retained/{itemId}/images/{index}": {
+      "parameters": [
+        { "in": "path", "name": "itemId", "required": true, "schema": { "type": "string", "format": "uuid" } },
+        { "in": "path", "name": "index", "required": true, "schema": { "type": "integer", "minimum": 0 } },
+        { "$ref": "#/components/parameters/Size" }
+      ],
+      "get": {
+        "operationId": "readRetainedExtractionCrop",
+        "description": "After task deletion, only the original caller may read a confirmed retained item's exact referenced crop. New deletions retain full SHA-256 and length independently of historical key format. Older receipts without manifests use the digest encoded in the crop name.",
+        "responses": {
+          "200": { "description": "Retained PNG crop; with a variant size, an upright JPEG derived from it", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/jpeg": { "schema": { "type": "string", "format": "binary" } } } },
+          "401": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" }, "503": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/intake/extractions/images": {
+      "post": {
+        "operationId": "submitExtractionImagesOnly",
+        "description": "Requires X-Emenda-Api-Key and a valid short-lived X-Emenda-Student-Assertion for the authenticated caller. Pass only ordered JPEG/PNG files, no studentId, grade or sourceKey. Same caller, student and content replay the task; a deleted same-student content match returns 410.",
+        "parameters": [{ "in": "header", "name": "X-Emenda-Student-Assertion", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "type": "object", "required": ["images"], "additionalProperties": false, "properties": { "images": { "type": "array", "minItems": 1, "maxItems": 30, "items": { "type": "string", "format": "binary" } } } } } } },
+        "responses": { "202": { "$ref": "#/components/responses/GroupedExtraction" }, "400": { "$ref": "#/components/responses/Error" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "410": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/intake/extractions/{id}/summary": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": { "operationId": "getExtractionGroupedResult", "responses": { "200": { "$ref": "#/components/responses/GroupedExtraction" }, "401": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/ops/extractions": {
+      "get": {
+        "operationId": "listExtractionOperations",
+        "description": "Requires a machine credential explicitly granted canOperateExtractions. Reads all callers; up to 20 tasks per page ordered createdAt descending then id ascending. Includes failed and zero-question tasks.",
+        "parameters": [{ "in": "query", "name": "page", "schema": { "type": "integer", "minimum": 1, "maximum": 100000, "default": 1 } }, { "in": "query", "name": "studentId", "schema": { "type": "string", "maxLength": 36 } }],
+        "responses": { "200": { "description": "Envelope data is {items:[{id,caller,studentId,createdAt,status,mistakeCount,confirmedCount}],nextPage}; nextPage is null on the last page." }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/api/ops/extractions/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "delete": { "operationId": "deleteExtractionOperation", "description": "Requires the operations grant. Deletes the task and non-confirmed mistakes, preserving confirmed items. Request may be safely repeated to resume cleanup.", "responses": { "200": { "$ref": "#/components/responses/ExtractionDeletionReceipt" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/ops/extractions/{id}/deletion": {
+      "parameters": [{ "$ref": "#/components/parameters/Id" }],
+      "get": { "operationId": "getExtractionDeletionReceipt", "description": "Requires the operations grant. Reads cleanup progress after the task disappears from the list.", "responses": { "200": { "$ref": "#/components/responses/ExtractionDeletionReceipt" }, "401": { "$ref": "#/components/responses/Error" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } } }
+    },
+    "/api/intake/extractions": {
+      "post": {
+        "operationId": "submitExtraction",
+        "summary": "Bind original images and queue extraction",
+        "description": "Required caller-scoped sourceKey binds studentId, grade and ordered original bytes/media types. Identical requests return the same job without reprocessing. Changed content returns 409 source_conflict. Repeating a Staging upload resumes original storage. Images must be single-frame JPEG/PNG, <=8192 pixels per dimension and <=16 megapixels. Duplicate image bytes are represented once. 202 confirms admission, not successful judgment or mistake creation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "studentId",
+                  "grade",
+                  "sourceKey",
+                  "images"
+                ],
+                "properties": {
+                  "studentId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 36
+                  },
+                  "grade": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 12
+                  },
+                  "sourceKey": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._-]{1,64}$"
+                  },
+                  "images": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 30,
+                    "description": "Repeated images or images[] parts, JPEG/PNG, 1 byte to 15 MiB each",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/Job"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listExtractions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "studentId",
+            "schema": {
+              "type": "string",
+              "maxLength": 36
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "At most 20 caller-owned jobs, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Job"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "get": {
+        "operationId": "getExtraction",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Job"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/retry": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "post": {
+        "operationId": "retryExtraction",
+        "description": "Only Failed jobs without a completed version; maximum five total worker claims. Persisted requestKey replay does not requeue work, including after success. Accepted layout and model checkpoints are reused.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestKey"
+                ],
+                "properties": {
+                  "requestKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Job"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/versions/{version}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "$ref": "#/components/parameters/Version"
+        }
+      ],
+      "get": {
+        "operationId": "getExtractionVersion",
+        "responses": {
+          "200": {
+            "description": "Retained grouping snapshot. Item deletion is projected from current receipt state without changing history.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Snapshot"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Only the current version is available. Older versions return 410 version_retired; originals and version receipts remain available."
+      }
+    },
+    "/api/intake/extractions/{id}/sources/{sourceId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "in": "path",
+          "name": "sourceId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/Size"
+        }
+      ],
+      "get": {
+        "operationId": "readExtractionOriginal",
+        "responses": {
+          "200": {
+            "description": "Exact immutable original bytes, verified against retained length and SHA-256; with a variant size, an upright JPEG derived from them",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/questions/{questionId}/images/{version}/{index}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "$ref": "#/components/parameters/Version"
+        },
+        {
+          "in": "path",
+          "name": "questionId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "in": "path",
+          "name": "index",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        {
+          "$ref": "#/components/parameters/Size"
+        }
+      ],
+      "get": {
+        "operationId": "readExtractionCrop",
+        "responses": {
+          "200": {
+            "description": "Exact retained PNG crop, verified against length/SHA-256; with a variant size, an upright JPEG derived from it",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Only the current version is available. Older versions return 410 version_retired; originals and version receipts remain available."
+      }
+    },
+    "/api/intake/extractions/{id}/questions/{questionId}/review": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "in": "path",
+          "name": "questionId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "reviewExtractionQuestion",
+        "description": "Trusted caller review of the exact inspected extraction version and bound mistake. The job lock serializes the version check and domain mutation with grouping revisions. Only PendingReview can become Confirmed or Rejected; stale versions and completed reviews return 409. Originals/crops must use authenticated extraction read endpoints, not the legacy image signer.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "itemId",
+                  "reviewStatus",
+                  "reviewerId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reviewStatus": {
+                    "type": "integer",
+                    "enum": [
+                      2,
+                      3
+                    ]
+                  },
+                  "reviewerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 36
+                  },
+                  "rootCause": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 8000
+                  },
+                  "returnReason": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 2000,
+                    "description": "Required and nonblank when reviewStatus is 3; retained in the review process log"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Committed review receipt using the existing lifecycle review response DTO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "success",
+                        "errorMessage",
+                        "studentId",
+                        "sourceUploadId",
+                        "removedImagePaths"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "errorMessage": {
+                          "type": "string"
+                        },
+                        "studentId": {
+                          "type": "string"
+                        },
+                        "sourceUploadId": {
+                          "type": "string"
+                        },
+                        "removedImagePaths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/questions/{questionId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "in": "path",
+          "name": "questionId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "reviseExtractionQuestion",
+        "description": "Replace one existing active question of a caller-owned job, with matching body question.id. Other questions, order and reviews are preserved server-side and are not returned. Caller authorizes the actual job studentId and target subject. Same key and exact payload replay the accepted target version even after later edits. Keys are bound to the operation and target; conflicting replay or stale version returns 409, missing or foreign target 404. The mistake keeps its identity after correction. Correct/unknown outcomes retire the existing mistake using historical Rejected semantics, never a supplement request; saving does not confirm review. Originals and historical crops remain retained pending the separately delivered storage migration.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/QuestionRevision"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionRevision"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/admin/api/extractions/{id}/questions/{questionId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "in": "path",
+          "name": "questionId",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "reviseAdminExtractionQuestion",
+        "description": "Replace one existing active question of a caller-owned job, with matching body question.id. Other questions, order and reviews are preserved server-side and are not returned. Caller authorizes the actual job studentId and target subject. Same key and exact payload replay the accepted target version even after later edits. Keys are bound to the operation and target; conflicting replay or stale version returns 409, missing or foreign target 404. The mistake keeps its identity after correction. Correct/unknown outcomes retire the existing mistake using historical Rejected semantics, never a supplement request; saving does not confirm review. Originals and historical crops remain retained pending the separately delivered storage migration.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/QuestionRevision"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionRevision"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    },
+    "/api/intake/extractions/{id}/questions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "put": {
+        "operationId": "reviseCallerExtraction",
+        "description": "Replace the full grouping of a caller-owned job. The trusted caller authorizes its user against the job's studentId. For a crop correction, preserve all questions and IDs and change only the affected regions; omitted groups are retracted. Saving does not confirm the mistake. Replaying the same requestKey and payload returns the accepted version; a stale new request or a conflicting replay returns 409.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ExtractionRevision"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Job"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "description": "Caller authentication required"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/admin/api/extractions/{id}/questions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "put": {
+        "operationId": "reviseExtraction",
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ],
+        "description": "Administrative full grouping replacement, protected by session and CSRF. New question IDs are UUIDs; existing IDs keep identity. Omitted groups are retracted while retaining metadata receipts only. Same requestKey and exact payload replays accepted version; conflict is 409. Actual student answer, reference and evidence are required for non-unknown outcomes. Content changes invalidate prior review/root cause and preserve review metadata, never old crop geometry, in the process log. Deleted item receipts are never recreated.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ExtractionRevision"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Job"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/proposals": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "post": {
+        "description": "Generate a persistent candidate from originals plus current grouping. questions is local to questionIds, regions adds missed questions on sourceIds, all is explicit whole-set regrouping. previousProposalId refines a still-pending candidate of the same scope. New IDs are assigned by Emenda; unchanged groups retain UUIDs. No formal crops/items/review changes until adoption. Request/result geometry is cleared on terminal retirement.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Proposal"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "description": "List persisted Generating/Pending suggestions for this caller-owned job.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Proposal"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/proposals/{proposalId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "proposalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "description": "Read candidate or metadata-only terminal receipt.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Proposal"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/proposals/{proposalId}/discard": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "proposalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Idempotently discard a candidate and clear its geometry. Accepted candidates cannot be discarded.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Proposal"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/proposals/{proposalId}/adopt": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "proposalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Publish candidate atomically with version and requestKey fencing. Optional questions allow manual adjustment of candidate frames/content, with existing IDs constrained to this candidate and target scope. Local adoption preserves every other question. No implicit teacher confirmation. A superseded replay returns metadata only.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "jobId",
+                        "requestKey",
+                        "version",
+                        "superseded"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "jobId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "requestKey": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "superseded": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestKey",
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "requestKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "questions": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Question"
+                    },
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/questions/{questionId}/supplements": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Request missing original pages on the existing incorrect item. Publish a new grouping version, reset that item to PendingReview and expose a readable supplement note; preserve job/question/item IDs. No rejection or new item.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Supplement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestKey",
+                  "expectedVersion",
+                  "itemId",
+                  "note"
+                ],
+                "properties": {
+                  "requestKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/questions/{questionId}/supplements/{supplementId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "supplementId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "description": "Read pending/accepted supplement and upload receipt for this exact job/question.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Supplement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/questions/{questionId}/supplements/{supplementId}/images": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "supplementId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Append JPEG/PNG originals to the same item, with requestKey, expectedVersion, itemId and ordered-byte hash binding. Retry partial storage with the same payload/key. Original sources are deduplicated and accepted sources retained permanently. The same question/item remains PendingReview; use AI suggestion or partial revision to update the visible grouping.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Supplement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestKey",
+                  "expectedVersion",
+                  "itemId",
+                  "images"
+                ],
+                "properties": {
+                  "requestKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "minItems": 1,
+                    "maxItems": 30
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/api/extractions/{id}/proposals": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "post": {
+        "description": "Generate a persistent candidate from originals plus current grouping. questions is local to questionIds, regions adds missed questions on sourceIds, all is explicit whole-set regrouping. previousProposalId refines a still-pending candidate of the same scope. New IDs are assigned by Emenda; unchanged groups retain UUIDs. No formal crops/items/review changes until adoption. Request/result geometry is cleared on terminal retirement.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Proposal"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      },
+      "get": {
+        "description": "List persisted Generating/Pending suggestions for this caller-owned job.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Proposal"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    },
+    "/admin/api/extractions/{id}/proposals/{proposalId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "proposalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "description": "Read candidate or metadata-only terminal receipt.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Proposal"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    },
+    "/admin/api/extractions/{id}/proposals/{proposalId}/discard": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "proposalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Idempotently discard a candidate and clear its geometry. Accepted candidates cannot be discarded.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Proposal"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    },
+    "/admin/api/extractions/{id}/proposals/{proposalId}/adopt": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "proposalId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Publish candidate atomically with version and requestKey fencing. Optional questions allow manual adjustment of candidate frames/content, with existing IDs constrained to this candidate and target scope. Local adoption preserves every other question. No implicit teacher confirmation. A superseded replay returns metadata only.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "jobId",
+                        "requestKey",
+                        "version",
+                        "superseded"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "jobId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "requestKey": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "superseded": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestKey",
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "requestKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "questions": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Question"
+                    },
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    },
+    "/admin/api/extractions/{id}/questions/{questionId}/supplements": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Request missing original pages on the existing incorrect item. Publish a new grouping version, reset that item to PendingReview and expose a readable supplement note; preserve job/question/item IDs. No rejection or new item.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Supplement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestKey",
+                  "expectedVersion",
+                  "itemId",
+                  "note"
+                ],
+                "properties": {
+                  "requestKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    },
+    "/admin/api/extractions/{id}/questions/{questionId}/supplements/{supplementId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "supplementId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "description": "Read pending/accepted supplement and upload receipt for this exact job/question.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Supplement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    },
+    "/admin/api/extractions/{id}/questions/{questionId}/supplements/{supplementId}/images": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "supplementId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "description": "Append JPEG/PNG originals to the same item, with requestKey, expectedVersion, itemId and ordered-byte hash binding. Retry partial storage with the same payload/key. Original sources are deduplicated and accepted sources retained permanently. The same question/item remains PendingReview; use AI suggestion or partial revision to update the visible grouping.",
+        "responses": {
+          "200": {
+            "description": "Versioned operation result; same requestKey and exact payload replays its receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Supplement"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "requestKey",
+                  "expectedVersion",
+                  "itemId",
+                  "images"
+                ],
+                "properties": {
+                  "requestKey": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "minItems": 1,
+                    "maxItems": 30
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AdminSession": [],
+            "Csrf": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "requestBodies": {
+      "QuestionRevision": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "requestKey",
+                "expectedVersion",
+                "reason",
+                "question"
+              ],
+              "properties": {
+                "requestKey": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "question": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ExtractionRevision": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "requestKey",
+                "expectedVersion",
+                "reason",
+                "questions"
+              ],
+              "properties": {
+                "requestKey": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "questions": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Question"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "CallerKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Emenda-Api-Key"
+      },
+      "AdminSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "emendaAdminSession"
+      },
+      "Csrf": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-TOKEN"
+      }
+    },
+    "parameters": {
+      "Id": {
+        "in": "path",
+        "name": "id",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "Version": {
+        "in": "path",
+        "name": "version",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "Size": {
+        "in": "query",
+        "name": "size",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "full",
+            "large",
+            "original",
+            "medium",
+            "small",
+            "thumbnail"
+          ],
+          "default": "full"
+        },
+        "description": "Display size. full (default; large/original are aliases) returns the stored bytes; medium (800px), small (400px) and thumbnail (200px) return an upright JPEG fitted to that long edge, never enlarged. Missing variants are rendered on demand from the verified original. Any other value is 400 invalid_size."
+      }
+    },
+    "responses": {
+      "GroupedExtraction": {
+        "description": "Envelope data is {id,status,version,errorCode,groups}. Each group contains summary {subject,subjectName,grade,total,incorrect} and mistakes [{questionId,itemId,itemDeleted,questionNumber,statement,studentAnswer,referenceAnswer,explanation,evidence,images}]. Null grade is unknown; total includes all judgments; images are ordered current crop URLs. No full details for correct or unknown questions."
+      },
+      "ExtractionDeletionReceipt": {
+        "description": "Envelope data is {jobId,deletedAt,status,pendingObjects,deletedMistakes,retainedConfirmed}. Pending and Failed can be queried after removal from the list; Completed means no further cleanup is needed."
+      },
+      "QuestionRevision": {
+        "description": "Accepted target only; never returns unrelated subject questions, originals or version snapshots.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "success",
+                "data"
+              ],
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "studentId",
+                    "version",
+                    "question"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "studentId": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "question": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/QuestionView"
+                        }
+                      ],
+                      "nullable": true,
+                      "description": "Null on a superseded replay; fetch current target."
+                    },
+                    "superseded": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Job": {
+        "description": "Durable task and result view",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "success",
+                "data"
+              ],
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
+                "data": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "description": "Stable safe error code. No raw model output, credentials or internal exceptions.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "success",
+                "errorCode"
+              ],
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                },
+                "errorCode": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Region": {
+        "type": "object",
+        "required": [
+          "sourceId",
+          "x0",
+          "y0",
+          "x1",
+          "y1"
+        ],
+        "description": "Upright displayed-image normalized frame; finite coordinates, x0<x1 and y0<y1. Not the stored EXIF frame.",
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "x0": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y0": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "x1": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "y1": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "Question": {
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "statement",
+          "referenceAnswer",
+          "explanation",
+          "outcome",
+          "evidence",
+          "regions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "questionNumber": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Original printed label, including composite labels. Optional/null when absent or unreadable; never inferred from list position. No surrounding whitespace or control characters. Not unique and never used as the grouping identity."
+          },
+          "subject": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "grade": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 12,
+            "description": "Content grade independent of the student. Absent means unknown when reading and preserves an existing grade for direct corrections."
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "studentAnswer": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 8000
+          },
+          "referenceAnswer": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "correct",
+              "incorrect",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 16000
+          },
+          "regions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "description": "Authoritative reading order, including continuations across front/back photos. Each element produces the crop at the same zero-based images index. Upload order does not override this order.",
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            }
+          }
+        }
+      },
+      "Source": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "contentType",
+          "length",
+          "sha256",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "path": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png"
+            ]
+          },
+          "length": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "orientation": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 8
+          }
+        }
+      },
+      "QuestionView": {
+        "type": "object",
+        "required": [
+          "question",
+          "itemId",
+          "itemDeleted",
+          "images"
+        ],
+        "properties": {
+          "question": {
+            "$ref": "#/components/schemas/Question"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "itemDeleted": {
+            "type": "boolean"
+          },
+          "images": {
+            "type": "array",
+            "description": "Formal crops only for current incorrect, non-deleted items, in region reading order. Correct/unknown/deleted have []. Old-version geometry is retired.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "sourceId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "region": {
+                  "$ref": "#/components/schemas/Region"
+                },
+                "length": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "sha256": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "supplement": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Supplement"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionView"
+            }
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": [
+          "id",
+          "studentId",
+          "grade",
+          "status",
+          "version",
+          "attempt",
+          "sources",
+          "questions",
+          "versions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "studentId": {
+            "type": "string"
+          },
+          "grade": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Staging",
+              "Queued",
+              "Running",
+              "Succeeded",
+              "Failed"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionView"
+            }
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "integer"
+                },
+                "requestKey": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "actor": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "superseded": {
+            "type": "boolean",
+            "description": "Accepted older receipt; questions is empty. Fetch the current job."
+          }
+        }
+      },
+      "Supplement": {
+        "type": "object",
+        "required": [
+          "id",
+          "questionId",
+          "itemId",
+          "status",
+          "note",
+          "version",
+          "sources"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "questionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Requested",
+              "Superseded",
+              "Staging",
+              "Completed",
+              "Fulfilled"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
+          }
+        }
+      },
+      "ProposalRequest": {
+        "type": "object",
+        "required": [
+          "requestKey",
+          "expectedVersion",
+          "instruction",
+          "scope",
+          "questionIds",
+          "sourceIds",
+          "regions"
+        ],
+        "properties": {
+          "requestKey": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "instruction": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "questions",
+              "regions",
+              "all"
+            ]
+          },
+          "questionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "sourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            }
+          },
+          "previousProposalId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "Proposal": {
+        "type": "object",
+        "required": [
+          "id",
+          "jobId",
+          "requestKey",
+          "expectedVersion",
+          "status",
+          "scope",
+          "questionIds",
+          "questions",
+          "errorCode",
+          "request"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestKey": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Generating",
+              "Pending",
+              "Failed",
+              "Superseded",
+              "Discarded",
+              "Expired",
+              "Accepted"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "nullable": true
+          },
+          "questionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            }
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "request": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}

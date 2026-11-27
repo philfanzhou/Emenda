@@ -136,11 +136,12 @@ public sealed class ExtractionHttpPostgresTests
             })));
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Emenda-Api-Key", ExtractionHostFixture.CallerKey);
+        var originalBytes = TestPng();
         async Task<HttpResponseMessage> Submit(string? student, bool extraField = false)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, PortalStudentAssertion.UploadPath);
             using var form = new MultipartFormDataContent();
-            var image = new ByteArrayContent(TestPng());
+            var image = new ByteArrayContent(originalBytes);
             image.Headers.ContentType = new("image/png");
             form.Add(image, "images", "page.png");
             if (extraField) form.Add(new StringContent("different-student"), "studentId");

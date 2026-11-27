@@ -1,6 +1,6 @@
 # ruoyu.mistake 系统上下文
 
-ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责错题记录的全生命周期管理——轮询采集学生上传的错题图片、VL 视觉语言分析、自动创建待审核错题、教师逐条审核确认/退回、审核完成后触发 OSS 图片迁移，到错题练习追踪与类型分析。本服务是错题业务域的唯一数据权威，通过轮询 ruoyu.student 获取已分类的上传记录，并通过 gRPC 对外暴露能力。
+ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责错题记录的全生命周期管理——轮询采集学生上传的错题图片、VL 视觉语言分析、自动创建待审核错题、教师逐条审核确认/退回、审核完成后触发 OSS 图片迁移，到错因分析。本服务是错题业务域的唯一数据权威，通过轮询 ruoyu.student 获取已分类的上传记录，并通过 gRPC 对外暴露能力。
 
 > **停用说明（2026-11-07）**：下图与下文中的 Ruoyu.Admin 已按 [ADR-0030](../../../../../docs/adr/0030-portal-hosted-administration.md) 停用。管理员对 Mistake 的调用改由 User Portal 管理端（上传分配）与 Teacher Portal 管理端（错题查看与修改）发出，均携带管理员自己的访问令牌。
 
@@ -120,7 +120,7 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 
 | 边界规则 | 说明 |
 |----------|------|
-| 数据权威 | mistake 是 `mistake_item`、`mistake_practice`、`process_log` 三张表的唯一写入者 |
+| 数据权威 | mistake 是 `mistake_item`、`process_log` 两张表的唯一写入者 |
 | 只读引用 | `student_id`、`source_upload_id`、`reviewer_id` 为外部引用字段，mistake 不校验其存在性 |
 | 主动调用 Student | 通过 `UploadPollingWorker` 轮询 Student 的 Processing 记录；审核退回时调用 `CreateReturnedUploadRecord` |
 | 不调用其他业务服务 | 不调用 Homework、Quaestura（原 QuestionBank，已迁出为独立仓库，ADR-0011）等其他业务微服务 |
