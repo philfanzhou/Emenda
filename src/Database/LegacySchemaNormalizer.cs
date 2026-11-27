@@ -315,6 +315,8 @@ internal static class LegacySchemaNormalizer
         }
     }
 
+    // PostgreSQL 18 also catalogs every validated NOT NULL as a constraint named <table>_<column>_not_null; like the
+    // strict classifier, the legacy checks skip those and still treat an unvalidated one as unexpected.
     private static async Task NormalizeKeysAsync(DbConnection connection, List<string> steps, CancellationToken cancellationToken)
     {
         var keys = await ReadAsync(connection, """
@@ -328,6 +330,7 @@ internal static class LegacySchemaNormalizer
                    CASE WHEN c.convalidated THEN 'V' ELSE 'U' END
             FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid LEFT JOIN pg_class ref ON ref.oid=c.confrelid
             WHERE c.connamespace='public'::regnamespace AND t.relname IN ('mistake_item','mistake_practice','process_log')
+              AND (c.contype <> 'n' OR NOT c.convalidated)
             """, cancellationToken).ConfigureAwait(false);
         var byName = keys.Select(key => key.Split('|')).ToDictionary(parts => parts[0], parts => string.Join('|', parts.Skip(1)),
             StringComparer.Ordinal);
@@ -427,7 +430,7 @@ internal static class LegacySchemaNormalizer
                 AND (a.attnum = ANY(i.indkey::int2[]) OR pg_get_expr(i.indexprs,i.indrelid) LIKE '%' || a.attname || '%'
                      OR pg_get_expr(i.indpred,i.indrelid) LIKE '%' || a.attname || '%'))
             UNION ALL
-            SELECT c.conname FROM pg_constraint c WHERE c.conrelid='public.{table}'::regclass AND EXISTS (
+            SELECT c.conname FROM pg_constraint c WHERE c.conrelid='public.{table}'::regclass AND (c.contype <> 'n' OR NOT c.convalidated) AND EXISTS (
               SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.conrelid AND a.attname = ANY(@columns) AND a.attnum = ANY(c.conkey))
             """, cancellationToken, ("columns", dropped.ToArray())).ConfigureAwait(false);
         var unexpected = dependents.Where(name => !LegacyColumnIndexes.Contains(name)).Order(StringComparer.Ordinal).FirstOrDefault();
@@ -456,7 +459,7 @@ internal static class LegacySchemaNormalizer
         // Dropping the table drops what hangs on it; only the objects the old layout created may go that way.
         var attached = await ReadAsync(connection, $"""
             SELECT idx.relname FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid WHERE i.indrelid='public.{table}'::regclass
-            UNION ALL SELECT conname FROM pg_constraint WHERE conrelid='public.{table}'::regclass
+            UNION ALL SELECT conname FROM pg_constraint WHERE conrelid='public.{table}'::regclass AND (contype <> 'n' OR NOT convalidated)
             UNION ALL SELECT tgname FROM pg_trigger WHERE tgrelid='public.{table}'::regclass AND NOT tgisinternal
             UNION ALL SELECT rulename FROM pg_rewrite WHERE ev_class='public.{table}'::regclass
             UNION ALL SELECT polname FROM pg_policy WHERE polrelid='public.{table}'::regclass

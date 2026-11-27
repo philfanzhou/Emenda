@@ -272,7 +272,9 @@ WHERE m.source_upload_id LIKE 'extract:%'
 
 - 停止写旧列；迁移删除 `analysis_snapshot`、`conversation_source`、`conversation_caller`。
 - Down 先检查：若存在只在新列里有、旧列无法还原的数据则拒绝降级（与现有迁移的做法一致）。
-- 契约 v8 去掉 `analysisSnapshot`、`conversationSource`（或在 v7 中标记废弃，按 Portal 节奏决定）。
+- 契约 v8 去掉 `analysisSnapshot`。`conversationSource` **不能直接去掉**：Portal 适配 v7 时确认，AI Tutor 的 `read_mistake`
+  仍需要只在答疑快照里才有的作答明细（`attempts`、`studentAttempt`）、evidence hash 和已存分析（`analysis`），
+  `content` 不含这些。删列后改为从 `source_detail` 输出同样的 `conversationSource`（两者逐字节相同），或在 v8 换成等价的 `sourceDetail`。
 - 同时评估清理 P7 中的闲置表 `mistake_analysis`、`reanalyze_job.analysis_input`。
 
 ## 8. 发布顺序
@@ -308,5 +310,5 @@ WHERE m.source_upload_id LIKE 'extract:%'
 | 1 | 阶段 A：v24 迁移、触发器推导、回填、迁移内校验、严格校验器登记 | 已完成（rc.17） |
 | 1a | v25：按回执的真实哈希格式补回已删任务的调用方（test2 发现 2 条） | 已完成（rc.18） |
 | 2 | 阶段 B：`MistakeMaterializer`、实体映射新列、读取侧切换、契约 v7 | 已完成（rc.19） |
-| 3 | Ruoyu Portal 适配 v7 | 待做 |
+| 3 | Ruoyu Portal 适配 v7：读 `sourceKind`/`content`，不再读 `analysisSnapshot`；`conversationSource` 只用于答疑独有的明细 | 进行中 |
 | 4 | 阶段 C：删除旧列、契约 v8、闲置表清理 | Portal 稳定后 |

@@ -69,7 +69,8 @@ internal static class LegacyMistakeConverter
                 CASE WHEN c.convalidated AND NOT c.condeferrable THEN 'V' ELSE '#other' END
             FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid LEFT JOIN pg_class ref ON ref.oid=c.confrelid
                 LEFT JOIN pg_namespace ns ON ns.oid=ref.relnamespace
-            WHERE c.conrelid='public.mistake'::regclass OR c.confrelid='public.mistake'::regclass
+            -- PostgreSQL 18 catalogs validated NOT NULLs as constraints; they are not keys.
+            WHERE (c.conrelid='public.mistake'::regclass OR c.confrelid='public.mistake'::regclass) AND (c.contype <> 'n' OR NOT c.convalidated)
             """, cancellationToken).ConfigureAwait(false);
         var allowed = Columns.Keys.Where(t => t != "mistake")
             .Select(t => $"FK_{t}_mistake_mistake_id|{t}|f|mistake_id|public.mistake|id|cas|V")
