@@ -40,6 +40,8 @@ gRPC 服务实现中必须使用标准的状态码，不得自定义状态码：
 
 Emenda 使用 Serilog 写 Console（`Program.cs` 中 `UseSerilog(... .WriteTo.Console())`），由容器运行时收集日志；不读取 Consul，也不创建 Loki sink。
 
+级别固定为 Information，不读配置。唯一的例外是 `Microsoft.EntityFrameworkCore.Database.Command` 提到 Warning：EF 会把每条执行的 SQL 记成 Information，后台任务的轮询会让它占满日志。SQL 执行失败仍按 Error 记录。容器运行时请配置日志轮转（如 docker `json-file` 的 `max-size`、`max-file`）。
+
 ### 结构化日志规则
 
 - 使用结构化日志占位符，不要使用字符串插值

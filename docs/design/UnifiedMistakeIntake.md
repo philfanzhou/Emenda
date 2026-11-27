@@ -295,7 +295,7 @@ WHERE m.source_upload_id LIKE 'extract:%'
   旧列虽然可以从新列还原，但服务没有执行降级迁移的入口，真正可用的回退路径只有备份恢复；为此单独写一套降级 SQL 收益很小。
 - 契约 v8 只去掉 `analysisSnapshot`（文字就是 `content`，可见性不变），`conversationSource` 保留、改从 `source_detail`
   输出（方案 A）。v7 里 `analysisSnapshot` 是可选字段，所以 v8 的响应同时满足 v7，钉在 v7 的 Portal 不用改。
-- 闲置表 `mistake_analysis`、`reanalyze_job.analysis_input` 的清理不在本阶段，另开 PR。
+- 闲置表 `mistake_analysis`、`reanalyze_job.analysis_input` 的清理不在本阶段，后来由 schema v27 单独完成。
 
 **回滚**：v26 是单向迁移，rc.20 及更早的版本无法在 v26 的库上启动。升级前必须先备份数据库；
 回退时停服务，用升级前的备份恢复数据库，再换回旧镜像。升级后新写入的数据会随之丢失，所以出现问题时应尽早决定。
@@ -335,4 +335,4 @@ WHERE m.source_upload_id LIKE 'extract:%'
 | 2 | 阶段 B：`MistakeMaterializer`、实体映射新列、读取侧切换、契约 v7 | 已完成（rc.19） |
 | 3 | Ruoyu Portal 适配 v7：读 `sourceKind`/`content`，不再读 `analysisSnapshot`；`conversationSource` 只用于答疑独有的明细 | 已完成（Ruoyu.Study !360） |
 | 4 | 阶段 C：schema v26 删除旧列和触发器、契约 v8 | 已完成 |
-| 5 | 闲置表 `mistake_analysis`、`reanalyze_job.analysis_input` 清理 | 待做 |
+| 5 | 闲置表 `mistake_analysis`、`reanalyze_job.analysis_input` 清理 | 已完成（schema v27，有数据时拒绝升级） |

@@ -173,7 +173,7 @@ public sealed class ExtractionDeletionPostgresTests
             """);
         var upgrade = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(21, upgrade.FromVersion);
-        Assert.Equal(26, upgrade.ToVersion);
+        Assert.Equal(27, upgrade.ToVersion);
         Assert.False(db.Database.HasPendingModelChanges());
         var service = Service(database, new(0));
         Assert.Equal(id, (await service.SubmitAsync(Caller, new("student", 6, "legacy", [image, image]))).Id);

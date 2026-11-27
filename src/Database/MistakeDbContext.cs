@@ -33,7 +33,6 @@ public class MistakeDbContext : DbContext
     public DbSet<ProcessLogEntity> ProcessLogs { get; set; } = null!;
     public DbSet<ConversationCollectionEntity> ConversationCollections => Set<ConversationCollectionEntity>();
     public DbSet<ConversationMistakeReceiptEntity> ConversationMistakeReceipts => Set<ConversationMistakeReceiptEntity>();
-    public DbSet<MistakeAnalysisEntity> MistakeAnalyses => Set<MistakeAnalysisEntity>();
     public DbSet<ReanalyzeJobEntity> ReanalyzeJobs { get; set; } = null!;
     public DbSet<ProductIntakeRequestEntity> ProductIntakeRequests => Set<ProductIntakeRequestEntity>();
     public DbSet<ExtractionJobEntity> ExtractionJobs => Set<ExtractionJobEntity>();
@@ -66,7 +65,6 @@ public class MistakeDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         ProductIntakeSchema.Configure(modelBuilder);
-        MistakeAnalysisSchema.Configure(modelBuilder);
         ConversationCollectionModel.Configure(modelBuilder);
         modelBuilder.Entity<MistakeItemEntity>().Property(e => e.ConversationActive).HasDefaultValue(false);
         // Legacy rows belong to no caller. Every other row is owned by its source_caller; an extraction whose task was
@@ -80,8 +78,6 @@ public class MistakeDbContext : DbContext
         modelBuilder.Entity<MistakePracticeEntity>().HasQueryFilter(e => ConversationCallerScope == null
             || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         modelBuilder.Entity<ProcessLogEntity>().HasQueryFilter(e => ConversationCallerScope == null
-            || MistakeItems.Any(item => item.Id == e.MistakeItemId));
-        modelBuilder.Entity<MistakeAnalysisEntity>().HasQueryFilter(e => ConversationCallerScope == null
             || MistakeItems.Any(item => item.Id == e.MistakeItemId));
         ExtractionModel.Configure(modelBuilder);
 

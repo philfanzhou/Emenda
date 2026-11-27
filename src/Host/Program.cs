@@ -22,9 +22,12 @@ var builder = WebApplication.CreateBuilder(args);
 // Emenda is configured from standard appsettings/environment configuration, logs to the
 // console, authenticates per-caller product credentials and owns its PostgreSQL database.
 // Serilog owns logging, so the framework Logging:LogLevel section is never
-// applied: the level below is fixed and logging has no configuration keys.
+// applied: the levels below are fixed and logging has no configuration keys.
+// EF Core logs every executed command at Information, which with the background workers' polling is
+// almost the whole log; a failed command is still logged at Error.
 builder.Host.UseSerilog((_, _, logger) => logger
     .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", Serilog.Events.LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .WriteTo.Console());
 

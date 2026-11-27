@@ -63,9 +63,6 @@ public class ReanalyzeJobEntity
     [Column("attempt")]
     public int Attempt { get; set; }
 
-    [Column("analysis_input", TypeName = "jsonb")]
-    public string? AnalysisInput { get; set; }
-
     [Column("execution_root_cause")]
     public string? ExecutionRootCause { get; set; }
 

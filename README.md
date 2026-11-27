@@ -95,6 +95,9 @@ every old value is recoverable from them, then drops `analysis_snapshot`, `conve
 v8 no longer returns `analysisSnapshot` (its text is `content`); every v8 response is also valid v7. See the
 [unified mistake intake design](docs/design/UnifiedMistakeIntake.md).
 
+Schema v27 drops the unused `mistake_analysis` table and `reanalyze_job.analysis_input` (left from the analysis
+retired in v19); the upgrade refuses to run while either holds data.
+
 ### Database schema v20
 
 Schema v20 adds persistent AI proposals, original-question supplements and crop cleanup.

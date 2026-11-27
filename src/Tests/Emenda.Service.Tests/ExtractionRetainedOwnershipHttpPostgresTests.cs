@@ -76,10 +76,6 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
         Assert.Equal(Student, (await db.MistakeItems.SingleAsync()).StudentId);
         Assert.Single(await db.MistakePractices.ToListAsync());
         Assert.Single(await db.ProcessLogs.ToListAsync());
-        db.ConversationCallerScope = "admin:";
-        Assert.Empty(await db.MistakeAnalyses.ToListAsync());
-        db.ConversationCallerScope = "http-tests";
-        Assert.Single(await db.MistakeAnalyses.ToListAsync());
     }
 
     [Theory]
@@ -184,7 +180,6 @@ public sealed class ExtractionRetainedOwnershipHttpPostgresTests
         db.MistakeItems.Add(item);
         db.MistakePractices.Add(new() { MistakeItemId = item.Id, StudentId = Student, StudentAnswer = "private practice" });
         db.ProcessLogs.Add(new() { MistakeItemId = item.Id, StudentId = Student, Action = 1, Details = "private history" });
-        db.MistakeAnalyses.Add(new() { MistakeItemId = item.Id });
         await db.SaveChangesAsync();
         return item;
     }
