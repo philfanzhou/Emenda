@@ -1,6 +1,6 @@
 # 数据库文档
 
-Schema 19 (`20261122000000_DropManagedSourceTables`) removes the platform-era managed source tables (`source_*`, `legacy_return*`, `layout_job*`) and their guard triggers; the upgrade refuses to run while any of them holds a row. `reanalyze_job` and `product_intake_request` are retained as data although no current code path writes them; schema 27 (`20261129000000_DropIdleMistakeAnalysis`) drops the unused `mistake_analysis` table and `reanalyze_job.analysis_input`, refusing while either holds data. See [migration history](./migrations.md).
+Schema 19 (`20261122000000_DropManagedSourceTables`) removes the platform-era managed source tables (`source_*`, `legacy_return*`, `layout_job*`) and their guard triggers; the upgrade refuses to run while any of them holds a row. Schema 27 (`20261129000000_DropIdleMistakeAnalysis`) drops the unused `mistake_analysis` table and `reanalyze_job.analysis_input`, refusing while either holds data. Schema 28 (`20261130000000_DropRetiredReanalyzeAndIntakeTables`) drops `reanalyze_job` and `product_intake_request` after copying any remaining rows into `legacy_archive`. See [migration history](./migrations.md).
 
 Schema 18 adds `20261118000000_AddConversationMistakes` after the preserved schema-17 structured-analysis migration. Conversation jobs persist caller/actor/student/owner scope and leases; permanent receipts prevent replay after deletion; mistake snapshots remain independent of chat history. See [Conversation collection](../Integration/ConversationCollection.md).
 
@@ -13,7 +13,6 @@ Schema 18 adds `20261118000000_AddConversationMistakes` after the preserved sche
 | `mistake_item` | 错题条目，核心业务表 | [tables/mistake_item.md](./tables/mistake_item.md) |
 | `mistake_practice` | 错题练习记录 | [tables/mistake_practice.md](./tables/mistake_practice.md) |
 | `process_log` | 处理日志，记录错题生命周期 | [tables/process_log.md](./tables/process_log.md) |
-| `reanalyze_job` | 已移除的 VL 再分析任务（仅保留历史数据） | [tables/reanalyze_job.md](./tables/reanalyze_job.md) |
 | `legacy_archive` | 旧结构收敛时被移除或改写数据的只追加归档 | [tables/legacy_archive.md](./tables/legacy_archive.md) |
 
 ## 实体关系

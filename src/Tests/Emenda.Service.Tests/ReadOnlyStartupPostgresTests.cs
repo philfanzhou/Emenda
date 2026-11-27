@@ -57,10 +57,12 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,status,created_at) VALUES ('{running}','{item}','teacher-1','student-1',2,now()),('{pending}','{item}','teacher-1','student-1',1,now()),('{completed}','{item}','teacher-1','student-1',3,now())");
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
-        Assert.Equal(4, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == running)).Status);
-        Assert.Equal("upgrade_interrupted", (await context.ReanalyzeJobs.SingleAsync(j => j.Id == running)).ErrorMessage);
-        Assert.Equal(1, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == pending)).Status);
-        Assert.Equal(3, (await context.ReanalyzeJobs.SingleAsync(j => j.Id == completed)).Status);
+        // v5 interrupted the running job; v28 then archived every job unchanged.
+        var jobs = await ArchivedJobsAsync(context);
+        Assert.Equal(4, jobs[running].GetProperty("status").GetInt32());
+        Assert.Equal("upgrade_interrupted", jobs[running].GetProperty("error_message").GetString());
+        Assert.Equal(1, jobs[pending].GetProperty("status").GetInt32());
+        Assert.Equal(3, jobs[completed].GetProperty("status").GetInt32());
         Assert.Equal(1, await context.ProcessLogs.CountAsync(l => l.MistakeItemId == item));
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(1, await context.ProcessLogs.CountAsync(l => l.MistakeItemId == item));
@@ -85,7 +87,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,created_at) VALUES ('{job}','{item}','teacher-1','student-1',now())");
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
-        Assert.Equal(job, (await context.ReanalyzeJobs.SingleAsync()).Id);
+        Assert.Equal(job, Assert.Single(await ArchivedJobsAsync(context)).Key);
         Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
         var practices = await context.MistakePractices.OrderBy(row => row.Id).ToListAsync();
         Assert.Equal(2, practices.Count);
@@ -285,7 +287,7 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Empty(await context.MistakeItems.ToListAsync());
         Assert.Empty(await context.MistakePractices.ToListAsync());
         Assert.Empty(await context.ProcessLogs.ToListAsync());
-        Assert.Empty(await context.ReanalyzeJobs.ToListAsync());
+        Assert.Empty(await ArchivedJobsAsync(context));
     }
 
     [Theory]
@@ -367,6 +369,15 @@ public sealed class ReadOnlyStartupPostgresTests
         return (item, practice, log, job);
     }
 
+    // Schema v28 drops reanalyze_job after copying each row unchanged into legacy_archive.
+    private static async Task<Dictionary<Guid, System.Text.Json.JsonElement>> ArchivedJobsAsync(MistakeDbContext context) =>
+        (await context.Database.SqlQuery<string>($"""
+            SELECT payload::text AS "Value" FROM legacy_archive
+            WHERE source_table='reanalyze_job' AND kind='row' AND reason={RetiredIntakeTablesSchema.ReanalyzeReason}
+            """).ToListAsync())
+        .Select(payload => System.Text.Json.JsonDocument.Parse(payload).RootElement.Clone())
+        .ToDictionary(job => job.GetProperty("id").GetGuid());
+
     private static async Task AssertMisstampedTargetAsync(MistakeDbContext context, Guid item, Guid practice, Guid log, Guid job)
     {
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
@@ -375,7 +386,7 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(item, savedPractice.MistakeItemId);
         Assert.Equal(new[] { "Pictures/中文/A.JPG", "pictures/a.jpg", "Pictures/中文/A.JPG" }, savedPractice.ImagePaths);
         Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
-        Assert.Equal(job, (await context.ReanalyzeJobs.SingleAsync()).Id);
+        Assert.Equal(job, Assert.Single(await ArchivedJobsAsync(context)).Key);
     }
 
     private sealed class LostCommitAcknowledgementInterceptor : DbTransactionInterceptor
@@ -448,10 +459,10 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(version >= 2 ? "student-1" : null, savedLog.StudentId);
         if (version >= 3)
         {
-            var savedJob = await context.ReanalyzeJobs.SingleAsync();
-            Assert.Equal(job, savedJob.Id);
-            Assert.Equal(item, savedJob.ItemId);
-            Assert.Equal("retry details", savedJob.TeacherDescription);
+            var savedJob = Assert.Single(await ArchivedJobsAsync(context));
+            Assert.Equal(job, savedJob.Key);
+            Assert.Equal(item, savedJob.Value.GetProperty("item_id").GetGuid());
+            Assert.Equal("retry details", savedJob.Value.GetProperty("teacher_description").GetString());
         }
         var target = await database.SnapshotAsync();
         await DatabaseInitializer.InitializeAsync(context, NullLoggerFactory.Instance);
@@ -645,7 +656,9 @@ public sealed class ReadOnlyStartupPostgresTests
 
     [Theory]
     [InlineData("CREATE TABLE public.mistake (id integer PRIMARY KEY)", "public.mistake")]
-    [InlineData("DROP TABLE reanalyze_job", "reanalyze_job")]
+    [InlineData("DROP TABLE process_log", "process_log")]
+    // A table retired by v28 must not come back.
+    [InlineData("CREATE TABLE reanalyze_job (id uuid PRIMARY KEY)", "reanalyze_job")]
     [InlineData("ALTER TABLE mistake_practice ALTER COLUMN image_paths TYPE text USING image_paths::text", "image_paths")]
     [InlineData("ALTER TABLE mistake_item ADD COLUMN review_comment text", "review_comment")]
     [InlineData("ALTER TABLE mistake_item RENAME COLUMN root_cause TO review_comment", "root_cause")]
@@ -952,12 +965,17 @@ public sealed class ReadOnlyStartupPostgresTests
         {
             await using var connection = new NpgsqlConnection(_connection);
             await connection.OpenAsync();
-            await using var command = new NpgsqlCommand("""
+            // reanalyze_job exists from v3 to v27; v28 moves its rows unchanged into legacy_archive.
+            await using var probe = new NpgsqlCommand("SELECT to_regclass('public.reanalyze_job') IS NOT NULL", connection);
+            var jobs = (bool)(await probe.ExecuteScalarAsync())!
+                ? "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM reanalyze_job t"
+                : "SELECT COALESCE(jsonb_agg(payload ORDER BY source_key)::text, '[]') FROM legacy_archive WHERE source_table='reanalyze_job'";
+            await using var command = new NpgsqlCommand($"""
                 SELECT
                     (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM mistake_item t) || '|' ||
                     (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM mistake_practice t) || '|' ||
                     (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM process_log t) || '|' ||
-                    (SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text, '[]') FROM reanalyze_job t)
+                    ({jobs})
                 """, connection);
             return (string)(await command.ExecuteScalarAsync())!;
         }

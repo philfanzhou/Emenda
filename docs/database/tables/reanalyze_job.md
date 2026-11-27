@@ -1,6 +1,8 @@
 # reanalyze_job
 
-> VL 再分析功能已移除，本表不再写入；保留历史数据，不在 schema v19 中删除。
+> **已在 schema v28 删除。** VL 再分析功能在 v19 移除后本表不再写入；v28（`20261130000000_DropRetiredReanalyzeAndIntakeTables`）
+> 把剩余行原样归档到 [`legacy_archive`](./legacy_archive.md)（`source_table='reanalyze_job'`、`reason='reanalyze_job_retired'`）后删表。
+> 下面是 v3–v27 的结构，仅供查阅归档内容。
 
 `id`（uuid）为稳定 JobId；`item_id` 是错题引用，不设外键，因此条目删除后仍可保留失败任务。`reviewer_id`、`student_id`、可选 `teacher_description` 与 `previous_root_cause` 在提交时保存。`previous_root_cause` 是提交时审计快照；执行输入使用领取时的 `execution_root_cause`。
 

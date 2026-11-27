@@ -16,7 +16,8 @@ public sealed class BackupRestorePostgresTests
     private const string Initial = "20260514051544_InitialCreate";
     private const string ProcessLog = "20260612030015_AddStudentIdToProcessLog";
     private const string Reanalyze = "20260626000000_AddReanalyzeJob";
-    private static readonly string[] BusinessTables = ["mistake_item", "mistake_practice", "process_log", "reanalyze_job"];
+    // reanalyze_job is not here: the InitialCreate shape predates it and v28 drops it from the target.
+    private static readonly string[] BusinessTables = ["mistake_item", "mistake_practice", "process_log"];
 
     [Theory]
     [InlineData(false)]
@@ -184,8 +185,6 @@ public sealed class BackupRestorePostgresTests
             await drill.ExecuteAsync(drill.Source, $"INSERT INTO process_log (id,mistake_item_id,student_id,action,created_at) VALUES ('{log}','{item}','student-A',1,now())");
         else
             await drill.ExecuteAsync(drill.Source, $"INSERT INTO process_log (id,mistake_item_id,action,created_at) VALUES ('{log}','{item}',1,now())");
-        if (targetVersion)
-            await drill.ExecuteAsync(drill.Source, $"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,created_at) VALUES ('{Guid.NewGuid()}','{item}','teacher-A','student-A',now())");
     }
 
     private sealed record Manifest(string SchemaHash, string DataHash, string RowCounts, string Ids, int HistoryCount);
@@ -295,7 +294,7 @@ public sealed class BackupRestorePostgresTests
             var data = new StringBuilder();
             var counts = new StringBuilder();
             var ids = new StringBuilder();
-            foreach (var table in BusinessTables.Where(t => target || t != "reanalyze_job"))
+            foreach (var table in BusinessTables)
             {
                 var count = await ScalarAsync(name, $"SELECT count(*) FROM {table}");
                 var rows = await ScalarAsync(name, $"SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id)::text,'[]') FROM {table} t");
