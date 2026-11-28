@@ -174,6 +174,30 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
     }
 
     [Fact]
+    public async Task ProposalKeepsARequestedCollectionOnlyOnACorrectQuestion_AndAdoptionCollectsIt()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer { CollectAll = true };
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        var (correct, unknown) = (job.Questions[1], job.Questions[2]);
+        var proposal = await service.GenerateProposalAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "这两题也收录",
+            "questions", [correct.Question.Id, unknown.Question.Id], [], []));
+
+        Assert.Equal("Pending", proposal.Status);
+        Assert.Equal(new[] { true, false }, proposal.Questions.Select(q => q.IncludedByRequest));
+        var adopted = await service.AdoptProposalAsync(Caller, job.Id, proposal.Id, new(Guid.NewGuid(), job.Version));
+
+        var read = await service.GetAsync(Caller, job.Id);
+        Assert.Equal(adopted.Version, read.Version);
+        var collected = read.Questions.Single(q => q.Question.Id == correct.Question.Id);
+        Assert.Equal(("correct", true), (collected.Question.Outcome, collected.Question.IncludedByRequest));
+        Assert.NotNull(collected.ItemId);
+        Assert.NotEmpty(collected.Images);
+        Assert.Null(read.Questions.Single(q => q.Question.Id == unknown.Question.Id).ItemId);
+    }
+
+    [Fact]
     public async Task ZeroMistakesCanProposeMissingQuestion_DiscardAndStaleAdoptionNeverPublish()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
@@ -273,6 +297,7 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
     {
         public bool MultipleMistakes { get; init; }
         public bool Empty { get; init; }
+        public bool CollectAll { get; init; }
         public Task<QuestionAnalysisResult> AnalyzeAsync(QuestionAnalysisRequest request, CancellationToken ct = default)
         {
             ExtractionQuestionDraft Question(string outcome, string statement, int subject = 2) => new()
@@ -282,7 +307,8 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
             {
                 Assert.NotEmpty(revision.Instruction);
                 var corrected = revision.Questions.Count > 0 ? revision.Questions.Select(q => q with
-                    { Statement = "Complete mistake statement", Regions = [q.Regions[0], q.Regions[^1] with { X1 = .5 }] }).ToList() : [Question("incorrect", "Missed question")];
+                    { Statement = "Complete mistake statement", Regions = [q.Regions[0], q.Regions[^1] with { X1 = .5 }], IncludedByRequest = CollectAll }).ToList()
+                    : [Question("incorrect", "Missed question")];
                 return Task.FromResult(new QuestionAnalysisResult("controlled", corrected));
             }
             return Task.FromResult(new QuestionAnalysisResult("controlled", Empty ? [] :
