@@ -50,6 +50,10 @@ public sealed partial class ExtractionService
                 var snapshot = await CurrentSnapshotAsync(db, job, ct);
                 // Locks the item row: a confirmation committed before this point is seen, a later one finds no question.
                 await RequirePendingAsync(db, job, snapshot, questionId, request.ItemId, ct);
+                // A correct question collected on request is uncollected through the question PUT; removing it
+                // would drop a correct judgment from the upload.
+                if (snapshot.Questions.Single(q => q.Question.Id == questionId).Question.Outcome != "incorrect")
+                    throw new ExtractionException("review_conflict", 409);
                 var remaining = new ExtractionSnapshot(snapshot.Questions.Where(q => q.Question.Id != questionId).ToList());
                 job.SourcesJson = Payload.Serialize(await RemainingSourcesAsync(db, job, questionId, remaining, ct));
                 await db.ExtractionSupplements.Where(s => s.JobId == id && s.QuestionId == questionId).ExecuteDeleteAsync(ct);

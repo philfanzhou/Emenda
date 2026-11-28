@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Emenda.Host.Services.Extraction;
 using Emenda.Service.Intake;
 using Microsoft.Extensions.Options;
@@ -84,6 +85,28 @@ public sealed class AiTutorQuestionClientTests
             if (id == question.Id) Assert.Equal(id, (await client.AnalyzeAsync(request)).Questions.Single().Id);
             else Assert.Equal("invalid_analysis_response", (await Assert.ThrowsAsync<ExtractionException>(() => client.AnalyzeAsync(request))).Code);
         }
+    }
+
+    [Fact]
+    public async Task CollectionOnRequestTravelsWithARevision_AndAnAutomaticAnalysisNeverSetsIt()
+    {
+        var collected = Draft() with { Id = Guid.NewGuid(), Outcome = "correct", StudentAnswer = "2", ReferenceAnswer = "2",
+            Evidence = "Visible answer 2 matches", IncludedByRequest = true };
+        Assert.DoesNotContain("includedByRequest", JsonSerializer.Serialize(Draft(), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var wire = new List<string>();
+        AiTutorQuestionClient Returning(ExtractionQuestionDraft question) => Client(async (message, ct) =>
+        {
+            wire.Add(await message.Content!.ReadAsStringAsync(ct));
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new QuestionAnalysisResult("vision", [question])) };
+        });
+
+        var revised = await Returning(collected).AnalyzeAsync(Request() with { Revision = new("第 1 题做对了，我也想收录", "all", [collected]) });
+        var automatic = await Returning(collected with { Id = Guid.Empty }).AnalyzeAsync(Request());
+
+        Assert.True(revised.Questions.Single().IncludedByRequest);
+        Assert.Contains("\"includedByRequest\":true", wire[0]);
+        Assert.False(automatic.Questions.Single().IncludedByRequest);
+        Assert.DoesNotContain("includedByRequest", wire[1]);
     }
 
     [Fact]

@@ -42,7 +42,7 @@ public sealed partial class ExtractionService
         foreach (var item in retained.Where(i => MistakeSource.Analysis(i) is null))
         {
             var view = snapshot.Questions.SingleOrDefault(q => q.ItemId == item.Id && q.Question.Id.ToString("D") == item.QuestionId);
-            if (view?.Question is not { Outcome: "incorrect" } question || item.StudentId != job.StudentId ||
+            if (view?.Question is not { } question || !Rules.Collected(question) || item.StudentId != job.StudentId ||
                 string.IsNullOrWhiteSpace(question.Statement) || string.IsNullOrWhiteSpace(question.StudentAnswer) ||
                 string.IsNullOrWhiteSpace(question.ReferenceAnswer) || string.IsNullOrWhiteSpace(question.Evidence))
                 throw new ExtractionException("retained_analysis_unavailable", 409);

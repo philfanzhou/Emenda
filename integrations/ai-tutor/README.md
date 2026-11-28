@@ -32,6 +32,8 @@ npx tsx --test test/image-analysis.test.ts
 
 The worksheet-count and revision-context updates passed the exact-baseline apply check, typecheck, build and all 17 focused image-analysis tests using controlled models. `revision:{instruction,scope,questions}` preserves known group IDs and current context; automatic calls omit it. Emenda owns durable suggestions and explicit adoption. Real exam recognition quality requires validation with the configured vision model.
 
+Collection on request (`includedByRequest` on a correct revision group) needs the upstream change in [kingus188/ai-tutor#39](https://github.com/kingus188/ai-tutor/pull/39), which this patch predates. Deploy that AI Tutor version before an Emenda release that sends the flag: the strict request schema rejects unknown group fields.
+
 ## Runtime configuration
 
 Inject provider secrets through runtime configuration, not source control or browser code:

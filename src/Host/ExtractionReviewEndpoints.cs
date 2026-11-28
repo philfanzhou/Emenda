@@ -32,7 +32,8 @@ public static partial class ExtractionEndpoints
         var question = job.Questions.SingleOrDefault(view => view.Question.Id == questionId);
         if (question is null || question.ItemDeleted || question.ItemId != request.ItemId)
             throw new ExtractionException("question_not_found", 404);
-        if (question.Question.Outcome != "incorrect") throw new ExtractionException("review_conflict", 409);
+        // A correct question the user asked to collect is confirmed like a mistake; its judgment stays correct.
+        if (!Rules.Collected(question.Question)) throw new ExtractionException("review_conflict", 409);
         var item = await mistakes.GetMistakeItemAsync(request.ItemId);
         if (item is null) throw new ExtractionException("question_not_found", 404);
         if (item.StudentId != job.StudentId || item.SourceUploadId != $"extract:{job.Id:N}" ||

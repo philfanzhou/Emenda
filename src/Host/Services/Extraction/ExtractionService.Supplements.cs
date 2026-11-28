@@ -21,7 +21,7 @@ public sealed partial class ExtractionService
     {
         var target = snapshot.Questions.SingleOrDefault(q => q.Question.Id == questionId);
         if (target is null || target.ItemDeleted || target.ItemId != itemId) throw new ExtractionException("not_found", 404);
-        if (target.Question.Outcome != "incorrect") throw new ExtractionException("question_not_in_review", 409);
+        if (!Rules.Collected(target.Question)) throw new ExtractionException("question_not_in_review", 409);
         return target;
     }
 

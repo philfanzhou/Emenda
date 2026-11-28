@@ -89,7 +89,9 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
             ValidateResult(result, request.Images.Select(i => i.SourceId).ToHashSet());
             if (request.Revision is not null && result!.Questions.Any(q => q.Id != Guid.Empty && !request.Revision.Questions.Any(c => c.Id == q.Id)))
                 throw new ExtractionException("invalid_analysis_response", 502);
-            return result!;
+            // Collection on request answers a revision hint; an automatic analysis never sets it.
+            return request.Revision is not null ? result!
+                : result! with { Questions = result.Questions.Select(q => q with { IncludedByRequest = false }).ToList() };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (OperationCanceledException) { throw new ExtractionException("analysis_timeout", 504); }
