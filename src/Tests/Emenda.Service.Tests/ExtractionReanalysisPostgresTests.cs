@@ -166,6 +166,7 @@ public sealed class ExtractionReanalysisPostgresTests
     public static TheoryData<string, int, string> RejectedOutputs => new()
     {
         { "withdraw", 422, "reanalysis_out_of_scope" },
+        { "collect-unknown", 422, "reanalysis_out_of_scope" },
         { "subject", 422, "reanalysis_out_of_scope" },
         { "new-subject", 422, "reanalysis_out_of_scope" },
         { "duplicate", 422, "clarification_required" },
@@ -190,6 +191,8 @@ public sealed class ExtractionReanalysisPostgresTests
         {
             // "第 12 题其实是对的" withdraws a pending mistake: that is "不是错题", not reanalysis.
             "withdraw" => [context[0] with { Outcome = "correct" }],
+            // Only a verified correct answer is collected on request.
+            "collect-unknown" => [context[1] with { Outcome = "unknown", IncludedByRequest = true }],
             "subject" => [context[0] with { Subject = 3 }],
             "new-subject" => [Question("15", page1, .8, 1) with { Id = Guid.Empty, Subject = 3 }],
             // Question 14 found again as a new question over most of its region.
@@ -214,27 +217,6 @@ public sealed class ExtractionReanalysisPostgresTests
         await using var context = db.CreateContext();
         Assert.Equal(2, await context.MistakeItems.CountAsync(i => i.ReviewStatus == (int)ReviewStatus.PendingReview));
         Assert.False(await context.ExtractionObjects.AnyAsync(o => o.Path.Contains(key.ToString("N"))));
-    }
-
-    [Fact]
-    public async Task QuestionTheHintMakesUnknown_IsCollectedAsAnOrdinaryMistake_AndARequestOnItIsDropped()
-    {
-        await using var db = await PostgresTestDatabase.CreateAsync();
-        var analyzer = new Analyzer();
-        var service = Service(db, analyzer);
-        var job = await Completed(service);
-        Assert.Null(job.Questions[1].ItemId);
-        analyzer.Revise = context => [context[1] with { Outcome = "unknown", StudentAnswer = null, Evidence = "", IncludedByRequest = true }];
-
-        var receipt = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "第 14 题看不清，也收进来", Math));
-
-        Assert.Equal(job.Version + 1, receipt.Version);
-        var view = (await service.GetAsync(Caller, job.Id)).Questions[1];
-        Assert.Equal(("unknown", false), (view.Question.Outcome, view.Question.IncludedByRequest));
-        Assert.NotNull(view.ItemId);
-        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(view.Images).Path));
-        await using var context = db.CreateContext();
-        Assert.Equal((int)ReviewStatus.PendingReview, (await context.MistakeItems.SingleAsync(i => i.Id == view.ItemId)).ReviewStatus);
     }
 
     [Fact]
@@ -369,7 +351,7 @@ public sealed class ExtractionReanalysisPostgresTests
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer { Initial = page => [Question("14", page[0], .5, .75) with { Outcome = "correct" },
-            Question("16", page[1], 0, .5) with { Outcome = "correct" }] };
+            Question("16", page[1], 0, .5) with { Outcome = "unknown" }] };
         var service = Service(db, analyzer);
         var job = await Completed(service, expected: 2);
         analyzer.Revise = _ => [Question("15", job.Sources[0].Id, .8, 1) with { Id = Guid.Empty }];

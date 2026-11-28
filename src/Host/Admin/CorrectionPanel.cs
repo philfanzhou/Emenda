@@ -100,7 +100,7 @@ window.renderEmendaCorrections = function(root, api) {
       candidates.append(article);
     }
   }
-  if (selected && selected.itemId && !selected.itemDeleted && (selected.question.outcome !== 'correct' || selected.question.includedByRequest)) {
+  if (selected && selected.itemId && !selected.itemDeleted && selected.question.outcome === 'incorrect') {
     const supplement = element('fieldset'); supplement.append(element('legend', '原题补图'));
     const pending = selected.supplement;
     if (pending) {

@@ -55,7 +55,7 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
     }
 
     [Fact]
-    public async Task GroupedResult_ListsMistakesAndUnknownJudgments_AndLegacyCorrectionKeepsKnownGrades()
+    public async Task GroupedResult_ExposesOnlyMistakes_AndLegacyCorrectionKeepsKnownGrades()
     {
         await using var database = await PostgresTestDatabase.CreateAsync();
         using var factory = new ExtractionHostFixture(database.Connection);
@@ -77,16 +77,10 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(new[] { 6, 8 }, groups.Select(g => g.GetProperty("summary").GetProperty("grade").GetInt32()));
         Assert.Equal(3, groups[0].GetProperty("summary").GetProperty("total").GetInt32());
         Assert.Equal(1, groups[0].GetProperty("summary").GetProperty("incorrect").GetInt32());
-        // An unknown judgment is listed as an ordinary mistake with its item and crop; only the correct one is left out.
-        var mistakes = groups[0].GetProperty("mistakes").EnumerateArray().ToArray();
-        Assert.Equal(new[] { first.Id, unknown.Id }, mistakes.Select(m => m.GetProperty("questionId").GetGuid()));
-        Assert.All(mistakes, m => Assert.Equal(JsonValueKind.String, m.GetProperty("itemId").ValueKind));
-        Assert.Equal(JsonValueKind.Null, mistakes[1].GetProperty("studentAnswer").ValueKind);
-        foreach (var mistake in mistakes)
-        {
-            var image = Assert.Single(mistake.GetProperty("images").EnumerateArray()).GetString();
-            Assert.Equal(HttpStatusCode.OK, (await caller.GetAsync(image)).StatusCode);
-        }
+        var onlyMistake = Assert.Single(groups[0].GetProperty("mistakes").EnumerateArray());
+        Assert.Equal(first.Id, onlyMistake.GetProperty("questionId").GetGuid());
+        var image = Assert.Single(onlyMistake.GetProperty("images").EnumerateArray()).GetString();
+        Assert.Equal(HttpStatusCode.OK, (await caller.GetAsync(image)).StatusCode);
         await using var db = database.CreateContext();
         Assert.Equal(6, (await db.MistakeItems.SingleAsync(i => i.Id == corrected.Question.ItemId)).Grade);
     }

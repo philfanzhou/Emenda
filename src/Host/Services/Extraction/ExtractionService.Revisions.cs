@@ -127,12 +127,7 @@ public sealed partial class ExtractionService
             row.Active = true;
             MistakeItemEntity? item = row.ItemId is { } itemId ? items.GetValueOrDefault(itemId) : null;
             var collected = Rules.Collected(proposed.Question);
-            // A question published unknown before unknown ones were collected has no crops yet, and its item, if any, was
-            // rejected only because of that judgment. The first revision that rebuilds the snapshot creates or reopens the
-            // item; one (such as a removal) that republishes the question as it is leaves it, since there are no crops.
-            var reopened = collected && proposed.Images.Count > 0
-                && item is { ReviewStatus: (int)ReviewStatus.Rejected, ReviewedAt: null };
-            if (collected && row.ItemId is null && proposed.Images.Count > 0)
+            if (collected && row.ItemId is null)
             {
                 item = new() { Id = Guid.NewGuid(), StudentId = job.StudentId, Subject = proposed.Question.Subject,
                     Grade = proposed.Question.Grade ?? 0, SourceUploadId = $"extract:{job.Id:N}", QuestionId = row.Id.ToString("D"),
@@ -146,7 +141,7 @@ public sealed partial class ExtractionService
                     Details = Payload.Serialize(new { operation = "extraction_created", actor, reason, jobId = job.Id,
                         version = job.Version + 1, questionId = row.Id }) });
             }
-            else if (item is not null && (changed || reopened))
+            else if (item is not null && changed)
             {
                 RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
                 item.Subject = proposed.Question.Subject;
@@ -199,7 +194,7 @@ public sealed partial class ExtractionService
     }
 
     private static string SerializeAnalysis(ExtractionQuestionDraft question, int version) =>
-        Payload.Serialize(new MistakeAnalysisSnapshotDto(question.Statement, question.StudentAnswer,
+        Payload.Serialize(new MistakeAnalysisSnapshotDto(question.Statement, question.StudentAnswer!,
             question.ReferenceAnswer, question.Explanation, question.Evidence, version));
 
     private static void RetainBeforeCorrection(MistakeDbContext db, MistakeItemEntity item, string actor,
