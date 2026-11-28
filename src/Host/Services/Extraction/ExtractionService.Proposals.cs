@@ -93,18 +93,7 @@ public sealed partial class ExtractionService
         }
         try
         {
-            var inputs = new List<QuestionAnalysisImage>();
-            var previewBudget = (AiTutorQuestionClient.RequestLimit - Math.Max(1024 * 1024, sources.Count * 64 * 1024)
-                - System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(context, ExtractionRules.Json).Length) / sources.Count * 3 / 4;
-            if (previewBudget < 1024) throw new ExtractionException("analysis_request_too_large", 413);
-            foreach (var source in sources)
-            {
-                var bytes = await VerifiedSourceAsync(source, ct);
-                var preview = Emenda.Common.Oss.QuestionImage.Preview(bytes, previewBudget);
-                inputs.Add(new(source.Id, "data:image/jpeg;base64," + Convert.ToBase64String(preview), source.Width, source.Height,
-                    request.Regions.Where(r => r.SourceId == source.Id).ToList()));
-            }
-            var analyzed = await analysis.AnalyzeAsync(new(grade, inputs) { Revision = new(request.Instruction, request.Scope, context) }, ct);
+            var analyzed = await AnalyzeRevisionAsync(grade, sources, context, request.Instruction, request.Scope, request.Regions, ct);
             var allowed = context.Select(q => q.Id).ToHashSet();
             if (analyzed.Questions.Any(q => q.Id != Guid.Empty && !allowed.Contains(q.Id))) throw new ExtractionException("foreign_question", 502);
             var proposed = analyzed.Questions.Select((q, i) => q.Id == Guid.Empty
@@ -153,6 +142,25 @@ public sealed partial class ExtractionService
                     .SetProperty(p => p.ErrorCode, error is ExtractionException ? ((ExtractionException)error).Code : "proposal_failed"), CancellationToken.None);
             throw;
         }
+    }
+
+    /// <summary>Sends the verified originals, as size-bounded previews, with the current grouping and an instruction.</summary>
+    private async Task<QuestionAnalysisResult> AnalyzeRevisionAsync(int? grade, List<ExtractionSource> sources,
+        List<ExtractionQuestionDraft> context, string instruction, string scope, List<ExtractionRegion> regions, CancellationToken ct)
+    {
+        if (sources.Count is < 1 or > ExtractionRules.MaxSources) throw new ExtractionException("analysis_request_too_large", 413);
+        var inputs = new List<QuestionAnalysisImage>();
+        var previewBudget = (AiTutorQuestionClient.RequestLimit - Math.Max(1024 * 1024, sources.Count * 64 * 1024)
+            - System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(context, ExtractionRules.Json).Length) / sources.Count * 3 / 4;
+        if (previewBudget < 1024) throw new ExtractionException("analysis_request_too_large", 413);
+        foreach (var source in sources)
+        {
+            var bytes = await VerifiedSourceAsync(source, ct);
+            var preview = Emenda.Common.Oss.QuestionImage.Preview(bytes, previewBudget);
+            inputs.Add(new(source.Id, "data:image/jpeg;base64," + Convert.ToBase64String(preview), source.Width, source.Height,
+                regions.Where(r => r.SourceId == source.Id).ToList()));
+        }
+        return await analysis.AnalyzeAsync(new(grade, inputs) { Revision = new(instruction, scope, context) }, ct);
     }
 
     public async Task<List<ExtractionProposalView>> ListProposalsAsync(ExtractionAccess access, Guid id, CancellationToken ct = default)

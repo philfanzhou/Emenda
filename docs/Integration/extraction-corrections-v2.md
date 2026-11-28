@@ -33,6 +33,24 @@ UUID 和版本必须换成当前读出的真实值，不可用示例写业务数
 
 `POST .../{id}/proposals/{proposalId}/adopt`：`{requestKey,expectedVersion,questions?}`。可选 `questions` 用于微调候选框与内容；局部采纳由服务端合成全集，保持其他题和审核不变。返回接受版本回执；只有这一步生成正式裁图及错题，仍不代表教师确认。`POST .../discard` 丢弃并清空候选几何；重复丢弃幂等。过期、外部任务/题/原图、越范围 ID 和同键变载荷被拒绝。
 
+## 单题调整（直接生效）
+
+`POST .../{id}/questions/{questionId}/adjust`：`{requestKey,expectedVersion,itemId,instruction}`。对应门户「调整」：针对一道**待审核**错题，用一句话说明怎么改；AI 读取该任务全部原图，结果校验通过后直接发布，不经过建议/采纳。`instruction` 去除首尾空白后 1–2000 字。BFF 先校验学生及该题学科权限；调整不能改变学科，因此不会越出已授权范围。
+
+成功返回 `200`，`data` 同单题 PUT 回执：`{id,studentId,version,question}`。题目 ID、错题 ID、题号和年级不变（题号、年级用单题 PUT 修改），仍为 `PendingReview`；版本号加一。被替换且不再有引用的裁图进入回收队列；其他题、原图和共享图片不动。同键同载荷重放返回原回执，不重新推理、不重复写入，也不会冲掉之后的确认；同键不同载荷 `409 request_payload_conflict`。
+
+推理前、发布时（与确认审核同一把任务锁、同一事务）都检查：目标题仍是 incorrect，绑定的错题仍属于该学生、该任务、该题和学科，且仍为 `PendingReview`。确认审核不推进版本号，因此 AI 运行期间被确认、删除或换绑时返回 `409`，不发布调整；为此生成的新裁图立即回收。原图超过 30 张（补图累积）时，先发送该题所在原图，其余按顺序补足 30 张。
+
+先校验 AI 的完整结果，任何一条不满足就整体拒绝，什么都不发布：
+
+| 状态 | `errorCode` | 情况 |
+|---|---|---|
+| 422 | `adjustment_out_of_scope` | 结果不是恰好一道题、ID 不是所选题（涉及其他题、拆题、合并或新增/删除记录）；改了学科；判定不再是 incorrect；内容与另一题完全相同（合并） |
+| 422 | `clarification_required` | 调整后全部区域合计覆盖另一题某个区域的面积，比调整前多出该区域面积的 20% 以上（多个小区域合并计算；原有重叠不计入），视为裁进了别的题，请用户说明 |
+| 409 | `version_conflict` / `review_conflict` / `item_binding_conflict` | 版本过期；目标不是待审核错题；`itemId` 不匹配或错题已删除、换绑 |
+| 404 | `not_found` | 任务不属于调用方，或题目不在当前版本 |
+| 502 | `invalid_analysis_response` | 模型输出无效 |
+
 ## 原题补图
 
 `POST .../{id}/questions/{questionId}/supplements`：`{requestKey,expectedVersion,itemId,note}`。只针对当前有效错题，将原条目置为 `PendingReview`，显示可读待补说明，发布新的内容版本。不会使用 `Rejected` 或创建新条目。

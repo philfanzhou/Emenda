@@ -31,13 +31,14 @@ public sealed partial class ExtractionService
     }
 
     private async Task<ExtractionJobView> ReviseCoreAsync(ExtractionAccess access, Guid id,
-        ExtractionRevisionRequest request, Guid? questionId, CancellationToken ct, ProposalAcceptance? acceptance = null)
+        ExtractionRevisionRequest request, Guid? questionId, CancellationToken ct, ProposalAcceptance? acceptance = null,
+        PendingTarget? pending = null)
     {
         if (request is null || request.RequestKey == Guid.Empty || request.ExpectedVersion < 0 ||
             string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 2000)
             throw new ExtractionException("invalid_request");
         // Keep existing whole-set receipts byte-compatible; bind partial receipts to their target.
-        var hash = acceptance?.Hash ?? (questionId.HasValue ? ExtractionRules.Hash(new { questionId, request }) : ExtractionRules.Hash(request));
+        var hash = acceptance?.Hash ?? pending?.Hash ?? (questionId.HasValue ? ExtractionRules.Hash(new { questionId, request }) : ExtractionRules.Hash(request));
         await using var jobLock = await SerializeJobAsync(id, ct);
         List<ExtractionQuestionDraft> drafts;
         ExtractionJobEntity initial;
@@ -87,6 +88,8 @@ public sealed partial class ExtractionService
         }
         if (current.Version != request.ExpectedVersion || current.Status is not ("Succeeded" or "Failed"))
             throw new ExtractionException("version_conflict", 409);
+        // Confirmation does not advance the version; recheck the live item under the shared job lock.
+        if (pending is not null) await RequirePendingAsync(publish, current, prior!, questionId!.Value, pending.ItemId, ct);
         await PublishRevisionAsync(publish, current, snapshot, prior, request.RequestKey, hash,
             access.Actor, request.Reason, "manual", ct);
         if (acceptance is not null)

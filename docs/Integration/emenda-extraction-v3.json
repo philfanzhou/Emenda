@@ -1033,6 +1033,52 @@
         }
       }
     },
+    "/api/intake/extractions/{id}/questions/{questionId}/adjust": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "adjustExtractionQuestion",
+        "description": "Apply one natural-language instruction to a single PendingReview question, directly and without proposal/adoption. The model sees every original page of the job. Only the selected question may change: same question and item IDs, same subject, outcome stays incorrect, item stays PendingReview; version advances by one and superseded unreferenced crops are reclaimed. Pending status and item binding are checked before inference and again at publication under the review lock; confirmation, removal or rebinding meanwhile returns 409 without publishing, and crops stored for it are reclaimed. 422 adjustment_out_of_scope when the result touches another question, splits, merges, creates or removes a record, or changes subject/outcome; 422 clarification_required when the union of the adjusted regions newly covers more than 20% of another question's region (coverage that already existed does not count). The printed question number and grade are kept. Jobs grown past 30 pages send the target's pages first, then the rest in order up to 30. Same requestKey and exact payload replays its receipt without inference.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/QuestionAdjustment"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionRevision"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/intake/extractions/{id}/questions/{questionId}/supplements": {
       "parameters": [
         {
@@ -1705,6 +1751,52 @@
         ]
       }
     },
+    "/admin/api/extractions/{id}/questions/{questionId}/adjust": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "adjustAdminExtractionQuestion",
+        "description": "Apply one natural-language instruction to a single PendingReview question, directly and without proposal/adoption. The model sees every original page of the job. Only the selected question may change: same question and item IDs, same subject, outcome stays incorrect, item stays PendingReview; version advances by one and superseded unreferenced crops are reclaimed. Pending status and item binding are checked before inference and again at publication under the review lock; confirmation, removal or rebinding meanwhile returns 409 without publishing, and crops stored for it are reclaimed. 422 adjustment_out_of_scope when the result touches another question, splits, merges, creates or removes a record, or changes subject/outcome; 422 clarification_required when the union of the adjusted regions newly covers more than 20% of another question's region (coverage that already existed does not count). The printed question number and grade are kept. Jobs grown past 30 pages send the target's pages first, then the rest in order up to 30. Same requestKey and exact payload replays its receipt without inference.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/QuestionAdjustment"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionRevision"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/admin/api/extractions/{id}/questions/{questionId}/supplements": {
       "parameters": [
         {
@@ -2010,6 +2102,43 @@
   },
   "components": {
     "requestBodies": {
+      "QuestionAdjustment": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "requestKey",
+                "expectedVersion",
+                "itemId",
+                "instruction"
+              ],
+              "properties": {
+                "requestKey": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "itemId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "The pending mistake item currently bound to the question."
+                },
+                "instruction": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "Trimmed before validation and hashing."
+                }
+              }
+            }
+          }
+        }
+      },
       "QuestionRevision": {
         "required": true,
         "content": {
