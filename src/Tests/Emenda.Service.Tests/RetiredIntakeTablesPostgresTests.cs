@@ -35,7 +35,7 @@ public sealed class RetiredIntakeTablesPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(27, upgraded.FromVersion);
-        Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(30, upgraded.ToVersion);
         Assert.False(await TableAsync(db, "reanalyze_job"));
         Assert.False(await TableAsync(db, "product_intake_request"));
         Assert.Equal(jobs, await ArchivedAsync(db, "reanalyze_job", RetiredIntakeTablesSchema.ReanalyzeReason));

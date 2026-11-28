@@ -16,7 +16,7 @@ public sealed class ConversationSchemaPostgresTests
         var id = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO mistake_item(id,student_id,subject,grade,source_upload_id,source_regions,review_status,root_cause,created_at) VALUES ({id},'existing',2,3,'legacy','[]'::jsonb,1,'Teacher retained',now())");
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
-        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(17, upgraded.FromVersion); Assert.Equal(30, upgraded.ToVersion);
         Assert.Equal("Teacher retained", (await db.MistakeItems.SingleAsync()).RootCause);
         Assert.Equal(0, await db.Database.SqlQuery<int>($"SELECT ((to_regclass('public.mistake_analysis') IS NOT NULL)::int + (SELECT count(*)::int FROM information_schema.columns WHERE table_name='reanalyze_job' AND column_name='analysis_input')) AS \"Value\"").SingleAsync());
         Assert.Contains(MistakeAnalysisSchema.Migration, await db.Database.GetAppliedMigrationsAsync());

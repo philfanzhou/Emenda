@@ -78,7 +78,7 @@ public sealed class ExtractionMistakeRemovalPostgresTests
         Assert.Equal(receipt.Version, (await service.GetAsync(Caller, job.Id)).Version);
         var again = await Assert.ThrowsAsync<ExtractionException>(() => service.RemoveMistakeAsync(Caller, job.Id,
             q12.Question.Id, request with { ExpectedVersion = receipt.Version }));
-        Assert.Equal((404, "not_found"), (again.Status, again.Code));
+        Assert.Equal((409, "item_binding_conflict"), (again.Status, again.Code));
     }
 
     [Fact]

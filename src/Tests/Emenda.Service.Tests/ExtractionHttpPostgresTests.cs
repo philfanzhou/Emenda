@@ -302,13 +302,15 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
     public const string CallerKey = "test-extraction-caller-credential-not-for-production";
     private readonly string _connection;
     private readonly bool _runWorker;
+    private readonly IQuestionAnalysisClient? _analyzer;
     private readonly string _root = Path.Combine(Path.GetTempPath(), "emenda-extraction-http-" + Guid.NewGuid().ToString("N"));
     private readonly Dictionary<string, string?> _previous = [];
 
-    public ExtractionHostFixture(string connection, bool runWorker = false, string callerName = "http-tests")
+    public ExtractionHostFixture(string connection, bool runWorker = false, string callerName = "http-tests", IQuestionAnalysisClient? analyzer = null)
     {
         _connection = connection;
         _runWorker = runWorker;
+        _analyzer = analyzer;
         Directory.CreateDirectory(_root);
         File.WriteAllText(Path.Combine(_root, "callers.json"), "{\"version\":1,\"callers\":[]}");
         var settings = new Dictionary<string, string?>
@@ -340,7 +342,7 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
             services.RemoveAll<IOssService>();
             services.AddSingleton<IOssService>(new LocalFileOssService(Path.Combine(_root, "oss")));
             services.RemoveAll<IQuestionAnalysisClient>();
-            services.AddSingleton<IQuestionAnalysisClient, ControlledAnalysis>();
+            services.AddSingleton<IQuestionAnalysisClient>(_analyzer ?? new ControlledAnalysis());
             services.RemoveAll<ILayoutDetectionClient>();
             services.AddSingleton<ILayoutDetectionClient, ControlledLayout>();
             services.RemoveAll<IOptions<ExtractionOptions>>();

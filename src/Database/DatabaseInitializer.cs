@@ -50,6 +50,7 @@ public static partial class DatabaseInitializer
         IdleAnalysisRemovalSchema.Migration,
         RetiredIntakeTablesSchema.Migration,
         PracticeRemovalSchema.Migration,
+        ReleaseQuestionBinding.MigrationId,
     ];
 
     private static int TargetVersion => MigrationChain.Length;
@@ -282,9 +283,9 @@ public static partial class DatabaseInitializer
                     steps.Add($"migrate to {RootCause}");
                 }
 
-                await context.GetService<IMigrator>().MigrateAsync(PracticeRemovalSchema.Migration, cancellationToken)
+                await context.GetService<IMigrator>().MigrateAsync(MigrationChain[^1], cancellationToken)
                     .ConfigureAwait(false);
-                steps.Add($"migrate to {PracticeRemovalSchema.Migration}");
+                steps.Add($"migrate to {MigrationChain[^1]}");
             }
 
             archived = await stage.FlushAsync(cancellationToken).ConfigureAwait(false);

@@ -23,7 +23,7 @@ public sealed class PracticeRemovalPostgresTests
 
         var upgrade = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(28, upgrade.FromVersion);
-        Assert.Equal(29, upgrade.ToVersion);
+        Assert.Equal(30, upgrade.ToVersion);
         Assert.True(await db.Database.SqlQuery<bool>($"""SELECT to_regclass('public.mistake_practice') IS NULL AS "Value" """).SingleAsync());
         var item = await db.MistakeItems.AsNoTracking().SingleAsync(i => i.Id == id);
         Assert.Equal(2, item.ReviewStatus);

@@ -69,7 +69,7 @@ internal static class SourceIntakeCatalog
         if (schema.Deletion)
         {
             bodies["guard_extraction_revision"] = ExtractionDeletionSchema.RevisionGuard;
-            bodies["guard_extraction_retention"] = ExtractionDeletionSchema.RetentionGuard;
+            bodies["guard_extraction_retention"] = schema.ReleasableQuestionBinding ? ReleaseQuestionBinding.Guard : ExtractionDeletionSchema.RetentionGuard;
             bodies["guard_extraction_object_reference"] = schema.RetiredPractice ? PracticeRemovalSchema.ItemGuard : ExtractionDeletionSchema.ReferenceGuard;
             bodies.Add("guard_extraction_deletion_receipt", ExtractionDeletionSchema.ReceiptGuard);
         }

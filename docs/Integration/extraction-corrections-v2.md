@@ -4,7 +4,7 @@
 
 ## 版本与裁图
 
-保留原图、已接受补图和题目/错题稳定 ID。当前判为 `incorrect`、判为 `unknown`（无法判断）或主动收录（`includedByRequest: true`）的题都算错题：识别完成时就有待审核条目和正式裁图（跨页题各部分按阅读顺序），用同样的「确认错题 / 不是错题 / 修改」处理，没有单独的「待判定」类型：AI 拿不准的题也是错题，计入总题数，同时截图并生成待审核条目，由人确认或用「不是错题」删除；漏掉的错题用「补充分析提示」补回，重复同一提示不会再建第二条。结果概览的 `incorrect` 计数只数判为 incorrect 的题，界面上显示的错题数应按 `mistakes` 中判为 incorrect 或 unknown 的题计算。此规则上线前已完成的上传，无法判断的题要等下一次重建结果（单题修改、调整、补充分析等）才生成裁图和条目；当时因改判为 unknown 而被系统自动驳回的条目，届时重新变为待审核（审核人驳回的不变）；「不是错题」原样重发其他题，不会给它们生成没有裁图的条目。其他正确、撤回、删除项没有正式裁图。主动收录只能用于判为 `correct` 的题：判定和依据保持不变，同样生成待审核条目，按正常流程确认；题目统计里它仍算正确。为 false 时字段省略。当前题目的各部分按阅读顺序返回。
+保留原图、已接受补图和题目/错题稳定 ID。当前判为 `incorrect`、判为 `unknown`（无法判断）或主动收录（`includedByRequest: true`）的题都算错题：识别完成时就有待审核条目和正式裁图（跨页题各部分按阅读顺序），用同样的「确认错题 / 不是错题 / 修改」处理，没有单独的「待判定」类型：AI 拿不准的题也是错题，计入总题数，同时截图并生成待审核条目，由人确认或用「不是错题」删除；漏掉的错题用「补充分析提示」补回，重复同一提示不会再建第二条。结果概览的 `incorrect` 计数只数判为 incorrect 的题，界面上的错题数取 `mistakeCount`，等于错题清单里的题数，包含主动收录的正确题。此规则上线前已完成的上传，无法判断的题要等下一次重建结果（单题修改、调整、补充分析等）才生成裁图和条目；当时因改判为 unknown 而被系统自动驳回的条目，届时重新变为待审核（审核人驳回的不变）；「不是错题」原样重发其他题，不会给它们生成没有裁图的条目。其他正确、撤回、删除项没有正式裁图。主动收录只能用于判为 `correct` 的题：判定和依据保持不变，同样生成待审核条目，按正常流程确认；清单中计一道错题，原作答仍保留「正确」。为 false 时字段省略。当前题目的各部分按阅读顺序返回。
 
 正式发布使旧几何退役：旧版本/裁图 GET 返回 `410 version_retired`。同键重放仍返回当次接受的版本号，但已过期时 `superseded=true`，题目为空/null；再读取当前任务。版本列表只留操作者、原因、模型、请求键和时间。禁止恢复旧版本几何。
 
@@ -51,22 +51,15 @@ UUID 和版本必须换成当前读出的真实值，不可用示例写业务数
 | 404 | `not_found` | 任务不属于调用方，或题目不在当前版本 |
 | 502 | `invalid_analysis_response` | 模型输出无效 |
 
-## 删除单道错题（不是错题）
+## Withdraw a pending mistake or cancel requested collection
 
-`POST .../{id}/questions/{questionId}/remove-mistake`：`{expectedVersion,itemId,expectedReviewStatus:1}`。对应门户「不是错题」：把识别错的一道**待审核**错题从本次上传中去掉。适用于判为 incorrect 或 unknown 的题；主动收录的正确题返回 `409 review_conflict`，用单题 PUT 去掉 `includedByRequest` 即取消收录。BFF 先校验学生及该题学科权限。整份上传的删除见运维删除接口；改判定用单题 PUT。
+Use `POST .../{id}/questions/{questionId}/remove-mistake` with `{expectedVersion,itemId,expectedReviewStatus:1}` for both **不是错题** and **取消收录**. The BFF authorizes the student and subject. Under the confirmation lock Emenda checks the upload, question, bound item, version and live pending status.
 
-在同一把任务锁、同一事务内一次检查：任务属于调用方、版本等于 `expectedVersion`、题目仍判为 incorrect 或 unknown、`itemId` 仍绑定该学生/任务/题目/学科且仍为 `PendingReview`。确认审核也用这把锁：先确认的，删除返回 `409 review_conflict`，已确认的错题不受影响；先删除的，之后的确认返回 `404 question_not_found`。
+Withdrawal deletes the pending item, its exclusive crops and unreferenced supplements. The recognized question, its ID, original judgment and source pages stay in the upload. A withdrawn mistake drops out of the detail cards. A cancelled correct answer returns to an ordinary recognized correct answer. A later hint can collect either again with a fresh item and crops.
 
-删除后：该题从当前版本中消失，绑定的待审核错题被删除，版本号加一。该题的裁图（含各尺寸派生图）以及只为该题上传的补图原图、补图请求一并回收；上传原图、其他题仍在使用的页面、其他题和已确认错题不动。服务端不记录「已排除」名单，之后的重新分析仍可再次识别出这道题。
+Each group's `summary.total` counts distinct recognized questions. `summary.mistakeCount` counts the current cards, including unknown judgments and correct answers collected on request. The legacy `incorrect` field counts active incorrect judgments. For six questions with two cards, withdrawal gives 6/1 and restoration gives 6/2. Confirmation preserves both counts.
 
-清理完成且更新后的任务可读时才返回 `200`：`data` 为 `{jobId,studentId,questionId,itemId,version,cleanupComplete:true}`，`version` 为检查时版本加一；BFF 校验回执后重新读取同一任务。请求不带请求键，由 `expectedVersion` 与 `itemId` 标识这次删除：响应丢失或清理未完成时，原样重发即重放同一回执并继续清理，不会删除更新的或无关的数据。
-
-| 状态 | `errorCode` | 情况 |
-|---|---|---|
-| 400 | `invalid_request` | 缺字段、`expectedReviewStatus` 不是 1 |
-| 404 | `not_found` | 任务不属于调用方，或题目不在当前版本（包括已被删除后再用新版本号请求） |
-| 409 | `version_conflict` / `review_conflict` / `item_binding_conflict` | 版本过期；已确认或不是待审核错题；`itemId` 不匹配或已换绑 |
-| 503 | `cleanup_pending` | 删除已提交，但对象存储清理未完成（失败后退避重试）；原样重发直到返回 200 |
+The success receipt is `{jobId,studentId,questionId,itemId,version,cleanupComplete:true}`. A confirmation committed first causes withdrawal to return `409 review_conflict`; withdrawal first causes stale confirmation to return `409 version_conflict`. Retries with the original version and item replay the original withdrawal and do not touch a later collection. Retry an identical request after `503 cleanup_pending`.
 
 ## 补充分析提示（整份重新分析）
 
@@ -79,7 +72,7 @@ UUID 和版本必须换成当前读出的真实值，不可用示例写业务数
 - 「做对了也收录」：AI 给判为正确的题标记 `includedByRequest`，判定和依据不变，生成裁图和待审核条目。该题之前被改判为正确、条目被自动驳回过的，沿用原条目；审核人驳回过的不改。之后的结果即使没有再带这个标记，只要仍判为正确，就保持收录。给 incorrect 或 unknown 题的标记被忽略（它们本来就会收录）。
 - AI 没有返回的题保持原样，不会因此被撤回。
 - 已审核（确认或审核人驳回）的题、错题已被删除的题、不在 `allowedSubjects` 内的题只作为上下文发给 AI；AI 对它们的改动一律忽略。
-- 用「不是错题」删除的题不在当前结果里，重新分析可以再次识别出来。它是一道新题，题目 ID 和错题 ID 都是新的，裁图从保留的原图重新生成。服务端不保存旧裁图、旧结果或「已排除」名单。
+- A hint restoring a withdrawn mistake targets the recognized question by its existing ID. Restoration produces fresh crops and a pending item while keeping the total stable.
 
 没有任何变化时返回 `200`，版本号不变；有变化时版本号加一。`data` 为 `{jobId,studentId,requestKey,version}`；BFF 校验回执后重新读取同一任务。同键同载荷重放返回原回执（包括无变化的回执），不重新推理，也不会重复创建错题或裁图；同键不同载荷 `409 request_payload_conflict`。
 

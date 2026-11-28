@@ -18,7 +18,7 @@ internal static class Rules
     /// with "不是错题") or the user asked to collect it.
     /// </summary>
     internal static bool Collected(ExtractionQuestionDraft question) =>
-        question.Outcome is "incorrect" or "unknown" || question.IncludedByRequest;
+        !question.Dismissed && (question.Outcome is "incorrect" or "unknown" || question.IncludedByRequest);
 
     /// <summary>
     /// Accepts a model adjustment only when it changes the selected question alone: same identity, subject,
@@ -33,7 +33,7 @@ internal static class Rules
             throw new ExtractionException("adjustment_out_of_scope", 422);
         // An adjustment changes crops and content; labels and grades are corrected through the question PUT.
         adjusted = adjusted with { Grade = target.Grade, QuestionNumber = target.QuestionNumber,
-            IncludedByRequest = target.IncludedByRequest };
+            IncludedByRequest = target.IncludedByRequest, Dismissed = target.Dismissed };
         try { ValidateQuestions(current.Select(q => q.Id == target.Id ? adjusted : q).ToList(), sources, automatic: false); }
         catch (ExtractionException error) when (error.Code == "duplicate_question")
         { throw new ExtractionException("adjustment_out_of_scope", 422); }
@@ -72,12 +72,12 @@ internal static class Rules
             if (question.Id == Guid.Empty)
             {
                 if (!allowedSubjects.Contains(question.Subject)) throw new ExtractionException("reanalysis_out_of_scope", 422);
-                added.Add(Requested(question, kept: false) with { Id = newId(added.Count) });
+                added.Add(Requested(question with { Dismissed = false }, kept: false) with { Id = newId(added.Count) });
                 continue;
             }
             if (protectedIds.Contains(question.Id)) continue;
             var view = known[question.Id];
-            var updated = Requested(question, kept: view.Question.IncludedByRequest) with { Grade = question.Grade ?? view.Question.Grade,
+            var updated = Requested(question with { Dismissed = false }, kept: view.Question.IncludedByRequest) with { Grade = question.Grade ?? view.Question.Grade,
                 QuestionNumber = question.QuestionNumber ?? view.Question.QuestionNumber };
             // Withdrawing a pending item is "不是错题" or the question PUT, a separate, explicit operation.
             if (!allowedSubjects.Contains(question.Subject) || Collected(view.Question) && !Collected(updated))
@@ -178,6 +178,7 @@ internal static class Rules
                 q.Statement.Length > 8000 || q.StudentAnswer?.Length > 8000 ||
                 q.ReferenceAnswer is null || q.ReferenceAnswer.Length > 16000 ||
                 q.Explanation is null || q.Explanation.Length > 16000 || q.Evidence is null || q.Evidence.Length > 16000 ||
+                automatic && q.Dismissed || q.Dismissed && q.IncludedByRequest ||
                 q.Outcome is not ("correct" or "incorrect" or "unknown") || q.IncludedByRequest && q.Outcome != "correct" ||
                 q.Regions is null || q.Regions.Count is < 1 or > 32)
                 throw new ExtractionException("invalid_questions");

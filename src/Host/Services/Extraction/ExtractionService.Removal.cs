@@ -9,9 +9,7 @@ namespace Emenda.Host.Services.Extraction;
 public sealed partial class ExtractionService
 {
     /// <summary>
-    /// "不是错题": removes one pending incorrect question and its item from the current upload, then reclaims the
-    /// crops and question-specific supplement pages nothing else references. Originals and other questions stay.
-    /// The question is not remembered as excluded, so a later reanalysis may recognize it again.
+    /// Withdraws a pending mistake or voluntary collection, retaining its recognition and original pages.
     /// </summary>
     public async Task<ExtractionMistakeRemovalView> RemoveMistakeAsync(ExtractionAccess access, Guid id, Guid questionId,
         ExtractionMistakeRemovalRequest request, CancellationToken ct = default)
@@ -48,17 +46,32 @@ public sealed partial class ExtractionService
                 if (job.Version != request.ExpectedVersion) throw new ExtractionException("version_conflict", 409);
                 if (job.Status != "Succeeded") throw new ExtractionException("processing_in_progress", 409);
                 var snapshot = await CurrentSnapshotAsync(db, job, ct);
-                // Locks the item row: a confirmation committed before this point is seen, a later one finds no question.
+                // Locks the item row: a confirmation committed before this point is seen, a later one cannot confirm the withdrawn item.
                 await RequirePendingAsync(db, job, snapshot, questionId, request.ItemId, ct);
-                // A correct question collected on request is uncollected through the question PUT; removing it
-                // would drop a correct judgment from the upload. Incorrect and unknown questions are removed.
-                if (snapshot.Questions.Single(q => q.Question.Id == questionId).Question.Outcome == "correct")
-                    throw new ExtractionException("review_conflict", 409);
-                var remaining = new ExtractionSnapshot(snapshot.Questions.Where(q => q.Question.Id != questionId).ToList());
-                job.SourcesJson = Payload.Serialize(await RemainingSourcesAsync(db, job, questionId, remaining, ct));
+                var target = snapshot.Questions.Single(q => q.Question.Id == questionId);
+                var others = new ExtractionSnapshot(snapshot.Questions.Where(q => q.Question.Id != questionId).ToList());
+                var sources = await RemainingSourcesAsync(db, job, questionId, others, ct);
+                var sourceIds = sources.Select(s => s.Id).ToHashSet();
+                var retainedRegions = target.Question.Regions.Where(r => sourceIds.Contains(r.SourceId)).ToList();
+                // A correction may have moved every region onto a supplement. Keep pages still needed for restoration.
+                if (retainedRegions.Count == 0)
+                {
+                    retainedRegions = target.Question.Regions;
+                    var required = retainedRegions.Select(r => r.SourceId).ToHashSet();
+                    sources = Sources(job).Where(s => sourceIds.Contains(s.Id) || required.Contains(s.Id)).ToList();
+                }
+                var retained = target.Question with { IncludedByRequest = false,
+                    Dismissed = target.Question.Outcome != "correct", Regions = retainedRegions };
+                var remaining = new ExtractionSnapshot(snapshot.Questions.Select(q => q.Question.Id == questionId
+                    ? new ExtractionQuestionView(retained, null, false, []) : q).ToList());
+                job.SourcesJson = Payload.Serialize(sources);
                 await db.ExtractionSupplements.Where(s => s.JobId == id && s.QuestionId == questionId).ExecuteDeleteAsync(ct);
                 await db.MistakeItems.Where(i => i.Id == request.ItemId).ExecuteDeleteAsync(ct);
-                // Publication retires the question row and queues every path the new version no longer references.
+                // A later collection of the same question receives a fresh item.
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT set_config('emenda.withdraw_item', {request.ItemId.ToString("D")}, true)", ct);
+                await db.ExtractionQuestions.Where(q => q.Id == questionId && q.JobId == id && q.ItemId == request.ItemId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(q => q.ItemId, (Guid?)null), ct);
                 await PublishRevisionAsync(db, job, remaining, snapshot, key, hash, access.Actor, "remove_mistake", "mistake_removal", ct);
                 version = job.Version;
             }

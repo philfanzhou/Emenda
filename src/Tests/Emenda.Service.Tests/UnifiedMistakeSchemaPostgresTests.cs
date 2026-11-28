@@ -48,7 +48,7 @@ public sealed class UnifiedMistakeSchemaPostgresTests
         // v24 derives the unified columns, v25 recovers deleted-task callers, v26 drops the old columns.
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(23, upgraded.FromVersion);
-        Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(30, upgraded.ToVersion);
         Assert.Equal(updatedAt, await UpdatedAtAsync(db));
 
         using (var row = await ReadAsync(db, extraction.Id))
