@@ -24,13 +24,13 @@ public static class AdminConsoleEndpoints
     public static WebApplication MapAdminConsole(this WebApplication app)
     {
         var settings = app.Services.GetRequiredService<AdminConsoleSettings>();
-        var page = CallerConsolePage.Render(AdminConsoleRenderState.For(
+        var page = CallerPage.Render(AdminConsoleRenderState.For(
             app.Services.GetService<DynamicCallerStore>()?.Path));
 
         app.MapGet(AdminConsoleConstants.ConsolePath, (HttpContext http) =>
         {
             http.Response.Headers.CacheControl = "no-store";
-            return Results.Text(page, CallerConsolePage.MediaType);
+            return Results.Text(page, ConsoleLayout.MediaType);
         });
 
         if (!settings.Available)
@@ -108,9 +108,7 @@ public static class AdminConsoleEndpoints
             return Results.Json(new { success = false, message = "name 是必填项。" }, statusCode: 400);
         var store = registry.DynamicStore;
         if (store is null)
-            return Results.Json(
-                new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
-                statusCode: 503);
+            return StoreUnavailable();
         try
         {
             var entry = await store.UpsertAsync(name, GenerateKey(), Actor(http), note, ct).ConfigureAwait(false);
@@ -129,7 +127,7 @@ public static class AdminConsoleEndpoints
         var entry = entries.FirstOrDefault(candidate =>
             string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
         if (entry is null)
-            return Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404);
+            return CallerNotFound();
         if (entry.Source != CallerEntrySource.Dynamic)
             return Results.Json(
                 new { success = false, message = "静态配置条目的密钥由部署配置持有，不在控制台显示；可用轮换生成动态覆盖。" },
@@ -142,13 +140,11 @@ public static class AdminConsoleEndpoints
     {
         var store = registry.DynamicStore;
         if (store is null)
-            return Results.Json(
-                new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
-                statusCode: 503);
+            return StoreUnavailable();
         var existing = (await registry.ListAsync(ct).ConfigureAwait(false)).FirstOrDefault(candidate =>
             string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
         if (existing is null)
-            return Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404);
+            return CallerNotFound();
         var rotated = await store.UpsertAsync(existing.Name, GenerateKey(), Actor(http), existing.Note, ct)
             .ConfigureAwait(false);
         return Results.Json(new { success = true, data = new { name = rotated.Name, apiKey = rotated.ApiKey } });
@@ -159,9 +155,7 @@ public static class AdminConsoleEndpoints
     {
         var store = registry.DynamicStore;
         if (store is null)
-            return Results.Json(
-                new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
-                statusCode: 503);
+            return StoreUnavailable();
         if ((await registry.ListAsync(ct).ConfigureAwait(false)).Any(entry =>
             string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase) && entry.Source == CallerEntrySource.Configuration))
             return ConfigurationManaged();
@@ -176,7 +170,7 @@ public static class AdminConsoleEndpoints
         var note = BodyString(body, "note");
         var updated = await store.UpdateAsync(name, enabled, note, canOperateExtractions, ct).ConfigureAwait(false);
         return updated is null
-            ? Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404)
+            ? CallerNotFound()
             : Results.Json(new
             {
                 success = true,
@@ -189,24 +183,26 @@ public static class AdminConsoleEndpoints
     {
         var store = registry.DynamicStore;
         if (store is null)
-            return Results.Json(
-                new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
-                statusCode: 503);
+            return StoreUnavailable();
         if ((await registry.ListAsync(ct).ConfigureAwait(false)).Any(entry =>
             string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase) && entry.Source == CallerEntrySource.Configuration))
             return ConfigurationManaged();
         var removed = await store.RemoveAsync(name, ct).ConfigureAwait(false);
         return removed is null
-            ? Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404)
+            ? CallerNotFound()
             : Results.Json(new { success = true, data = new { name = removed.Name } });
     }
 
-    // ---- helpers ----
+    private static IResult StoreUnavailable() => Results.Json(
+        new { success = false, message = "未配置动态凭据文件（Emenda:Security:DynamicCallers:Path）。" },
+        statusCode: 503);
+
+    private static IResult CallerNotFound() =>
+        Results.Json(new { success = false, message = "调用方不存在。" }, statusCode: 404);
 
     private static IResult ConfigurationManaged() => Results.Json(
         new { success = false, message = "静态配置调用方由部署配置管理；请修改部署配置，或先轮换为动态凭据再进行管理。" },
         statusCode: StatusCodes.Status409Conflict);
-
 
     private static async Task<JsonDocument?> ReadJsonBody(HttpContext http, CancellationToken ct)
     {

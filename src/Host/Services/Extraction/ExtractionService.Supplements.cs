@@ -11,10 +11,10 @@ public sealed partial class ExtractionService
 {
     private static ExtractionSupplementView SupplementView(ExtractionSupplementEntity row) =>
         new(row.Id, row.QuestionId, row.ItemId, row.Status, row.Note, row.AcceptedVersion ?? row.ExpectedVersion,
-            ExtractionRules.Read<List<ExtractionSource>>(row.SourcesJson));
+            Payload.Read<List<ExtractionSource>>(row.SourcesJson));
 
     private static async Task<ExtractionSnapshot> CurrentSnapshotAsync(MistakeDbContext db, ExtractionJobEntity job, CancellationToken ct) =>
-        job.Version == 0 ? new([]) : await WithDeletionStateAsync(db, ExtractionRules.Read<ExtractionSnapshot>(
+        job.Version == 0 ? new([]) : await WithDeletionStateAsync(db, Payload.Read<ExtractionSnapshot>(
             (await db.ExtractionRevisions.AsNoTracking().SingleAsync(r => r.JobId == job.Id && r.Version == job.Version, ct)).SnapshotJson), ct);
 
     private static ExtractionQuestionView Target(ExtractionSnapshot snapshot, Guid questionId, Guid itemId)
@@ -47,7 +47,7 @@ public sealed partial class ExtractionService
         if (request is null || request.RequestKey == Guid.Empty || request.ExpectedVersion < 1 || request.ItemId == Guid.Empty
             || string.IsNullOrWhiteSpace(request.Note) || request.Note.Length > 2000)
             throw new ExtractionException("invalid_request");
-        var hash = ExtractionRules.Hash(new { questionId, request, operation = "request_supplement" });
+        var hash = Payload.HashJson(new { questionId, request, operation = "request_supplement" });
         await using var jobLock = await SerializeJobAsync(id, ct);
         await using var db = Open();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -79,9 +79,9 @@ public sealed partial class ExtractionService
     {
         if (request is null || request.RequestKey == Guid.Empty || request.ExpectedVersion < 1 || request.ItemId == Guid.Empty)
             throw new ExtractionException("invalid_request");
-        ExtractionRules.ValidateUpload(new("supplement", 1, "supplement", request.Images));
-        var hash = ExtractionRules.Hash(new { questionId, supplementId, request.ExpectedVersion, request.ItemId,
-            images = request.Images.Select(i => new { i.ContentType, sha256 = ExtractionRules.Hash(i.Content) }).ToList() });
+        Rules.ValidateImages(request.Images);
+        var hash = Payload.HashJson(new { questionId, supplementId, request.ExpectedVersion, request.ItemId,
+            images = request.Images.Select(i => new { i.ContentType, sha256 = Payload.HashBytes(i.Content) }).ToList() });
         await using var jobLock = await SerializeJobAsync(id, ct);
         ExtractionSupplementEntity staged;
         await using (var db = Open())
@@ -104,7 +104,7 @@ public sealed partial class ExtractionService
                 var sources = new List<ExtractionSource>();
                 foreach (var image in request.Images)
                 {
-                    var sha = ExtractionRules.Hash(image.Content);
+                    var sha = Payload.HashBytes(image.Content);
                     if (sources.Any(s => s.Sha256 == sha && s.ContentType == image.ContentType)) continue;
                     var original = Sources(job).FirstOrDefault(s => s.Sha256 == sha && s.ContentType == image.ContentType);
                     if (original is not null) { sources.Add(original); continue; }
@@ -117,15 +117,15 @@ public sealed partial class ExtractionService
                     sources.Add(new(sourceId, $"mistakes/extractions/{id:N}/supplements/{staged.Id:N}/originals/{sourceId:N}.{extension}",
                         image.ContentType, image.Content.Length, sha, metadata.DisplayWidth, metadata.DisplayHeight, metadata.Orientation));
                 }
-                staged.SourcesJson = ExtractionRules.Serialize(sources);
+                staged.SourcesJson = Payload.Serialize(sources);
                 db.ExtractionSupplements.Add(staged);
                 await db.SaveChangesAsync(ct);
             }
             else staged = existing;
-            foreach (var source in ExtractionRules.Read<List<ExtractionSource>>(staged.SourcesJson))
+            foreach (var source in Payload.Read<List<ExtractionSource>>(staged.SourcesJson))
             {
                 if (!Sources(job).Any(s => s.Id == source.Id)) await TrackObjectAsync(id, source.Path, ct);
-                var image = request.Images.First(i => ExtractionRules.Hash(i.Content) == source.Sha256 && i.ContentType == source.ContentType);
+                var image = request.Images.First(i => Payload.HashBytes(i.Content) == source.Sha256 && i.ContentType == source.ContentType);
                 await StoreAsync(source.Path, image.Content, source.ContentType, ct);
             }
         }
@@ -142,8 +142,8 @@ public sealed partial class ExtractionService
         accepted.Status = "Completed";
         accepted.AcceptedVersion = current.Version + 1;
         pending.Status = "Fulfilled";
-        current.SourcesJson = ExtractionRules.Serialize(Sources(current).Concat(ExtractionRules.Read<List<ExtractionSource>>(accepted.SourcesJson)).DistinctBy(s => s.Id).ToList());
-        await ImageVariantSchema.EnqueueAsync(publish, ExtractionRules.Read<List<ExtractionSource>>(accepted.SourcesJson).Select(s => s.Path), ct);
+        current.SourcesJson = Payload.Serialize(Sources(current).Concat(Payload.Read<List<ExtractionSource>>(accepted.SourcesJson)).DistinctBy(s => s.Id).ToList());
+        await ImageVariantSchema.EnqueueAsync(publish, Payload.Read<List<ExtractionSource>>(accepted.SourcesJson).Select(s => s.Path), ct);
         ResetReview(await publish.MistakeItems.SingleAsync(i => i.Id == request.ItemId, ct));
         await PublishRevisionAsync(publish, current, snapshotNow, snapshotNow, request.RequestKey, hash,
             access.Actor, "append_supplement", "supplement_upload", ct);

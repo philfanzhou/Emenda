@@ -11,8 +11,8 @@ namespace Emenda.Database;
 /// </summary>
 internal static class LegacySchemaNormalizer
 {
-    internal const string LegacyInitial = "20260501042151_InitialCreate";
-    internal const string LegacyRemoveFingerprint = "20260503021905_RemoveImageFingerprint";
+    internal const string InitialMigration = "20260501042151_InitialCreate";
+    internal const string RemoveFingerprintMigration = "20260503021905_RemoveImageFingerprint";
 
     private static readonly string[] LegacyItemColumns =
     [
@@ -70,7 +70,7 @@ internal static class LegacySchemaNormalizer
         IReadOnlyCollection<string> eraHistory, string initialMigration, CancellationToken cancellationToken)
     {
         var steps = new List<string>();
-        var relations = await ReadAsync(connection, """
+        var relations = await LegacySql.ReadStringsAsync(connection, """
             SELECT relname FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind IN ('r','p','v','m','f','S')
             """, cancellationToken).ConfigureAwait(false);
         // The older table must qualify before any table lock or write. Unknown layouts stay with the classifier.
@@ -87,21 +87,21 @@ internal static class LegacySchemaNormalizer
         }
         if (!relations.Contains("mistake_item") || !relations.Contains("__EFMigrationsHistory"))
             return steps;
-        var history = await ReadAsync(connection, "SELECT \"MigrationId\" FROM public.\"__EFMigrationsHistory\"",
+        var history = await LegacySql.ReadStringsAsync(connection, "SELECT \"MigrationId\" FROM public.\"__EFMigrationsHistory\"",
             cancellationToken).ConfigureAwait(false);
         // Only databases whose history the old maintenance could have written; versioned later histories never qualify.
-        if (!history.All(id => id is LegacyInitial or LegacyRemoveFingerprint || eraHistory.Contains(id)))
+        if (!history.All(id => id is InitialMigration or RemoveFingerprintMigration || eraHistory.Contains(id)))
             return steps;
-        var columns = await ReadAsync(connection, """
+        var columns = await LegacySql.ReadStringsAsync(connection, """
             SELECT c.relname || '.' || a.attname FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
             WHERE c.relnamespace='public'::regnamespace AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
             """, cancellationToken).ConfigureAwait(false);
-        var indexes = await ReadAsync(connection, "SELECT indexname FROM pg_indexes WHERE schemaname='public'",
+        var indexes = await LegacySql.ReadStringsAsync(connection, "SELECT indexname FROM pg_indexes WHERE schemaname='public'",
             cancellationToken).ConfigureAwait(false);
-        var constraints = await ReadAsync(connection,
+        var constraints = await LegacySql.ReadStringsAsync(connection,
             "SELECT conname FROM pg_constraint WHERE connamespace='public'::regnamespace", cancellationToken).ConfigureAwait(false);
 
-        var marked = history.Contains(LegacyInitial) || history.Contains(LegacyRemoveFingerprint)
+        var marked = history.Contains(InitialMigration) || history.Contains(RemoveFingerprintMigration)
             || LegacyTables.Keys.Any(relations.Contains)
             || constraints.Any(LegacyConstraints.Contains)
             || CoreIndexes.Any(index => index.Legacy.Any(indexes.Contains))
@@ -112,18 +112,18 @@ internal static class LegacySchemaNormalizer
 
         var locked = new[] { "mistake", "mistake_item", "mistake_practice", "process_log", "__EFMigrationsHistory" }
             .Concat(LegacyTables.Keys).Where(relations.Contains).Select(table => "public." + Quote(table));
-        await ExecuteAsync(connection, $"LOCK TABLE {string.Join(',', locked)} IN ACCESS EXCLUSIVE MODE", cancellationToken)
+        await LegacySql.ExecuteAsync(connection, $"LOCK TABLE {string.Join(',', locked)} IN ACCESS EXCLUSIVE MODE", cancellationToken)
             .ConfigureAwait(false);
 
         // 1. History rows written by the 2026-05-01/05-03 migrations of the earlier service layout.
         var removedHistory = await stage.AddAsync($"""
             SELECT '__EFMigrationsHistory', h."MigrationId", 'history_row', to_jsonb(h), 'legacy_history_removed'
-            FROM public."__EFMigrationsHistory" h WHERE h."MigrationId" IN ('{LegacyInitial}','{LegacyRemoveFingerprint}')
+            FROM public."__EFMigrationsHistory" h WHERE h."MigrationId" IN ('{InitialMigration}','{RemoveFingerprintMigration}')
             """, cancellationToken).ConfigureAwait(false);
         if (removedHistory > 0)
         {
-            await ExecuteAsync(connection, $"""
-                DELETE FROM public."__EFMigrationsHistory" WHERE "MigrationId" IN ('{LegacyInitial}','{LegacyRemoveFingerprint}')
+            await LegacySql.ExecuteAsync(connection, $"""
+                DELETE FROM public."__EFMigrationsHistory" WHERE "MigrationId" IN ('{InitialMigration}','{RemoveFingerprintMigration}')
                 """, cancellationToken).ConfigureAwait(false);
             steps.Add($"archive and remove {removedHistory} legacy history rows");
         }
@@ -133,7 +133,7 @@ internal static class LegacySchemaNormalizer
         {
             if (columns.Contains($"{table}.mistake_id") && !columns.Contains($"{table}.mistake_item_id"))
             {
-                await ExecuteAsync(connection, $"ALTER TABLE public.{table} RENAME COLUMN mistake_id TO mistake_item_id",
+                await LegacySql.ExecuteAsync(connection, $"ALTER TABLE public.{table} RENAME COLUMN mistake_id TO mistake_item_id",
                     cancellationToken).ConfigureAwait(false);
                 columns.Remove($"{table}.mistake_id");
                 columns.Add($"{table}.mistake_item_id");
@@ -145,7 +145,7 @@ internal static class LegacySchemaNormalizer
         var legacyItemColumns = LegacyItemColumns.Where(column => columns.Contains($"mistake_item.{column}")).ToList();
         if (!columns.Contains("mistake_item.source_regions"))
         {
-            await ExecuteAsync(connection,
+            await LegacySql.ExecuteAsync(connection,
                 "ALTER TABLE public.mistake_item ADD COLUMN source_regions jsonb NOT NULL DEFAULT '[]'::jsonb", cancellationToken)
                 .ConfigureAwait(false);
             if (columns.Contains("mistake_item.source_image_path"))
@@ -154,13 +154,13 @@ internal static class LegacySchemaNormalizer
                     ? "CASE WHEN bbox_x1 IS NOT NULL AND bbox_y1 IS NOT NULL AND bbox_x2 IS NOT NULL AND bbox_y2 IS NOT NULL " +
                       "THEN jsonb_build_object('x1',bbox_x1,'y1',bbox_y1,'x2',bbox_x2,'y2',bbox_y2) END"
                     : "NULL::jsonb";
-                await ExecuteAsync(connection, $"""
+                await LegacySql.ExecuteAsync(connection, $"""
                     UPDATE public.mistake_item SET source_regions =
                       jsonb_build_array(jsonb_build_object('sourceImagePath', source_image_path, 'boundingBox', {box}))
                     WHERE source_image_path IS NOT NULL AND source_image_path <> ''
                     """, cancellationToken).ConfigureAwait(false);
             }
-            await ExecuteAsync(connection, "ALTER TABLE public.mistake_item ALTER COLUMN source_regions DROP DEFAULT",
+            await LegacySql.ExecuteAsync(connection, "ALTER TABLE public.mistake_item ALTER COLUMN source_regions DROP DEFAULT",
                 cancellationToken).ConfigureAwait(false);
             columns.Add("mistake_item.source_regions");
             steps.Add("add mistake_item.source_regions from source_image_path and bounding box");
@@ -172,14 +172,14 @@ internal static class LegacySchemaNormalizer
         }
         foreach (var (column, expression) in new[] { ("source_upload_id", "''::character varying"), ("source_regions", "'[]'::jsonb") })
         {
-            var defaults = await ReadAsync(connection, $"""
+            var defaults = await LegacySql.ReadStringsAsync(connection, $"""
                 SELECT pg_get_expr(d.adbin,d.adrelid) FROM pg_attrdef d
                 JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
                 WHERE d.adrelid='public.mistake_item'::regclass AND a.attname='{column}'
                 """, cancellationToken).ConfigureAwait(false);
             if (defaults.SetEquals([expression]))
             {
-                await ExecuteAsync(connection, $"ALTER TABLE public.mistake_item ALTER COLUMN {column} DROP DEFAULT",
+                await LegacySql.ExecuteAsync(connection, $"ALTER TABLE public.mistake_item ALTER COLUMN {column} DROP DEFAULT",
                     cancellationToken).ConfigureAwait(false);
                 steps.Add($"drop legacy default of mistake_item.{column}");
             }
@@ -203,7 +203,7 @@ internal static class LegacySchemaNormalizer
                 """, cancellationToken).ConfigureAwait(false);
             if (orphans == 0)
                 continue;
-            await ExecuteAsync(connection, $"DELETE FROM public.{table} t WHERE {orphanFilter}", cancellationToken)
+            await LegacySql.ExecuteAsync(connection, $"DELETE FROM public.{table} t WHERE {orphanFilter}", cancellationToken)
                 .ConfigureAwait(false);
             steps.Add($"archive and remove {orphans} orphan {table} rows");
         }
@@ -218,14 +218,14 @@ internal static class LegacySchemaNormalizer
                 continue;
             await VerifyLegacyTableAsync(connection, table, tableColumns, cancellationToken).ConfigureAwait(false);
             var backfilled = table == "mistake_detail"
-                ? await BackfillDetailImagesAsync(connection, cancellationToken).ConfigureAwait(false)
+                ? await BackfillImagesAsync(connection, cancellationToken).ConfigureAwait(false)
                 : [];
             var archived = await stage.AddAsync($"""
                 SELECT '{table}', t.id::text, 'row', to_jsonb(t),
                        CASE WHEN t.id = ANY(@backfilled) THEN 'legacy_table_dropped_images_backfilled' ELSE 'legacy_table_dropped' END
                 FROM public.{table} t ORDER BY t.id
                 """, cancellationToken, ("backfilled", backfilled.ToArray())).ConfigureAwait(false);
-            await ExecuteAsync(connection, $"DROP TABLE public.{table}", cancellationToken).ConfigureAwait(false);
+            await LegacySql.ExecuteAsync(connection, $"DROP TABLE public.{table}", cancellationToken).ConfigureAwait(false);
             steps.Add(backfilled.Count > 0
                 ? $"archive {archived} {table} rows, backfill images of {backfilled.Count} items, drop {table}"
                 : $"archive {archived} {table} rows, drop {table}");
@@ -233,13 +233,13 @@ internal static class LegacySchemaNormalizer
 
         if (converting)
         {
-            await ExecuteAsync(connection, "DROP TABLE public.mistake", cancellationToken).ConfigureAwait(false);
+            await LegacySql.ExecuteAsync(connection, "DROP TABLE public.mistake", cancellationToken).ConfigureAwait(false);
             steps.Add("drop archived public.mistake");
         }
 
         // 7. A database whose only history came from the earlier layout: its structure is InitialCreate plus the
         //    renames of the old maintenance, which the versioned migrations will now repeat.
-        if (history.All(id => id is LegacyInitial or LegacyRemoveFingerprint))
+        if (history.All(id => id is InitialMigration or RemoveFingerprintMigration))
         {
             if (columns.Contains("process_log.student_id"))
             {
@@ -248,11 +248,11 @@ internal static class LegacySchemaNormalizer
             }
             if (columns.Contains("mistake_item.root_cause") && !columns.Contains("mistake_item.review_comment"))
             {
-                await ExecuteAsync(connection, "ALTER TABLE public.mistake_item RENAME COLUMN root_cause TO review_comment",
+                await LegacySql.ExecuteAsync(connection, "ALTER TABLE public.mistake_item RENAME COLUMN root_cause TO review_comment",
                     cancellationToken).ConfigureAwait(false);
                 steps.Add("rename mistake_item.root_cause back to review_comment");
             }
-            await ExecuteAsync(connection,
+            await LegacySql.ExecuteAsync(connection,
                 $"INSERT INTO public.\"__EFMigrationsHistory\" (\"MigrationId\",\"ProductVersion\") VALUES ('{initialMigration}','8.0.11')",
                 cancellationToken).ConfigureAwait(false);
             steps.Add($"record {initialMigration} for the converged initial structure");
@@ -270,13 +270,13 @@ internal static class LegacySchemaNormalizer
     public static async Task<int> ResetInvalidTextPathsAsync(DbConnection connection, LegacyArchiveStage stage,
         CancellationToken cancellationToken)
     {
-        var type = await ReadAsync(connection, """
+        var type = await LegacySql.ReadStringsAsync(connection, """
             SELECT format_type(a.atttypid,a.atttypmod) FROM pg_attribute a
             WHERE a.attrelid=to_regclass('public.mistake_practice') AND a.attname='image_paths' AND NOT a.attisdropped
             """, cancellationToken).ConfigureAwait(false);
         if (!type.SetEquals(["text"]))
             return 0;
-        await ExecuteAsync(connection, "LOCK TABLE public.mistake_practice IN ACCESS EXCLUSIVE MODE", cancellationToken)
+        await LegacySql.ExecuteAsync(connection, "LOCK TABLE public.mistake_practice IN ACCESS EXCLUSIVE MODE", cancellationToken)
             .ConfigureAwait(false);
         var invalid = new List<Guid>();
         await using (var command = connection.CreateCommand())
@@ -296,7 +296,7 @@ internal static class LegacySchemaNormalizer
                    'invalid_image_paths_reset'
             FROM public.mistake_practice t WHERE t.id = ANY(@ids) ORDER BY t.id
             """, cancellationToken, ("ids", ids)).ConfigureAwait(false);
-        await ExecuteAsync(connection, "UPDATE public.mistake_practice SET image_paths='[]' WHERE id = ANY(@ids)",
+        await LegacySql.ExecuteAsync(connection, "UPDATE public.mistake_practice SET image_paths='[]' WHERE id = ANY(@ids)",
             cancellationToken, ("ids", ids)).ConfigureAwait(false);
         return invalid.Count;
     }
@@ -319,7 +319,7 @@ internal static class LegacySchemaNormalizer
     // strict classifier, the legacy checks skip those and still treat an unvalidated one as unexpected.
     private static async Task NormalizeKeysAsync(DbConnection connection, List<string> steps, CancellationToken cancellationToken)
     {
-        var keys = await ReadAsync(connection, """
+        var keys = await LegacySql.ReadStringsAsync(connection, """
             SELECT c.conname || '|' || t.relname || '|' || c.contype::text || '|' ||
                    array_to_string(ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord)
                        JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord), ',') || '|' ||
@@ -342,7 +342,7 @@ internal static class LegacySchemaNormalizer
                 byName.TryGetValue(name, out var definition) && definition == primary);
             if (legacy is not null)
             {
-                await ExecuteAsync(connection, $"ALTER TABLE public.mistake_item RENAME CONSTRAINT {Quote(legacy)} TO \"PK_mistake_item\"",
+                await LegacySql.ExecuteAsync(connection, $"ALTER TABLE public.mistake_item RENAME CONSTRAINT {Quote(legacy)} TO \"PK_mistake_item\"",
                     cancellationToken).ConfigureAwait(false);
                 steps.Add($"rename constraint {legacy} to PK_mistake_item");
             }
@@ -359,13 +359,13 @@ internal static class LegacySchemaNormalizer
             {
                 if (existing != definition)
                     continue;
-                await ExecuteAsync(connection, $"ALTER TABLE public.{table} RENAME CONSTRAINT {lower} TO {Quote(target)}",
+                await LegacySql.ExecuteAsync(connection, $"ALTER TABLE public.{table} RENAME CONSTRAINT {lower} TO {Quote(target)}",
                     cancellationToken).ConfigureAwait(false);
                 steps.Add($"rename constraint {lower} to {target}");
             }
             else if (!byName.Values.Any(value => value.StartsWith($"{table}|f|", StringComparison.Ordinal)))
             {
-                await ExecuteAsync(connection, $"""
+                await LegacySql.ExecuteAsync(connection, $"""
                     ALTER TABLE public.{table} ADD CONSTRAINT {Quote(target)} FOREIGN KEY (mistake_item_id)
                     REFERENCES public.mistake_item (id) ON DELETE CASCADE
                     """, cancellationToken).ConfigureAwait(false);
@@ -376,7 +376,7 @@ internal static class LegacySchemaNormalizer
 
     private static async Task NormalizeIndexesAsync(DbConnection connection, List<string> steps, CancellationToken cancellationToken)
     {
-        var rows = await ReadAsync(connection, """
+        var rows = await LegacySql.ReadStringsAsync(connection, """
             SELECT idx.relname || '|' || tbl.relname || '|' ||
                    CASE WHEN i.indisvalid AND i.indisready AND i.indnatts=i.indnkeyatts AND idx.relam=(SELECT oid FROM pg_am WHERE amname='btree')
                         AND i.indpred IS NULL AND i.indexprs IS NULL AND NOT i.indisunique THEN
@@ -393,7 +393,7 @@ internal static class LegacySchemaNormalizer
             var same = legacy.Where(candidate => indexes.TryGetValue(candidate, out var value) && value == definition).ToList();
             if (!indexes.ContainsKey(name) && same.Count > 0)
             {
-                await ExecuteAsync(connection, $"ALTER INDEX public.{Quote(same[0])} RENAME TO {Quote(name)}", cancellationToken)
+                await LegacySql.ExecuteAsync(connection, $"ALTER INDEX public.{Quote(same[0])} RENAME TO {Quote(name)}", cancellationToken)
                     .ConfigureAwait(false);
                 indexes.Remove(same[0]);
                 indexes[name] = definition;
@@ -404,14 +404,14 @@ internal static class LegacySchemaNormalizer
             {
                 foreach (var duplicate in same)
                 {
-                    await ExecuteAsync(connection, $"DROP INDEX public.{Quote(duplicate)}", cancellationToken).ConfigureAwait(false);
+                    await LegacySql.ExecuteAsync(connection, $"DROP INDEX public.{Quote(duplicate)}", cancellationToken).ConfigureAwait(false);
                     indexes.Remove(duplicate);
                     steps.Add($"drop duplicate index {duplicate}");
                 }
             }
             if (!indexes.ContainsKey(name))
             {
-                await ExecuteAsync(connection, $"CREATE INDEX {Quote(name)} ON public.{table} ({keyColumns})", cancellationToken)
+                await LegacySql.ExecuteAsync(connection, $"CREATE INDEX {Quote(name)} ON public.{table} ({keyColumns})", cancellationToken)
                     .ConfigureAwait(false);
                 indexes[name] = definition;
                 steps.Add($"create index {name}");
@@ -423,7 +423,7 @@ internal static class LegacySchemaNormalizer
         IReadOnlyList<string> dropped, CancellationToken cancellationToken)
     {
         // Dropping a column silently drops indexes and constraints on it; only the known legacy ones may go that way.
-        var dependents = await ReadAsync(connection, $"""
+        var dependents = await LegacySql.ReadStringsAsync(connection, $"""
             SELECT idx.relname FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid
             WHERE i.indrelid='public.{table}'::regclass AND EXISTS (
               SELECT 1 FROM pg_attribute a WHERE a.attrelid=i.indrelid AND a.attname = ANY(@columns)
@@ -443,7 +443,7 @@ internal static class LegacySchemaNormalizer
             FROM public.{table} t CROSS JOIN LATERAL (SELECT jsonb_strip_nulls(jsonb_build_object({values})) AS payload) v
             WHERE v.payload <> jsonb_build_object() ORDER BY t.id
             """, cancellationToken).ConfigureAwait(false);
-        await ExecuteAsync(connection,
+        await LegacySql.ExecuteAsync(connection,
             $"ALTER TABLE public.{table} {string.Join(',', dropped.Select(column => $"DROP COLUMN {column}"))}", cancellationToken)
             .ConfigureAwait(false);
     }
@@ -451,13 +451,13 @@ internal static class LegacySchemaNormalizer
     private static async Task VerifyLegacyTableAsync(DbConnection connection, string table, string[] expectedColumns,
         CancellationToken cancellationToken)
     {
-        var actual = await ReadAsync(connection, $"""
+        var actual = await LegacySql.ReadStringsAsync(connection, $"""
             SELECT a.attname FROM pg_attribute a WHERE a.attrelid='public.{table}'::regclass AND a.attnum>0 AND NOT a.attisdropped
             """, cancellationToken).ConfigureAwait(false);
         if (!actual.SetEquals(expectedColumns))
             throw new UpgradeStepException($"Mistake legacy convergence found an unexpected structure for {table}.");
         // Dropping the table drops what hangs on it; only the objects the old layout created may go that way.
-        var attached = await ReadAsync(connection, $"""
+        var attached = await LegacySql.ReadStringsAsync(connection, $"""
             SELECT idx.relname FROM pg_index i JOIN pg_class idx ON idx.oid=i.indexrelid WHERE i.indrelid='public.{table}'::regclass
             UNION ALL SELECT conname FROM pg_constraint WHERE conrelid='public.{table}'::regclass AND (contype <> 'n' OR NOT convalidated)
             UNION ALL SELECT tgname FROM pg_trigger WHERE tgrelid='public.{table}'::regclass AND NOT tgisinternal
@@ -469,7 +469,7 @@ internal static class LegacySchemaNormalizer
             throw new UpgradeStepException($"Mistake legacy convergence found unexpected object {unexpected} on {table}.");
     }
 
-    private static async Task<List<Guid>> BackfillDetailImagesAsync(DbConnection connection, CancellationToken cancellationToken)
+    private static async Task<List<Guid>> BackfillImagesAsync(DbConnection connection, CancellationToken cancellationToken)
     {
         var updates = new List<(Guid Detail, Guid Item, string Regions)>();
         await using (var command = connection.CreateCommand())
@@ -495,7 +495,7 @@ internal static class LegacySchemaNormalizer
         var backfilled = new List<Guid>();
         foreach (var (detail, item, regions) in updates)
         {
-            var affected = await ExecuteAsync(connection,
+            var affected = await LegacySql.ExecuteAsync(connection,
                 "UPDATE public.mistake_item SET source_regions=@regions::jsonb WHERE id=@item AND source_regions='[]'::jsonb",
                 cancellationToken, ("regions", regions), ("item", item)).ConfigureAwait(false);
             if (affected == 1)
@@ -505,31 +505,6 @@ internal static class LegacySchemaNormalizer
     }
 
     private static string Quote(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
-
-    private static Task<int> ExecuteAsync(DbConnection connection, string sql, CancellationToken cancellationToken,
-        params (string Name, object Value)[] parameters) =>
-        LegacyArchiveStage.ExecuteAsync(connection, sql, cancellationToken, parameters);
-
-    private static async Task<HashSet<string>> ReadAsync(DbConnection connection, string sql, CancellationToken cancellationToken,
-        params (string Name, object Value)[] parameters)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.CommandTimeout = 0;
-        foreach (var (name, value) in parameters)
-        {
-            var parameter = command.CreateParameter();
-            parameter.ParameterName = name;
-            parameter.Value = value;
-            command.Parameters.Add(parameter);
-        }
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        var rows = new HashSet<string>(StringComparer.Ordinal);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            if (!reader.IsDBNull(0))
-                rows.Add(reader.GetString(0));
-        return rows;
-    }
 
     private sealed record SourceRegionJson(string SourceImagePath, object? BoundingBox);
 }

@@ -4,7 +4,7 @@ namespace Emenda.Database;
 /// Schema v25: resolves <c>source_caller</c> of extraction mistakes whose task was deleted before v24.
 /// <para>
 /// A deletion receipt stores <c>owner_hash</c> as the SHA-256 of the JSON string the application serializes
-/// (<c>ExtractionRules.Hash(job.Caller)</c>), i.e. of <c>"caller:name"</c> including the quotes. v24 hashed the
+/// (<c>Payload.HashJson(job.Caller)</c>), i.e. of <c>"caller:name"</c> including the quotes. v24 hashed the
 /// bare text instead, so no receipt matched and those rows kept a NULL caller. Visibility was never affected: the
 /// caller scope still matches the receipt directly. This migration redoes the lookup with the stored form.
 /// </para>

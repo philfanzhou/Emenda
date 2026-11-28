@@ -18,7 +18,7 @@ internal sealed class LegacyArchiveStage(DbConnection connection)
         params (string Name, object Value)[] parameters)
     {
         await EnsureCreatedAsync(cancellationToken).ConfigureAwait(false);
-        var added = await ExecuteAsync(connection,
+        var added = await LegacySql.ExecuteAsync(connection,
             $"INSERT INTO {Table} (source_table,source_key,kind,payload,reason) {select}", cancellationToken, parameters)
             .ConfigureAwait(false);
         Count += added;
@@ -30,7 +30,7 @@ internal sealed class LegacyArchiveStage(DbConnection connection)
     {
         if (!_created || Count == 0)
             return 0;
-        var copied = await ExecuteAsync(connection, $"""
+        var copied = await LegacySql.ExecuteAsync(connection, $"""
             INSERT INTO public.legacy_archive (source_table,source_key,kind,payload,reason,archived_at)
             SELECT source_table,source_key,kind,payload,reason,now() FROM {Table} ORDER BY seq
             """, cancellationToken).ConfigureAwait(false);
@@ -43,28 +43,12 @@ internal sealed class LegacyArchiveStage(DbConnection connection)
     {
         if (_created)
             return;
-        await ExecuteAsync(connection, $"""
+        await LegacySql.ExecuteAsync(connection, $"""
             CREATE TEMP TABLE mistake_legacy_stage (
               seq bigint GENERATED ALWAYS AS IDENTITY,
               source_table text NOT NULL, source_key text NOT NULL, kind text NOT NULL,
               payload jsonb NOT NULL, reason text NOT NULL) ON COMMIT DROP
             """, cancellationToken).ConfigureAwait(false);
         _created = true;
-    }
-
-    internal static async Task<int> ExecuteAsync(DbConnection connection, string sql, CancellationToken cancellationToken,
-        params (string Name, object Value)[] parameters)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.CommandTimeout = 0;
-        foreach (var (name, value) in parameters)
-        {
-            var parameter = command.CreateParameter();
-            parameter.ParameterName = name;
-            parameter.Value = value;
-            command.Parameters.Add(parameter);
-        }
-        return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 }

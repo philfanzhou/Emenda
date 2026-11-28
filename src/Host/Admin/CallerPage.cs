@@ -8,10 +8,8 @@ namespace Emenda.Host.Admin;
 /// the browser: created keys are shown once and everything else stays
 /// server-side.
 /// </summary>
-internal static class CallerConsolePage
+internal static class CallerPage
 {
-    public const string MediaType = "text/html; charset=utf-8";
-
     public static string Render(AdminConsoleRenderState state) => $$"""
 <!DOCTYPE html>
 <html lang="zh-CN">

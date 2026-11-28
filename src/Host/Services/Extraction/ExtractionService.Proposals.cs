@@ -13,9 +13,9 @@ public sealed partial class ExtractionService
 
     private static ExtractionProposalView ProposalView(ExtractionProposalEntity row)
     {
-        var request = row.RequestJson is null ? null : ExtractionRules.Read<ExtractionProposalRequest>(row.RequestJson);
+        var request = row.RequestJson is null ? null : Payload.Read<ExtractionProposalRequest>(row.RequestJson);
         return new(row.Id, row.JobId, row.RequestKey, row.ExpectedVersion, row.Status, request?.Scope,
-            request?.QuestionIds ?? [], row.ResultJson is null ? [] : ExtractionRules.Read<List<ExtractionQuestionDraft>>(row.ResultJson), row.ErrorCode)
+            request?.QuestionIds ?? [], row.ResultJson is null ? [] : Payload.Read<List<ExtractionQuestionDraft>>(row.ResultJson), row.ErrorCode)
         { Request = request };
     }
 
@@ -32,7 +32,7 @@ public sealed partial class ExtractionService
             || request.Scope == "regions" && request.SourceIds.Count == 0 || request.Regions.Count > 256)
             throw new ExtractionException("invalid_request");
         if (!options.Value.Enabled) throw new ExtractionException("extraction_disabled", 503);
-        var hash = ExtractionRules.Hash(request);
+        var hash = Payload.HashJson(request);
         Guid proposalId, owner;
         int? grade;
         List<ExtractionSource> sources;
@@ -49,7 +49,7 @@ public sealed partial class ExtractionService
                 if (retained.PayloadHash != hash) throw new ExtractionException("request_payload_conflict", 409);
                 if (retained.Status is not ("Generating" or "Failed")) return ProposalView(retained);
                 if (retained.Status == "Generating" && retained.LeaseUntil > await NowAsync(db, ct)) return ProposalView(retained);
-                if (retained.Attempts >= ExtractionRules.MaxAttempts) throw new ExtractionException("attempts_exhausted", 409);
+                if (retained.Attempts >= Rules.MaxAttempts) throw new ExtractionException("attempts_exhausted", 409);
             }
             else await EnsureKeyAvailableAsync(db, id, request.RequestKey, ct);
             if (job.Version != request.ExpectedVersion) throw new ExtractionException("version_conflict", 409);
@@ -63,26 +63,26 @@ public sealed partial class ExtractionService
                 var previous = await db.ExtractionProposals.AsNoTracking().SingleOrDefaultAsync(p => p.Id == previousId && p.JobId == id, ct)
                     ?? throw new ExtractionException("not_found", 404);
                 if (previous.Status != "Pending" || previous.ExpectedVersion != job.Version) throw new ExtractionException("proposal_not_pending", 409);
-                var basis = ExtractionRules.Read<ExtractionProposalRequest>(previous.RequestJson!);
+                var basis = Payload.Read<ExtractionProposalRequest>(previous.RequestJson!);
                 if (basis.Scope != request.Scope || !basis.QuestionIds.SequenceEqual(request.QuestionIds))
                     throw new ExtractionException("proposal_scope_conflict", 409);
-                context = ExtractionRules.Read<List<ExtractionQuestionDraft>>(previous.ResultJson!);
+                context = Payload.Read<List<ExtractionQuestionDraft>>(previous.ResultJson!);
             }
             var available = Sources(job);
             if (request.SourceIds.Any(s => !available.Any(a => a.Id == s))) throw new ExtractionException("invalid_region");
             var selected = request.SourceIds.Count == 0 ? available.Select(s => s.Id).ToHashSet()
                 : request.SourceIds.Concat(context.SelectMany(q => q.Regions).Select(r => r.SourceId)).ToHashSet();
             sources = available.Where(s => selected.Contains(s.Id)).ToList();
-            if (sources.Count is < 1 or > ExtractionRules.MaxSources) throw new ExtractionException("analysis_request_too_large", 413);
+            if (sources.Count is < 1 or > Rules.MaxSources) throw new ExtractionException("analysis_request_too_large", 413);
             foreach (var region in request.Regions)
-                ExtractionRules.ValidateQuestions([new() { Id = Guid.NewGuid(), Subject = 1, Statement = "region hint", Regions = [region] }], sources, automatic: false);
+                Rules.ValidateQuestions([new() { Id = Guid.NewGuid(), Subject = 1, Statement = "region hint", Regions = [region] }], sources, automatic: false);
             proposalId = retained?.Id ?? Guid.NewGuid();
             owner = Guid.NewGuid();
             var now = await NowAsync(db, ct);
             var row = retained ?? new ExtractionProposalEntity { Id = proposalId, JobId = id, RequestKey = request.RequestKey,
                 ExpectedVersion = job.Version, PayloadHash = hash, CreatedAt = now };
             row.Status = "Generating";
-            row.RequestJson = ExtractionRules.Serialize(request);
+            row.RequestJson = Payload.Serialize(request);
             row.ResultJson = null;
             row.ErrorCode = null;
             row.Owner = owner;
@@ -97,10 +97,10 @@ public sealed partial class ExtractionService
             var allowed = context.Select(q => q.Id).ToHashSet();
             if (analyzed.Questions.Any(q => q.Id != Guid.Empty && !allowed.Contains(q.Id))) throw new ExtractionException("foreign_question", 502);
             var proposed = analyzed.Questions.Select((q, i) => q.Id == Guid.Empty
-                ? q with { Id = ExtractionRules.Identity($"{proposalId:N}:question:{i}") } : q).ToList();
+                ? q with { Id = Payload.Identity($"{proposalId:N}:question:{i}") } : q).ToList();
             if (request.Scope == "questions" && proposed.Any(q => !subjects.Contains(q.Subject)))
                 throw new ExtractionException("proposal_scope_conflict", 502);
-            ExtractionRules.ValidateQuestions(proposed, sources, automatic: false);
+            Rules.ValidateQuestions(proposed, sources, automatic: false);
             await using var jobLock = await SerializeJobAsync(id, ct);
             await using var db = Open();
             await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -110,7 +110,7 @@ public sealed partial class ExtractionService
                 throw new ExtractionException("version_conflict", 409);
             var pending = await db.ExtractionProposals.Where(p => p.JobId == id && p.Status == "Pending").ToListAsync(ct);
             var overlapping = pending.Where(p => p.Id == request.PreviousProposalId
-                || Overlaps(request, ExtractionRules.Read<ExtractionProposalRequest>(p.RequestJson!))).ToList();
+                || Overlaps(request, Payload.Read<ExtractionProposalRequest>(p.RequestJson!))).ToList();
             // Independent question suggestions coexist; late responses cannot replace newer overlapping work.
             if (overlapping.Any(p => p.CreatedAt > row.CreatedAt))
             { row.Status = "Superseded"; row.RequestJson = null; }
@@ -123,7 +123,7 @@ public sealed partial class ExtractionService
                     previous.ResultJson = null;
                 }
                 row.Status = "Pending";
-                row.ResultJson = ExtractionRules.Serialize(proposed);
+                row.ResultJson = Payload.Serialize(proposed);
             }
             row.Owner = null;
             row.LeaseUntil = null;
@@ -148,10 +148,10 @@ public sealed partial class ExtractionService
     private async Task<QuestionAnalysisResult> AnalyzeRevisionAsync(int? grade, List<ExtractionSource> sources,
         List<ExtractionQuestionDraft> context, string instruction, string scope, List<ExtractionRegion> regions, CancellationToken ct)
     {
-        if (sources.Count is < 1 or > ExtractionRules.MaxSources) throw new ExtractionException("analysis_request_too_large", 413);
+        if (sources.Count is < 1 or > Rules.MaxSources) throw new ExtractionException("analysis_request_too_large", 413);
         var inputs = new List<QuestionAnalysisImage>();
         var previewBudget = (AiTutorQuestionClient.RequestLimit - Math.Max(1024 * 1024, sources.Count * 64 * 1024)
-            - System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(context, ExtractionRules.Json).Length) / sources.Count * 3 / 4;
+            - System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(context, Payload.Json).Length) / sources.Count * 3 / 4;
         if (previewBudget < 1024) throw new ExtractionException("analysis_request_too_large", 413);
         foreach (var source in sources)
         {

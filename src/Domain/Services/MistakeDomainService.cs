@@ -89,14 +89,15 @@ public class MistakeDomainService : IMistakeDomainService
 
         await _items.UpdateAsync(item);
 
-        var action = reviewStatus == (int)ReviewStatus.Confirmed
+        var confirmed = reviewStatus == (int)ReviewStatus.Confirmed;
+        var action = confirmed
             ? ProcessAction.ReviewConfirmed
             : ProcessAction.ReviewRejected;
-        var detail = reviewStatus == (int)ReviewStatus.Confirmed
+        var detail = confirmed
             ? "Mistake item confirmed"
             : string.IsNullOrWhiteSpace(reviewReason) ? "Mistake item rejected" : "Mistake item rejected: " + reviewReason;
 
-        await AddProcessLogAsync(item.Id, action, detail, item.StudentId);
+        await AddLogAsync(item.Id, action, detail, item.StudentId);
         await _unitOfWork.SaveChangesAsync();
 
         return item;
@@ -142,7 +143,7 @@ public class MistakeDomainService : IMistakeDomainService
         var item = await _items.GetByIdAsync(mistakeItemId);
         if (item == null) return false;
 
-        await AddProcessLogAsync(mistakeItemId, action, details, studentId);
+        await AddLogAsync(mistakeItemId, action, details, studentId);
         await _unitOfWork.SaveChangesAsync();
         return true;
     }
@@ -155,7 +156,7 @@ public class MistakeDomainService : IMistakeDomainService
     private static (int Page, int Size) NormalizePage(int page, int size) =>
         (Math.Max(1, page), size <= 0 ? 10 : Math.Min(size, 100));
 
-    private async Task AddProcessLogAsync(Guid mistakeItemId, ProcessAction action, string details, string? studentId)
+    private async Task AddLogAsync(Guid mistakeItemId, ProcessAction action, string details, string? studentId)
     {
         var processLog = new ProcessLogModel
         {
@@ -168,6 +169,4 @@ public class MistakeDomainService : IMistakeDomainService
         };
         await _logs.AddAsync(processLog);
     }
-
-
 }

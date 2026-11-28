@@ -14,7 +14,7 @@ namespace Emenda.Host;
 
 public static partial class ExtractionEndpoints
 {
-    private const long UploadBudget = (long)ExtractionRules.MaxSources * ExtractionRules.MaxImageBytes + 65536;
+    private const long UploadBudget = (long)Rules.MaxSources * Rules.MaxImageBytes + 65536;
     private const int JsonBudget = 2 * 1024 * 1024;
 
     public static IServiceCollection AddExtraction(this IServiceCollection services, IConfiguration configuration)
@@ -42,7 +42,7 @@ public static partial class ExtractionEndpoints
         {
             http.Response.Headers.CacheControl = "no-store";
             http.Response.Headers.XContentTypeOptions = "nosniff";
-            return Results.Text(ExtractionConsolePage.Render(), ExtractionConsolePage.MediaType);
+            return Results.Text(ExtractionPage.Render(), ConsoleLayout.MediaType);
         });
         if (app.Services.GetRequiredService<AdminConsoleSettings>().Available)
             MapGroup(app.MapGroup("/admin/api/extractions").RequireAuthorization(AdminConsoleConstants.Policy), administrator: true);
@@ -84,7 +84,7 @@ public static partial class ExtractionEndpoints
                     throw new ExtractionException("student_assertion_invalid", 403);
                 var form = await ReadUploadFormAsync(http, ct);
                 if (form.Keys.Count != 0) throw new ExtractionException("invalid_request");
-                var job = await service.SubmitImagesAsync(access, studentId!, await ReadImagesAsync(form, ct), ct);
+                var job = await service.SubmitImagesAsync(access, studentId!, await ReadImagesAsync(form, "original", ct), ct);
                 return Results.Json(new { success = true, data = ResultSummary.From(job) }, statusCode: StatusCodes.Status202Accepted);
             }).WithMetadata(new RequestSizeLimitAttribute(UploadBudget));
             group.MapGet("/{id:guid}/summary", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
@@ -144,9 +144,9 @@ public static partial class ExtractionEndpoints
             form["studentId"].Count != 1 || form["grade"].Count != 1 || form["sourceKey"].Count != 1 ||
             !int.TryParse(form["grade"], NumberStyles.None, CultureInfo.InvariantCulture, out var grade))
             throw new ExtractionException("invalid_request");
-        var images = await ReadImagesAsync(form, ct);
+        var images = await ReadImagesAsync(form, "original", ct);
         var upload = new ExtractionUpload(form["studentId"].ToString(), grade, form["sourceKey"].ToString(), images);
-        ExtractionRules.ValidateUpload(upload);
+        Rules.ValidateUpload(upload);
         return upload;
     }
 
@@ -155,17 +155,28 @@ public static partial class ExtractionEndpoints
         if (http.Request.ContentLength > UploadBudget) throw new ExtractionException("request_too_large", 413);
         if (!http.Request.HasFormContentType || http.Request.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) != true)
             throw new ExtractionException("multipart_required", 415);
-        var feature = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
-        if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = UploadBudget;
-        var reader = new FormFeature(http.Request, new FormOptions { MultipartBodyLengthLimit = ExtractionRules.MaxImageBytes,
-            ValueLengthLimit = 4096, ValueCountLimit = 3 + ExtractionRules.MaxSources, MultipartHeadersLengthLimit = 16384 });
-        return await reader.ReadFormAsync(ct);
+        return await ReadMultipartFormAsync(http, ct);
     }
 
-    private static async Task<List<ExtractionImage>> ReadImagesAsync(IFormCollection form, CancellationToken ct)
+    private static Task<IFormCollection> ReadMultipartFormAsync(HttpContext http, CancellationToken ct)
     {
-        if (form.Files.Count is < 1 or > ExtractionRules.MaxSources || form.Files.Any(f => f.Name is not ("images" or "images[]") ||
-                f.Length is 0 or > ExtractionRules.MaxImageBytes || f.ContentType is not ("image/jpeg" or "image/png")))
+        var feature = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = UploadBudget;
+
+        var options = new FormOptions
+        {
+            MultipartBodyLengthLimit = Rules.MaxImageBytes,
+            ValueLengthLimit = 4096,
+            ValueCountLimit = 3 + Rules.MaxSources,
+            MultipartHeadersLengthLimit = 16384
+        };
+        return new FormFeature(http.Request, options).ReadFormAsync(ct);
+    }
+
+    private static async Task<List<ExtractionImage>> ReadImagesAsync(IFormCollection form, string fileName, CancellationToken ct)
+    {
+        if (form.Files.Count is < 1 or > Rules.MaxSources || form.Files.Any(f => f.Name is not ("images" or "images[]") ||
+                f.Length is 0 or > Rules.MaxImageBytes || f.ContentType is not ("image/jpeg" or "image/png")))
             throw new ExtractionException("invalid_request");
         var images = new List<ExtractionImage>();
         foreach (var file in form.Files)
@@ -174,7 +185,7 @@ public static partial class ExtractionEndpoints
             var content = new byte[checked((int)file.Length)];
             try { await stream.ReadExactlyAsync(content, ct); }
             catch (EndOfStreamException) { throw new ExtractionException("invalid_request"); }
-            images.Add(new() { Content = content, ContentType = file.ContentType, FileName = "original" });
+            images.Add(new() { Content = content, ContentType = file.ContentType, FileName = fileName });
         }
         return images;
     }

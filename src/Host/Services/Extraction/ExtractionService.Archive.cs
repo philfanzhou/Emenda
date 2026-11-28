@@ -44,7 +44,7 @@ public sealed partial class ExtractionService
             i.Id == itemId && i.ReviewStatus == (int)ReviewStatus.Confirmed, ct);
         if (item is null || MistakeSource.ExtractionJobId(item) is not { } jobId)
             throw new ExtractionException("not_found", 404);
-        var ownerHash = ExtractionRules.Hash(Owner(access));
+        var ownerHash = Payload.HashJson(Owner(access));
         if (!await db.ExtractionDeletions.AnyAsync(d => d.JobId == jobId &&
             (access.Administrator || d.OwnerHash == ownerHash), ct))
             throw new ExtractionException("not_found", 404);
@@ -57,13 +57,13 @@ public sealed partial class ExtractionService
         if (!IsJobObjectPath(jobId, path)) throw new ExtractionException("not_found", 404);
         if (MistakeSource.RetainedFiles(item) is { } manifest)
         {
-            var file = JsonSerializer.Deserialize<List<RetainedFile>>(manifest, ExtractionRules.Json)?.SingleOrDefault(f => f.Path == path)
+            var file = JsonSerializer.Deserialize<List<RetainedFile>>(manifest, Payload.Json)?.SingleOrDefault(f => f.Path == path)
                 ?? throw new ExtractionException("not_found", 404);
             if (file.ContentType is not ("image/png" or "image/jpeg") || file.Length <= 0 ||
                 file.Sha256.Length != 64 || !file.Sha256.All(char.IsAsciiHexDigit))
                 throw new ExtractionException("invalid_retained_state", 503);
-            var bytes = await ReadObjectAsync(path, ExtractionRules.MaxCropBytes, ct);
-            if (bytes.LongLength != file.Length || ExtractionRules.Hash(bytes) != file.Sha256)
+            var bytes = await ReadObjectAsync(path, Rules.MaxCropBytes, ct);
+            if (bytes.LongLength != file.Length || Payload.HashBytes(bytes) != file.Sha256)
                 throw new ExtractionException("retained_image_bytes_conflict", 503);
             return (bytes, file.ContentType);
         }
@@ -76,12 +76,12 @@ public sealed partial class ExtractionService
         // rc.12 receipts have no file manifest. Exact owner-bound references remain readable;
         // crop names carry a full digest (new) or a 16-hex digest (historical).
         var contentType = path.EndsWith(".png", StringComparison.Ordinal) ? "image/png" : "image/jpeg";
-        var limit = path.Contains("/versions/", StringComparison.Ordinal) ? ExtractionRules.MaxCropBytes : ExtractionRules.MaxImageBytes;
+        var limit = path.Contains("/versions/", StringComparison.Ordinal) ? Rules.MaxCropBytes : Rules.MaxImageBytes;
         var retained = await ReadObjectAsync(path, limit, ct);
         if (path.Contains("/versions/", StringComparison.Ordinal))
         {
             var hash = path[(path.LastIndexOf('-') + 1)..^4];
-            if (!ExtractionRules.Hash(retained).AsSpan(0, hash.Length).SequenceEqual(hash))
+            if (!Payload.HashBytes(retained).AsSpan(0, hash.Length).SequenceEqual(hash))
                 throw new ExtractionException("crop_bytes_conflict", 503);
         }
         return (retained, contentType);

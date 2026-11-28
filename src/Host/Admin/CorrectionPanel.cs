@@ -1,7 +1,7 @@
 namespace Emenda.Host.Admin;
 
 /// <summary>Explicit AI suggestion, preview/adoption and supplement controls; no service credentials.</summary>
-internal static class ExtractionCorrectionPanel
+internal static class CorrectionPanel
 {
     public const string Script = """
 <script>

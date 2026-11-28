@@ -26,7 +26,7 @@ public static partial class ExtractionEndpoints
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         // Revisions publish under this same job lock; the checked snapshot cannot change before commit.
-        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({ExtractionRules.LockKey(id.ToString())})", ct);
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({Payload.LockKey(id.ToString())})", ct);
         var job = await service.GetAsync(access, id, ct);
         if (job.Version != request.ExpectedVersion) throw new ExtractionException("version_conflict", 409);
         var question = job.Questions.SingleOrDefault(view => view.Question.Id == questionId);

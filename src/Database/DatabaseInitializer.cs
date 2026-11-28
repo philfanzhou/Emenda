@@ -399,9 +399,8 @@ public static partial class DatabaseInitializer
             if (diagnostic != null) return Invalid(diagnostic);
         }
         else if (routines.Count > 0) return Invalid($"unexpected public routine {routines.Order(StringComparer.Ordinal).First()}.");
-        var expectedTables = RetiredIntakeTablesSchema.ReanalyzePresent(version) ? ExpectedTables :
-            Without(ExpectedTables, "reanalyze_job");
-        expectedTables = new HashSet<string>(expectedTables, StringComparer.Ordinal);
+        var expectedTables = new HashSet<string>(ExpectedTables, StringComparer.Ordinal);
+        if (!RetiredIntakeTablesSchema.ReanalyzePresent(version)) expectedTables.Remove("reanalyze_job");
         if (schema.ManagedIntake) expectedTables.UnionWith(SourceIntakeCatalog.Tables);
         if (schema.Targets) expectedTables.UnionWith(SourceTargetCatalog.Tables);
         if (schema.Returns) expectedTables.UnionWith(SourceReturnCatalog.Tables);
@@ -573,9 +572,8 @@ public static partial class DatabaseInitializer
             WHERE c.connamespace='public'::regnamespace AND (c.contype <> 'n' OR NOT c.convalidated)
             ORDER BY c.conname
             """, cancellationToken).ConfigureAwait(false);
-        var expectedConstraints = RetiredIntakeTablesSchema.ReanalyzePresent(version) ? ExpectedConstraints :
-            Without(ExpectedConstraints, "PK_reanalyze_job|p|id|-|-|-|V");
-        expectedConstraints = new HashSet<string>(expectedConstraints,StringComparer.Ordinal);
+        var expectedConstraints = new HashSet<string>(ExpectedConstraints, StringComparer.Ordinal);
+        if (!RetiredIntakeTablesSchema.ReanalyzePresent(version)) expectedConstraints.Remove("PK_reanalyze_job|p|id|-|-|-|V");
         if (schema.RetiredPractice) expectedConstraints.RemoveWhere(constraint => constraint.StartsWith("PK_mistake_practice|", StringComparison.Ordinal) || constraint.StartsWith("FK_mistake_practice_", StringComparison.Ordinal));
         if (schema.ManagedIntake) expectedConstraints.UnionWith(SourceIntakeCatalog.Constraints);
         if (schema.Targets) expectedConstraints.UnionWith(SourceTargetCatalog.Constraints);
@@ -640,13 +638,6 @@ public static partial class DatabaseInitializer
     private static HashSet<string> Set(string lines) =>
         lines.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.Ordinal);
-
-    private static HashSet<string> Without(HashSet<string> source, string member)
-    {
-        var result = new HashSet<string>(source, StringComparer.Ordinal);
-        result.Remove(member);
-        return result;
-    }
 
     private enum SchemaKind { Empty, Known, LegacyRuntime, MisstampedTextPaths, MisstampedLowercaseIndex, Ready, Invalid }
     private sealed record SchemaState(SchemaKind Kind, bool Target, int Version, string Diagnostic);

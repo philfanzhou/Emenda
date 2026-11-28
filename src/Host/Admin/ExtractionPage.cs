@@ -1,10 +1,8 @@
 namespace Emenda.Host.Admin;
 
 /// <summary>Cookie-authenticated extraction workspace. All writes are explicit and carry SignaCore CSRF.</summary>
-internal static class ExtractionConsolePage
+internal static class ExtractionPage
 {
-    public const string MediaType = "text/html; charset=utf-8";
-
     public static string Render() => $$"""
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -108,7 +106,7 @@ textarea { min-height:60px; resize:vertical; }
     </div>
   </div>
 </main>
-{{ExtractionCorrectionPanel.Script}}
+{{CorrectionPanel.Script}}
 <script>
 (function () {
   'use strict';

@@ -29,7 +29,7 @@ public sealed partial class ExtractionService
             if (db.Entry(candidate).State == EntityState.Detached) return;
             now = await NowAsync(db, stoppingToken);
             if (candidate.Status != "Queued" && !(candidate.Status == "Running" && candidate.LeaseUntil < now)) return;
-            if (candidate.Attempt >= ExtractionRules.MaxAttempts)
+            if (candidate.Attempt >= Rules.MaxAttempts)
             {
                 candidate.Status = "Failed";
                 candidate.ErrorCode = "attempts_exhausted";
@@ -113,10 +113,10 @@ public sealed partial class ExtractionService
             ?? throw new ExtractionException("lease_lost", 409);
         var sources = Sources(job);
         QuestionAnalysisResult analyzed;
-        if (job.CandidateJson is not null) analyzed = ExtractionRules.Read<QuestionAnalysisResult>(job.CandidateJson);
+        if (job.CandidateJson is not null) analyzed = Payload.Read<QuestionAnalysisResult>(job.CandidateJson);
         else
         {
-            var accepted = ExtractionRules.Read<List<AcceptedLayout>>(job.LayoutJson);
+            var accepted = Payload.Read<List<AcceptedLayout>>(job.LayoutJson);
             var inputs = new List<QuestionAnalysisImage>();
             // Allow 64 KiB per page for up to 256 layout boxes and JSON overhead.
             var metadataBudget = Math.Max(1024 * 1024, sources.Count * 64 * 1024);
@@ -127,26 +127,9 @@ public sealed partial class ExtractionService
                 var retained = accepted.SingleOrDefault(a => a.SourceId == source.Id);
                 if (retained is null)
                 {
-                    var image = new Layout.LayoutDetectionImage(bytes, source.ContentType);
-                    LayoutDetectionResult result;
-                    try
-                    {
-                        result = await layout.DetectLayoutAsync(image, ct);
-                    }
-                    catch (Layout.LayoutDetectionException error) when (error is
-                        { Failure: Layout.LayoutDetectionFailure.UpstreamTimeout, HttpStatusCode: 504, ProblemCode: "layout-timeout" })
-                    {
-                        logger.LogWarning("Retrying layout detection once for extraction {JobId}, source {SourceId}", lease.Id, source.Id);
-                        await Task.Delay(TimeSpan.FromSeconds(2), ct);
-                        result = await layout.DetectLayoutAsync(image, ct);
-                    }
-                    var swaps = source.Orientation is >= 5 and <= 8;
-                    if (result.Width != (swaps ? source.Height : source.Width) || result.Height != (swaps ? source.Width : source.Height) ||
-                        result.Orientation.HasValue && result.Orientation != (source.Orientation ?? 1))
-                        throw new ExtractionException("layout_geometry_conflict", 502);
-                    retained = new(source.Id, result);
+                    retained = await DetectLayoutAsync(lease.Id, source, bytes, ct);
                     accepted.Add(retained);
-                    await CheckpointAsync(lease, j => j.LayoutJson = ExtractionRules.Serialize(accepted), ct);
+                    await CheckpointAsync(lease, j => j.LayoutJson = Payload.Serialize(accepted), ct);
                 }
                 var regions = retained.Result.Regions.Where(r => r.Box.X0 < r.Box.X1 && r.Box.Y0 < r.Box.Y1)
                     .Select(r => ToDisplayRegion(source, r)).ToList();
@@ -158,12 +141,12 @@ public sealed partial class ExtractionService
             if (string.IsNullOrWhiteSpace(analyzed.Model) || analyzed.Model.Length > 128)
                 throw new ExtractionException("invalid_analysis_response", 502);
             analyzed = analyzed with { Questions = analyzed.Questions.Select((q, index) =>
-                q with { Id = ExtractionRules.Identity($"{job.Id:N}:question:{index}") }).ToList() };
-            ExtractionRules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
-            await CheckpointAsync(lease, j => j.CandidateJson = ExtractionRules.Serialize(analyzed), ct);
+                q with { Id = Payload.Identity($"{job.Id:N}:question:{index}") }).ToList() };
+            Rules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
+            await CheckpointAsync(lease, j => j.CandidateJson = Payload.Serialize(analyzed), ct);
         }
-        ExtractionRules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
-        var requestKey = ExtractionRules.Identity($"{job.Id:N}:automatic");
+        Rules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
+        var requestKey = Payload.Identity($"{job.Id:N}:automatic");
         await using var jobLock = await SerializeJobAsync(job.Id, ct);
         await using (var check = Open())
         await using (var checkTransaction = await check.Database.BeginTransactionAsync(ct))
@@ -177,8 +160,30 @@ public sealed partial class ExtractionService
         var current = await GetLeasedJobAsync(publish, lease, ct);
         if (current.Version != 0) throw new ExtractionException("version_conflict", 409);
         await PublishRevisionAsync(publish, current, snapshot, null, requestKey,
-            ExtractionRules.Hash(analyzed), "automatic", "initial_extraction", analyzed.Model, ct);
+            Payload.HashJson(analyzed), "automatic", "initial_extraction", analyzed.Model, ct);
         await transaction.CommitAsync(ct);
+    }
+
+    private async Task<AcceptedLayout> DetectLayoutAsync(Guid jobId, ExtractionSource source, byte[] bytes, CancellationToken ct)
+    {
+        var image = new Layout.LayoutDetectionImage(bytes, source.ContentType);
+        LayoutDetectionResult result;
+        try
+        {
+            result = await layout.DetectLayoutAsync(image, ct);
+        }
+        catch (Layout.LayoutDetectionException error) when (error is
+            { Failure: Layout.LayoutDetectionFailure.UpstreamTimeout, HttpStatusCode: 504, ProblemCode: "layout-timeout" })
+        {
+            logger.LogWarning("Retrying layout detection once for extraction {JobId}, source {SourceId}", jobId, source.Id);
+            await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            result = await layout.DetectLayoutAsync(image, ct);
+        }
+        var swaps = source.Orientation is >= 5 and <= 8;
+        if (result.Width != (swaps ? source.Height : source.Width) || result.Height != (swaps ? source.Width : source.Height) ||
+            result.Orientation.HasValue && result.Orientation != (source.Orientation ?? 1))
+            throw new ExtractionException("layout_geometry_conflict", 502);
+        return new(source.Id, result);
     }
 
     private static ExtractionRegion ToDisplayRegion(ExtractionSource source, LayoutRegion region)

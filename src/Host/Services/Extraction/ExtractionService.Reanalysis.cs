@@ -16,7 +16,7 @@ public sealed partial class ExtractionService
 
     /// <summary>
     /// "补充分析提示": one hint applied to the whole upload from its originals and current questions, published directly.
-    /// Only what the hint supports changes; see <see cref="ExtractionRules.Reanalysis"/>. A result with no change keeps
+    /// Only what the hint supports changes; see <see cref="Rules.Reanalysis"/>. A result with no change keeps
     /// the version and records the key so that a retry replays the same receipt.
     /// </summary>
     public async Task<ExtractionReanalysisView> ReanalyzeAsync(ExtractionAccess access, Guid id,
@@ -28,7 +28,7 @@ public sealed partial class ExtractionService
             || request.AllowedSubjects is not { Count: > 0 } || request.AllowedSubjects.Any(s => s is < 1 or > 9))
             throw new ExtractionException("invalid_request");
         request = request with { Instruction = instruction, AllowedSubjects = request.AllowedSubjects.Distinct().Order().ToList() };
-        var hash = ExtractionRules.Hash(new { operation = "reanalyze", request });
+        var hash = Payload.HashJson(new { operation = "reanalyze", request });
         ExtractionJobEntity job;
         ExtractionSnapshot snapshot;
         HashSet<Guid> protectedIds;
@@ -55,12 +55,12 @@ public sealed partial class ExtractionService
         var analyzed = await AnalyzeRevisionAsync(job.Grade, sources, snapshot.Questions.Select(q => q.Question).ToList(),
             ReanalysisGuidance + instruction, "all", [], ct);
         var key = request.RequestKey;
-        var merged = ExtractionRules.Reanalysis(snapshot.Questions, protectedIds, request.AllowedSubjects.ToHashSet(),
-            analyzed.Questions, sources, i => ExtractionRules.Identity($"reanalyze:{id:N}:{key:N}:{i}"));
-        if (merged.Select(ExtractionRules.Hash).SequenceEqual(snapshot.Questions.Select(q => ExtractionRules.Hash(q.Question))))
+        var merged = Rules.Reanalysis(snapshot.Questions, protectedIds, request.AllowedSubjects.ToHashSet(),
+            analyzed.Questions, sources, i => Payload.Identity($"reanalyze:{id:N}:{key:N}:{i}"));
+        if (merged.Select(Payload.HashJson).SequenceEqual(snapshot.Questions.Select(q => Payload.HashJson(q.Question))))
             return await RecordUnchangedAsync(access, job, request, hash, ct);
         var changedItems = snapshot.Questions.Where(q => q.ItemId.HasValue && !q.ItemDeleted
-                && merged.Single(m => m.Id == q.Question.Id) is var next && ExtractionRules.Hash(next) != ExtractionRules.Hash(q.Question))
+                && merged.Single(m => m.Id == q.Question.Id) is var next && Payload.HashJson(next) != Payload.HashJson(q.Question))
             .Select(q => (q.Question.Id, q.ItemId!.Value)).ToList();
         ExtractionJobView result;
         try

@@ -1,26 +1,14 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
+using System.Diagnostics.CodeAnalysis;
 using Emenda.Service.Intake;
 
 namespace Emenda.Host.Services.Extraction;
 
-internal static class ExtractionRules
+internal static class Rules
 {
     internal const int MaxAttempts = 5;
     internal const int MaxSources = 30;
     internal const int MaxImageBytes = 15 * 1024 * 1024;
     internal const int MaxCropBytes = 64 * 1024 * 1024;
-    internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
-    internal static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Json);
-    internal static T Read<T>(string value) => JsonSerializer.Deserialize<T>(value, Json)
-        ?? throw new ExtractionException("invalid_retained_state", 503);
-    internal static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
-    internal static string Hash(byte[] bytes) => Hash((ReadOnlySpan<byte>)bytes);
-    internal static string Hash<T>(T value) => Hash((ReadOnlySpan<byte>)JsonSerializer.SerializeToUtf8Bytes(value, Json));
-    internal static Guid Identity(string value) => new(SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 16));
-    internal static long LockKey(string value) => BitConverter.ToInt64(SHA256.HashData(Encoding.UTF8.GetBytes(value)), 0);
 
     /// <summary>Newly covering more than this share of another question's region needs clarification.</summary>
     internal const double AdjustmentOverlapLimit = 0.2;
@@ -86,7 +74,7 @@ internal static class ExtractionRules
                 throw new ExtractionException("reanalysis_out_of_scope", 422);
             var updated = question with { Grade = question.Grade ?? view.Question.Grade,
                 QuestionNumber = question.QuestionNumber ?? view.Question.QuestionNumber };
-            if (Hash(updated) != Hash(view.Question)) updates[question.Id] = updated;
+            if (Payload.HashJson(updated) != Payload.HashJson(view.Question)) updates[question.Id] = updated;
         }
         var merged = current.Select(view => updates.GetValueOrDefault(view.Question.Id, view.Question)).ToList();
         try { ValidateQuestions(merged.Concat(added).ToList(), sources, automatic: false); }
@@ -146,8 +134,14 @@ internal static class ExtractionRules
 
     internal static void ValidateImages(string studentId, List<ExtractionImage> images)
     {
-        if (string.IsNullOrWhiteSpace(studentId) || studentId.Length > 36 ||
-            images is null || images.Count is < 1 or > MaxSources ||
+        if (string.IsNullOrWhiteSpace(studentId) || studentId.Length > 36)
+            throw new ExtractionException("invalid_request");
+        ValidateImages(images);
+    }
+
+    internal static void ValidateImages(List<ExtractionImage> images)
+    {
+        if (images is null || images.Count is < 1 or > MaxSources ||
             images.Any(i => i is null || i.Content is null || i.Content.Length is 0 or > MaxImageBytes ||
                 i.ContentType is not ("image/jpeg" or "image/png")))
             throw new ExtractionException("invalid_request");
@@ -156,7 +150,7 @@ internal static class ExtractionRules
     internal static bool ValidQuestionNumber(string? value) => value is null ||
         value.Length is >= 1 and <= 64 && value == value.Trim() && !value.Any(char.IsControl);
 
-    internal static void ValidateQuestions(List<ExtractionQuestionDraft>? questions,
+    internal static void ValidateQuestions([NotNull] List<ExtractionQuestionDraft>? questions,
         IReadOnlyCollection<ExtractionSource> sources, bool automatic)
     {
         if (questions is null ||
@@ -185,7 +179,7 @@ internal static class ExtractionRules
         }
         if (automatic && questions.Count > 0 && !sourceIds.SetEquals(questions.SelectMany(q => q.Regions).Select(r => r.SourceId)))
             throw new ExtractionException("source_omitted");
-        var canonical = questions.Select(q => Hash(new { q.Subject, q.Statement, q.StudentAnswer,
+        var canonical = questions.Select(q => Payload.HashJson(new { q.Subject, q.Statement, q.StudentAnswer,
             Regions = q.Regions.OrderBy(r => r.SourceId).ThenBy(r => r.X0).ThenBy(r => r.Y0).ThenBy(r => r.X1).ThenBy(r => r.Y1) })).ToList();
         if (canonical.Distinct().Count() != canonical.Count) throw new ExtractionException("duplicate_question");
     }
