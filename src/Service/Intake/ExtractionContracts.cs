@@ -55,6 +55,12 @@ public sealed record ExtractionAdjustmentRequest(Guid RequestKey, int ExpectedVe
 public sealed record ExtractionMistakeRemovalRequest(int ExpectedVersion, Guid ItemId, int ExpectedReviewStatus);
 public sealed record ExtractionMistakeRemovalView(Guid JobId, string StudentId, Guid QuestionId, Guid ItemId, int Version,
     bool CleanupComplete);
+/// <summary>
+/// One hint applied to the whole upload. <see cref="AllowedSubjects"/> are the subjects the BFF authorized for this caller;
+/// questions in other subjects are context only and never change.
+/// </summary>
+public sealed record ExtractionReanalysisRequest(Guid RequestKey, int ExpectedVersion, string Instruction, List<int> AllowedSubjects);
+public sealed record ExtractionReanalysisView(Guid JobId, string StudentId, Guid RequestKey, int Version);
 public sealed record ExtractionSupplementRequest(Guid RequestKey, int ExpectedVersion, Guid ItemId, string Note);
 public sealed record ExtractionSupplementUpload(Guid RequestKey, int ExpectedVersion, Guid ItemId, List<ExtractionImage> Images);
 public sealed record ExtractionSupplementView(Guid Id, Guid QuestionId, Guid ItemId, string Status, string Note,
@@ -96,6 +102,12 @@ public interface IExtractionService
     /// <summary>Removes one pending mistake and its question from the upload; returns only once its own files are reclaimed.</summary>
     Task<ExtractionMistakeRemovalView> RemoveMistakeAsync(ExtractionAccess access, Guid id, Guid questionId,
         ExtractionMistakeRemovalRequest request, CancellationToken ct = default);
+    /// <summary>
+    /// Reanalyzes the upload from its originals and a hint: updates or adds only what the hint supports; questions the
+    /// model omits, confirmed items and questions outside the allowed subjects stay as they are.
+    /// </summary>
+    Task<ExtractionReanalysisView> ReanalyzeAsync(ExtractionAccess access, Guid id, ExtractionReanalysisRequest request,
+        CancellationToken ct = default);
     Task<ExtractionSupplementView> RequestSupplementAsync(ExtractionAccess access, Guid id, Guid questionId,
         ExtractionSupplementRequest request, CancellationToken ct = default);
     Task<ExtractionSupplementView> AppendSupplementAsync(ExtractionAccess access, Guid id, Guid questionId, Guid supplementId,

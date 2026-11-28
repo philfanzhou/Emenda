@@ -68,6 +68,37 @@ UUID 和版本必须换成当前读出的真实值，不可用示例写业务数
 | 409 | `version_conflict` / `review_conflict` / `item_binding_conflict` | 版本过期；已确认或不是待审核错题；`itemId` 不匹配或已换绑 |
 | 503 | `cleanup_pending` | 删除已提交，但对象存储清理未完成（失败后退避重试）；原样重发直到返回 200 |
 
+## 补充分析提示（整份重新分析）
+
+`POST .../{id}/reanalyze`：`{requestKey,expectedVersion,instruction,allowedSubjects}`。对应门户「补充分析提示」：用户用一句话补充说明，例如「第二页是第一页的续答」「第 15 题也是错题」「刚才误点了，第 15 题实际是错题」。AI 读取该任务全部原图和当前识别结果，结果校验通过后直接发布到同一任务，不经过建议/采纳。`instruction` 去除首尾空白后 1–2000 字。`allowedSubjects` 是 BFF 校验后该操作者可以修改的学科（1–9，至少一个，顺序和重复不影响）。任务可以没有错题。
+
+只改提示涉及的内容：
+
+- AI 返回带原 ID 的题，视为修改这道题，题目 ID 和错题 ID 不变。之前判为正确或未知的题被改判为错题时，就在原题上创建待审核错题，不另建新题。
+- AI 返回不带 ID 的题，视为新题：服务端分配新 ID，按它在原图上的起始位置插入阅读顺序；判为 incorrect 时创建一道待审核错题。
+- AI 没有返回的题保持原样，不会因此被撤回。
+- 已审核（确认或驳回）的题、错题已被删除的题、不在 `allowedSubjects` 内的题只作为上下文发给 AI；AI 对它们的改动一律忽略。
+- 用「不是错题」删除的题不在当前结果里，重新分析可以再次识别出来。它是一道新题，题目 ID 和错题 ID 都是新的，裁图从保留的原图重新生成。服务端不保存旧裁图、旧结果或「已排除」名单。
+
+没有任何变化时返回 `200`，版本号不变；有变化时版本号加一。`data` 为 `{jobId,studentId,requestKey,version}`；BFF 校验回执后重新读取同一任务。同键同载荷重放返回原回执（包括无变化的回执），不重新推理，也不会重复创建错题或裁图；同键不同载荷 `409 request_payload_conflict`。
+
+推理在任务锁之外进行。发布时重新检查版本号，并与确认审核在同一把任务锁、同一事务内检查：每道将被修改的待审核错题仍属于该学生、该任务、该题，且仍为 `PendingReview`。AI 运行期间，要修改的错题被确认时返回 `409 review_conflict`，已确认的错题不受影响；期间有删除或其他修改时返回 `409 version_conflict`。为此生成的新裁图立即回收。原图超过 30 张（补图累积）时返回 `413 analysis_request_too_large`。
+
+先校验 AI 的完整结果，任何一条不满足就整体拒绝，当前结果保持不变：
+
+| 状态 | `errorCode` | 情况 |
+|---|---|---|
+| 400 | `invalid_request` | 缺字段、提示为空或超过 2000 字、`allowedSubjects` 为空或含 1–9 以外的值 |
+| 422 | `reanalysis_out_of_scope` | 待审核错题被改成不是 incorrect（撤回错题请用「不是错题」）；修改后或新增的题不在 `allowedSubjects` 内 |
+| 422 | `clarification_required` | 新题覆盖某道现有题某个区域超过该区域面积的 20%（可能是同一道题被重复识别）；修改后的题新覆盖另一题区域超过 20%（规则同单题调整）；两道题内容完全相同 |
+| 409 | `version_conflict` / `review_conflict` / `request_payload_conflict` / `processing_in_progress` | 版本过期或推理期间任务变化；任务正在识别中；要修改的错题已被确认；同键不同载荷 |
+| 404 | `not_found` | 任务不属于调用方 |
+| 413 | `analysis_request_too_large` | 原图超过 30 张 |
+| 502 | `invalid_analysis_response` | 模型输出无效（未知或重复的题目 ID、无效区域等） |
+| 503 | `extraction_disabled` | 识别功能未开启 |
+
+「做对了也收录」（`includedByRequest`）还不支持。
+
 ## 原题补图
 
 `POST .../{id}/questions/{questionId}/supplements`：`{requestKey,expectedVersion,itemId,note}`。只针对当前有效错题，将原条目置为 `PendingReview`，显示可读待补说明，发布新的内容版本。不会使用 `Rejected` 或创建新条目。

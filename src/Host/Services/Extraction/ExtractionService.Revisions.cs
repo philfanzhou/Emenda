@@ -89,7 +89,8 @@ public sealed partial class ExtractionService
         if (current.Version != request.ExpectedVersion || current.Status is not ("Succeeded" or "Failed"))
             throw new ExtractionException("version_conflict", 409);
         // Confirmation does not advance the version; recheck the live item under the shared job lock.
-        if (pending is not null) await RequirePendingAsync(publish, current, prior!, questionId!.Value, pending.ItemId, ct);
+        foreach (var (target, item) in pending?.Items ?? [])
+            await RequirePendingAsync(publish, current, prior!, target, item, ct);
         await PublishRevisionAsync(publish, current, snapshot, prior, request.RequestKey, hash,
             access.Actor, request.Reason, "manual", ct);
         if (acceptance is not null)
