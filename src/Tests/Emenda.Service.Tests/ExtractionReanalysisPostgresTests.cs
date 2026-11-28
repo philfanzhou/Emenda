@@ -347,6 +347,38 @@ public sealed class ExtractionReanalysisPostgresTests
     }
 
     [Fact]
+    public async Task UnknownJudgmentIsNotAMistake_UntilAHintSaysItIs_AndRepeatingTheHintAddsNoSecondItem()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer { Initial = pages => [Question("12", pages[0], 0, .5),
+            Question("14", pages[0], .5, .75) with { Outcome = "unknown", StudentAnswer = null, Evidence = "" },
+            Question("13", pages[1], 0, .5)] };
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        // A question the model could not judge is not selected as a mistake: no item and no crops.
+        var q14 = job.Questions[1];
+        Assert.Equal(("unknown", (Guid?)null, 0), (q14.Question.Outcome, q14.ItemId, q14.Images.Count));
+
+        // "第 14 题也错了": the model judges the existing question incorrect, keeping its ID.
+        analyzer.Revise = context => [context[1] with { Outcome = "incorrect", StudentAnswer = "5", Evidence = "Wrote 5 instead of 2" }];
+        var added = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "第 14 题也错了", Math));
+
+        Assert.Equal(job.Version + 1, added.Version);
+        var read = await service.GetAsync(Caller, job.Id);
+        var mistake = read.Questions[1];
+        Assert.Equal((q14.Question.Id, "incorrect"), (mistake.Question.Id, mistake.Question.Outcome));
+        Assert.NotNull(mistake.ItemId);
+        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(mistake.Images).Path));
+
+        // The same hint again restates the question as it now is: nothing changes and no second item is made.
+        var repeated = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), added.Version, "第 14 题也错了", Math));
+        Assert.Equal(added.Version, repeated.Version);
+        Assert.Equal(mistake.ItemId, (await service.GetAsync(Caller, job.Id)).Questions[1].ItemId);
+        await using var context = db.CreateContext();
+        Assert.Equal(3, await context.MistakeItems.CountAsync(i => i.ReviewStatus == (int)ReviewStatus.PendingReview));
+    }
+
+    [Fact]
     public async Task UploadWithNoMistakes_CanGainOne()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
