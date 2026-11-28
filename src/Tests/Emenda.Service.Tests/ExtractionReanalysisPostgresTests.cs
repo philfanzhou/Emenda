@@ -365,6 +365,36 @@ public sealed class ExtractionReanalysisPostgresTests
     }
 
     [Fact]
+    public async Task UnknownJudgmentIsAMistakeFromTheStart_AndAHintJudgingItIncorrectKeepsItsOneItem()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer { Initial = pages => [Question("12", pages[0], 0, .5),
+            Question("14", pages[0], .5, .75) with { Outcome = "unknown", StudentAnswer = null, Evidence = "" },
+            Question("13", pages[1], 0, .5)] };
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        // A question the model could not judge is an ordinary pending mistake with its crop.
+        var q14 = job.Questions[1];
+        Assert.Equal("unknown", q14.Question.Outcome);
+        Assert.NotNull(q14.ItemId);
+        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(q14.Images).Path));
+
+        // "第 14 题也错了": the model judges it incorrect, keeping its question and item.
+        analyzer.Revise = context => [context[1] with { Outcome = "incorrect", StudentAnswer = "5", Evidence = "Wrote 5 instead of 2" }];
+        var judged = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "第 14 题也错了", Math));
+
+        Assert.Equal(job.Version + 1, judged.Version);
+        var mistake = (await service.GetAsync(Caller, job.Id)).Questions[1];
+        Assert.Equal((q14.Question.Id, "incorrect", q14.ItemId), (mistake.Question.Id, mistake.Question.Outcome, mistake.ItemId));
+
+        // The same hint again restates the question as it now is: nothing changes and no second item is made.
+        var repeated = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), judged.Version, "第 14 题也错了", Math));
+        Assert.Equal(judged.Version, repeated.Version);
+        await using var context = db.CreateContext();
+        Assert.Equal(3, await context.MistakeItems.CountAsync(i => i.ReviewStatus == (int)ReviewStatus.PendingReview));
+    }
+
+    [Fact]
     public async Task UploadWithNoMistakes_CanGainOne()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
