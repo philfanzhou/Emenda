@@ -166,7 +166,6 @@ public sealed class ExtractionReanalysisPostgresTests
     public static TheoryData<string, int, string> RejectedOutputs => new()
     {
         { "withdraw", 422, "reanalysis_out_of_scope" },
-        { "collect-unknown", 422, "reanalysis_out_of_scope" },
         { "subject", 422, "reanalysis_out_of_scope" },
         { "new-subject", 422, "reanalysis_out_of_scope" },
         { "duplicate", 422, "clarification_required" },
@@ -191,8 +190,6 @@ public sealed class ExtractionReanalysisPostgresTests
         {
             // "第 12 题其实是对的" withdraws a pending mistake: that is "不是错题", not reanalysis.
             "withdraw" => [context[0] with { Outcome = "correct" }],
-            // Only a verified correct answer is collected on request.
-            "collect-unknown" => [context[1] with { Outcome = "unknown", IncludedByRequest = true }],
             "subject" => [context[0] with { Subject = 3 }],
             "new-subject" => [Question("15", page1, .8, 1) with { Id = Guid.Empty, Subject = 3 }],
             // Question 14 found again as a new question over most of its region.
@@ -217,6 +214,27 @@ public sealed class ExtractionReanalysisPostgresTests
         await using var context = db.CreateContext();
         Assert.Equal(2, await context.MistakeItems.CountAsync(i => i.ReviewStatus == (int)ReviewStatus.PendingReview));
         Assert.False(await context.ExtractionObjects.AnyAsync(o => o.Path.Contains(key.ToString("N"))));
+    }
+
+    [Fact]
+    public async Task QuestionTheHintMakesUnknown_IsCollectedAsAnOrdinaryMistake_AndARequestOnItIsDropped()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer();
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        Assert.Null(job.Questions[1].ItemId);
+        analyzer.Revise = context => [context[1] with { Outcome = "unknown", StudentAnswer = null, Evidence = "", IncludedByRequest = true }];
+
+        var receipt = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "第 14 题看不清，也收进来", Math));
+
+        Assert.Equal(job.Version + 1, receipt.Version);
+        var view = (await service.GetAsync(Caller, job.Id)).Questions[1];
+        Assert.Equal(("unknown", false), (view.Question.Outcome, view.Question.IncludedByRequest));
+        Assert.NotNull(view.ItemId);
+        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(view.Images).Path));
+        await using var context = db.CreateContext();
+        Assert.Equal((int)ReviewStatus.PendingReview, (await context.MistakeItems.SingleAsync(i => i.Id == view.ItemId)).ReviewStatus);
     }
 
     [Fact]
@@ -347,7 +365,7 @@ public sealed class ExtractionReanalysisPostgresTests
     }
 
     [Fact]
-    public async Task UnknownJudgmentIsNotAMistake_UntilAHintSaysItIs_AndRepeatingTheHintAddsNoSecondItem()
+    public async Task UnknownJudgmentIsAMistakeFromTheStart_AndAHintJudgingItIncorrectKeepsItsOneItem()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer { Initial = pages => [Question("12", pages[0], 0, .5),
@@ -355,25 +373,23 @@ public sealed class ExtractionReanalysisPostgresTests
             Question("13", pages[1], 0, .5)] };
         var service = Service(db, analyzer);
         var job = await Completed(service);
-        // A question the model could not judge is not selected as a mistake: no item and no crops.
+        // A question the model could not judge is an ordinary pending mistake with its crop.
         var q14 = job.Questions[1];
-        Assert.Equal(("unknown", (Guid?)null, 0), (q14.Question.Outcome, q14.ItemId, q14.Images.Count));
+        Assert.Equal("unknown", q14.Question.Outcome);
+        Assert.NotNull(q14.ItemId);
+        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(q14.Images).Path));
 
-        // "第 14 题也错了": the model judges the existing question incorrect, keeping its ID.
+        // "第 14 题也错了": the model judges it incorrect, keeping its question and item.
         analyzer.Revise = context => [context[1] with { Outcome = "incorrect", StudentAnswer = "5", Evidence = "Wrote 5 instead of 2" }];
-        var added = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "第 14 题也错了", Math));
+        var judged = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "第 14 题也错了", Math));
 
-        Assert.Equal(job.Version + 1, added.Version);
-        var read = await service.GetAsync(Caller, job.Id);
-        var mistake = read.Questions[1];
-        Assert.Equal((q14.Question.Id, "incorrect"), (mistake.Question.Id, mistake.Question.Outcome));
-        Assert.NotNull(mistake.ItemId);
-        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(mistake.Images).Path));
+        Assert.Equal(job.Version + 1, judged.Version);
+        var mistake = (await service.GetAsync(Caller, job.Id)).Questions[1];
+        Assert.Equal((q14.Question.Id, "incorrect", q14.ItemId), (mistake.Question.Id, mistake.Question.Outcome, mistake.ItemId));
 
         // The same hint again restates the question as it now is: nothing changes and no second item is made.
-        var repeated = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), added.Version, "第 14 题也错了", Math));
-        Assert.Equal(added.Version, repeated.Version);
-        Assert.Equal(mistake.ItemId, (await service.GetAsync(Caller, job.Id)).Questions[1].ItemId);
+        var repeated = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), judged.Version, "第 14 题也错了", Math));
+        Assert.Equal(judged.Version, repeated.Version);
         await using var context = db.CreateContext();
         Assert.Equal(3, await context.MistakeItems.CountAsync(i => i.ReviewStatus == (int)ReviewStatus.PendingReview));
     }
@@ -383,7 +399,7 @@ public sealed class ExtractionReanalysisPostgresTests
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer { Initial = page => [Question("14", page[0], .5, .75) with { Outcome = "correct" },
-            Question("16", page[1], 0, .5) with { Outcome = "unknown" }] };
+            Question("16", page[1], 0, .5) with { Outcome = "correct" }] };
         var service = Service(db, analyzer);
         var job = await Completed(service, expected: 2);
         analyzer.Revise = _ => [Question("15", job.Sources[0].Id, .8, 1) with { Id = Guid.Empty }];

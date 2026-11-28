@@ -17,7 +17,7 @@ public sealed class ExtractionWorkflowPostgresTests
     private static readonly ExtractionAccess Admin = new("admin", "reviewer", true);
 
     [Fact]
-    public async Task MultiImageQuestionAndSingleImageQuestions_OnlyActualMistakesAreMaterialized()
+    public async Task MultiImageQuestionAndSingleImageQuestions_MistakesAndUnknownJudgmentsAreMaterialized()
     {
         await using var database = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer(request => new("test-model", [
@@ -37,7 +37,9 @@ public sealed class ExtractionWorkflowPostgresTests
         result.Questions.Select(q => q.Question.QuestionNumber).Should().Equal("三、2（1）", "三、2（1）", null);
         result.Questions[0].Images.Select(i => i.SourceId).Should().Equal(result.Sources.Select(s => s.Id));
         (await service.GetVersionAsync(Caller, result.Id, 1)).Questions[0].Question.QuestionNumber.Should().Be("三、2（1）");
-        result.Questions.Where(q => q.ItemId.HasValue).Should().ContainSingle();
+        // A correct question gets nothing; an unknown one is an ordinary pending mistake with its crop.
+        result.Questions.Select(q => q.ItemId.HasValue).Should().Equal(true, false, true);
+        result.Questions[2].Images.Should().ContainSingle();
         var original = await service.ReadSourceAsync(Caller, result.Id, result.Sources[0].Id);
         original.Bytes.Should().Equal(upload.Images[0].Content);
         var crop = await service.ReadCropAsync(Caller, result.Id, result.Questions[0].Question.Id, 1, 0);
@@ -45,9 +47,13 @@ public sealed class ExtractionWorkflowPostgresTests
         decoded.Width.Should().Be(20);
         decoded.Height.Should().Be(20);
         await using var db = database.CreateContext();
-        var item = await db.MistakeItems.SingleAsync();
-        item.Id.Should().Be(result.Questions[0].ItemId!.Value);
+        (await db.MistakeItems.CountAsync()).Should().Be(2);
+        var item = await db.MistakeItems.SingleAsync(i => i.Id == result.Questions[0].ItemId!.Value);
         item.ReviewStatus.Should().Be(1);
+        var unknown = await db.MistakeItems.SingleAsync(i => i.Id == result.Questions[2].ItemId!.Value);
+        unknown.ReviewStatus.Should().Be(1);
+        unknown.SourceRegions.Select(r => r.SourceImagePath).Should().Equal(result.Questions[2].Images.Select(i => i.Path));
+        MistakeSource.Analysis(unknown).Should().Contain("\"studentAnswer\":null");
         item.SourceRegions.Select(r => r.SourceImagePath).Should().Equal(result.Questions[0].Images.Select(i => i.Path));
         item.RootCause.Should().BeNull("a comparison explanation is not a proven root cause");
         await Assert.ThrowsAsync<ExtractionException>(() => service.GetAsync(new("other", "other"), result.Id));
@@ -76,9 +82,9 @@ public sealed class ExtractionWorkflowPostgresTests
         (await service.GetVersionAsync(Caller, job.Id, 1)).Questions.Select(q => q.Question.QuestionNumber).Should().Equal(labels);
         result.Questions[19].Question.Regions.Select(r => r.SourceId).Should().Equal(result.Sources.Select(s => s.Id));
         result.Questions[32].Question.Outcome.Should().Be("unknown");
-        result.Questions.Where(q => q.ItemId.HasValue).Select(q => q.Question.QuestionNumber).Should().Equal("20", "40");
+        result.Questions.Where(q => q.ItemId.HasValue).Select(q => q.Question.QuestionNumber).Should().Equal("20", "33", "40");
         await using var db = database.CreateContext();
-        (await db.MistakeItems.Select(i => i.ReviewStatus).ToListAsync()).Should().Equal(1, 1);
+        (await db.MistakeItems.Select(i => i.ReviewStatus).ToListAsync()).Should().Equal(1, 1, 1);
     }
 
     [Fact]
@@ -290,7 +296,7 @@ public sealed class ExtractionWorkflowPostgresTests
         {
             var call = Interlocked.Increment(ref calls);
             if (call == 1) { entered.SetResult(); await release.Task; }
-            return new("test-model", [Question(call == 1 ? "incorrect" : "unknown", [new(request.Images[0].SourceId, 0, 0, 1, 1)])]);
+            return new("test-model", [Question(call == 1 ? "incorrect" : "correct", [new(request.Images[0].SourceId, 0, 0, 1, 1)])]);
         });
         var first = Service(database, analyzer);
         var second = Service(database, analyzer);
@@ -307,7 +313,7 @@ public sealed class ExtractionWorkflowPostgresTests
         await pending;
         var result = await first.GetAsync(Caller, job.Id);
         result.Version.Should().Be(1);
-        result.Questions.Single().Question.Outcome.Should().Be("unknown");
+        result.Questions.Single().Question.Outcome.Should().Be("correct");
         result.Questions.Single().ItemId.Should().BeNull();
         result.Status.Should().Be("Succeeded");
     }
@@ -383,7 +389,7 @@ public sealed class ExtractionWorkflowPostgresTests
         var job = await service.GetAsync(Caller, queued.Id);
         job.Status.Should().Be("Succeeded", job.ErrorCode);
         job.Questions.Should().HaveCount(2, "matching printed labels alone cannot merge unrelated content");
-        job.Questions.Should().OnlyContain(q => q.ItemId == null);
+        job.Questions.Should().OnlyContain(q => q.ItemId != null && q.Images.Count == 1);
         var target = job.Questions[0].Question;
         var joined = target with { Statement = "Complete cross-page question",
             Regions = job.Questions.SelectMany(q => q.Question.Regions).ToList() };
@@ -391,7 +397,9 @@ public sealed class ExtractionWorkflowPostgresTests
         merged.Questions.Single().Question.Id.Should().Be(target.Id);
         merged.Questions.Single().Question.QuestionNumber.Should().Be("12");
         merged.Questions.Single().Question.Regions.Select(i => i.SourceId).Should().Equal(job.Sources.Select(s => s.Id));
-        merged.Questions.Single().Images.Should().BeEmpty("unknown groups do not generate formal crops");
+        merged.Questions.Single().Images.Select(i => i.SourceId).Should().Equal(job.Sources.Select(s => s.Id),
+            "an unknown cross-page question is a mistake with every part cropped in reading order");
+        merged.Questions.Single().ItemId.Should().Be(job.Questions[0].ItemId);
         var splitId = Guid.NewGuid();
         var split = await service.ReviseAsync(Admin, job.Id, new(Guid.NewGuid(), 2, "Separate unrelated second page",
             [joined with { Regions = [joined.Regions[0]] }, joined with { Id = splitId, QuestionNumber = null,
