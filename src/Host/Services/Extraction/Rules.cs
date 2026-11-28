@@ -13,9 +13,12 @@ internal static class Rules
     /// <summary>Newly covering more than this share of another question's region needs clarification.</summary>
     internal const double AdjustmentOverlapLimit = 0.2;
 
-    /// <summary>A question gets a mistake item and crops when it is incorrect or the user asked to collect it.</summary>
+    /// <summary>
+    /// A question gets a mistake item and crops when it is incorrect, judged unknown (a person confirms it or removes it
+    /// with "不是错题") or the user asked to collect it.
+    /// </summary>
     internal static bool Collected(ExtractionQuestionDraft question) =>
-        question.Outcome == "incorrect" || question.IncludedByRequest;
+        question.Outcome is "incorrect" or "unknown" || question.IncludedByRequest;
 
     /// <summary>
     /// Accepts a model adjustment only when it changes the selected question alone: same identity, subject,
@@ -51,7 +54,7 @@ internal static class Rules
     /// without one are new and take <paramref name="newId"/>; omitted questions stay. Protected questions (reviewed, with a
     /// deleted item, or outside the allowed subjects) keep their current form whatever the model returned. A requested
     /// collection applies to correct questions and, once made, stays while the question is correct. Rejects a change that
-    /// would withdraw a pending item, collect a question judged unknown or leave the allowed subjects, and output that
+    /// would withdraw a pending item or leave the allowed subjects, and output that
     /// may duplicate or reach into another question. New questions are placed in reading order by where they start.
     /// </summary>
     internal static List<ExtractionQuestionDraft> Reanalysis(IReadOnlyList<ExtractionQuestionView> current,
@@ -111,14 +114,11 @@ internal static class Rules
     }
 
     /// <summary>
-    /// Only a correct question is collected on request: an incorrect one is collected anyway, and one judged unknown has
-    /// no verified answer to keep. <paramref name="kept"/> carries an earlier request the model did not restate.
+    /// Only a correct question is collected on request: incorrect and unknown ones are collected anyway, so the request is
+    /// dropped. <paramref name="kept"/> carries an earlier request the model did not restate.
     /// </summary>
-    private static ExtractionQuestionDraft Requested(ExtractionQuestionDraft question, bool kept)
-    {
-        if (question.IncludedByRequest && question.Outcome == "unknown") throw new ExtractionException("reanalysis_out_of_scope", 422);
-        return question with { IncludedByRequest = question.Outcome == "correct" && (question.IncludedByRequest || kept) };
-    }
+    private static ExtractionQuestionDraft Requested(ExtractionQuestionDraft question, bool kept) =>
+        question with { IncludedByRequest = question.Outcome == "correct" && (question.IncludedByRequest || kept) };
 
     /// <summary>Area of the union of <paramref name="regions"/> inside <paramref name="within"/>.</summary>
     private static double CoveredArea(IEnumerable<ExtractionRegion> regions, ExtractionRegion within)

@@ -15,7 +15,8 @@ internal sealed record ResultSummary(Guid Id, string Status, int Version, string
             .OrderBy(g => g.Key.Subject).ThenBy(g => g.Key.Grade ?? int.MaxValue)
             .Select(group =>
             {
-                // Collected correct questions are listed for review but still count as correct.
+                // Every collected question is one mistake to review: unknown ones and correct ones collected on request
+                // are listed, but only incorrect judgments are counted as incorrect.
                 var mistakes = group.Where(q => Rules.Collected(q.Question)).Select(q =>
                     new ResultMistake(q.Question.Id, q.ItemId, q.ItemDeleted, q.Question.QuestionNumber,
                         q.Question.Statement, q.Question.StudentAnswer, q.Question.ReferenceAnswer,
