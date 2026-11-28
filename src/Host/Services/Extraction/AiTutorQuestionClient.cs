@@ -105,7 +105,7 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
 
     private static void ValidateRequest(QuestionAnalysisRequest request)
     {
-        if (request is null || request.Grade is < 1 or > 12 || request.Images is null || request.Images.Count is < 1 or > ExtractionRules.MaxSources)
+        if (request is null || request.Grade is < 1 or > 12 || request.Images is null || request.Images.Count is < 1 or > Rules.MaxSources)
             throw new ExtractionException("invalid_analysis_request");
         var sources = request.Images.Where(i => i is not null).Select(i => i.SourceId).ToHashSet();
         if (sources.Contains(Guid.Empty) || sources.Count != request.Images.Count || request.Images.Any(i => i is null
@@ -126,7 +126,7 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
                 || revision.Scope is not ("questions" or "regions" or "all") || revision.Questions is null)
                 throw new ExtractionException("invalid_analysis_request");
             var originals = request.Images.Select(i => new ExtractionSource(i.SourceId, "", "image/jpeg", 0, "", i.Width, i.Height, null)).ToList();
-            ExtractionRules.ValidateQuestions(revision.Questions, originals, automatic: false);
+            Rules.ValidateQuestions(revision.Questions, originals, automatic: false);
         }
     }
 
@@ -136,7 +136,7 @@ public sealed class AiTutorQuestionClient(HttpClient client, IOptions<Extraction
             || result.Questions is null)
             throw new ExtractionException("invalid_analysis_response", 502);
         foreach (var q in result.Questions)
-            if (q is null || !ExtractionRules.ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || q.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(q.Statement) || q.Statement.Length > 8000
+            if (q is null || !Rules.ValidQuestionNumber(q.QuestionNumber) || q.Subject is < 1 or > 9 || q.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(q.Statement) || q.Statement.Length > 8000
                 || q.StudentAnswer?.Length > 8000 || q.ReferenceAnswer is null || q.ReferenceAnswer.Length > 16000
                 || q.Explanation is null || q.Explanation.Length > 16000 || q.Evidence is null || q.Evidence.Length > 16000
                 || q.Outcome is not ("correct" or "incorrect" or "unknown")

@@ -277,7 +277,7 @@ public class S3OssService : IOssService, IDisposable
         if (!objectPath.StartsWith("mistakes/extractions/", StringComparison.Ordinal)
             || !(objectPath.Contains("/versions/", StringComparison.Ordinal) || objectPath.Contains("/supplements/", StringComparison.Ordinal)))
             return false;
-        return await PurgeExtractionObjectAsync(objectPath);
+        return await PurgeVersionsAsync(objectPath);
     }
 
     public Task<bool> DeleteExtractionOriginalAsync(string objectPath)
@@ -289,10 +289,10 @@ public class S3OssService : IOssService, IDisposable
             !(segments[4].EndsWith(".png", StringComparison.Ordinal) || segments[4].EndsWith(".jpg", StringComparison.Ordinal)) ||
             !Guid.TryParseExact(segments[4][..^4], "N", out _))
             return Task.FromResult(false);
-        return PurgeExtractionObjectAsync(objectPath);
+        return PurgeVersionsAsync(objectPath);
     }
 
-    private async Task<bool> PurgeExtractionObjectAsync(string objectPath)
+    private async Task<bool> PurgeVersionsAsync(string objectPath)
     {
         try
         {
@@ -479,14 +479,7 @@ public class S3OssService : IOssService, IDisposable
 
     public async Task<List<OssObjectInfo>> ListObjectsWithBucketAsync(OssBucket bucket, string? prefix = null)
     {
-        var bucketPrefix = bucket switch
-        {
-            OssBucket.Uploads => "uploads",
-            OssBucket.Mistakes => "mistakes",
-            OssBucket.Questions => "questions",
-            OssBucket.Documents => "documents",
-            _ => "others"
-        };
+        var bucketPrefix = BucketPrefix(bucket);
 
         var fullPrefix = string.IsNullOrWhiteSpace(prefix)
             ? bucketPrefix
@@ -526,16 +519,18 @@ public class S3OssService : IOssService, IDisposable
         return publicBaseUri;
     }
 
+    private static string BucketPrefix(OssBucket bucket) => bucket switch
+    {
+        OssBucket.Uploads => "uploads",
+        OssBucket.Mistakes => "mistakes",
+        OssBucket.Questions => "questions",
+        OssBucket.Documents => "documents",
+        _ => "others"
+    };
+
     private static string GenerateObjectPath(string fileName, OssBucket bucket, string? folder = null)
     {
-        var prefix = bucket switch
-        {
-            OssBucket.Uploads => "uploads",
-            OssBucket.Mistakes => "mistakes",
-            OssBucket.Questions => "questions",
-            OssBucket.Documents => "documents",
-            _ => "others"
-        };
+        var prefix = BucketPrefix(bucket);
 
         if (!string.IsNullOrWhiteSpace(folder))
         {

@@ -17,11 +17,11 @@ public sealed partial class ExtractionService(
 
     private MistakeDbContext Open() => new(databaseOptions);
     private static Task LockAsync(MistakeDbContext db, string key, CancellationToken ct) =>
-        db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({ExtractionRules.LockKey(key)})", ct);
+        db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({Payload.LockKey(key)})", ct);
     private static Task<DateTimeOffset> NowAsync(MistakeDbContext db, CancellationToken ct) =>
         db.Database.SqlQuery<DateTimeOffset>($"SELECT clock_timestamp() AS \"Value\"").SingleAsync(ct);
     private static List<ExtractionSource> Sources(ExtractionJobEntity job) =>
-        ExtractionRules.Read<List<ExtractionSource>>(job.SourcesJson);
+        Payload.Read<List<ExtractionSource>>(job.SourcesJson);
 
     private static async Task<ExtractionJobEntity> FindAsync(MistakeDbContext db, ExtractionAccess access,
         Guid id, CancellationToken ct)
@@ -35,23 +35,23 @@ public sealed partial class ExtractionService(
     private sealed record UploadImageIdentity(string ContentType, string Hash);
 
     private static string LegacyPayloadHash(string studentId, int grade, List<UploadImageIdentity> images) =>
-        ExtractionRules.Hash(new { StudentId = studentId, Grade = grade, Images = images });
+        Payload.HashJson(new { StudentId = studentId, Grade = grade, Images = images });
 
-    private static string SourceBindingHash(string owner, string sourceKey) => ExtractionRules.Hash(new { owner, sourceKey });
+    private static string SourceBindingHash(string owner, string sourceKey) => Payload.HashJson(new { owner, sourceKey });
 
     private static Task LockAdmissionAsync(MistakeDbContext db, string studentId, CancellationToken ct) =>
         LockAsync(db, "extraction-student-content:" + studentId, ct);
 
     public Task<ExtractionJobView> SubmitAsync(ExtractionAccess access, ExtractionUpload upload, CancellationToken ct = default)
     {
-        ExtractionRules.ValidateUpload(upload);
+        Rules.ValidateUpload(upload);
         return SubmitCoreAsync(access, upload.StudentId, upload.Grade, upload.SourceKey, upload.Images, ct);
     }
 
     public Task<ExtractionJobView> SubmitImagesAsync(ExtractionAccess access, string studentId,
         List<ExtractionImage> images, CancellationToken ct = default)
     {
-        ExtractionRules.ValidateImages(studentId, images);
+        Rules.ValidateImages(studentId, images);
         return SubmitCoreAsync(access, studentId, null, null, images, ct);
     }
 
@@ -60,8 +60,8 @@ public sealed partial class ExtractionService(
     {
         if (string.IsNullOrWhiteSpace(access.Caller)) throw new ExtractionException("caller_required", 401);
         var owner = Owner(access);
-        var identity = images.Select(i => new UploadImageIdentity(i.ContentType, ExtractionRules.Hash(i.Content))).ToList();
-        var contentHash = ExtractionRules.Hash(new { StudentId = studentId, Images = identity.Select(i => i.Hash) });
+        var identity = images.Select(i => new UploadImageIdentity(i.ContentType, Payload.HashBytes(i.Content))).ToList();
+        var contentHash = Payload.HashJson(new { StudentId = studentId, Images = identity.Select(i => i.Hash) });
         var sourceKey = suppliedSourceKey ?? contentHash;
         // Earlier SourcesJson removes duplicate pages and later includes supplements. Only the
         // original payload digest can identify the exact historical input with multiplicity/order.
@@ -115,7 +115,7 @@ public sealed partial class ExtractionService(
                 var now = await NowAsync(db, ct);
                 db.ExtractionJobs.Add(new() { Id = jobId, Caller = owner, SourceKey = sourceKey,
                     PayloadHash = payloadHash, ContentHash = contentHash, StudentId = studentId, Grade = grade,
-                    SourcesJson = ExtractionRules.Serialize(originals), CreatedAt = now, UpdatedAt = now, Status = "Staging" });
+                    SourcesJson = Payload.Serialize(originals), CreatedAt = now, UpdatedAt = now, Status = "Staging" });
                 db.ExtractionObjects.AddRange(originals.Select(s => new ExtractionObjectEntity
                     { JobId = jobId, Path = s.Path, Pending = true, NextAttempt = now }));
                 await db.SaveChangesAsync(ct);
@@ -180,7 +180,7 @@ public sealed partial class ExtractionService(
         if (version != job.Version) throw new ExtractionException("version_retired", 410);
         var row = await db.ExtractionRevisions.AsNoTracking().SingleOrDefaultAsync(r => r.JobId == id && r.Version == version, ct)
             ?? throw new ExtractionException("version_not_found", 404);
-        return await WithDeletionStateAsync(db, ExtractionRules.Read<ExtractionSnapshot>(row.SnapshotJson), ct);
+        return await WithDeletionStateAsync(db, Payload.Read<ExtractionSnapshot>(row.SnapshotJson), ct);
     }
 
     private static async Task<ExtractionSnapshot> WithDeletionStateAsync(MistakeDbContext db, ExtractionSnapshot snapshot, CancellationToken ct,
@@ -202,7 +202,7 @@ public sealed partial class ExtractionService(
     private static async Task<ExtractionJobView> ViewAsync(MistakeDbContext db, ExtractionJobEntity job, int? version, CancellationToken ct)
     {
         var selected = version ?? job.Version;
-        var snapshot = selected == 0 ? new ExtractionSnapshot([]) : ExtractionRules.Read<ExtractionSnapshot>(
+        var snapshot = selected == 0 ? new ExtractionSnapshot([]) : Payload.Read<ExtractionSnapshot>(
             (await db.ExtractionRevisions.AsNoTracking().SingleAsync(r => r.JobId == job.Id && r.Version == selected, ct)).SnapshotJson);
         snapshot = selected == job.Version ? await WithDeletionStateAsync(db, snapshot, ct, includeSupplements: true) : new([]);
         var versions = await db.ExtractionRevisions.AsNoTracking().Where(r => r.JobId == job.Id).OrderByDescending(r => r.Version)
@@ -218,14 +218,14 @@ public sealed partial class ExtractionService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await LockAsync(db, id.ToString(), ct);
         var job = await FindAsync(db, access, id, ct);
-        var keys = ExtractionRules.Read<List<Guid>>(job.RetryKeysJson);
+        var keys = Payload.Read<List<Guid>>(job.RetryKeysJson);
         if (!keys.Contains(request.RequestKey))
         {
             if (!options.Value.Enabled) throw new ExtractionException("extraction_disabled", 503);
             if (job.Status != "Failed" || job.Version != 0) throw new ExtractionException("retry_not_available", 409);
-            if (job.Attempt >= ExtractionRules.MaxAttempts) throw new ExtractionException("attempts_exhausted", 409);
+            if (job.Attempt >= Rules.MaxAttempts) throw new ExtractionException("attempts_exhausted", 409);
             keys.Add(request.RequestKey);
-            job.RetryKeysJson = ExtractionRules.Serialize(keys);
+            job.RetryKeysJson = Payload.Serialize(keys);
             job.LastRetryKey = request.RequestKey;
             job.Status = "Queued";
             job.ErrorCode = null;

@@ -22,7 +22,7 @@ public sealed partial class ExtractionService
             || questionId == Guid.Empty || string.IsNullOrEmpty(instruction) || instruction.Length > 2000)
             throw new ExtractionException("invalid_request");
         request = request with { Instruction = instruction };
-        var hash = ExtractionRules.Hash(new { operation = "adjust", questionId, request });
+        var hash = Payload.HashJson(new { operation = "adjust", questionId, request });
         ExtractionJobEntity job;
         ExtractionSnapshot snapshot;
         await using (var jobLock = await SerializeJobAsync(id, ct))
@@ -48,7 +48,7 @@ public sealed partial class ExtractionService
         var sources = Sources(job);
         var analyzed = await AnalyzeRevisionAsync(job.Grade, AdjustmentPages(sources, target.Question), [target.Question],
             instruction, "questions", [], ct);
-        var adjusted = ExtractionRules.Adjustment(snapshot.Questions.Select(q => q.Question).ToList(), target.Question,
+        var adjusted = Rules.Adjustment(snapshot.Questions.Select(q => q.Question).ToList(), target.Question,
             analyzed.Questions, sources);
         ExtractionJobView result;
         try
@@ -73,10 +73,10 @@ public sealed partial class ExtractionService
     /// </summary>
     private static List<ExtractionSource> AdjustmentPages(List<ExtractionSource> sources, ExtractionQuestionDraft target)
     {
-        if (sources.Count <= ExtractionRules.MaxSources) return sources;
+        if (sources.Count <= Rules.MaxSources) return sources;
         var own = target.Regions.Select(r => r.SourceId).ToHashSet();
         var chosen = sources.Where(s => own.Contains(s.Id)).Concat(sources.Where(s => !own.Contains(s.Id)))
-            .Take(ExtractionRules.MaxSources).Select(s => s.Id).ToHashSet();
+            .Take(Rules.MaxSources).Select(s => s.Id).ToHashSet();
         return sources.Where(s => chosen.Contains(s.Id)).ToList();
     }
 

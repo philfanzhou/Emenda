@@ -38,7 +38,7 @@ public sealed partial class ExtractionService
             string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 2000)
             throw new ExtractionException("invalid_request");
         // Keep existing whole-set receipts byte-compatible; bind partial receipts to their target.
-        var hash = acceptance?.Hash ?? pending?.Hash ?? (questionId.HasValue ? ExtractionRules.Hash(new { questionId, request }) : ExtractionRules.Hash(request));
+        var hash = acceptance?.Hash ?? pending?.Hash ?? (questionId.HasValue ? Payload.HashJson(new { questionId, request }) : Payload.HashJson(request));
         await using var jobLock = await SerializeJobAsync(id, ct);
         List<ExtractionQuestionDraft> drafts;
         ExtractionJobEntity initial;
@@ -55,7 +55,7 @@ public sealed partial class ExtractionService
             await EnsureKeyAvailableAsync(db, id, request.RequestKey, ct);
             if (initial.Version != request.ExpectedVersion) throw new ExtractionException("version_conflict", 409);
             if (initial.Status is not ("Succeeded" or "Failed")) throw new ExtractionException("processing_in_progress", 409);
-            prior = initial.Version == 0 ? null : ExtractionRules.Read<ExtractionSnapshot>(
+            prior = initial.Version == 0 ? null : Payload.Read<ExtractionSnapshot>(
                 (await db.ExtractionRevisions.AsNoTracking().SingleAsync(r => r.JobId == id && r.Version == initial.Version, ct)).SnapshotJson);
             if (prior is not null) prior = await WithDeletionStateAsync(db, prior, ct);
             if (questionId.HasValue && prior?.Questions.Any(q => q.Question.Id == questionId) != true)
@@ -72,8 +72,7 @@ public sealed partial class ExtractionService
                 drafts = drafts.Select(q => q is not null && q.Grade is null && priorGrades.GetValueOrDefault(q.Id) is { } grade
                     ? q with { Grade = grade } : q!).ToList();
             }
-            ExtractionRules.ValidateQuestions(drafts, Sources(initial), automatic: false);
-            if (drafts is null) throw new ExtractionException("invalid_questions");
+            Rules.ValidateQuestions(drafts, Sources(initial), automatic: false);
         }
         var snapshot = await BuildSnapshotAsync(id, request.RequestKey, drafts, Sources(initial), prior, ct);
         await using var publish = Open();
@@ -122,8 +121,8 @@ public sealed partial class ExtractionService
             }
             var old = prior?.Questions.SingleOrDefault(q => q.Question.Id == proposed.Question.Id);
             var changed = old is null ||
-                ExtractionRules.Hash(old.Question with { QuestionNumber = null }) !=
-                ExtractionRules.Hash(proposed.Question with { QuestionNumber = null }) || !row.Active;
+                Payload.HashJson(old.Question with { QuestionNumber = null }) !=
+                Payload.HashJson(proposed.Question with { QuestionNumber = null }) || !row.Active;
             row.Active = true;
             MistakeItemEntity? item = row.ItemId is { } itemId ? items.GetValueOrDefault(itemId) : null;
             if (proposed.Question.Outcome == "incorrect" && row.ItemId is null)
@@ -137,7 +136,7 @@ public sealed partial class ExtractionService
                 db.MistakeItems.Add(item);
                 db.ProcessLogs.Add(new() { Id = Guid.NewGuid(), MistakeItemId = item.Id, StudentId = job.StudentId,
                     Action = (int)ProcessAction.Created, CreatedAt = now,
-                    Details = ExtractionRules.Serialize(new { operation = "extraction_created", actor, reason, jobId = job.Id,
+                    Details = Payload.Serialize(new { operation = "extraction_created", actor, reason, jobId = job.Id,
                         version = job.Version + 1, questionId = row.Id }) });
             }
             else if (item is not null && changed)
@@ -172,7 +171,7 @@ public sealed partial class ExtractionService
             item.UpdatedAt = now;
         }
         db.ExtractionRevisions.Add(new() { JobId = job.Id, Version = job.Version + 1, RequestKey = requestKey,
-            PayloadHash = payloadHash, SnapshotJson = ExtractionRules.Serialize(new ExtractionSnapshot(published)),
+            PayloadHash = payloadHash, SnapshotJson = Payload.Serialize(new ExtractionSnapshot(published)),
             Actor = actor, Reason = reason, Model = model, CreatedAt = now });
         await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE extraction_revision SET snapshot_json='{{\"questions\":[]}}'::jsonb WHERE job_id={job.Id}", ct);
         await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE extraction_proposal SET status='Expired',request_json=NULL,result_json=NULL,owner=NULL,lease_until=NULL WHERE job_id={job.Id} AND status IN ('Generating','Pending')", ct);
@@ -193,7 +192,7 @@ public sealed partial class ExtractionService
     }
 
     private static string SerializeAnalysis(ExtractionQuestionDraft question, int version) =>
-        ExtractionRules.Serialize(new MistakeAnalysisSnapshotDto(question.Statement, question.StudentAnswer!,
+        Payload.Serialize(new MistakeAnalysisSnapshotDto(question.Statement, question.StudentAnswer!,
             question.ReferenceAnswer, question.Explanation, question.Evidence, version));
 
     private static void RetainBeforeCorrection(MistakeDbContext db, MistakeItemEntity item, string actor,
@@ -201,7 +200,7 @@ public sealed partial class ExtractionService
         {
             Id = Guid.NewGuid(), MistakeItemId = item.Id, StudentId = item.StudentId,
             Action = (int)ProcessAction.Analyzed, CreatedAt = now,
-            Details = ExtractionRules.Serialize(new { operation = "extraction_corrected", actor, reason, version,
+            Details = Payload.Serialize(new { operation = "extraction_corrected", actor, reason, version,
                 previous = new { item.Subject, item.ReviewStatus, item.ReviewerId, item.ReviewedAt, item.RootCause } })
         });
 }

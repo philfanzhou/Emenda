@@ -257,7 +257,7 @@ public static partial class MistakeHttpEndpoints
         return MistakeHttpResponse.Ok(response);
     }
 
-    private static bool IsExtractionObjectPath(string objectPath)
+    private static bool IsInFolder(string objectPath, string folder)
     {
         var segments = new List<string>();
         foreach (var segment in objectPath.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries))
@@ -270,21 +270,13 @@ public static partial class MistakeHttpEndpoints
             else segments.Add(segment);
         }
         return segments.Count >= 2 && string.Equals(segments[0], "mistakes", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(segments[1], "extractions", StringComparison.OrdinalIgnoreCase);
+            && string.Equals(segments[1], folder, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsConversationObjectPath(string path)
+    private static bool IsConversationPath(string path)
     {
-        var segments = new List<string>();
-        foreach (var segment in Uri.UnescapeDataString(path).Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (segment == ".") continue;
-            if (segment == "..") { if (segments.Count > 0) segments.RemoveAt(segments.Count - 1); }
-            else segments.Add(segment);
-        }
-        return path.StartsWith("mistakes/conversation/", StringComparison.OrdinalIgnoreCase)
-            || segments.Count >= 2 && string.Equals(segments[0], "mistakes", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(segments[1], "conversation", StringComparison.OrdinalIgnoreCase);
+        var inFolder = IsInFolder(Uri.UnescapeDataString(path), "conversation");
+        return path.StartsWith("mistakes/conversation/", StringComparison.OrdinalIgnoreCase) || inFolder;
     }
 
     public static bool IsCanonicalConversationObjectPath(string path, string caller)
@@ -314,7 +306,7 @@ public static partial class MistakeHttpEndpoints
         // One size vocabulary for every image; unknown names are refused instead of creating unmanaged objects.
         if (ImageVariants.Normalize(request.Size) is not { } size)
             return ErrorKind("invalid_size", 400);
-        if (IsConversationObjectPath(request.ObjectPath))
+        if (IsConversationPath(request.ObjectPath))
         {
             var product = user.Identities.FirstOrDefault(identity => identity.IsAuthenticated && identity.AuthenticationType == "ProductCaller");
             var caller = product?.FindFirst("emenda:caller")?.Value;
@@ -339,7 +331,7 @@ public static partial class MistakeHttpEndpoints
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception) { return ErrorKind("conversation_image_unavailable", 503); }
         }
-        if (request.ObjectPath.StartsWith("mistakes/extractions/", StringComparison.Ordinal) || IsExtractionObjectPath(request.ObjectPath))
+        if (request.ObjectPath.StartsWith("mistakes/extractions/", StringComparison.Ordinal) || IsInFolder(request.ObjectPath, "extractions"))
             return ErrorKind("extraction_read_endpoint_required", 403);
         if (!request.ObjectPath.StartsWith("mistakes/", StringComparison.Ordinal))
             return MistakeHttpResponse.BadRequest("object_path must start with mistakes/");

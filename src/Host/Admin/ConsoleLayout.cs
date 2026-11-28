@@ -2,6 +2,8 @@ namespace Emenda.Host.Admin;
 
 internal static class ConsoleLayout
 {
+    public const string MediaType = "text/html; charset=utf-8";
+
     public static string Header(bool intake) => $$"""
 <a class="skip" href="#main-content">跳到主要内容</a>
 <header class="topbar">

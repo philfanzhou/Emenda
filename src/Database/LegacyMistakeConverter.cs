@@ -27,18 +27,18 @@ internal static class LegacyMistakeConverter
     {
         foreach (var (table, expected) in Columns)
         {
-            var actual = await ReadAsync(connection, $"""
+            var actual = await LegacySql.ReadStringsAsync(connection, $"""
                 SELECT a.attname || '|' || format_type(a.atttypid,a.atttypmod) || '|' || CASE WHEN a.attnotnull THEN 'N' ELSE 'Y' END || '|' || a.attidentity::text || '|' || a.attgenerated::text
                 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
                 WHERE c.oid=to_regclass('public.{table}') AND c.relkind='r' AND NOT c.relispartition AND NOT c.relrowsecurity
                     AND a.attnum>0 AND NOT a.attisdropped
                 """, cancellationToken).ConfigureAwait(false);
             if (table == "mistake_image_fingerprint" && actual.Count == 0 &&
-                (await ReadAsync(connection, "SELECT to_regclass('public.mistake_image_fingerprint')::text", cancellationToken).ConfigureAwait(false)).Count == 0)
+                (await LegacySql.ReadStringsAsync(connection, "SELECT to_regclass('public.mistake_image_fingerprint')::text", cancellationToken).ConfigureAwait(false)).Count == 0)
                 continue;
             if (!actual.SetEquals(expected.Select(column => column + "||"))) return false;
         }
-        var attached = await ReadAsync(connection, """
+        var attached = await LegacySql.ReadStringsAsync(connection, """
             SELECT 'object' FROM pg_trigger WHERE tgrelid='public.mistake'::regclass AND NOT tgisinternal
             UNION ALL SELECT 'object' FROM pg_rewrite WHERE ev_class='public.mistake'::regclass
             UNION ALL SELECT 'object' FROM pg_policy WHERE polrelid='public.mistake'::regclass
@@ -48,7 +48,7 @@ internal static class LegacyMistakeConverter
                 to_regclass('public.mistake_image_fingerprint'))
             """, cancellationToken).ConfigureAwait(false);
         if (attached.Count > 0) return false;
-        var indexes = await ReadAsync(connection, """
+        var indexes = await LegacySql.ReadStringsAsync(connection, """
             SELECT idx.relname || '|' || CASE WHEN i.indisvalid AND i.indisready AND i.indnatts=i.indnkeyatts
                 AND idx.relam=(SELECT oid FROM pg_am WHERE amname='btree') AND i.indpred IS NULL AND i.indexprs IS NULL
                 THEN array_to_string(ARRAY(SELECT replace(pg_get_indexdef(i.indexrelid,n,true),'"','')
@@ -58,7 +58,7 @@ internal static class LegacyMistakeConverter
         if (!indexes.SetEquals(["PK_mistake|id|U", "IX_mistake_created_at|created_at|N", "IX_mistake_date|date|N",
             "IX_mistake_status|status|N", "IX_mistake_student_id|student_id|N", "IX_mistake_type|type|N",
             "IX_mistake_student_id_subject_grade_status|student_id,subject,grade,status|N"])) return false;
-        var keys = await ReadAsync(connection, """
+        var keys = await LegacySql.ReadStringsAsync(connection, """
             SELECT c.conname || '|' || t.relname || '|' || c.contype::text || '|' ||
                 array_to_string(ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(attnum,ord)
                     JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum ORDER BY k.ord), ',') || '|' ||
@@ -76,17 +76,17 @@ internal static class LegacyMistakeConverter
             .Select(t => $"FK_{t}_mistake_mistake_id|{t}|f|mistake_id|public.mistake|id|cas|V")
             .Append("PK_mistake|mistake|p|id|-|V").ToHashSet(StringComparer.Ordinal);
         if (!keys.Contains("PK_mistake|mistake|p|id|-|V") || !keys.IsSubsetOf(allowed)) return false;
-        if ((await ReadAsync(connection, "SELECT to_regclass('public.\"__EFMigrationsHistory\"')::text", cancellationToken).ConfigureAwait(false)).Count == 0)
+        if ((await LegacySql.ReadStringsAsync(connection, "SELECT to_regclass('public.\"__EFMigrationsHistory\"')::text", cancellationToken).ConfigureAwait(false)).Count == 0)
             return true;
-        var history = await ReadAsync(connection, "SELECT \"MigrationId\" || '|' || \"ProductVersion\" FROM public.\"__EFMigrationsHistory\"", cancellationToken).ConfigureAwait(false);
-        return history.SetEquals([]) || history.SetEquals([LegacySchemaNormalizer.LegacyInitial + "|8.0.4"]) ||
-            history.SetEquals([LegacySchemaNormalizer.LegacyInitial + "|8.0.4", LegacySchemaNormalizer.LegacyRemoveFingerprint + "|8.0.4"]);
+        var history = await LegacySql.ReadStringsAsync(connection, "SELECT \"MigrationId\" || '|' || \"ProductVersion\" FROM public.\"__EFMigrationsHistory\"", cancellationToken).ConfigureAwait(false);
+        return history.SetEquals([]) || history.SetEquals([LegacySchemaNormalizer.InitialMigration + "|8.0.4"]) ||
+            history.SetEquals([LegacySchemaNormalizer.InitialMigration + "|8.0.4", LegacySchemaNormalizer.RemoveFingerprintMigration + "|8.0.4"]);
     }
 
     internal static async Task PrepareAsync(DbConnection connection, HashSet<string> relations, LegacyArchiveStage stage, CancellationToken cancellationToken)
     {
         var locked = Columns.Keys.Concat(["mistake_item", "__EFMigrationsHistory"]).Where(relations.Contains).Select(t => "public.\"" + t + "\"");
-        await LegacyArchiveStage.ExecuteAsync(connection, $"LOCK TABLE {string.Join(',', locked)} IN ACCESS EXCLUSIVE MODE", cancellationToken).ConfigureAwait(false);
+        await LegacySql.ExecuteAsync(connection, $"LOCK TABLE {string.Join(',', locked)} IN ACCESS EXCLUSIVE MODE", cancellationToken).ConfigureAwait(false);
         // External DDL may have changed the catalog while table locks were being acquired.
         if (!await IsSupportedAsync(connection, cancellationToken).ConfigureAwait(false))
             throw new UpgradeStepException("Mistake legacy conversion structure changed while acquiring table locks.");
@@ -97,12 +97,12 @@ internal static class LegacyMistakeConverter
             SELECT 'mistake', m.id::text, 'row', to_jsonb(m), {reason} FROM public.mistake m ORDER BY m.id
             """, cancellationToken).ConfigureAwait(false);
         if (!relations.Contains("__EFMigrationsHistory"))
-            await LegacyArchiveStage.ExecuteAsync(connection, """
+            await LegacySql.ExecuteAsync(connection, """
                 CREATE TABLE public."__EFMigrationsHistory" ("MigrationId" character varying(150) NOT NULL,
                     "ProductVersion" character varying(32) NOT NULL, CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId"))
                 """, cancellationToken).ConfigureAwait(false);
         if (!relations.Contains("mistake_item"))
-            await LegacyArchiveStage.ExecuteAsync(connection, """
+            await LegacySql.ExecuteAsync(connection, """
                 CREATE TABLE public.mistake_item (id uuid NOT NULL, student_id character varying(36) NOT NULL,
                     subject integer NOT NULL, grade integer NOT NULL, source_upload_id character varying(64) NOT NULL,
                     source_regions jsonb NOT NULL, review_status integer NOT NULL, reviewer_id character varying(36),
@@ -111,12 +111,12 @@ internal static class LegacyMistakeConverter
                     CONSTRAINT "PK_mistake_item" PRIMARY KEY (id))
                 """, cancellationToken).ConfigureAwait(false);
         foreach (var table in Columns.Keys.Where(t => t != "mistake" && relations.Contains(t)))
-            await LegacyArchiveStage.ExecuteAsync(connection, $"ALTER TABLE public.{table} DROP CONSTRAINT IF EXISTS \"FK_{table}_mistake_mistake_id\"", cancellationToken).ConfigureAwait(false);
+            await LegacySql.ExecuteAsync(connection, $"ALTER TABLE public.{table} DROP CONSTRAINT IF EXISTS \"FK_{table}_mistake_mistake_id\"", cancellationToken).ConfigureAwait(false);
     }
 
     internal static async Task ConvertAsync(DbConnection connection, LegacyArchiveStage stage, CancellationToken cancellationToken)
     {
-        await LegacyArchiveStage.ExecuteAsync(connection, """
+        await LegacySql.ExecuteAsync(connection, """
             INSERT INTO public.mistake_item (id,student_id,subject,grade,question_id,created_at,updated_at,review_status,source_upload_id,source_regions)
             SELECT id,student_id,subject,grade,question_id,created_at,updated_at,status,'','[]'::jsonb
             FROM public.mistake m WHERE NOT EXISTS (SELECT 1 FROM public.mistake_item i WHERE i.id=m.id)
@@ -125,18 +125,6 @@ internal static class LegacyMistakeConverter
             SELECT 'process_log', id::text, 'column_values', jsonb_build_object('action',action), 'legacy_action_renumbered'
             FROM public.process_log WHERE action IN (3,4) ORDER BY id
             """, cancellationToken).ConfigureAwait(false);
-        await LegacyArchiveStage.ExecuteAsync(connection, "UPDATE public.process_log SET action=CASE action WHEN 3 THEN 5 WHEN 4 THEN 6 END WHERE action IN (3,4)", cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<HashSet<string>> ReadAsync(DbConnection connection, string sql, CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        command.CommandTimeout = 0;
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        var rows = new HashSet<string>(StringComparer.Ordinal);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            if (!reader.IsDBNull(0)) rows.Add(reader.GetString(0));
-        return rows;
+        await LegacySql.ExecuteAsync(connection, "UPDATE public.process_log SET action=CASE action WHEN 3 THEN 5 WHEN 4 THEN 6 END WHERE action IN (3,4)", cancellationToken).ConfigureAwait(false);
     }
 }

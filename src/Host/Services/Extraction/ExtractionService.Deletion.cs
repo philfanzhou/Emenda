@@ -55,7 +55,7 @@ public sealed partial class ExtractionService
         // Cover older manifests and partially staged supplements whose PUT never started.
         var supplements = await db.ExtractionSupplements.Where(s => s.JobId == id).Select(s => s.SourcesJson).ToListAsync(ct);
         var paths = Sources(job).Select(s => s.Path)
-            .Concat(supplements.SelectMany(s => ExtractionRules.Read<List<ExtractionSource>>(s).Select(p => p.Path)))
+            .Concat(supplements.SelectMany(s => Payload.Read<List<ExtractionSource>>(s).Select(p => p.Path)))
             .Concat(snapshot.Questions.SelectMany(q => q.Images).Select(c => c.Path))
             .Distinct(StringComparer.Ordinal).ToArray();
         var now = await NowAsync(db, ct);
@@ -71,7 +71,7 @@ public sealed partial class ExtractionService
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO public.extraction_deletion(job_id,admission_hash,source_binding_hash,owner_hash,deleted_at,deleted_mistakes,retained_confirmed)
             VALUES ({id},{job.ContentHash ?? job.PayloadHash},{SourceBindingHash(job.Caller, job.SourceKey)},
-                {ExtractionRules.Hash(job.Caller)},{now},{deleted.Length},{retained.Count})
+                {Payload.HashJson(job.Caller)},{now},{deleted.Length},{retained.Count})
             """, ct);
         await db.ExtractionProposals.Where(r => r.JobId == id).ExecuteDeleteAsync(ct);
         await db.ExtractionSupplements.Where(r => r.JobId == id).ExecuteDeleteAsync(ct);

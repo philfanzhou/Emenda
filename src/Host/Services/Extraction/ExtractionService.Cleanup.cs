@@ -13,7 +13,7 @@ public sealed partial class ExtractionService
         try
         {
             await db.Database.OpenConnectionAsync(ct);
-            var key = ExtractionRules.LockKey("extraction-storage:" + id);
+            var key = Payload.LockKey("extraction-storage:" + id);
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_lock({key})", ct);
             return new JobLock(db, key);
         }
@@ -63,7 +63,7 @@ public sealed partial class ExtractionService
         var deleted = job is null && await db.ExtractionDeletions.AnyAsync(d => d.JobId == id, ct);
         if (job is null && !deleted) return;
         if (deleted) await InventoryObjectsAsync(db, id, ct);
-        var snapshot = job is null || job.Version == 0 ? new ExtractionSnapshot([]) : ExtractionRules.Read<ExtractionSnapshot>(
+        var snapshot = job is null || job.Version == 0 ? new ExtractionSnapshot([]) : Payload.Read<ExtractionSnapshot>(
             (await db.ExtractionRevisions.AsNoTracking().SingleAsync(r => r.JobId == id && r.Version == job.Version, ct)).SnapshotJson);
         var itemIds = snapshot.Questions.Where(q => q.ItemId.HasValue).Select(q => q.ItemId!.Value).ToArray();
         var existing = await db.MistakeItems.AsNoTracking().Where(i => itemIds.Contains(i.Id)).Select(i => i.Id).ToListAsync(ct);

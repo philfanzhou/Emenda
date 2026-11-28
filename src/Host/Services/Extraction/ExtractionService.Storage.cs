@@ -33,8 +33,8 @@ public sealed partial class ExtractionService
 
     private async Task<byte[]> VerifiedSourceAsync(ExtractionSource source, CancellationToken ct)
     {
-        var bytes = await ReadObjectAsync(source.Path, ExtractionRules.MaxImageBytes, ct);
-        if (bytes.LongLength != source.Length || ExtractionRules.Hash(bytes) != source.Sha256)
+        var bytes = await ReadObjectAsync(source.Path, Rules.MaxImageBytes, ct);
+        if (bytes.LongLength != source.Length || Payload.HashBytes(bytes) != source.Sha256)
             throw new ExtractionException("source_bytes_conflict", 503);
         return bytes;
     }
@@ -49,7 +49,7 @@ public sealed partial class ExtractionService
             var actual = await oss.UploadAsync(bytes, path[(split + 1)..], contentType, OssBucket.Mistakes, folder);
             if (actual != path) throw new ExtractionException("storage_path_conflict", 503);
         }
-        var stored = await ReadObjectAsync(path, ExtractionRules.MaxCropBytes, ct);
+        var stored = await ReadObjectAsync(path, Rules.MaxCropBytes, ct);
         if (stored.Length != bytes.Length || !CryptographicOperations.FixedTimeEquals(SHA256.HashData(stored), SHA256.HashData(bytes)))
             throw new ExtractionException("storage_bytes_conflict", 503);
     }
@@ -95,8 +95,8 @@ public sealed partial class ExtractionService
 
     private async Task<byte[]> VerifiedCropAsync(ExtractionCrop crop, CancellationToken ct)
     {
-        var bytes = await ReadObjectAsync(crop.Path, ExtractionRules.MaxCropBytes, ct);
-        if (bytes.LongLength != crop.Length || ExtractionRules.Hash(bytes) != crop.Sha256)
+        var bytes = await ReadObjectAsync(crop.Path, Rules.MaxCropBytes, ct);
+        if (bytes.LongLength != crop.Length || Payload.HashBytes(bytes) != crop.Sha256)
             throw new ExtractionException("crop_bytes_conflict", 503);
         return bytes;
     }
@@ -139,9 +139,9 @@ public sealed partial class ExtractionService
                 var original = sources.Single(s => s.Id == region.SourceId);
                 var bytes = await VerifiedSourceAsync(original, ct);
                 var crop = QuestionImage.Crop(bytes, region.X0, region.Y0, region.X1, region.Y1);
-                if (crop.Bytes.Length > ExtractionRules.MaxCropBytes) throw new ExtractionException("crop_too_large", 413);
-                var hash = ExtractionRules.Hash(crop.Bytes);
-                var key = $"mistakes/extractions/{jobId:N}/versions/{requestKey:N}/{ExtractionRules.Hash(region)}-{hash}.png";
+                if (crop.Bytes.Length > Rules.MaxCropBytes) throw new ExtractionException("crop_too_large", 413);
+                var hash = Payload.HashBytes(crop.Bytes);
+                var key = $"mistakes/extractions/{jobId:N}/versions/{requestKey:N}/{Payload.HashJson(region)}-{hash}.png";
                 await TrackObjectAsync(jobId, key, ct);
                 await StoreAsync(key, crop.Bytes, "image/png", ct);
                 var created = new ExtractionCrop(key, crop.Width, crop.Height, region.SourceId, region, crop.Bytes.LongLength, hash);

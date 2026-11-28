@@ -15,7 +15,7 @@ public sealed partial class ExtractionService
             throw new ExtractionException("invalid_request");
         var accepted = await ReviseCoreAsync(access, id,
             new(request.RequestKey, request.ExpectedVersion, "adopt_proposal", []), null, ct,
-            new(proposalId, request.Questions, ExtractionRules.Hash(new { proposalId, request })));
+            new(proposalId, request.Questions, Payload.HashJson(new { proposalId, request })));
         await CollectJobAsync(id, ct);
         return new(proposalId, id, request.RequestKey, accepted.Version, accepted.Superseded);
     }
@@ -27,8 +27,8 @@ public sealed partial class ExtractionService
             ?? throw new ExtractionException("not_found", 404);
         if (proposal.Status != "Pending" || proposal.ExpectedVersion != version)
             throw new ExtractionException("proposal_not_pending", 409);
-        var request = ExtractionRules.Read<ExtractionProposalRequest>(proposal.RequestJson!);
-        var candidate = ExtractionRules.Read<List<ExtractionQuestionDraft>>(proposal.ResultJson!);
+        var request = Payload.Read<ExtractionProposalRequest>(proposal.RequestJson!);
+        var candidate = Payload.Read<List<ExtractionQuestionDraft>>(proposal.ResultJson!);
         var proposed = acceptance.Questions ?? candidate;
         var allowedIds = candidate.Select(q => q.Id).Concat(request.Scope == "all"
             ? prior.Questions.Select(q => q.Question.Id) : request.QuestionIds).ToHashSet();

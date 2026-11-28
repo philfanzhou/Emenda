@@ -11,7 +11,7 @@ namespace Emenda.Service.Tests;
 public sealed class ExtractionCallerRecoveryPostgresTests
 {
     /// <summary>
-    /// A deletion receipt's owner hash as the application writes it (<c>ExtractionRules.Hash(job.Caller)</c>):
+    /// A deletion receipt's owner hash as the application writes it (<c>Payload.HashJson(job.Caller)</c>):
     /// SHA-256 of the JSON-serialized <c>caller:name</c> string, quotes and default escaping included.
     /// </summary>
     internal static string OwnerHash(string caller) => Convert.ToHexStringLower(SHA256.HashData(

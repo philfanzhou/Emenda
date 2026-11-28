@@ -34,7 +34,8 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         var now = DateTimeOffset.UtcNow;
         db.ConversationCollections.Add(new() { Id = operation, CallerName = caller, ActorId = actor, StudentId = studentId, OwnerId = owner, Grade = grade,
             CreatedAt = now, UpdatedAt = now, NextAttemptAt = now });
-        await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
     public async Task<ConversationCollectionEntity?> StatusAsync(string caller, string actor, string studentId, Guid operation, CancellationToken ct)
@@ -57,9 +58,14 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
             if (!await AllowedAsync(actor, id, job.OwnerId, ct)) throw new UnauthorizedAccessException();
             var source = await exports.ReadAsync(job.Id, job.OwnerId, true, ct);
             if (source.Status != "stopped") continue;
-            job.Status = "stopped"; job.ErrorCode = "HISTORY_CLEARED"; job.LeaseId = null; job.LeaseUntil = null; job.UpdatedAt = DateTimeOffset.UtcNow;
+            job.Status = "stopped";
+            job.ErrorCode = "HISTORY_CLEARED";
+            job.LeaseId = null;
+            job.LeaseUntil = null;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
         }
-        await db.SaveChangesAsync(ct); await transaction.CommitAsync(ct);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
     public async Task ReceiveAsync(Guid operation, Guid lease, ConversationExport packet, string fingerprint, CancellationToken ct)
@@ -75,7 +81,7 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         var imageQuestions = new List<ConversationExportQuestion>();
         foreach (var item in packet.Events.Where(e => !knownEvents.Contains(ReceiptId(job.CallerName, e.Id)) && e.Question.Attempt != null))
         {
-            var key = ConversationExport.Hash($"{job.CallerName}\n{job.StudentId}\n{packet.ConversationId:D}\n{item.Question.Id:D}");
+            var key = SourceKey(job, packet.ConversationId, item.Question.Id);
             var id = new Guid(Convert.FromHexString(key[..32]));
             if (await db.MistakeItems.AnyAsync(i => i.Id == id, ct) || !await db.ConversationMistakeReceipts.AnyAsync(r => r.SourceKey == key && MaterializedStatuses.Contains(r.Status), ct)) imageQuestions.Add(item.Question);
         }
@@ -86,14 +92,16 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
             var decoded = ConversationExport.Image(image);
             var hash = Convert.ToHexStringLower(SHA256.HashData(decoded.Data));
             var folder = $"conversation/{ConversationExport.Hash(job.CallerName)}/{ConversationExport.Hash(job.StudentId)}/{packet.ConversationId:D}";
-            var name = hash + "." + decoded.Extension; var path = $"mistakes/{folder}/{name}";
+            var name = hash + "." + decoded.Extension;
+            var path = $"mistakes/{folder}/{name}";
             images.TryAdd(path, (decoded.Data, decoded.MediaType, name, folder));
             descriptors.Add(new(position, asset, path, box));
         }
         // Publish durable references before any object write; failed/unknown writes remain protected.
         var staged = JsonSerializer.Deserialize<List<SourceRegionEntry>>(job.StagedRegions, ConversationExport.Json) ?? [];
         job.StagedRegions = JsonSerializer.Serialize(staged.Concat(images.Keys.Select(path => new SourceRegionEntry { SourceImagePath = path })).DistinctBy(r => r.SourceImagePath), ConversationExport.Json);
-        job.UpdatedAt = DateTimeOffset.UtcNow; await db.SaveChangesAsync(ct);
+        job.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
         foreach (var (path, image) in images)
         {
             ct.ThrowIfCancellationRequested();
@@ -115,7 +123,12 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         var receipts = new List<ConversationMistakeReceiptEntity>();
         foreach (var item in packet.Events) receipts.Add((await db.ConversationMistakeReceipts.FindAsync([ReceiptId(job.CallerName, item.Id)], ct))!);
         job.Result = JsonSerializer.Serialize(new { collected = receipts.Count(r => r.Status == "collected"), updated = receipts.Count(r => r.Status == "updated"), retracted = receipts.Count(r => r.Status == "retracted") });
-        job.Status = "completed"; job.ErrorCode = null; job.LeaseId = null; job.LeaseUntil = null; job.StagedRegions = "[]"; job.UpdatedAt = now;
+        job.Status = "completed";
+        job.ErrorCode = null;
+        job.LeaseId = null;
+        job.LeaseUntil = null;
+        job.StagedRegions = "[]";
+        job.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         // Evidence images get their display variants from the background backlog.
         await ImageVariantSchema.EnqueueAsync(db, images.Keys, ct);
@@ -126,12 +139,17 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         List<ConversationQuestionImage> images, CancellationToken ct)
     {
         var q = item.Question;
-        var key = ConversationExport.Hash($"{job.CallerName}\n{job.StudentId}\n{packet.ConversationId:D}\n{q.Id:D}");
+        var key = SourceKey(job, packet.ConversationId, q.Id);
         var fingerprint = ConversationExport.Hash(JsonSerializer.Serialize(new { item, sources = packet.Sources.Where(s => q.SourcePositions.Contains(s.Position) || s.Position == q.Attempt?.Position),
             assets = packet.Assets.Where(a => q.AssetIds.Contains(a.Id)) }, ConversationExport.Json));
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({key},871031))", ct);
         var replay = await db.ConversationMistakeReceipts.FindAsync([ReceiptId(job.CallerName, item.Id)], ct);
-        if (replay != null) { if (replay.ContentHash != fingerprint || replay.StudentId != job.StudentId) throw new InvalidDataException("Conversation receipt conflict."); return; }
+        if (replay != null)
+        {
+            if (replay.ContentHash != fingerprint || replay.StudentId != job.StudentId)
+                throw new InvalidDataException("Conversation receipt conflict.");
+            return;
+        }
         var prior = await db.ConversationMistakeReceipts.Where(r => r.SourceKey == key).OrderByDescending(r => r.Position).ToListAsync(ct);
         var id = new Guid(Convert.FromHexString(key[..32]));
         var existing = (await db.MistakeItems.FromSqlInterpolated($"SELECT * FROM mistake_item WHERE id={id} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
@@ -184,6 +202,10 @@ public sealed class ConversationCollectionStore(DbContextOptions<MistakeDbContex
         db.ConversationMistakeReceipts.Add(new() { EventId = ReceiptId(job.CallerName, item.Id), SourceKey = key, StudentId = job.StudentId, ItemId = id, Position = item.Position, ContentHash = fingerprint,
             Observation = observation == null || status is not ("skipped" or "retracted") ? "{}" : JsonSerializer.Serialize(observation, ConversationExport.Json), Status = status, CreatedAt = DateTimeOffset.UtcNow });
     }
+
+    private static string SourceKey(ConversationCollectionEntity job, Guid conversationId, Guid questionId) =>
+        ConversationExport.Hash($"{job.CallerName}\n{job.StudentId}\n{conversationId:D}\n{questionId:D}");
+
     private static string ReceiptId(string caller, string eventId) => ConversationExport.Hash(caller + "\n" + eventId);
     internal static void ValidateIdentity(string actor, string student, string owner)
     {
