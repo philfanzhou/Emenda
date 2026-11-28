@@ -127,7 +127,9 @@ public sealed partial class ExtractionService
             row.Active = true;
             MistakeItemEntity? item = row.ItemId is { } itemId ? items.GetValueOrDefault(itemId) : null;
             var collected = Rules.Collected(proposed.Question);
-            if (collected && row.ItemId is null)
+            // A question published before unknown ones were collected has no crops yet; its item is created by the
+            // first revision that rebuilds the snapshot, not by one (such as a removal) that republishes it as is.
+            if (collected && row.ItemId is null && proposed.Images.Count > 0)
             {
                 item = new() { Id = Guid.NewGuid(), StudentId = job.StudentId, Subject = proposed.Question.Subject,
                     Grade = proposed.Question.Grade ?? 0, SourceUploadId = $"extract:{job.Id:N}", QuestionId = row.Id.ToString("D"),
@@ -194,7 +196,7 @@ public sealed partial class ExtractionService
     }
 
     private static string SerializeAnalysis(ExtractionQuestionDraft question, int version) =>
-        Payload.Serialize(new MistakeAnalysisSnapshotDto(question.Statement, question.StudentAnswer!,
+        Payload.Serialize(new MistakeAnalysisSnapshotDto(question.Statement, question.StudentAnswer,
             question.ReferenceAnswer, question.Explanation, question.Evidence, version));
 
     private static void RetainBeforeCorrection(MistakeDbContext db, MistakeItemEntity item, string actor,

@@ -152,6 +152,72 @@ public sealed class ExtractionMistakeRemovalPostgresTests
     }
 
     [Fact]
+    public async Task RemovesAnUnknownJudgmentLikeAnyPendingMistake_AndKeepsTheOriginals()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var service = Service(db, new Analyzer { Unknown13 = true });
+        var job = await Completed(service);
+        var (q12, q13) = (job.Questions[0], job.Questions[1]);
+        Assert.Equal("unknown", q13.Question.Outcome);
+
+        var receipt = await service.RemoveMistakeAsync(Caller, job.Id, q13.Question.Id,
+            new(job.Version, q13.ItemId!.Value, (int)ReviewStatus.PendingReview));
+
+        Assert.Equal(job.Version + 1, receipt.Version);
+        var after = await service.GetAsync(Caller, job.Id);
+        Assert.Equal(JsonSerializer.Serialize(new[] { q12 }), JsonSerializer.Serialize(after.Questions));
+        foreach (var source in job.Sources) Assert.True(await db.Files.ObjectExistsAsync(source.Path), "originals are retained");
+        Assert.False(await db.Files.ObjectExistsAsync(q13.Images[0].Path));
+        await using var check = db.CreateContext();
+        Assert.Equal(q12.ItemId, (await check.MistakeItems.SingleAsync()).Id);
+    }
+
+    [Fact]
+    public async Task UnknownJudgmentPublishedWithoutCrops_GetsItsItemOnlyWhenASnapshotIsRebuilt()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var service = Service(db, new Analyzer { Unknown13 = true });
+        var job = await Completed(service);
+        var (q12, q13) = (job.Questions[0], job.Questions[1]);
+        // Before unknown judgments were collected, question 13 was published with neither an item nor crops.
+        await using (var context = db.CreateContext())
+        {
+            var revision = await context.ExtractionRevisions.SingleAsync(r => r.JobId == job.Id && r.Version == job.Version);
+            var snapshot = System.Text.Json.Nodes.JsonNode.Parse(revision.SnapshotJson)!;
+            var legacy = snapshot["questions"]![1]!;
+            legacy["itemId"] = null;
+            legacy["images"] = new System.Text.Json.Nodes.JsonArray();
+            var json = snapshot.ToJsonString();
+            // Bypass the identity guards that keep a published binding immutable, to recreate the older state.
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                SET session_replication_role = replica;
+                UPDATE extraction_revision SET snapshot_json={json}::jsonb WHERE job_id={job.Id} AND version={job.Version};
+                UPDATE extraction_question SET item_id=NULL WHERE id={q13.Question.Id};
+                DELETE FROM mistake_item WHERE id={q13.ItemId};
+                SET session_replication_role = origin;
+                """);
+        }
+
+        // A removal republishes question 13 as it is, so it cannot create an item without crops.
+        var removed = await service.RemoveMistakeAsync(Caller, job.Id, q12.Question.Id,
+            new(job.Version, q12.ItemId!.Value, (int)ReviewStatus.PendingReview));
+        var after = Assert.Single((await service.GetAsync(Caller, job.Id)).Questions);
+        Assert.Equal((q13.Question.Id, (Guid?)null), (after.Question.Id, after.ItemId));
+        await using (var context = db.CreateContext()) Assert.False(await context.MistakeItems.AnyAsync());
+
+        // Rebuilding the snapshot crops it and creates its pending item.
+        var revised = await service.ReviseQuestionAsync(Caller, job.Id, q13.Question.Id,
+            new(Guid.NewGuid(), removed.Version, "题干补全", after.Question with { Statement = "Question 13 in full" }));
+        var collected = revised.Question!;
+        Assert.NotNull(collected.ItemId);
+        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(collected.Images).Path));
+        await using var check = db.CreateContext();
+        var item = await check.MistakeItems.SingleAsync();
+        Assert.Equal((collected.ItemId, (int)ReviewStatus.PendingReview), (item.Id, item.ReviewStatus));
+        Assert.Equal(collected.Images.Select(i => i.Path), item.SourceRegions.Select(r => r.SourceImagePath));
+    }
+
+    [Fact]
     public async Task MismatchedStaleForeignOrConfirmedTargets_AreRejectedWithoutChanges()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
@@ -188,8 +254,8 @@ public sealed class ExtractionMistakeRemovalPostgresTests
         Assert.Equal(2, await check.MistakeItems.CountAsync());
     }
 
-    private static ExtractionService Service(PostgresTestDatabase db) => new(
-        new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(db.Connection).Options, db.Oss.Object, new Analyzer(),
+    private static ExtractionService Service(PostgresTestDatabase db, Analyzer? analyzer = null) => new(
+        new DbContextOptionsBuilder<MistakeDbContext>().UseNpgsql(db.Connection).Options, db.Oss.Object, analyzer ?? new Analyzer(),
         new LayoutClient(), Options.Create(new ExtractionOptions { Enabled = true }), NullLogger<ExtractionService>.Instance);
 
     private static async Task<ExtractionJobView> Completed(ExtractionService service)
@@ -213,13 +279,18 @@ public sealed class ExtractionMistakeRemovalPostgresTests
     /// <summary>Question 12 sits on the top half of page 1; question 13 on the top half of page 2.</summary>
     private sealed class Analyzer : IQuestionAnalysisClient
     {
+        /// <summary>Judges question 13 unknown: the answer could not be read.</summary>
+        public bool Unknown13 { get; init; }
+
         public Task<QuestionAnalysisResult> AnalyzeAsync(QuestionAnalysisRequest request, CancellationToken ct = default)
         {
             ExtractionQuestionDraft Question(string number, int page) => new()
             { QuestionNumber = number, Subject = 2, Statement = "Question " + number, StudentAnswer = "3", ReferenceAnswer = "2",
                 Explanation = "2 is correct", Evidence = "Visible answer 3 differs from 2", Outcome = "incorrect",
                 Regions = [new(request.Images[page].SourceId, 0, 0, 1, .5)] };
-            return Task.FromResult(new QuestionAnalysisResult("controlled", [Question("12", 0), Question("13", 1)]));
+            var q13 = Question("13", 1);
+            if (Unknown13) q13 = q13 with { Outcome = "unknown", StudentAnswer = null, Evidence = "" };
+            return Task.FromResult(new QuestionAnalysisResult("controlled", [Question("12", 0), q13]));
         }
     }
 
