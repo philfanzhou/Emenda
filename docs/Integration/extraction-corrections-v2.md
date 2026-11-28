@@ -51,6 +51,23 @@ UUID 和版本必须换成当前读出的真实值，不可用示例写业务数
 | 404 | `not_found` | 任务不属于调用方，或题目不在当前版本 |
 | 502 | `invalid_analysis_response` | 模型输出无效 |
 
+## 删除单道错题（不是错题）
+
+`POST .../{id}/questions/{questionId}/remove-mistake`：`{expectedVersion,itemId,expectedReviewStatus:1}`。对应门户「不是错题」：把识别错的一道**待审核**错题从本次上传中去掉。BFF 先校验学生及该题学科权限。整份上传的删除见运维删除接口；改判定用单题 PUT。
+
+在同一把任务锁、同一事务内一次检查：任务属于调用方、版本等于 `expectedVersion`、题目仍是 incorrect、`itemId` 仍绑定该学生/任务/题目/学科且仍为 `PendingReview`。确认审核也用这把锁：先确认的，删除返回 `409 review_conflict`，已确认的错题不受影响；先删除的，之后的确认返回 `404 question_not_found`。
+
+删除后：该题从当前版本中消失，绑定的待审核错题被删除，版本号加一。该题的裁图（含各尺寸派生图）以及只为该题上传的补图原图、补图请求一并回收；上传原图、其他题仍在使用的页面、其他题和已确认错题不动。服务端不记录「已排除」名单，之后的重新分析仍可再次识别出这道题。
+
+清理完成且更新后的任务可读时才返回 `200`：`data` 为 `{jobId,studentId,questionId,itemId,version,cleanupComplete:true}`，`version` 为检查时版本加一；BFF 校验回执后重新读取同一任务。请求不带请求键，由 `expectedVersion` 与 `itemId` 标识这次删除：响应丢失或清理未完成时，原样重发即重放同一回执并继续清理，不会删除更新的或无关的数据。
+
+| 状态 | `errorCode` | 情况 |
+|---|---|---|
+| 400 | `invalid_request` | 缺字段、`expectedReviewStatus` 不是 1 |
+| 404 | `not_found` | 任务不属于调用方，或题目不在当前版本（包括已被删除后再用新版本号请求） |
+| 409 | `version_conflict` / `review_conflict` / `item_binding_conflict` | 版本过期；已确认或不是待审核错题；`itemId` 不匹配或已换绑 |
+| 503 | `cleanup_pending` | 删除已提交，但对象存储清理未完成（失败后退避重试）；原样重发直到返回 200 |
+
 ## 原题补图
 
 `POST .../{id}/questions/{questionId}/supplements`：`{requestKey,expectedVersion,itemId,note}`。只针对当前有效错题，将原条目置为 `PendingReview`，显示可读待补说明，发布新的内容版本。不会使用 `Rejected` 或创建新条目。

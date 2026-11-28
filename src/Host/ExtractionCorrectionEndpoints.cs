@@ -28,6 +28,10 @@ public static partial class ExtractionEndpoints
             async (HttpContext http, Guid id, Guid questionId, IExtractionService service, CancellationToken ct) =>
                 Ok(await service.AdjustQuestionAsync(Access(http, administrator), id, questionId,
                     await BodyAsync<ExtractionAdjustmentRequest>(http, ct), ct)));
+        group.MapPost("/{id:guid}/questions/{questionId:guid}/remove-mistake",
+            async (HttpContext http, Guid id, Guid questionId, IExtractionService service, CancellationToken ct) =>
+                Ok(await service.RemoveMistakeAsync(Access(http, administrator), id, questionId,
+                    await BodyAsync<ExtractionMistakeRemovalRequest>(http, ct), ct)));
         group.MapPost("/{id:guid}/questions/{questionId:guid}/supplements",
             async (HttpContext http, Guid id, Guid questionId, IExtractionService service, CancellationToken ct) =>
                 Ok(await service.RequestSupplementAsync(Access(http, administrator), id, questionId,

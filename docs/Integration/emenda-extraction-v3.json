@@ -1079,6 +1079,49 @@
         }
       }
     },
+    "/api/intake/extractions/{id}/questions/{questionId}/remove-mistake": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "removeExtractionMistake",
+        "description": "\"不是错题\": remove one PendingReview incorrect question and its bound item from the current upload. The job version, question/item/student binding, incorrect outcome and PendingReview status are checked together under the review job lock; a confirmation committed first makes this 409 review_conflict, and a confirmation after removal finds no question. The version advances by one. The question's crops with their derived sizes and supplement pages uploaded only for it are reclaimed; upload originals, pages other questions use, other questions and confirmed items are kept. The removed question is not remembered as excluded, so a later reanalysis may recognize it again. 200 only after this cleanup has completed. 503 cleanup_pending means the removal is committed but storage cleanup is outstanding: resend the identical body. No request key is sent: expectedVersion with the item identifies the removal, so an identical retry after a lost response or a pending cleanup replays the same receipt; a request at a newer version for the removed question returns 404.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/MistakeRemoval"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/MistakeRemovalReceipt"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/intake/extractions/{id}/questions/{questionId}/supplements": {
       "parameters": [
         {
@@ -1797,6 +1840,49 @@
         }
       }
     },
+    "/admin/api/extractions/{id}/questions/{questionId}/remove-mistake": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "removeAdminExtractionMistake",
+        "description": "\"不是错题\": remove one PendingReview incorrect question and its bound item from the current upload. The job version, question/item/student binding, incorrect outcome and PendingReview status are checked together under the review job lock; a confirmation committed first makes this 409 review_conflict, and a confirmation after removal finds no question. The version advances by one. The question's crops with their derived sizes and supplement pages uploaded only for it are reclaimed; upload originals, pages other questions use, other questions and confirmed items are kept. The removed question is not remembered as excluded, so a later reanalysis may recognize it again. 200 only after this cleanup has completed. 503 cleanup_pending means the removal is committed but storage cleanup is outstanding: resend the identical body. No request key is sent: expectedVersion with the item identifies the removal, so an identical retry after a lost response or a pending cleanup replays the same receipt; a request at a newer version for the removed question returns 404.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/MistakeRemoval"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/MistakeRemovalReceipt"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/admin/api/extractions/{id}/questions/{questionId}/supplements": {
       "parameters": [
         {
@@ -2139,6 +2225,40 @@
           }
         }
       },
+      "MistakeRemoval": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "expectedVersion",
+                "itemId",
+                "expectedReviewStatus"
+              ],
+              "properties": {
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The version the caller inspected."
+                },
+                "itemId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "The pending mistake item currently bound to the question."
+                },
+                "expectedReviewStatus": {
+                  "type": "integer",
+                  "enum": [
+                    1
+                  ],
+                  "description": "PendingReview."
+                }
+              }
+            }
+          }
+        }
+      },
       "QuestionRevision": {
         "required": true,
         "content": {
@@ -2321,6 +2441,67 @@
                     },
                     "superseded": {
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "MistakeRemovalReceipt": {
+        "description": "Removal receipt, returned once cleanup is complete; reload the same upload.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "success",
+                "data"
+              ],
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "jobId",
+                    "studentId",
+                    "questionId",
+                    "itemId",
+                    "version",
+                    "cleanupComplete"
+                  ],
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "studentId": {
+                      "type": "string"
+                    },
+                    "questionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "itemId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "description": "The inspected version plus one."
+                    },
+                    "cleanupComplete": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
                     }
                   }
                 }

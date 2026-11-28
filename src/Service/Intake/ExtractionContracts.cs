@@ -52,6 +52,9 @@ public sealed record ExtractionQuestionRevisionView(Guid Id, string StudentId, i
 }
 public sealed record ExtractionRetryRequest(Guid RequestKey);
 public sealed record ExtractionAdjustmentRequest(Guid RequestKey, int ExpectedVersion, Guid ItemId, string Instruction);
+public sealed record ExtractionMistakeRemovalRequest(int ExpectedVersion, Guid ItemId, int ExpectedReviewStatus);
+public sealed record ExtractionMistakeRemovalView(Guid JobId, string StudentId, Guid QuestionId, Guid ItemId, int Version,
+    bool CleanupComplete);
 public sealed record ExtractionSupplementRequest(Guid RequestKey, int ExpectedVersion, Guid ItemId, string Note);
 public sealed record ExtractionSupplementUpload(Guid RequestKey, int ExpectedVersion, Guid ItemId, List<ExtractionImage> Images);
 public sealed record ExtractionSupplementView(Guid Id, Guid QuestionId, Guid ItemId, string Status, string Note,
@@ -90,6 +93,9 @@ public interface IExtractionService
     /// <summary>Applies an instruction to one pending question in place; other questions and confirmed items never change.</summary>
     Task<ExtractionQuestionRevisionView> AdjustQuestionAsync(ExtractionAccess access, Guid id, Guid questionId,
         ExtractionAdjustmentRequest request, CancellationToken ct = default);
+    /// <summary>Removes one pending mistake and its question from the upload; returns only once its own files are reclaimed.</summary>
+    Task<ExtractionMistakeRemovalView> RemoveMistakeAsync(ExtractionAccess access, Guid id, Guid questionId,
+        ExtractionMistakeRemovalRequest request, CancellationToken ct = default);
     Task<ExtractionSupplementView> RequestSupplementAsync(ExtractionAccess access, Guid id, Guid questionId,
         ExtractionSupplementRequest request, CancellationToken ct = default);
     Task<ExtractionSupplementView> AppendSupplementAsync(ExtractionAccess access, Guid id, Guid questionId, Guid supplementId,
