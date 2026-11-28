@@ -41,6 +41,70 @@ internal static class Rules
         return adjusted;
     }
 
+    /// <summary>
+    /// Merges a whole-upload reanalysis into the current questions. Returned questions with a known ID update it, those
+    /// without one are new and take <paramref name="newId"/>; omitted questions stay. Protected questions (reviewed, with a
+    /// deleted item, or outside the allowed subjects) keep their current form whatever the model returned. Rejects a
+    /// change that would withdraw a pending mistake or leave the allowed subjects, and output that may duplicate or reach
+    /// into another question. New questions are placed in reading order by where they start.
+    /// </summary>
+    internal static List<ExtractionQuestionDraft> Reanalysis(IReadOnlyList<ExtractionQuestionView> current,
+        IReadOnlySet<Guid> protectedIds, IReadOnlySet<int> allowedSubjects, List<ExtractionQuestionDraft>? proposed,
+        IReadOnlyCollection<ExtractionSource> sources, Func<int, Guid> newId)
+    {
+        var known = current.ToDictionary(q => q.Question.Id);
+        if (proposed is null || proposed.Any(q => q is null || q.Id != Guid.Empty && !known.ContainsKey(q.Id))
+            || proposed.Where(q => q.Id != Guid.Empty).GroupBy(q => q.Id).Any(g => g.Count() > 1))
+            throw new ExtractionException("invalid_analysis_response", 502);
+        var updates = new Dictionary<Guid, ExtractionQuestionDraft>();
+        var added = new List<ExtractionQuestionDraft>();
+        foreach (var question in proposed)
+        {
+            if (question.Id == Guid.Empty)
+            {
+                if (!allowedSubjects.Contains(question.Subject)) throw new ExtractionException("reanalysis_out_of_scope", 422);
+                added.Add(question with { Id = newId(added.Count) });
+                continue;
+            }
+            if (protectedIds.Contains(question.Id)) continue;
+            var view = known[question.Id];
+            // Withdrawing a pending mistake is "不是错题", a separate, explicit operation.
+            if (!allowedSubjects.Contains(question.Subject)
+                || view.ItemId.HasValue && !view.ItemDeleted && question.Outcome != "incorrect")
+                throw new ExtractionException("reanalysis_out_of_scope", 422);
+            var updated = question with { Grade = question.Grade ?? view.Question.Grade,
+                QuestionNumber = question.QuestionNumber ?? view.Question.QuestionNumber };
+            if (Payload.HashJson(updated) != Payload.HashJson(view.Question)) updates[question.Id] = updated;
+        }
+        var merged = current.Select(view => updates.GetValueOrDefault(view.Question.Id, view.Question)).ToList();
+        try { ValidateQuestions(merged.Concat(added).ToList(), sources, automatic: false); }
+        catch (ExtractionException error) when (error.Code == "duplicate_question")
+        { throw new ExtractionException("clarification_required", 422); }
+        catch (ExtractionException) { throw new ExtractionException("invalid_analysis_response", 502); }
+        // The model lists only what changed, so position comes from the pages: before the first question starting later.
+        var page = sources.Select((s, i) => (s.Id, i)).ToDictionary(p => p.Id, p => p.i);
+        (int, double, double) Start(ExtractionQuestionDraft q) => (page[q.Regions[0].SourceId], q.Regions[0].Y0, q.Regions[0].X0);
+        foreach (var question in added)
+        {
+            var at = merged.FindIndex(q => Start(q).CompareTo(Start(question)) > 0);
+            merged.Insert(at < 0 ? merged.Count : at, question);
+        }
+        var created = added.Select(q => q.Id).ToHashSet();
+        foreach (var question in merged.Where(q => updates.ContainsKey(q.Id) || created.Contains(q.Id)))
+        {
+            var before = known.TryGetValue(question.Id, out var view) ? view.Question.Regions : [];
+            foreach (var region in merged.Where(q => q.Id != question.Id).SelectMany(q => q.Regions))
+            {
+                // A new question covering an existing one is probably that question found again; an updated one must
+                // not newly reach into another question. Coverage that already existed does not count.
+                var gained = CoveredArea(question.Regions, region) - CoveredArea(before, region);
+                if (gained > AdjustmentOverlapLimit * (region.X1 - region.X0) * (region.Y1 - region.Y0))
+                    throw new ExtractionException("clarification_required", 422);
+            }
+        }
+        return merged;
+    }
+
     /// <summary>Area of the union of <paramref name="regions"/> inside <paramref name="within"/>.</summary>
     private static double CoveredArea(IEnumerable<ExtractionRegion> regions, ExtractionRegion within)
     {

@@ -22,6 +22,8 @@ public static partial class ExtractionEndpoints
             async (HttpContext http, Guid id, Guid proposalId, IExtractionService service, CancellationToken ct) =>
                 Ok(await service.AdoptProposalAsync(Access(http, administrator), id, proposalId,
                     await BodyAsync<ExtractionProposalAdoptionRequest>(http, ct), ct)));
+        group.MapPost("/{id:guid}/reanalyze", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
+            Ok(await service.ReanalyzeAsync(Access(http, administrator), id, await BodyAsync<ExtractionReanalysisRequest>(http, ct), ct)));
         group.MapPost("/{id:guid}/questions/{questionId:guid}/adjust",
             async (HttpContext http, Guid id, Guid questionId, IExtractionService service, CancellationToken ct) =>
                 Ok(await service.AdjustQuestionAsync(Access(http, administrator), id, questionId,

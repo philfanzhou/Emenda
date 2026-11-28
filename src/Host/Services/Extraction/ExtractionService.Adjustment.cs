@@ -8,7 +8,8 @@ namespace Emenda.Host.Services.Extraction;
 
 public sealed partial class ExtractionService
 {
-    private sealed record PendingTarget(Guid ItemId, string Hash);
+    /// <summary>Pending items a publication changes; each must still be pending and bound when it commits.</summary>
+    private sealed record PendingTarget(string Hash, List<(Guid QuestionId, Guid ItemId)> Items);
 
     /// <summary>
     /// Applies one natural-language instruction to a single pending question, directly and in place.
@@ -54,7 +55,7 @@ public sealed partial class ExtractionService
         try
         {
             result = await ReviseCoreAsync(access, id, new(request.RequestKey, request.ExpectedVersion, instruction, [adjusted]),
-                questionId, ct, pending: new(request.ItemId, hash));
+                questionId, ct, pending: new(hash, [(questionId, request.ItemId)]));
         }
         catch (ExtractionException)
         {
