@@ -180,23 +180,7 @@ public sealed class ExtractionMistakeRemovalPostgresTests
         var job = await Completed(service);
         var (q12, q13) = (job.Questions[0], job.Questions[1]);
         // Before unknown judgments were collected, question 13 was published with neither an item nor crops.
-        await using (var context = db.CreateContext())
-        {
-            var revision = await context.ExtractionRevisions.SingleAsync(r => r.JobId == job.Id && r.Version == job.Version);
-            var snapshot = System.Text.Json.Nodes.JsonNode.Parse(revision.SnapshotJson)!;
-            var legacy = snapshot["questions"]![1]!;
-            legacy["itemId"] = null;
-            legacy["images"] = new System.Text.Json.Nodes.JsonArray();
-            var json = snapshot.ToJsonString();
-            // Bypass the identity guards that keep a published binding immutable, to recreate the older state.
-            await context.Database.ExecuteSqlInterpolatedAsync($"""
-                SET session_replication_role = replica;
-                UPDATE extraction_revision SET snapshot_json={json}::jsonb WHERE job_id={job.Id} AND version={job.Version};
-                UPDATE extraction_question SET item_id=NULL WHERE id={q13.Question.Id};
-                DELETE FROM mistake_item WHERE id={q13.ItemId};
-                SET session_replication_role = origin;
-                """);
-        }
+        await LegacyUnknownAsync(db, job, q13, rejectedItem: false);
 
         // A removal republishes question 13 as it is, so it cannot create an item without crops.
         var removed = await service.RemoveMistakeAsync(Caller, job.Id, q12.Question.Id,
@@ -215,6 +199,66 @@ public sealed class ExtractionMistakeRemovalPostgresTests
         var item = await check.MistakeItems.SingleAsync();
         Assert.Equal((collected.ItemId, (int)ReviewStatus.PendingReview), (item.Id, item.ReviewStatus));
         Assert.Equal(collected.Images.Select(i => i.Path), item.SourceRegions.Select(r => r.SourceImagePath));
+    }
+
+    [Fact]
+    public async Task UnknownJudgmentWhoseItemWasRejectedForIt_IsReopenedOnlyWhenASnapshotIsRebuilt()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var service = Service(db, new Analyzer { Unknown13 = true });
+        var job = await Completed(service);
+        var (q12, q13) = (job.Questions[0], job.Questions[1]);
+        // Before unknown judgments were collected, changing question 13 to unknown rejected its item and dropped its crops.
+        await LegacyUnknownAsync(db, job, q13, rejectedItem: true);
+
+        var removed = await service.RemoveMistakeAsync(Caller, job.Id, q12.Question.Id,
+            new(job.Version, q12.ItemId!.Value, (int)ReviewStatus.PendingReview));
+        await using (var context = db.CreateContext())
+            Assert.Equal((int)ReviewStatus.Rejected, (await context.MistakeItems.SingleAsync()).ReviewStatus);
+
+        // A rebuild that leaves question 13 unchanged still crops it and reopens the same item for review.
+        var unchanged = Assert.Single((await service.GetAsync(Caller, job.Id)).Questions).Question;
+        var rebuilt = await service.ReviseAsync(Caller, job.Id, new(Guid.NewGuid(), removed.Version, "重建", [unchanged]));
+        var view = Assert.Single(rebuilt.Questions);
+        Assert.Equal(q13.ItemId, view.ItemId);
+        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(view.Images).Path));
+        await using var check = db.CreateContext();
+        var item = await check.MistakeItems.SingleAsync();
+        Assert.Equal(((int)ReviewStatus.PendingReview, (DateTimeOffset?)null), (item.ReviewStatus, item.ReviewedAt));
+        Assert.Equal(view.Images.Select(i => i.Path), item.SourceRegions.Select(r => r.SourceImagePath));
+    }
+
+    /// <summary>
+    /// Recreates question 13 as published before unknown judgments were collected: no crops, and either no item or one
+    /// rejected without a reviewer. Bypasses the guards that keep a published binding immutable.
+    /// </summary>
+    private static async Task LegacyUnknownAsync(PostgresTestDatabase db, ExtractionJobView job, ExtractionQuestionView q13,
+        bool rejectedItem)
+    {
+        await using var context = db.CreateContext();
+        var revision = await context.ExtractionRevisions.SingleAsync(r => r.JobId == job.Id && r.Version == job.Version);
+        var snapshot = System.Text.Json.Nodes.JsonNode.Parse(revision.SnapshotJson)!;
+        var legacy = snapshot["questions"]![1]!;
+        if (!rejectedItem) legacy["itemId"] = null;
+        legacy["images"] = new System.Text.Json.Nodes.JsonArray();
+        var json = snapshot.ToJsonString();
+        var empty = "[]";
+        if (rejectedItem)
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                SET session_replication_role = replica;
+                UPDATE extraction_revision SET snapshot_json={json}::jsonb WHERE job_id={job.Id} AND version={job.Version};
+                UPDATE mistake_item SET review_status={(int)ReviewStatus.Rejected}, reviewed_at=NULL, source_regions={empty}::jsonb
+                    WHERE id={q13.ItemId};
+                SET session_replication_role = origin;
+                """);
+        else
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                SET session_replication_role = replica;
+                UPDATE extraction_revision SET snapshot_json={json}::jsonb WHERE job_id={job.Id} AND version={job.Version};
+                UPDATE extraction_question SET item_id=NULL WHERE id={q13.Question.Id};
+                DELETE FROM mistake_item WHERE id={q13.ItemId};
+                SET session_replication_role = origin;
+                """);
     }
 
     [Fact]
