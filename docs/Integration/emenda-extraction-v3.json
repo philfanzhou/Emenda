@@ -1033,6 +1033,95 @@
         }
       }
     },
+    "/api/intake/extractions/{id}/questions/{questionId}/adjust": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "adjustExtractionQuestion",
+        "description": "Apply one natural-language instruction to a single PendingReview question, directly and without proposal/adoption. The model sees every original page of the job. Only the selected question may change: same question and item IDs, same subject, outcome stays incorrect, item stays PendingReview; version advances by one and superseded unreferenced crops are reclaimed. Pending status and item binding are checked before inference and again at publication under the review lock; confirmation, removal or rebinding meanwhile returns 409 without publishing, and crops stored for it are reclaimed. 422 adjustment_out_of_scope when the result touches another question, splits, merges, creates or removes a record, or changes subject/outcome; 422 clarification_required when the union of the adjusted regions newly covers more than 20% of another question's region (coverage that already existed does not count). The printed question number and grade are kept. Jobs grown past 30 pages send the target's pages first, then the rest in order up to 30. Same requestKey and exact payload replays its receipt without inference.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/QuestionAdjustment"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionRevision"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intake/extractions/{id}/questions/{questionId}/remove-mistake": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "removeExtractionMistake",
+        "description": "\"不是错题\": remove one PendingReview incorrect question and its bound item from the current upload. The job version, question/item/student binding, incorrect outcome and PendingReview status are checked together under the review job lock; a confirmation committed first makes this 409 review_conflict, and a confirmation after removal finds no question. The version advances by one. The question's crops with their derived sizes and supplement pages uploaded only for it are reclaimed; upload originals, pages other questions use, other questions and confirmed items are kept. The removed question is not remembered as excluded, so a later reanalysis may recognize it again. 200 only after this cleanup has completed. 503 cleanup_pending means the removal is committed but storage cleanup is outstanding: resend the identical body. No request key is sent: expectedVersion with the item identifies the removal, so an identical retry after a lost response or a pending cleanup replays the same receipt; a request at a newer version for the removed question returns 404.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/MistakeRemoval"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/MistakeRemovalReceipt"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/intake/extractions/{id}/questions/{questionId}/supplements": {
       "parameters": [
         {
@@ -1705,6 +1794,95 @@
         ]
       }
     },
+    "/admin/api/extractions/{id}/questions/{questionId}/adjust": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "adjustAdminExtractionQuestion",
+        "description": "Apply one natural-language instruction to a single PendingReview question, directly and without proposal/adoption. The model sees every original page of the job. Only the selected question may change: same question and item IDs, same subject, outcome stays incorrect, item stays PendingReview; version advances by one and superseded unreferenced crops are reclaimed. Pending status and item binding are checked before inference and again at publication under the review lock; confirmation, removal or rebinding meanwhile returns 409 without publishing, and crops stored for it are reclaimed. 422 adjustment_out_of_scope when the result touches another question, splits, merges, creates or removes a record, or changes subject/outcome; 422 clarification_required when the union of the adjusted regions newly covers more than 20% of another question's region (coverage that already existed does not count). The printed question number and grade are kept. Jobs grown past 30 pages send the target's pages first, then the rest in order up to 30. Same requestKey and exact payload replays its receipt without inference.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/QuestionAdjustment"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionRevision"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/admin/api/extractions/{id}/questions/{questionId}/remove-mistake": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        },
+        {
+          "name": "questionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "removeAdminExtractionMistake",
+        "description": "\"不是错题\": remove one PendingReview incorrect question and its bound item from the current upload. The job version, question/item/student binding, incorrect outcome and PendingReview status are checked together under the review job lock; a confirmation committed first makes this 409 review_conflict, and a confirmation after removal finds no question. The version advances by one. The question's crops with their derived sizes and supplement pages uploaded only for it are reclaimed; upload originals, pages other questions use, other questions and confirmed items are kept. The removed question is not remembered as excluded, so a later reanalysis may recognize it again. 200 only after this cleanup has completed. 503 cleanup_pending means the removal is committed but storage cleanup is outstanding: resend the identical body. No request key is sent: expectedVersion with the item identifies the removal, so an identical retry after a lost response or a pending cleanup replays the same receipt; a request at a newer version for the removed question returns 404.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/MistakeRemoval"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/MistakeRemovalReceipt"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/admin/api/extractions/{id}/questions/{questionId}/supplements": {
       "parameters": [
         {
@@ -2010,6 +2188,77 @@
   },
   "components": {
     "requestBodies": {
+      "QuestionAdjustment": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "requestKey",
+                "expectedVersion",
+                "itemId",
+                "instruction"
+              ],
+              "properties": {
+                "requestKey": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "itemId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "The pending mistake item currently bound to the question."
+                },
+                "instruction": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "Trimmed before validation and hashing."
+                }
+              }
+            }
+          }
+        }
+      },
+      "MistakeRemoval": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "expectedVersion",
+                "itemId",
+                "expectedReviewStatus"
+              ],
+              "properties": {
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The version the caller inspected."
+                },
+                "itemId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "The pending mistake item currently bound to the question."
+                },
+                "expectedReviewStatus": {
+                  "type": "integer",
+                  "enum": [
+                    1
+                  ],
+                  "description": "PendingReview."
+                }
+              }
+            }
+          }
+        }
+      },
       "QuestionRevision": {
         "required": true,
         "content": {
@@ -2192,6 +2441,67 @@
                     },
                     "superseded": {
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "MistakeRemovalReceipt": {
+        "description": "Removal receipt, returned once cleanup is complete; reload the same upload.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "success",
+                "data"
+              ],
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "jobId",
+                    "studentId",
+                    "questionId",
+                    "itemId",
+                    "version",
+                    "cleanupComplete"
+                  ],
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "studentId": {
+                      "type": "string"
+                    },
+                    "questionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "itemId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 2,
+                      "description": "The inspected version plus one."
+                    },
+                    "cleanupComplete": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
                     }
                   }
                 }

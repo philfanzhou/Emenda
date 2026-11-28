@@ -22,6 +22,56 @@ internal static class ExtractionRules
     internal static Guid Identity(string value) => new(SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 16));
     internal static long LockKey(string value) => BitConverter.ToInt64(SHA256.HashData(Encoding.UTF8.GetBytes(value)), 0);
 
+    /// <summary>Newly covering more than this share of another question's region needs clarification.</summary>
+    internal const double AdjustmentOverlapLimit = 0.2;
+
+    /// <summary>
+    /// Accepts a model adjustment only when it changes the selected question alone: same identity, subject,
+    /// printed number, grade and incorrect outcome, no split, merge or new record, and no crop reaching into
+    /// another question.
+    /// </summary>
+    internal static ExtractionQuestionDraft Adjustment(List<ExtractionQuestionDraft> current, ExtractionQuestionDraft target,
+        List<ExtractionQuestionDraft> proposed, IReadOnlyCollection<ExtractionSource> sources)
+    {
+        if (proposed.Count != 1 || proposed[0] is not { } adjusted || adjusted.Id != target.Id
+            || adjusted.Subject != target.Subject || adjusted.Outcome != "incorrect")
+            throw new ExtractionException("adjustment_out_of_scope", 422);
+        // An adjustment changes crops and content; labels and grades are corrected through the question PUT.
+        adjusted = adjusted with { Grade = target.Grade, QuestionNumber = target.QuestionNumber };
+        try { ValidateQuestions(current.Select(q => q.Id == target.Id ? adjusted : q).ToList(), sources, automatic: false); }
+        catch (ExtractionException error) when (error.Code == "duplicate_question")
+        { throw new ExtractionException("adjustment_out_of_scope", 422); }
+        catch (ExtractionException) { throw new ExtractionException("invalid_analysis_response", 502); }
+        foreach (var region in current.Where(q => q.Id != target.Id).SelectMany(q => q.Regions))
+        {
+            // Only coverage the adjustment adds counts, summed over all of its regions; an existing
+            // shared boundary is not a new claim.
+            var added = CoveredArea(adjusted.Regions, region) - CoveredArea(target.Regions, region);
+            if (added > AdjustmentOverlapLimit * (region.X1 - region.X0) * (region.Y1 - region.Y0))
+                throw new ExtractionException("clarification_required", 422);
+        }
+        return adjusted;
+    }
+
+    /// <summary>Area of the union of <paramref name="regions"/> inside <paramref name="within"/>.</summary>
+    private static double CoveredArea(IEnumerable<ExtractionRegion> regions, ExtractionRegion within)
+    {
+        var clipped = regions.Where(r => r.SourceId == within.SourceId)
+            .Select(r => (X0: Math.Max(r.X0, within.X0), Y0: Math.Max(r.Y0, within.Y0), X1: Math.Min(r.X1, within.X1), Y1: Math.Min(r.Y1, within.Y1)))
+            .Where(r => r.X0 < r.X1 && r.Y0 < r.Y1).ToList();
+        var xs = clipped.SelectMany(r => new[] { r.X0, r.X1 }).Distinct().Order().ToList();
+        var ys = clipped.SelectMany(r => new[] { r.Y0, r.Y1 }).Distinct().Order().ToList();
+        var area = 0d;
+        for (var i = 0; i + 1 < xs.Count; i++)
+            for (var j = 0; j + 1 < ys.Count; j++)
+            {
+                var (x, y) = ((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2);
+                if (clipped.Any(r => r.X0 <= x && x <= r.X1 && r.Y0 <= y && y <= r.Y1))
+                    area += (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j]);
+            }
+        return area;
+    }
+
     internal static void ValidateUpload(ExtractionUpload upload)
     {
         if (upload is null || upload.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(upload.SourceKey) || upload.SourceKey.Length > 64 ||

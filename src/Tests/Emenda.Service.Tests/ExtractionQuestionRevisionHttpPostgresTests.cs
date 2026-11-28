@@ -353,6 +353,74 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(version, analysis.RootElement.GetProperty("sourceVersion").GetInt32());
     }
 
+    [Fact]
+    public async Task AdjustRoute_ReturnsStableErrorEnvelopes_AndLeavesTheQuestionUnchanged()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var caller = Caller(factory);
+        var job = await SeedAsync(factory);
+        var target = job.Questions[0];
+        var route = $"/api/intake/extractions/{job.Id}/questions/{target.Question.Id}/adjust";
+        var request = new ExtractionAdjustmentRequest(Guid.NewGuid(), job.Version, target.ItemId!.Value, "请把验算也裁进来");
+        async Task<(HttpStatusCode, string?)> Post(HttpContent content)
+        {
+            using var response = await caller.PostAsync(route, content);
+            var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+            Assert.False(body.GetProperty("success").GetBoolean());
+            return (response.StatusCode, body.GetProperty("errorCode").GetString());
+        }
+
+        // The controlled model answers with a new, unidentified question instead of the selected one.
+        Assert.Equal((HttpStatusCode.UnprocessableEntity, "adjustment_out_of_scope"), await Post(JsonContent.Create(request)));
+        Assert.Equal((HttpStatusCode.Conflict, "version_conflict"),
+            await Post(JsonContent.Create(request with { RequestKey = Guid.NewGuid(), ExpectedVersion = job.Version + 1 })));
+        Assert.Equal((HttpStatusCode.UnsupportedMediaType, "json_required"),
+            await Post(new StringContent(JsonSerializer.Serialize(request), System.Text.Encoding.UTF8, "text/plain")));
+        var read = await DataAsync<ExtractionJobView>(await caller.GetAsync($"/api/intake/extractions/{job.Id}"));
+        Assert.Equal(job.Version, read.Version);
+        Assert.Equal(JsonSerializer.Serialize(job.Questions), JsonSerializer.Serialize(read.Questions));
+    }
+
+    [Fact]
+    public async Task RemoveMistakeRoute_ReturnsTheReceipt_AndALaterConfirmationFindsNoQuestion()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var caller = Caller(factory);
+        var job = await SeedAsync(factory);
+        var (target, other) = (job.Questions[0], job.Questions[1]);
+        var root = $"/api/intake/extractions/{job.Id}/questions/{target.Question.Id}";
+        var request = new ExtractionMistakeRemovalRequest(job.Version, target.ItemId!.Value, (int)ReviewStatus.PendingReview);
+        async Task<(HttpStatusCode, string?)> Fail(HttpResponseMessage response)
+        {
+            var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+            Assert.False(body.GetProperty("success").GetBoolean());
+            return (response.StatusCode, body.GetProperty("errorCode").GetString());
+        }
+
+        Assert.Equal((HttpStatusCode.BadRequest, "invalid_request"),
+            await Fail(await caller.PostAsJsonAsync(root + "/remove-mistake", request with { ExpectedReviewStatus = 2 })));
+        Assert.Equal((HttpStatusCode.Conflict, "item_binding_conflict"),
+            await Fail(await caller.PostAsJsonAsync(root + "/remove-mistake", request with { ItemId = other.ItemId!.Value })));
+        using var removed = await caller.PostAsJsonAsync(root + "/remove-mistake", request);
+        var receipt = JsonDocument.Parse(await removed.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
+        Assert.True(receipt.GetProperty("success").GetBoolean());
+        var data = receipt.GetProperty("data");
+        Assert.Equal(new[] { "jobId", "studentId", "questionId", "itemId", "version", "cleanupComplete" },
+            data.EnumerateObject().Select(p => p.Name));
+        Assert.Equal((job.Id, job.StudentId, target.Question.Id, target.ItemId.Value, job.Version + 1, true),
+            (data.GetProperty("jobId").GetGuid(), data.GetProperty("studentId").GetString(), data.GetProperty("questionId").GetGuid(),
+                data.GetProperty("itemId").GetGuid(), data.GetProperty("version").GetInt32(), data.GetProperty("cleanupComplete").GetBoolean()));
+
+        Assert.Equal((HttpStatusCode.NotFound, "question_not_found"), await Fail(await caller.PostAsJsonAsync(root + "/review",
+            new ExtractionReviewRequest(job.Version + 1, target.ItemId.Value, (int)ReviewStatus.Confirmed, "teacher", null, null))));
+        var read = await DataAsync<ExtractionJobView>(await caller.GetAsync($"/api/intake/extractions/{job.Id}"));
+        Assert.Equal(job.Version + 1, read.Version);
+        Assert.Equal(JsonSerializer.Serialize(new[] { other }), JsonSerializer.Serialize(read.Questions));
+    }
+
     private static HttpClient Caller(ExtractionHostFixture factory)
     {
         var client = factory.CreateClient(new() { AllowAutoRedirect = false });
