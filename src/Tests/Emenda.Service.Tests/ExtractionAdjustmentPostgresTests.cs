@@ -13,6 +13,7 @@ namespace Emenda.Service.Tests;
 public sealed class ExtractionAdjustmentPostgresTests
 {
     private static readonly ExtractionAccess Caller = new("adjustment-tests", "learner");
+    private const int MaxPages = 30;
 
     [Fact]
     public async Task ExtendsSelectedQuestionOntoAnotherPage_InPlace_AndReplaysWithoutResettingConfirmation()
@@ -23,7 +24,8 @@ public sealed class ExtractionAdjustmentPostgresTests
         var job = await Completed(service);
         var (q12, q13) = (job.Questions[0], job.Questions[1]);
         var page2 = job.Sources[1].Id;
-        analyzer.Revise = q => [q with { Statement = "Question 12 with check", Regions = [q.Regions[0] with { Y1 = .45 }, new(page2, 0, .5, 1, 1)] }];
+        analyzer.Revise = q => [q with { Statement = "Question 12 with check", QuestionNumber = "13", Grade = 9,
+            Regions = [q.Regions[0] with { Y1 = .45 }, new(page2, 0, .5, 1, 1)] }];
         var request = new ExtractionAdjustmentRequest(Guid.NewGuid(), job.Version, q12.ItemId!.Value, "  请把第二页最后两行验算也裁进来  ");
 
         var result = await service.AdjustQuestionAsync(Caller, job.Id, q12.Question.Id, request);
@@ -33,6 +35,7 @@ public sealed class ExtractionAdjustmentPostgresTests
         Assert.Equal(q12.Question.Id, adjusted.Question.Id);
         Assert.Equal(q12.ItemId, adjusted.ItemId);
         Assert.Equal("12", adjusted.Question.QuestionNumber);
+        Assert.Equal(q12.Question.Grade, adjusted.Question.Grade);
         Assert.Equal(new[] { job.Sources[0].Id, page2 }, adjusted.Images.Select(i => i.SourceId));
         Assert.Equal("请把第二页最后两行验算也裁进来", analyzer.Instructions.Single());
         Assert.Equal(job.Sources.Count, analyzer.RevisionImageCount);
@@ -91,15 +94,18 @@ public sealed class ExtractionAdjustmentPostgresTests
             await context.SaveChangesAsync();
         };
 
+        var key = Guid.NewGuid();
         var error = await Assert.ThrowsAsync<ExtractionException>(() => service.AdjustQuestionAsync(Caller, job.Id, target.Question.Id,
-            new(Guid.NewGuid(), job.Version, target.ItemId!.Value, "裁大一点")));
+            new(key, job.Version, target.ItemId!.Value, "裁大一点")));
 
         Assert.Equal((409, code), (error.Status, error.Code));
         await using var check = db.CreateContext();
-        Assert.Equal(job.Version, (await check.ExtractionJobs.SingleAsync()).Version);
-        Assert.Equal(job.Version, await check.ExtractionRevisions.CountAsync());
+        Assert.False(await check.ExtractionObjects.AnyAsync(o => o.Path.Contains(key.ToString("N"))),
+            "crops stored for the rejected publication are reclaimed at once");
+        Assert.False(await check.ExtractionRevisions.AnyAsync(r => r.RequestKey == key), "no adjustment is published");
         if (change == "confirmed")
         {
+            Assert.Equal(job.Version, (await check.ExtractionJobs.SingleAsync()).Version);
             var item = await check.MistakeItems.SingleAsync(i => i.Id == target.ItemId);
             Assert.Equal((int)ReviewStatus.Confirmed, item.ReviewStatus);
             Assert.Equal("teacher cause", item.RootCause);
@@ -116,6 +122,7 @@ public sealed class ExtractionAdjustmentPostgresTests
         { "outcome", "adjustment_out_of_scope" },
         { "merge", "adjustment_out_of_scope" },
         { "encroach", "clarification_required" },
+        { "bands", "clarification_required" },
     };
 
     [Theory]
@@ -135,6 +142,8 @@ public sealed class ExtractionAdjustmentPostgresTests
             "subject" => [q with { Subject = 3 }],
             "outcome" => [q with { Outcome = "correct" }],
             "merge" => [q13 with { Id = q.Id }],
+            // Three bands of 15% each: no single region passes the limit, together they cover 45% of question 13.
+            "bands" => [q with { Regions = [q.Regions[0], new(page2, 0, 0, 1, .075), new(page2, 0, .1, 1, .175), new(page2, 0, .2, 1, .275)] }],
             // Reaches 40% into question 13's region on page 2: "裁到第 13 题题干之前" was not honoured.
             _ => [q with { Regions = [q.Regions[0], new(page2, 0, .3, 1, 1)] }],
         };
@@ -148,6 +157,57 @@ public sealed class ExtractionAdjustmentPostgresTests
         Assert.Equal(JsonSerializer.Serialize(job.Questions), JsonSerializer.Serialize(read.Questions));
         await using var check = db.CreateContext();
         Assert.Equal(2, await check.MistakeItems.CountAsync(i => i.ReviewStatus == (int)ReviewStatus.PendingReview));
+    }
+
+    [Fact]
+    public async Task ExistingOverlapMayGrowSlightly_ButNotByMoreThanTheLimit()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer();
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        var q12 = job.Questions[0];
+        var page2 = job.Sources[1].Id;
+        // q12 already shares 30% of q13's region (page 2, y 0–.5) before the adjustment.
+        var shared = await service.ReviseQuestionAsync(Caller, job.Id, q12.Question.Id, new(Guid.NewGuid(), job.Version, "Shared band",
+            q12.Question with { Regions = [q12.Question.Regions[0], new(page2, 0, .35, 1, 1)] }));
+        var version = shared.Version;
+        analyzer.Revise = q => [q with { Regions = [q.Regions[0], new(page2, 0, .3, 1, 1)] }];
+        var grown = await service.AdjustQuestionAsync(Caller, job.Id, q12.Question.Id,
+            new(Guid.NewGuid(), version, q12.ItemId!.Value, "再往上一点"));
+        Assert.Equal(version + 1, grown.Version);
+
+        analyzer.Revise = q => [q with { Regions = [q.Regions[0], new(page2, 0, .15, 1, 1)] }];
+        var error = await Assert.ThrowsAsync<ExtractionException>(() => service.AdjustQuestionAsync(Caller, job.Id, q12.Question.Id,
+            new(Guid.NewGuid(), grown.Version, q12.ItemId!.Value, "再往上很多")));
+        Assert.Equal((422, "clarification_required"), (error.Status, error.Code));
+    }
+
+    [Fact]
+    public async Task JobGrownPastThePageLimit_SendsTheTargetPagesFirstWithinTheLimit()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer();
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        var target = job.Questions[1];
+        await using (var context = db.CreateContext())
+        {
+            // Accepted supplements append sources without a total cap; reuse stored bytes under new IDs.
+            var row = await context.ExtractionJobs.SingleAsync();
+            var extra = Enumerable.Range(0, MaxPages).Select(_ => job.Sources[0] with { Id = Guid.NewGuid() });
+            row.SourcesJson = JsonSerializer.Serialize(extra.Prepend(job.Sources[1]).Prepend(job.Sources[0]).ToList(),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            await context.SaveChangesAsync();
+        }
+        analyzer.Revise = q => [q with { Regions = [q.Regions[0] with { Y1 = .45 }] }];
+
+        var result = await service.AdjustQuestionAsync(Caller, job.Id, target.Question.Id,
+            new(Guid.NewGuid(), job.Version, target.ItemId!.Value, "裁小一点"));
+
+        Assert.Equal(job.Version + 1, result.Version);
+        Assert.Equal(MaxPages, analyzer.RevisionImageCount);
+        Assert.Contains(job.Sources[1].Id, analyzer.RevisionSourceIds);
     }
 
     [Fact]
@@ -214,6 +274,7 @@ public sealed class ExtractionAdjustmentPostgresTests
         public Func<Task>? BeforeRevision { get; set; }
         public int Revisions { get; private set; }
         public int RevisionImageCount { get; private set; }
+        public List<Guid> RevisionSourceIds { get; private set; } = [];
         public List<string> Instructions { get; } = [];
 
         public async Task<QuestionAnalysisResult> AnalyzeAsync(QuestionAnalysisRequest request, CancellationToken ct = default)
@@ -222,6 +283,7 @@ public sealed class ExtractionAdjustmentPostgresTests
             {
                 Revisions++;
                 RevisionImageCount = request.Images.Count;
+                RevisionSourceIds = request.Images.Select(i => i.SourceId).ToList();
                 Instructions.Add(revision.Instruction);
                 if (BeforeRevision is not null) await BeforeRevision();
                 return new("controlled", Revise(Assert.Single(revision.Questions)));

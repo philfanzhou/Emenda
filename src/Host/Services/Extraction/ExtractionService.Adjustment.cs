@@ -46,13 +46,38 @@ public sealed partial class ExtractionService
         // The model runs without the job lock; publication rechecks version and the live item.
         var target = snapshot.Questions.Single(q => q.Question.Id == questionId);
         var sources = Sources(job);
-        var analyzed = await AnalyzeRevisionAsync(job.Grade, sources, [target.Question], instruction, "questions", [], ct);
+        var analyzed = await AnalyzeRevisionAsync(job.Grade, AdjustmentPages(sources, target.Question), [target.Question],
+            instruction, "questions", [], ct);
         var adjusted = ExtractionRules.Adjustment(snapshot.Questions.Select(q => q.Question).ToList(), target.Question,
             analyzed.Questions, sources);
-        var result = await ReviseCoreAsync(access, id, new(request.RequestKey, request.ExpectedVersion, instruction, [adjusted]),
-            questionId, ct, pending: new(request.ItemId, hash));
+        ExtractionJobView result;
+        try
+        {
+            result = await ReviseCoreAsync(access, id, new(request.RequestKey, request.ExpectedVersion, instruction, [adjusted]),
+                questionId, ct, pending: new(request.ItemId, hash));
+        }
+        catch (ExtractionException)
+        {
+            // Crops stored for a rejected publication are unreferenced; reclaim them now, not on the next sweep.
+            try { await CollectJobAsync(id, CancellationToken.None); }
+            catch (Exception error) { logger.LogWarning("Adjustment cleanup deferred for {JobId} {ErrorType}", id, error.GetType().Name); }
+            throw;
+        }
         await CollectJobAsync(id, ct);
         return QuestionResult(result, questionId);
+    }
+
+    /// <summary>
+    /// Every page while the job is within the model's page limit. Accepted supplements can grow a job past it;
+    /// then the target's own pages come first and the rest follow in reading order up to the limit.
+    /// </summary>
+    private static List<ExtractionSource> AdjustmentPages(List<ExtractionSource> sources, ExtractionQuestionDraft target)
+    {
+        if (sources.Count <= ExtractionRules.MaxSources) return sources;
+        var own = target.Regions.Select(r => r.SourceId).ToHashSet();
+        var chosen = sources.Where(s => own.Contains(s.Id)).Concat(sources.Where(s => !own.Contains(s.Id)))
+            .Take(ExtractionRules.MaxSources).Select(s => s.Id).ToHashSet();
+        return sources.Where(s => chosen.Contains(s.Id)).ToList();
     }
 
     private static ExtractionQuestionRevisionView QuestionResult(ExtractionJobView job, Guid questionId) =>
