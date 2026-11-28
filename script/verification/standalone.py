@@ -384,7 +384,7 @@ def run(args):
         start_host(path, fixture, host_dir)
         require(sql(fixture, "SELECT to_regclass('public.product_intake_request') IS NOT NULL;") == "t", "Own startup did not apply the product intake migration")
         passed("empty_database_own_startup_liveness_readiness")
-        require(api(fixture, "/api/mistakes/pending-reviews?page=1&size=10", caller=None)[0] == 401, "Missing caller key must return 401")
+        require(api(fixture, "/api/mistakes?page=1&size=10", caller=None)[0] == 401, "Missing caller key must return 401")
         passed("missing_caller_key_401")
         contract_status, contract_bytes = api(fixture, "/contracts/emenda-intake-v1.json", caller=None)
         require(contract_status == 200, "Product intake contract is not published")

@@ -25,7 +25,7 @@ public sealed class MistakeHttpContractTests
         ready.GetProperty("dependencies").GetString().Should()
             .Contain("DB/OSS").And.Contain("StructaDoc").And.NotContain("Student").And.NotContain("JWKS");
         ops.GetProperty("GET /health/live").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
-        ops.GetProperty("GET /contracts/mistake-http-v9.json").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
+        ops.GetProperty("GET /contracts/mistake-http-v10.json").GetProperty("dependencyCalls").GetBoolean().Should().BeFalse();
     }
 
     [Theory]
@@ -35,6 +35,7 @@ public sealed class MistakeHttpContractTests
     [InlineData("POST", "/api/mistakes/00000000-0000-0000-0000-000000000001/reanalyze")]
     [InlineData("GET", "/api/mistakes/00000000-0000-0000-0000-000000000001/analysis")]
     [InlineData("POST", "/api/mistakes/complete-review")]
+    [InlineData("GET", "/api/mistakes/pending-reviews")]
     [InlineData("GET", "/api/mistakes/reconciliation")]
     [InlineData("GET", "/api/mistakes/intakes/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002")]
     public async Task RemovedIntakeAndAnalysisRoutesAreNotMappedAsync(string method, string path)
@@ -52,7 +53,7 @@ public sealed class MistakeHttpContractTests
     {
         using var factory = new StandaloneWebApplicationFactory(null);
         using var client = factory.CreateClient();
-        using var response = await client.GetAsync("/contracts/mistake-http-v9.json");
+        using var response = await client.GetAsync("/contracts/mistake-http-v10.json");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
         var bytes = await response.Content.ReadAsByteArrayAsync();
@@ -67,7 +68,7 @@ public sealed class MistakeHttpContractTests
                 .Select(method => method.ToLowerInvariant() + " " + Regex.Replace(endpoint.RoutePattern.RawText!, @":\w+", ""))).ToHashSet();
         var specified = MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .SelectMany(path => path.Value.EnumerateObject().Select(method => method.Name + " " + path.Name)).ToHashSet();
-        actual.Should().HaveCount(15).And.BeEquivalentTo(specified);
+        actual.Should().HaveCount(14).And.BeEquivalentTo(specified);
         foreach (var operation in MistakeHttpContract.Definition.GetProperty("paths").EnumerateObject()
             .SelectMany(path => path.Value.EnumerateObject()))
         {
@@ -83,7 +84,7 @@ public sealed class MistakeHttpContractTests
             namespaces.Should().Contain(owner => BelongsToNamespace(path, owner),
                 "every other public route must have an explicit namespace owner: {0}", path);
         }
-        using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v9.json");
+        using var conditional = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v10.json");
         conditional.Headers.TryAddWithoutValidation("If-None-Match", "\"different\", W/" + response.Headers.ETag.Tag);
         using var unchanged = await client.SendAsync(conditional);
         unchanged.StatusCode.Should().Be(HttpStatusCode.NotModified);
@@ -92,12 +93,13 @@ public sealed class MistakeHttpContractTests
     }
 
     [Theory]
-    [InlineData("mistake-http-v1", "mistake-http-v9")][InlineData("mistake-http-v2", "mistake-http-v9")]
-    [InlineData("mistake-http-v3", "mistake-http-v9")][InlineData("mistake-http-v4", "mistake-http-v9")]
-    [InlineData("mistake-http-v5", "mistake-http-v9")][InlineData("mistake-http-v6", "mistake-http-v9")]
+    [InlineData("mistake-http-v1", "mistake-http-v10")][InlineData("mistake-http-v2", "mistake-http-v10")]
+    [InlineData("mistake-http-v3", "mistake-http-v10")][InlineData("mistake-http-v4", "mistake-http-v10")]
+    [InlineData("mistake-http-v5", "mistake-http-v10")][InlineData("mistake-http-v6", "mistake-http-v10")]
     [InlineData("emenda-extraction-v2", "emenda-extraction-v3")]
-    [InlineData("mistake-http-v8", "mistake-http-v9")]
-    [InlineData("mistake-http-v7", "mistake-http-v9")]
+    [InlineData("mistake-http-v8", "mistake-http-v10")]
+    [InlineData("mistake-http-v9", "mistake-http-v10")]
+    [InlineData("mistake-http-v7", "mistake-http-v10")]
     [InlineData("emenda-intake-v1", "emenda-extraction-v3")]
     [InlineData("emenda-extraction-v1", "emenda-extraction-v3")]
     public async Task PreviousPublishedBytesStayAvailableWithTheirOwnHashAndHistoricalMarkerAsync(string version, string successor)
@@ -147,9 +149,9 @@ public sealed class MistakeHttpContractTests
         app.MapMistakeContractEndpoints();
         await app.StartAsync();
         using var client = app.GetTestClient();
-        (await client.GetAsync("/contracts/mistake-http-v9.json")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/contracts/mistake-http-v10.json")).StatusCode.Should().Be(HttpStatusCode.OK);
         (await client.GetAsync("/contracts/emenda-extraction-v3.json")).Headers.Contains("X-Emenda-Contract-Status").Should().BeFalse();
-        using var star = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v9.json");
+        using var star = new HttpRequestMessage(HttpMethod.Get, "/contracts/mistake-http-v10.json");
         star.Headers.TryAddWithoutValidation("If-None-Match", "*");
         (await client.SendAsync(star)).StatusCode.Should().Be(HttpStatusCode.NotModified);
         var endpoint = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>().Single();

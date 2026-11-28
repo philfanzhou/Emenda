@@ -15,10 +15,6 @@
 ```
  teacher_portal              mistake                    OSS
       │                        │                         │
-      │ GetPendingReviewUploads│                         │
-      │───────────────────────▶│                         │
-      │◀───────────────────────│                         │
-      │                        │                         │
       │ GetMistakeItemsByUpload│                         │
       │───────────────────────▶│                         │
       │◀───────────────────────│                         │

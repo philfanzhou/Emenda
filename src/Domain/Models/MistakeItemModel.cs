@@ -40,14 +40,3 @@ public class BoundingBoxModel
     public int X2 { get; set; }
     public int Y2 { get; set; }
 }
-
-public class PendingReviewUploadModel
-{
-    public string SourceUploadId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public int Subject { get; set; }
-    public int Grade { get; set; }
-    public int PendingCount { get; set; }
-    public int TotalCount { get; set; }
-    public DateTimeOffset EarliestCreatedAt { get; set; }
-}

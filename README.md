@@ -66,7 +66,7 @@ and the [paired AI Tutor implementation](integrations/ai-tutor/README.md) before
 
 ### HTTP contracts
 
-The lifecycle contract is [mistake-http-v9](docs/Integration/mistake-http-v9.json) and the
+The lifecycle contract is [mistake-http-v10](docs/Integration/mistake-http-v10.json) and the
 extraction contract is [emenda-extraction-v3](docs/Integration/emenda-extraction-v3.json);
 both are served anonymously under `GET /contracts/{version}.json`. Earlier published
 documents (`mistake-http-v1` through `v8`, `emenda-intake-v1`, `emenda-extraction-v1` and `v2`) stay available as historical versions.

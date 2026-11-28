@@ -18,7 +18,6 @@
 |--------|------|----------|
 | MistakeDispatch | 提交错题分发 | modules/MistakeDispatch/SubmitMistakeUpload/ |
 | MistakeReview | 审核错题条目 | [modules/MistakeReview/ReviewMistakeItem/](../modules/MistakeReview/ReviewMistakeItem.md) |
-| MistakeReview | 查询待审核上传记录 | [modules/MistakeReview/GetPendingReviewUploads/](../modules/MistakeReview/GetPendingReviewUploads/01-FEATURE.md) |
 | MistakeReview | 完成整批审核 | modules/MistakeReview/CompleteUploadReview/ |
 | MistakeManagement | 查询错题条目 | [modules/MistakeManagement/GetMistakeItem/](../modules/MistakeManagement/GetMistakeItem/01-FEATURE.md) |
 | MistakeManagement | 按上传记录查询错题 | [modules/MistakeManagement/GetMistakeItemsByUpload/](../modules/MistakeManagement/GetMistakeItemsByUpload/01-FEATURE.md) |

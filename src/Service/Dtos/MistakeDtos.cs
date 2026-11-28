@@ -94,23 +94,6 @@ public class MistakeItemPageResult
     public PageMetaDto PageMeta { get; set; } = new();
 }
 
-public class PendingReviewUploadDto
-{
-    public string SourceUploadId { get; set; } = string.Empty;
-    public string StudentId { get; set; } = string.Empty;
-    public int Subject { get; set; }
-    public int Grade { get; set; }
-    public int PendingCount { get; set; }
-    public int TotalCount { get; set; }
-    public string EarliestCreatedAt { get; set; } = string.Empty;
-}
-
-public class PendingReviewUploadListResponse
-{
-    public List<PendingReviewUploadDto> Uploads { get; set; } = new();
-    public PageMetaDto PageMeta { get; set; } = new();
-}
-
 public class ReviewMistakeItemRequest
 {
     public string Id { get; set; } = string.Empty;

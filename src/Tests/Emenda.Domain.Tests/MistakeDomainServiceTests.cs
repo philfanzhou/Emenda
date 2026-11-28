@@ -139,22 +139,6 @@ public class MistakeDomainServiceTests
 
 
 
-    [Fact]
-    public async Task GetPendingReviewUploadsAsync_ShouldReturnPendingItems()
-    {
-        var expectedUploads = new List<PendingReviewUploadModel>
-        {
-            new() { StudentId = "student-1", SourceUploadId = "upload-1" }
-        };
-
-        _mockItemRepo.Setup(x => x.GetPendingReviewUploadsAsync(1, 10, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((expectedUploads, 1));
-
-        var result = await _service.GetPendingReviewUploadsAsync(1, 10);
-
-        result.Uploads.Should().HaveCount(1);
-        result.TotalCount.Should().Be(1);
-    }
 
     // === SubmitMistakeUpload 补充测试 ===
 

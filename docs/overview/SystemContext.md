@@ -33,7 +33,6 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 │teacher_portal│─────────────│                               │──────────────┘
 │  (教师端)    │  gRPC :5006 │                               │  VL 图片分析
 └──────────────┘             │                               │
-  GetPendingReviewUploads,   │                               │
   ReviewMistakeItem,         │                               │
   CompleteUploadReview,      │                               │
   AddMistakeItem,            │                               │
@@ -68,7 +67,7 @@ ruoyu.mistake 是 Ruoyu.Study 教育平台的错题本 gRPC 微服务，负责�
 ### teacher_portal
 
 - **协议**: gRPC (HTTP/2)，目标端口 5006
-- **调用接口**: `GetPendingReviewUploads`, `GetMistakeItemsByUpload`, `ReviewMistakeItem`, `CompleteUploadReview`, `AddMistakeItem`, `DeleteMistakeItem`, `GetMistakeItemList`
+- **调用接口**: `GetMistakeItemsByUpload`, `ReviewMistakeItem`, `CompleteUploadReview`, `AddMistakeItem`, `DeleteMistakeItem`, `GetMistakeItemList`
 - **典型用途**: 教师审核流程的核心消费者——查看待审核列表、逐条审核错题、完成整批审核
 
 ### user_portal

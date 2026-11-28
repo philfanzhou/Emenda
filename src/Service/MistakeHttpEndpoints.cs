@@ -27,7 +27,6 @@ public static partial class MistakeHttpEndpoints
         group.MapGet("/mistakes/{id:guid}", GetMistakeItem);
         group.MapGet("/mistakes/by-upload/{sourceUploadId}", GetMistakeItemsByUpload);
         group.MapGet("/mistakes", GetMistakeItemList);
-        group.MapGet("/mistakes/pending-reviews", GetPendingReviewUploads);
         group.MapPost("/mistakes/{id:guid}/review", ReviewMistakeItem);
         group.MapPut("/mistakes/{id:guid}", UpdateMistakeItem);
         group.MapDelete("/mistakes/{id:guid}", DeleteMistakeItem);
@@ -115,46 +114,6 @@ public static partial class MistakeHttpEndpoints
         };
         result.Items.AddRange(items.Select(ToDto));
         return result;
-    }
-
-    // GET /api/mistakes/pending-reviews
-    private static async Task<IResult> GetPendingReviewUploads(
-        [FromQuery] int page,
-        [FromQuery] int size,
-        [FromQuery] string? subjects,
-        IMistakeDomainService mistakeService,
-        CancellationToken ct)
-    {
-        (page, size) = NormalizePage(page, size);
-
-        List<int>? subjectList = null;
-        if (!string.IsNullOrWhiteSpace(subjects))
-        {
-            subjectList = subjects
-                .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => int.TryParse(s.Trim(), out var n) ? n : -1)
-                .Where(n => n > 0)
-                .ToList();
-            if (subjectList.Count == 0) subjectList = null;
-        }
-
-        var (uploads, totalCount) = await mistakeService.GetPendingReviewUploadsAsync(page, size, subjectList, ct);
-
-        var result = new PendingReviewUploadListResponse
-        {
-            PageMeta = PageMeta(page, size, totalCount)
-        };
-        result.Uploads.AddRange(uploads.Select(u => new PendingReviewUploadDto
-        {
-            SourceUploadId = u.SourceUploadId,
-            StudentId = u.StudentId,
-            Subject = u.Subject,
-            Grade = u.Grade,
-            PendingCount = u.PendingCount,
-            TotalCount = u.TotalCount,
-            EarliestCreatedAt = FormatCreatedAt(u.EarliestCreatedAt)
-        }));
-        return MistakeHttpResponse.Ok(result);
     }
 
     // POST /api/mistakes/{id:guid}/review

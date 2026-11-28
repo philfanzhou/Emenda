@@ -54,13 +54,6 @@ public class MistakeDomainService : IMistakeDomainService
         return await _items.GetListAsync(studentId, subject, grade, reviewStatus, page, size);
     }
 
-    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
-    {
-        (page, size) = NormalizePage(page, size);
-
-        return await _items.GetPendingReviewUploadsAsync(page, size, subjects, ct);
-    }
-
     public async Task<MistakeItemModel?> ReviewMistakeItemAsync(Guid id, int reviewStatus, string? reviewerId, string? rootCause, int? grade = null, int? subject = null, string? reviewReason = null)
     {
         var item = await _items.GetByIdAsync(id);
