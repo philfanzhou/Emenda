@@ -12,7 +12,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Emenda.Common.Oss;
 using Emenda.Database;
 using Emenda.Host.Security;
-using Xunit;
 
 namespace Emenda.Service.Tests;
 

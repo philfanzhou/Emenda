@@ -1,12 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Claims;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
@@ -15,9 +8,6 @@ using Emenda.Common.Oss;
 using Emenda.Domain.Models;
 using Emenda.Domain.Services;
 using Emenda.Service.Dtos;
-using MistakeItemDto = Emenda.Service.Dtos.MistakeItemDto;
-using MistakeItemPageResult = Emenda.Service.Dtos.MistakeItemPageResult;
-using PendingReviewUploadDto = Emenda.Service.Dtos.PendingReviewUploadDto;
 
 namespace Emenda.Service;
 
@@ -50,9 +40,6 @@ public static partial class MistakeHttpEndpoints
     private static IResult ErrorKind(string kind, int status) =>
         Results.Json(new { success = false, errorKind = kind }, statusCode: status);
 
-    // ===== Endpoint methods =====
-
-
     // GET /api/mistakes/{id:guid}
     private static async Task<IResult> GetMistakeItem(
         Guid id,
@@ -68,7 +55,7 @@ public static partial class MistakeHttpEndpoints
         if (item.SourceKind == MistakeSourceKinds.Conversation && !IsProductCaller(user))
             return ErrorKind("authentication_required", 401);
 
-        return MistakeHttpResponse.Ok(MapMistakeItemDto(item));
+        return MistakeHttpResponse.Ok(ToDto(item));
     }
 
     // GET /api/mistakes/by-upload/{sourceUploadId}
@@ -79,7 +66,7 @@ public static partial class MistakeHttpEndpoints
         var items = await mistakeService.GetMistakeItemsByUploadAsync(sourceUploadId);
         return MistakeHttpResponse.Ok(new
         {
-            items = items.Select(MapMistakeItemDto).ToList()
+            items = items.Select(ToDto).ToList()
         });
     }
 
@@ -93,36 +80,40 @@ public static partial class MistakeHttpEndpoints
         [FromQuery] int size,
         IMistakeDomainService mistakeService)
     {
-        var normalizedPage = page > 0 ? page : 1;
-        var normalizedSize = size > 0 ? Math.Min(size, 100) : 10;
+        (page, size) = NormalizePage(page, size);
 
         var (items, totalCount) = await mistakeService.GetMistakeItemListAsync(
             studentId ?? string.Empty,
             subject,
             grade,
             reviewStatus,
-            normalizedPage,
-            normalizedSize);
+            page,
+            size);
 
-        return MistakeHttpResponse.Ok(BuildPageResult(items, totalCount, normalizedPage, normalizedSize));
+        return MistakeHttpResponse.Ok(BuildPageResult(items, totalCount, page, size));
     }
 
     private static bool IsProductCaller(ClaimsPrincipal user) => user.Identities.Any(identity => identity.IsAuthenticated && identity.AuthenticationType == "ProductCaller");
+
+    private static (int Page, int Size) NormalizePage(int page, int size) =>
+        (Math.Max(1, page), size <= 0 ? 10 : Math.Min(size, 100));
+
+    private static PageMetaDto PageMeta(int page, int size, int totalCount) => new()
+    {
+        Page = page,
+        Size = size,
+        TotalCount = totalCount,
+        TotalPages = (totalCount + size - 1) / size
+    };
 
     private static MistakeItemPageResult BuildPageResult(
         List<MistakeItemModel> items, int totalCount, int page, int size)
     {
         var result = new MistakeItemPageResult
         {
-            PageMeta = new PageMetaDto
-            {
-                Page = page,
-                Size = size,
-                TotalCount = totalCount,
-                TotalPages = (totalCount + size - 1) / size
-            }
+            PageMeta = PageMeta(page, size, totalCount)
         };
-        result.Items.AddRange(items.Select(MapMistakeItemDto));
+        result.Items.AddRange(items.Select(ToDto));
         return result;
     }
 
@@ -134,8 +125,7 @@ public static partial class MistakeHttpEndpoints
         IMistakeDomainService mistakeService,
         CancellationToken ct)
     {
-        var normalizedPage = page > 0 ? page : 1;
-        var normalizedSize = size > 0 ? Math.Min(size, 100) : 10;
+        (page, size) = NormalizePage(page, size);
 
         List<int>? subjectList = null;
         if (!string.IsNullOrWhiteSpace(subjects))
@@ -148,17 +138,11 @@ public static partial class MistakeHttpEndpoints
             if (subjectList.Count == 0) subjectList = null;
         }
 
-        var (uploads, totalCount) = await mistakeService.GetPendingReviewUploadsAsync(normalizedPage, normalizedSize, subjectList, ct);
+        var (uploads, totalCount) = await mistakeService.GetPendingReviewUploadsAsync(page, size, subjectList, ct);
 
         var result = new PendingReviewUploadListResponse
         {
-            PageMeta = new PageMetaDto
-            {
-                Page = normalizedPage,
-                Size = normalizedSize,
-                TotalCount = totalCount,
-                TotalPages = (totalCount + normalizedSize - 1) / normalizedSize
-            }
+            PageMeta = PageMeta(page, size, totalCount)
         };
         result.Uploads.AddRange(uploads.Select(u => new PendingReviewUploadDto
         {
@@ -168,9 +152,7 @@ public static partial class MistakeHttpEndpoints
             Grade = u.Grade,
             PendingCount = u.PendingCount,
             TotalCount = u.TotalCount,
-            EarliestCreatedAt = u.EarliestCreatedAt == DateTimeOffset.MinValue
-                ? string.Empty
-                : u.EarliestCreatedAt.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
+            EarliestCreatedAt = FormatCreatedAt(u.EarliestCreatedAt)
         }));
         return MistakeHttpResponse.Ok(result);
     }
@@ -257,7 +239,7 @@ public static partial class MistakeHttpEndpoints
             if (updatedItem == null)
                 return MistakeHttpResponse.NotFound("错题条目不存在");
 
-            return MistakeHttpResponse.Ok(MapMistakeItemDto(updatedItem));
+            return MistakeHttpResponse.Ok(ToDto(updatedItem));
         }
         catch (MistakeConflictException ex)
         {
@@ -312,7 +294,7 @@ public static partial class MistakeHttpEndpoints
     {
         var logs = await mistakeService.GetMistakeProcessHistoryAsync(id);
         var response = new ProcessLogListResponse();
-        response.Logs.AddRange(logs.Select(MapProcessLogDto));
+        response.Logs.AddRange(logs.Select(ToDto));
         return MistakeHttpResponse.Ok(response);
     }
 
@@ -432,108 +414,4 @@ public static partial class MistakeHttpEndpoints
             return MistakeHttpResponse.Internal($"Failed to generate presigned URL: {ex.Message}");
         }
     }
-
-    // ===== Mapping helpers (Domain models → DTOs) =====
-
-    private static MistakeItemDto MapMistakeItemDto(MistakeItemModel item)
-    {
-        var dto = new MistakeItemDto
-        {
-            // A conversation's evidence snapshot is its source_detail, byte for byte.
-            ConversationSource = item.SourceKind != MistakeSourceKinds.Conversation || item.SourceDetail == null ? null
-                : System.Text.Json.JsonSerializer.Deserialize<Emenda.HttpContracts.ConversationQuestionSnapshot>(item.SourceDetail, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)),
-            ConversationActive = item.ConversationActive,
-            Id = item.Id.ToString(),
-            StudentId = item.StudentId ?? string.Empty,
-            Subject = item.Subject,
-            Grade = item.Grade,
-            SourceUploadId = item.SourceUploadId ?? string.Empty,
-            ReviewStatus = (ReviewStatus)item.ReviewStatus,
-            ReviewerId = item.ReviewerId ?? string.Empty,
-            ReviewedAt = item.ReviewedAt.HasValue
-                ? item.ReviewedAt.Value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
-                : string.Empty,
-            RootCause = item.RootCause ?? string.Empty,
-            QuestionId = item.QuestionId ?? string.Empty,
-            CreatedAt = item.CreatedAt == DateTimeOffset.MinValue
-                ? string.Empty
-                : item.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-            UpdatedAt = item.UpdatedAt.HasValue
-                ? item.UpdatedAt.Value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'")
-                : string.Empty
-        };
-
-        foreach (var region in item.SourceRegions ?? new())
-        {
-            var regionDto = new SourceRegionDto
-            {
-                SourceImagePath = region.SourceImagePath ?? string.Empty
-            };
-
-            if (region.BoundingBox != null)
-            {
-                regionDto.BoundingBox = new BoundingBoxDto
-                {
-                    X1 = region.BoundingBox.X1,
-                    Y1 = region.BoundingBox.Y1,
-                    X2 = region.BoundingBox.X2,
-                    Y2 = region.BoundingBox.Y2
-                };
-            }
-
-            dto.SourceRegions.Add(regionDto);
-        }
-
-        dto.SourceKind = item.SourceKind;
-        dto.Content = MapContent(item, dto.ReviewStatus);
-        return dto;
-    }
-
-    // Text exposure (unchanged since mistake-http-v6): conversation text travels with conversationSource, while an
-    // extraction mistake's text is shown only while it is pending review or confirmed.
-    // Images are always listed; their paths are already public through sourceRegions.
-    internal static MistakeContentDto MapContent(MistakeItemModel item, ReviewStatus status)
-    {
-        if (string.IsNullOrEmpty(item.Content)) return MistakeContentDto.Empty;
-        using var document = JsonDocument.Parse(item.Content);
-        var root = document.RootElement;
-        if (root.ValueKind != JsonValueKind.Object) return MistakeContentDto.Empty;
-        var showText = item.SourceKind != MistakeSourceKinds.Extraction
-            || status is ReviewStatus.PendingReview or ReviewStatus.Confirmed;
-        string? Text(string name) => showText && root.TryGetProperty(name, out var value)
-            && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-        var points = showText && root.TryGetProperty("knowledgePoints", out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.String).Select(p => p.GetString()!).ToArray()
-            : [];
-        var images = root.TryGetProperty("images", out var array) && array.ValueKind == JsonValueKind.Array
-            ? array.EnumerateArray().Where(i => i.ValueKind == JsonValueKind.Object).Select(image =>
-            {
-                var path = image.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : string.Empty;
-                var role = image.TryGetProperty("role", out var r) && r.GetString() == "source" ? "source" : "question";
-                int[]? box = image.TryGetProperty("box", out var b) && b.ValueKind == JsonValueKind.Array && b.GetArrayLength() == 4
-                    && b.EnumerateArray().All(v => v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out _))
-                    ? b.EnumerateArray().Select(v => v.GetInt32()).ToArray() : null;
-                return new MistakeContentImageDto(path, role, box);
-            }).ToArray()
-            : [];
-        return new MistakeContentDto(1, Text("statement"), Text("studentAnswer"), Text("referenceAnswer"),
-            Text("explanation"), Text("evidence"), points, images);
-    }
-
-    private static ProcessLogDto MapProcessLogDto(ProcessLogModel log)
-    {
-        return new ProcessLogDto
-        {
-            Id = log.Id.ToString(),
-            MistakeItemId = log.MistakeItemId.ToString(),
-            Action = (ProcessAction)log.Action,
-            Details = log.Details ?? string.Empty,
-            CreatedAt = log.CreatedAt == DateTimeOffset.MinValue
-                ? string.Empty
-                : log.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-            StudentId = log.StudentId ?? string.Empty
-        };
-    }
-
-
 }

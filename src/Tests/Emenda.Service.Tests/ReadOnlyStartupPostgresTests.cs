@@ -196,7 +196,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var setup = database.CreateContext();
         await CreateMisstampedTextPathsAsync(database, setup, lowercaseIndex);
-        var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
+        var (item, log, job) = await SeedMisstampedRowsAsync(database);
         await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
         await database.ExecuteAsync("""
             CREATE FUNCTION upgrade_guard.pause_after_conversion() RETURNS event_trigger LANGUAGE plpgsql AS $$
@@ -227,7 +227,7 @@ public sealed class ReadOnlyStartupPostgresTests
 
         await using var retry = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
-        await AssertMisstampedTargetAsync(retry, item, practice, log, job);
+        await AssertMisstampedTargetAsync(retry, item, log, job);
     }
 
     [Theory]
@@ -238,7 +238,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var setup = database.CreateContext();
         await CreateMisstampedTextPathsAsync(database, setup, lowercaseIndex);
-        var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
+        var (item, log, job) = await SeedMisstampedRowsAsync(database);
         var before = await database.SnapshotAsync();
         var rowsBefore = await database.BusinessRowsAsync();
         await using (var upgrading = database.CreateContext(new LostCommitAcknowledgementInterceptor()))
@@ -255,7 +255,7 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.NotEqual(rowsBefore, committedRows);
         await using var recheck = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(recheck, NullLoggerFactory.Instance);
-        await AssertMisstampedTargetAsync(recheck, item, practice, log, job);
+        await AssertMisstampedTargetAsync(recheck, item, log, job);
         Assert.Equal(committed, await database.SnapshotAsync());
         Assert.Equal(committedRows, await database.BusinessRowsAsync());
         await using var retry = database.CreateContext();
@@ -349,7 +349,7 @@ public sealed class ReadOnlyStartupPostgresTests
         Assert.Equal(rows, await database.BusinessRowsAsync());
     }
 
-    private static async Task<(Guid Item, Guid Practice, Guid Log, Guid Job)> SeedMisstampedRowsAsync(IsolatedDatabase database)
+    private static async Task<(Guid Item, Guid Log, Guid Job)> SeedMisstampedRowsAsync(IsolatedDatabase database)
     {
         var item = Guid.NewGuid();
         var practice = Guid.NewGuid();
@@ -359,7 +359,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await database.ExecuteAsync($"INSERT INTO mistake_practice (id,mistake_item_id,student_id,practice_date,image_paths,is_correct) VALUES ('{practice}','{item}','student-1',now(),'[\"Pictures/中文/A.JPG\",\"pictures/a.jpg\",\"Pictures/中文/A.JPG\"]',false)");
         await database.ExecuteAsync($"INSERT INTO process_log (id,mistake_item_id,student_id,action,created_at) VALUES ('{log}','{item}','student-1',1,now())");
         await database.ExecuteAsync($"INSERT INTO reanalyze_job (id,item_id,reviewer_id,student_id,created_at) VALUES ('{job}','{item}','teacher-1','student-1',now())");
-        return (item, practice, log, job);
+        return (item, log, job);
     }
 
     // Schema v28 drops reanalyze_job after copying each row unchanged into legacy_archive.
@@ -371,7 +371,7 @@ public sealed class ReadOnlyStartupPostgresTests
         .Select(payload => System.Text.Json.JsonDocument.Parse(payload).RootElement.Clone())
         .ToDictionary(job => job.GetProperty("id").GetGuid());
 
-    private static async Task AssertMisstampedTargetAsync(MistakeDbContext context, Guid item, Guid practice, Guid log, Guid job)
+    private static async Task AssertMisstampedTargetAsync(MistakeDbContext context, Guid item, Guid log, Guid job)
     {
         Assert.Equal(item, (await context.MistakeItems.SingleAsync()).Id);
         Assert.Equal(log, (await context.ProcessLogs.SingleAsync()).Id);
@@ -840,7 +840,7 @@ public sealed class ReadOnlyStartupPostgresTests
         await using var database = await IsolatedDatabase.CreateAsync();
         await using var setup = database.CreateContext();
         await CreateMisstampedTextPathsAsync(database, setup, true);
-        var (item, practice, log, job) = await SeedMisstampedRowsAsync(database);
+        var (item, log, job) = await SeedMisstampedRowsAsync(database);
         await database.ExecuteAsync("CREATE SCHEMA upgrade_guard");
         await database.ExecuteAsync("""
             CREATE FUNCTION upgrade_guard.pause_after_conversion() RETURNS event_trigger LANGUAGE plpgsql AS $$
@@ -867,7 +867,7 @@ public sealed class ReadOnlyStartupPostgresTests
 
         await using var retry = database.CreateContext();
         await DatabaseInitializer.InitializeAsync(retry, NullLoggerFactory.Instance);
-        await AssertMisstampedTargetAsync(retry, item, practice, log, job);
+        await AssertMisstampedTargetAsync(retry, item, log, job);
     }
 
     private sealed class IsolatedDatabase : IAsyncDisposable

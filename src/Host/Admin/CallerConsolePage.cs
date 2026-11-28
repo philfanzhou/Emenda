@@ -8,7 +8,7 @@ namespace Emenda.Host.Admin;
 /// the browser: created keys are shown once and everything else stays
 /// server-side.
 /// </summary>
-internal static class AdminConsolePage
+internal static class CallerConsolePage
 {
     public const string MediaType = "text/html; charset=utf-8";
 
@@ -20,7 +20,7 @@ internal static class AdminConsolePage
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Emenda 管理控制台</title>
 <style>
-{{AdminConsoleLayout.Styles}}
+{{ConsoleLayout.Styles}}
 .toolbar,.table-foot,.config { padding:14px 22px; }
 .toolbar,.table-foot { border-bottom:1px solid var(--line); }
 .filters { display:flex; border-radius:7px; background:#f0f1f5; padding:3px; }
@@ -42,7 +42,7 @@ dialog h2 { margin-bottom:14px; overflow-wrap:anywhere; }
 </style>
 </head>
 <body>
-{{AdminConsoleLayout.Header(intake: false)}}
+{{ConsoleLayout.Header(intake: false)}}
 <main id="main-content">
   <div id="authError" class="notice error hidden" role="status"></div>
   <section id="loginCard" class="card login-hero hidden">

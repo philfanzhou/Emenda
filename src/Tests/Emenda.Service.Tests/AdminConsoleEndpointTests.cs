@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -13,11 +12,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Emenda.Common.Oss;
 using Emenda.Database;
-using Emenda.Host.Admin;
 using Emenda.Host.Authentication;
 using Emenda.Host.Security;
 using SignaCore.Client.AspNetCore;
-using Xunit;
 
 namespace Emenda.Service.Tests;
 

@@ -3,9 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Emenda.Common.Oss;
-using Emenda.Database;
 using Emenda.Database.Entities;
-using Emenda.Database.Repositories;
 using Emenda.Host.Security;
 using Emenda.Host.Services.Conversation;
 using Emenda.HttpContracts;
@@ -119,12 +117,6 @@ public sealed class ConversationIsolationHttpPostgresTests
         using var response = await client.GetAsync(path); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); return json.RootElement.GetProperty("data").Clone();
     }
-    private static async Task<JsonElement> PostData(HttpClient client, string path, object request)
-    {
-        using var response = await client.PostAsJsonAsync(path, request); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); return json.RootElement.GetProperty("data").Clone();
-    }
-
     private sealed class Fixture : IAsyncDisposable
     {
         public required PostgresTestDatabase Database { get; init; }

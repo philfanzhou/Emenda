@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using Emenda.Host.Authentication;
 using Emenda.Host.Security;
-using Microsoft.AspNetCore.Authorization;
 using SignaCore.Client.AspNetCore;
 using System.Text.Json;
 
@@ -25,13 +24,13 @@ public static class AdminConsoleEndpoints
     public static WebApplication MapAdminConsole(this WebApplication app)
     {
         var settings = app.Services.GetRequiredService<AdminConsoleSettings>();
-        var page = AdminConsolePage.Render(AdminConsoleRenderState.For(
+        var page = CallerConsolePage.Render(AdminConsoleRenderState.For(
             app.Services.GetService<DynamicCallerStore>()?.Path));
 
         app.MapGet(AdminConsoleConstants.ConsolePath, (HttpContext http) =>
         {
             http.Response.Headers.CacheControl = "no-store";
-            return Results.Text(page, AdminConsolePage.MediaType);
+            return Results.Text(page, CallerConsolePage.MediaType);
         });
 
         if (!settings.Available)

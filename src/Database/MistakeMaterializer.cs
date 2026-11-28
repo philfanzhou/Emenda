@@ -172,11 +172,7 @@ public static partial class MistakeMaterializer
         var evidence = conversation && item.SourceDetail is not null ? JsonNode.Parse(item.SourceDetail) : null;
         // An extraction's text is its own: the analysis its pipeline wrote into content.
         JsonNode? analysis = null;
-        if (conversation)
-        {
-            // Kind, caller and source_detail are already the conversation's own.
-        }
-        else if (IsExtraction(item))
+        if (IsExtraction(item))
         {
             item.SourceKind = MistakeSource.Extraction;
             analysis = MistakeSource.Object(item.Content);
@@ -193,7 +189,7 @@ public static partial class MistakeMaterializer
             };
             item.SourceDetail = StripNulls(detail)!.ToJsonString();
         }
-        else
+        else if (!conversation)
         {
             item.SourceKind = MistakeSource.Legacy;
             item.SourceCaller = null;

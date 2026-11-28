@@ -1,6 +1,4 @@
 using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using Npgsql;
 
 namespace Emenda.Service.Tests;
@@ -24,50 +22,6 @@ public sealed class HealthProbePostgresTests
         return string.IsNullOrWhiteSpace(admin) ? null : admin;
     }
 
-    /// <summary>
-    /// Minimal S3-shaped responder: answers HTTP 200 to every request, so the
-    /// MinIO bucket-exists HEAD reports the bucket as present.
-    /// </summary>
-    private sealed class AlwaysOkProbe : IAsyncDisposable
-    {
-        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-        private readonly CancellationTokenSource _stopped = new();
-
-        public AlwaysOkProbe()
-        {
-            _listener.Start();
-            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
-            _ = ServeAsync();
-        }
-
-        public int Port { get; }
-
-        private async Task ServeAsync()
-        {
-            while (!_stopped.IsCancellationRequested)
-            {
-                try
-                {
-                    using var client = await _listener.AcceptTcpClientAsync(_stopped.Token);
-                    var response = Encoding.ASCII.GetBytes(
-                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                    await client.GetStream().WriteAsync(response, _stopped.Token);
-                }
-                catch (OperationCanceledException) { break; }
-                catch (ObjectDisposedException) { break; }
-                catch (IOException) { }
-            }
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            _stopped.Cancel();
-            _listener.Stop();
-            _stopped.Dispose();
-            await Task.CompletedTask;
-        }
-    }
-
     private static async Task<(HttpStatusCode Status, string Body)> GetAsync(
         HttpClient client, int port, string path, CancellationToken token)
     {
@@ -82,7 +36,7 @@ public sealed class HealthProbePostgresTests
         if (admin is null)
             throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
         await using var database = await HostProcess.ScratchDatabase.CreateAsync(admin);
-        await using var s3 = new AlwaysOkProbe();
+        await using var s3 = await HostProcess.RequestProbe.StartAsync(bucketExists: true);
         var port = HostProcess.GetAvailablePort();
         var settings = new Dictionary<string, string?>
         {
@@ -132,7 +86,7 @@ public sealed class HealthProbePostgresTests
         await using var database = await HostProcess.ScratchDatabase.CreateAsync(admin);
         // The request probe answers 404 to everything, so the MinIO bucket-exists
         // HEAD reports the bucket as missing.
-        await using var s3 = new HostProcess.RequestProbe();
+        await using var s3 = await HostProcess.RequestProbe.StartAsync();
         var port = HostProcess.GetAvailablePort();
         var settings = new Dictionary<string, string?>
         {
@@ -169,7 +123,7 @@ public sealed class HealthProbePostgresTests
         if (admin is null)
             throw Xunit.Sdk.SkipException.ForSkip("Set MISTAKE_READONLY_TEST_CONNECTION to a dedicated PostgreSQL 15 admin connection string.");
         await using var database = await HostProcess.ScratchDatabase.CreateAsync(admin);
-        await using var s3 = new HostProcess.RequestProbe();
+        await using var s3 = await HostProcess.RequestProbe.StartAsync();
         var port = HostProcess.GetAvailablePort();
         var settings = new Dictionary<string, string?>
         {

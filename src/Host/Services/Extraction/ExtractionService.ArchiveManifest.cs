@@ -33,7 +33,7 @@ public sealed partial class ExtractionService
                 if (!files.TryGetValue(path, out var file))
                 {
                     if (!IsJobObjectPath(job.Id, path)) throw new ExtractionException("retained_image_metadata_unavailable", 409);
-                    var image = await ReadUnmanifestedRetainedFileAsync(path, ct);
+                    var image = await ReadLegacyFileAsync(path, ct);
                     file = new(path, image.ContentType, image.Bytes.LongLength, ExtractionRules.Hash(image.Bytes));
                     files.Add(path, file);
                 }

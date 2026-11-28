@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using SignaCore.Client.AspNetCore;
 
 namespace Emenda.Host.Authentication;

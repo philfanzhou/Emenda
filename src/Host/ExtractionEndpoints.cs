@@ -85,10 +85,10 @@ public static partial class ExtractionEndpoints
                 var form = await ReadUploadFormAsync(http, ct);
                 if (form.Keys.Count != 0) throw new ExtractionException("invalid_request");
                 var job = await service.SubmitImagesAsync(access, studentId!, await ReadImagesAsync(form, ct), ct);
-                return Results.Json(new { success = true, data = ExtractionResultSummary.From(job) }, statusCode: StatusCodes.Status202Accepted);
+                return Results.Json(new { success = true, data = ResultSummary.From(job) }, statusCode: StatusCodes.Status202Accepted);
             }).WithMetadata(new RequestSizeLimitAttribute(UploadBudget));
             group.MapGet("/{id:guid}/summary", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
-                Ok(ExtractionResultSummary.From(await service.GetAsync(Access(http, false), id, ct))));
+                Ok(ResultSummary.From(await service.GetAsync(Access(http, false), id, ct))));
         }
         if (administrator) MapOperations(group, administrator: true);
         group.MapGet("/retained/{itemId:guid}/images/{index:int}",
@@ -110,7 +110,7 @@ public static partial class ExtractionEndpoints
         group.MapPost("/{id:guid}/questions/{questionId:guid}/review",
             async (HttpContext http, Guid id, Guid questionId, IExtractionService service,
                 Emenda.Database.MistakeDbContext db, Emenda.Domain.Services.IMistakeDomainService mistakes, CancellationToken ct) =>
-                await ReviewExtractionAsync(http, administrator, id, questionId, service, db, mistakes, ct));
+                await ReviewAsync(http, administrator, id, questionId, service, db, mistakes, ct));
         group.MapPut("/{id:guid}/questions", async (HttpContext http, Guid id, IExtractionService service, CancellationToken ct) =>
             Ok(await service.ReviseAsync(Access(http, administrator), id, await BodyAsync<ExtractionRevisionRequest>(http, ct), ct)));
         group.MapPut("/{id:guid}/questions/{questionId:guid}",

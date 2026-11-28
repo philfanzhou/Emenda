@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
-using Microsoft.AspNetCore.Authorization;
 using SignaCore.Client.AspNetCore;
 
 namespace Emenda.Host.Authentication;

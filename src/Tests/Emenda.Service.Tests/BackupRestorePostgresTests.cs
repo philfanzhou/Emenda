@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -34,18 +33,18 @@ public sealed class BackupRestorePostgresTests
         if (lowercaseIndex)
             await drill.ExecuteAsync(drill.Source, "ALTER INDEX \"IX_process_log_student_id\" RENAME TO ix_process_log_student_id");
         await SeedAsync(drill, true);
-        var before = await drill.ManifestAsync(drill.Source, true);
+        var before = await drill.ManifestAsync(drill.Source);
         Assert.Equal(3, before.HistoryCount);
         var file = await drill.DumpAsync();
         Assert.False(drill.IsBackupVerified);
         var restored = await drill.NewDatabaseAsync();
         await drill.RestoreAsync(file, restored);
         Assert.True(drill.IsBackupVerified);
-        Assert.Equal(before, await drill.ManifestAsync(restored, true));
+        Assert.Equal(before, await drill.ManifestAsync(restored));
         await using var restoredContext = drill.Context(restored);
         await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
         Assert.Equal("True", await drill.ScalarAsync(restored, "SELECT to_regclass('public.mistake_practice') IS NULL"));
-        Assert.Equal(before, await drill.ManifestAsync(drill.Source, true));
+        Assert.Equal(before, await drill.ManifestAsync(drill.Source));
     }
 
     [Theory]
@@ -57,36 +56,36 @@ public sealed class BackupRestorePostgresTests
         await using var source = drill.Context(drill.Source);
         await source.GetService<IMigrator>().MigrateAsync(targetVersion ? null : Initial);
         await SeedAsync(drill, targetVersion);
-        var before = await drill.ManifestAsync(drill.Source, targetVersion);
+        var before = await drill.ManifestAsync(drill.Source);
         var file = await drill.DumpAsync();
         Assert.False(drill.IsBackupVerified);
         var restored = await drill.NewDatabaseAsync();
         await drill.RestoreAsync(file, restored);
         Assert.True(drill.IsBackupVerified);
-        Assert.Equal(before, await drill.ManifestAsync(restored, targetVersion));
+        Assert.Equal(before, await drill.ManifestAsync(restored));
 
         await using var restoredContext = drill.Context(restored);
         if (!targetVersion)
         {
             await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
-            var upgraded = await drill.ManifestAsync(restored, true);
+            var upgraded = await drill.ManifestAsync(restored);
             Assert.StartsWith(before.RowCounts, upgraded.RowCounts);
             Assert.StartsWith(before.Ids, upgraded.Ids);
             Assert.Equal("True", await drill.ScalarAsync(restored, "SELECT to_regclass('public.mistake_practice') IS NULL"));
-            Assert.Equal(before, await drill.ManifestAsync(drill.Source, false));
+            Assert.Equal(before, await drill.ManifestAsync(drill.Source));
         }
         else
         {
             await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
             await DatabaseInitializer.InitializeAsync(restoredContext, NullLoggerFactory.Instance);
-            Assert.Equal(before, await drill.ManifestAsync(restored, true));
+            Assert.Equal(before, await drill.ManifestAsync(restored));
         }
 
         // A second independent restore proves that the dump remains usable after the first run.
         var again = await drill.NewDatabaseAsync();
         await drill.RestoreAsync(file, again);
-        Assert.Equal(before, await drill.ManifestAsync(again, targetVersion));
-        Assert.Equal(before, await drill.ManifestAsync(drill.Source, targetVersion));
+        Assert.Equal(before, await drill.ManifestAsync(again));
+        Assert.Equal(before, await drill.ManifestAsync(drill.Source));
     }
 
     [Fact]
@@ -96,10 +95,10 @@ public sealed class BackupRestorePostgresTests
         await using var source = drill.Context(drill.Source);
         await source.GetService<IMigrator>().MigrateAsync(Initial);
         await SeedAsync(drill, false);
-        var original = await drill.ManifestAsync(drill.Source, false);
+        var original = await drill.ManifestAsync(drill.Source);
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.DumpAsync(denyAccess: true));
         Assert.False(drill.IsBackupVerified);
-        Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
+        Assert.Equal(original, await drill.ManifestAsync(drill.Source));
         var file = await drill.DumpAsync();
         Assert.False(drill.IsBackupVerified);
         var truncated = Path.Combine(drill.Directory, "truncated.dump");
@@ -109,7 +108,7 @@ public sealed class BackupRestorePostgresTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(truncated, failedTarget));
         Assert.False(drill.IsVerified(failedTarget));
         Assert.False(drill.IsBackupVerified);
-        Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
+        Assert.Equal(original, await drill.ManifestAsync(drill.Source));
 
         var canceledTarget = await drill.NewDatabaseAsync();
         using var canceled = new CancellationTokenSource();
@@ -125,20 +124,20 @@ public sealed class BackupRestorePostgresTests
         Assert.False(drill.IsBackupVerified);
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(file, drill.Source));
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(file, "postgres"));
-        Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
+        Assert.Equal(original, await drill.ManifestAsync(drill.Source));
 
         var readonlyTarget = await drill.NewDatabaseAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => drill.RestoreAsync(file, readonlyTarget, readOnly: true));
         Assert.False(drill.IsVerified(readonlyTarget));
         Assert.False(drill.IsBackupVerified);
-        Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
+        Assert.Equal(original, await drill.ManifestAsync(drill.Source));
 
         var retry = await drill.NewDatabaseAsync();
         await drill.RestoreAsync(file, retry);
         Assert.True(drill.IsVerified(retry));
         Assert.True(drill.IsBackupVerified);
-        Assert.Equal(original, await drill.ManifestAsync(retry, false));
-        Assert.Equal(original, await drill.ManifestAsync(drill.Source, false));
+        Assert.Equal(original, await drill.ManifestAsync(retry));
+        Assert.Equal(original, await drill.ManifestAsync(drill.Source));
     }
 
     [Fact]
@@ -150,11 +149,11 @@ public sealed class BackupRestorePostgresTests
             await using var context = drill.Context(drill.Source);
             await context.GetService<IMigrator>().MigrateAsync(Initial);
             await SeedAsync(drill, false);
-            var expected = await drill.ManifestAsync(drill.Source, false);
+            var expected = await drill.ManifestAsync(drill.Source);
             var dump = await drill.DumpAsync();
             var target = await drill.NewDatabaseAsync();
             await drill.RestoreAsync(dump, target);
-            Assert.Equal(expected, await drill.ManifestAsync(target, false));
+            Assert.Equal(expected, await drill.ManifestAsync(target));
             return (drill.Source, target);
         }));
         Assert.Equal(4, runs.SelectMany(run => new[] { run.Source, run.target }).Distinct().Count());
@@ -189,7 +188,6 @@ public sealed class BackupRestorePostgresTests
         private readonly HashSet<string> _attempted = [];
         private readonly string _source;
         private Manifest? _backupManifest;
-        private bool _backupHasJob;
         private bool _backupVerified;
 
         private Drill(string admin, string container, string directory)
@@ -271,7 +269,7 @@ public sealed class BackupRestorePostgresTests
             return Convert.ToString(await command.ExecuteScalarAsync()) ?? "";
         }
 
-        public async Task<Manifest> ManifestAsync(string name, bool target)
+        public async Task<Manifest> ManifestAsync(string name)
         {
             var schema = await ScalarAsync(name, """
                 SELECT COALESCE((SELECT string_agg(table_name||'.'||column_name||':'||udt_name||':'||is_nullable, '|' ORDER BY table_name,ordinal_position)
@@ -303,12 +301,11 @@ public sealed class BackupRestorePostgresTests
             _backupManifest = null;
             _backupVerified = false;
             var file = Path.Combine(Directory, "source.dump");
-            _backupHasJob = int.Parse(await ScalarAsync(Source, "SELECT count(*) FROM \"__EFMigrationsHistory\"")) >= 3;
-            var before = await ManifestAsync(Source, _backupHasJob);
+            var before = await ManifestAsync(Source);
             var result = await RunAsync(["exec", "-e", "PGPASSWORD", _container, "pg_dump", "-h", "127.0.0.1", "-U", denyAccess ? "missing_drill_role" : _settings.Username ?? "", "-d", Source, "-Fc", "--no-owner", "--no-acl"], file);
             if (result.ExitCode != 0 || new FileInfo(file).Length == 0)
                 throw new InvalidOperationException($"PostgreSQL backup failed (exit {result.ExitCode}); no backup is verified.");
-            var after = await ManifestAsync(Source, _backupHasJob);
+            var after = await ManifestAsync(Source);
             if (before != after)
                 throw new InvalidOperationException("Source changed during the backup drill; no backup is verified.");
             _backupManifest = before;
@@ -329,7 +326,7 @@ public sealed class BackupRestorePostgresTests
             var result = await RunAsync(arguments, inputFile: file, cancellationToken: cancellationToken, onStarted: onStarted);
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"PostgreSQL restore failed (exit {result.ExitCode}); target remains unverified and must be discarded.");
-            var targetManifest = await ManifestAsync(target, _backupHasJob);
+            var targetManifest = await ManifestAsync(target);
             if (_backupManifest is null || _backupManifest != targetManifest)
                 throw new InvalidOperationException("Restored catalog or data differs from the source manifest; target remains unverified.");
             _verified.Add(target);

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -42,18 +41,6 @@ public static class MistakeHttpContract
         var operation = FindOperation(method, path);
         ValidateSchema(body, operation.GetProperty("requestBody").GetProperty("content")
             .GetProperty("application/json").GetProperty("schema"));
-    }
-
-    internal static async Task<T?> ReadResponseAsync<T>(HttpResponseMessage response,
-        JsonSerializerOptions options, CancellationToken ct)
-    {
-        if (response.IsSuccessStatusCode && response.Content.Headers.ContentType?.MediaType != "application/json")
-            throw new JsonException("Successful Mistake responses require the pinned JSON content type.");
-        var text = await response.Content.ReadAsStringAsync(ct);
-        using var document = JsonDocument.Parse(text);
-        var request = response.RequestMessage ?? throw new JsonException("Missing consumer request identity.");
-        ValidateResponse(request.Method.Method, request.RequestUri!.AbsolutePath, (int)response.StatusCode, document.RootElement);
-        return document.RootElement.Deserialize<T>(options);
     }
 
     private static JsonElement FindOperation(string method, string path)

@@ -69,7 +69,7 @@ public sealed partial class ExtractionService
             AcceptedVersion = job.Version + 1, Note = request.Note, CreatedAt = await NowAsync(db, ct) };
         db.ExtractionSupplements.Add(row);
         ResetReview(await db.MistakeItems.SingleAsync(i => i.Id == request.ItemId, ct));
-        await PublishExtractionAsync(db, job, snapshot, snapshot, request.RequestKey, hash, access.Actor, request.Note, "supplement_request", ct);
+        await PublishRevisionAsync(db, job, snapshot, snapshot, request.RequestKey, hash, access.Actor, request.Note, "supplement_request", ct);
         await tx.CommitAsync(ct);
         return SupplementView(row);
     }
@@ -145,7 +145,7 @@ public sealed partial class ExtractionService
         current.SourcesJson = ExtractionRules.Serialize(Sources(current).Concat(ExtractionRules.Read<List<ExtractionSource>>(accepted.SourcesJson)).DistinctBy(s => s.Id).ToList());
         await ImageVariantSchema.EnqueueAsync(publish, ExtractionRules.Read<List<ExtractionSource>>(accepted.SourcesJson).Select(s => s.Path), ct);
         ResetReview(await publish.MistakeItems.SingleAsync(i => i.Id == request.ItemId, ct));
-        await PublishExtractionAsync(publish, current, snapshotNow, snapshotNow, request.RequestKey, hash,
+        await PublishRevisionAsync(publish, current, snapshotNow, snapshotNow, request.RequestKey, hash,
             access.Actor, "append_supplement", "supplement_upload", ct);
         await tx.CommitAsync(ct);
         return SupplementView(accepted);
