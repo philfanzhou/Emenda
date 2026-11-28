@@ -146,7 +146,7 @@ upgrade, so the first start after upgrading backfills thumbnails without manual 
 |---|---|---|
 | `GET /health/live` | Anonymous | Process liveness |
 | `GET /health/ready` | Anonymous | DB/S3, plus StructaDoc when layout detection is enabled |
-| `GET /contracts/mistake-http-v9.json` | Anonymous | Lifecycle contract |
+| `GET /contracts/mistake-http-v10.json` | Anonymous | Lifecycle contract |
 | `GET /contracts/emenda-extraction-v3.json` | Anonymous | Extraction intake contract |
 | `/api/*` | `X-Emenda-Api-Key` | Trusted backend business requests |
 

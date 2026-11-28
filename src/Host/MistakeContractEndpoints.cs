@@ -7,7 +7,7 @@ namespace Emenda.Host;
 /// <summary>Immutable release metadata, independent of every business dependency.</summary>
 public static class MistakeContractEndpoints
 {
-    public const string Version = "mistake-http-v9";
+    public const string Version = "mistake-http-v10";
     public const string ExtractionVersion = "emenda-extraction-v3";
     private static readonly byte[] Document = ReadDocument(Version);
     private static readonly IReadOnlyDictionary<string, byte[]> CurrentDocuments = new Dictionary<string, byte[]>
@@ -27,6 +27,7 @@ public static class MistakeContractEndpoints
             ["mistake-http-v6"] = (ReadDocument("mistake-http-v6"), Version),
             ["mistake-http-v7"] = (ReadDocument("mistake-http-v7"), Version),
             ["mistake-http-v8"] = (ReadDocument("mistake-http-v8"), Version),
+            ["mistake-http-v9"] = (ReadDocument("mistake-http-v9"), Version),
             ["emenda-extraction-v2"] = (ReadDocument("emenda-extraction-v2"), ExtractionVersion),
             ["emenda-intake-v1"] = (ReadDocument("emenda-intake-v1"), ExtractionVersion),
             ["emenda-extraction-v1"] = (ReadDocument("emenda-extraction-v1"), ExtractionVersion)

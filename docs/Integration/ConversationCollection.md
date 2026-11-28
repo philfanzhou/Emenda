@@ -26,7 +26,7 @@ When enabling the feature, supply an independent 32–256-character `CollectionK
 
 Every collection route requires the existing middleware-verified `X-Emenda-Api-Key` caller matching `CallerName`, plus `X-Question-Collection-Key`. Browser `Origin` and `Sec-Fetch-Site` headers are rejected. Anonymous development authentication does not grant collection access.
 
-The current wire contract is published at `/contracts/mistake-http-v9.json`. All successful collection responses retain the original `success/data` envelope:
+The current wire contract is published at `/contracts/mistake-http-v10.json`. All successful collection responses retain the original `success/data` envelope:
 
 - `POST /api/mistakes/conversation-collections`: `{operationId, studentId, grade, actorId, ownerId}`. Grade is 0–12. Student IDs are opaque nonempty strings, maximum 36 characters; actor IDs maximum 128; owner IDs maximum 256. Identity fields cannot contain control characters. Portal derives these fields from the current authenticated account/student, never from browser assertions.
 - `GET /api/mistakes/conversation-collections/{operationId}?studentId=...&actorId=...`: current authorized status/result, scoped by caller, actor, operation and student. Foreign operations return no job fields.

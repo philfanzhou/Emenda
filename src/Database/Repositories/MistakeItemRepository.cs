@@ -126,39 +126,6 @@ public class MistakeItemRepository : IMistakeItemRepository
         return (items.Select(MapToModel).ToList(), totalCount);
     }
 
-    public async Task<(List<PendingReviewUploadModel> Uploads, int TotalCount)> GetPendingReviewUploadsAsync(int page, int size, List<int>? subjects = null, CancellationToken ct = default)
-    {
-        var query = _dbContext.MistakeItems
-            .Where(m => m.ReviewStatus == (int)ReviewStatus.PendingReview && m.SourceKind != MistakeSource.Conversation);
-
-        if (subjects != null && subjects.Count > 0)
-        {
-            query = query.Where(m => subjects.Contains(m.Subject));
-        }
-
-        var grouped = query.AsNoTracking()
-            .GroupBy(m => new { m.SourceUploadId, m.StudentId, m.Subject, m.Grade })
-            .Select(g => new PendingReviewUploadModel
-            {
-                SourceUploadId = g.Key.SourceUploadId,
-                StudentId = g.Key.StudentId,
-                Subject = g.Key.Subject,
-                Grade = g.Key.Grade,
-                PendingCount = g.Count(),
-                TotalCount = g.Count(),
-                EarliestCreatedAt = g.Min(x => x.CreatedAt),
-            });
-        var totalCount = await grouped.CountAsync(ct);
-        ct.ThrowIfCancellationRequested();
-        var offset = ((long)page - 1) * size;
-        if (offset >= totalCount) return ([], totalCount);
-        var paged = await grouped.OrderBy(g => g.EarliestCreatedAt).ThenBy(g => g.SourceUploadId)
-            .ThenBy(g => g.StudentId).ThenBy(g => g.Subject).ThenBy(g => g.Grade)
-            .Skip((int)offset).Take(size).ToListAsync(ct);
-
-        return (paged, totalCount);
-    }
-
     private static MistakeItemEntity MapToEntity(MistakeItemModel model)
     {
         return new MistakeItemEntity

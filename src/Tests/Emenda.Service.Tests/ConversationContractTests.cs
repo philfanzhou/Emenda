@@ -115,7 +115,7 @@ public sealed class ConversationContractTests
     public void CurrentContractRetainsOriginalAnswersAndRemovesPractice()
     {
         var current = JsonNode.Parse(MistakeHttpContract.Definition.GetRawText())!;
-        Assert.Equal("mistake-http-v9", MistakeHttpContract.Version);
+        Assert.Equal("mistake-http-v10", MistakeHttpContract.Version);
         Assert.False(current["paths"]!.AsObject().ContainsKey("/api/mistakes/{id}/practices"));
         Assert.True(JsonNode.DeepEquals(Resource("mistake-http-v8")["components"]!["schemas"]!["MistakeContent"],
             current["components"]!["schemas"]!["MistakeContent"]));
