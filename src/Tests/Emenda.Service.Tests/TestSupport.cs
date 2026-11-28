@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -218,49 +220,47 @@ internal static class HostProcess
 
     internal sealed class RequestProbe : IAsyncDisposable
     {
-        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
-        private readonly bool _serverError;
-        private readonly CancellationTokenSource _stopped = new();
-        private readonly Task _server;
+        private readonly WebApplication _app;
         private int _requests;
 
-        public RequestProbe(bool serverError = false)
-        {
-            _serverError = serverError;
-            _listener.Start();
-            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
-            _server = ServeAsync();
-        }
+        private RequestProbe(WebApplication app) => _app = app;
 
-        public int Port { get; }
+        public int Port => new Uri(_app.Urls.Single()).Port;
         public int RequestCount => Volatile.Read(ref _requests);
 
-        private async Task ServeAsync()
+        public static async Task<RequestProbe> StartAsync(bool bucketExists = false)
         {
-            while (!_stopped.IsCancellationRequested)
+            var builder = WebApplication.CreateSlimBuilder();
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            var app = builder.Build();
+            var probe = new RequestProbe(app);
+            app.Run(async context =>
             {
-                try
+                Interlocked.Increment(ref probe._requests);
+                if (bucketExists && HttpMethods.IsGet(context.Request.Method) && context.Request.Query.ContainsKey("location"))
                 {
-                    using var client = await _listener.AcceptTcpClientAsync(_stopped.Token);
-                    Interlocked.Increment(ref _requests);
-                    var response = Encoding.ASCII.GetBytes(_serverError
-                        ? "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                        : "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                    await client.GetStream().WriteAsync(response, _stopped.Token);
+                    context.Response.ContentType = "application/xml";
+                    await context.Response.WriteAsync("""<LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/">us-east-1</LocationConstraint>""");
                 }
-                catch (OperationCanceledException) { break; }
-                catch (ObjectDisposedException) { break; }
-                catch (IOException) { }
+                else
+                {
+                    context.Response.StatusCode = bucketExists && HttpMethods.IsHead(context.Request.Method)
+                        ? StatusCodes.Status200OK : StatusCodes.Status404NotFound;
+                }
+            });
+            try
+            {
+                await app.StartAsync();
+                return probe;
+            }
+            catch
+            {
+                await app.DisposeAsync();
+                throw;
             }
         }
 
-        public async ValueTask DisposeAsync()
-        {
-            _stopped.Cancel();
-            _listener.Stop();
-            await _server;
-            _stopped.Dispose();
-        }
+        public ValueTask DisposeAsync() => _app.DisposeAsync();
     }
 
     internal sealed class ScratchDatabase : IAsyncDisposable

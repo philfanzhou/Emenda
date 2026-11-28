@@ -4,7 +4,6 @@ using Emenda.Database;
 using Emenda.Database.Entities;
 using Emenda.Domain.Models;
 using Emenda.HttpContracts;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Emenda.Service.Tests;

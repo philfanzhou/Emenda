@@ -68,10 +68,10 @@ public sealed partial class ExtractionService
             return (bytes, file.ContentType);
         }
 
-        return await ReadUnmanifestedRetainedFileAsync(path, ct);
+        return await ReadLegacyFileAsync(path, ct);
     }
 
-    private async Task<(byte[] Bytes, string ContentType)> ReadUnmanifestedRetainedFileAsync(string path, CancellationToken ct)
+    private async Task<(byte[] Bytes, string ContentType)> ReadLegacyFileAsync(string path, CancellationToken ct)
     {
         // rc.12 receipts have no file manifest. Exact owner-bound references remain readable;
         // crop names carry a full digest (new) or a 16-hex digest (historical).

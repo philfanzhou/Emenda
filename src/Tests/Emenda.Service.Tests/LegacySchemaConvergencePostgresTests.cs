@@ -377,23 +377,6 @@ public sealed class LegacySchemaConvergencePostgresTests
         Assert.Equal(13, (await DatabaseInitializer.UpgradeToTargetAsync(older)).FromVersion);
     }
 
-    private static string[] StringArrayOrEmpty(string value)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(value);
-            return document.RootElement.ValueKind == JsonValueKind.Array &&
-                   document.RootElement.EnumerateArray().All(element => element.ValueKind == JsonValueKind.String)
-                ? document.RootElement.EnumerateArray().Select(element => element.GetString()!).ToArray()
-                : Array.Empty<string>();
-        }
-        catch (JsonException)
-        {
-            return Array.Empty<string>();
-        }
-    }
-
-
     [Theory]
     [InlineData("P0", 5)]
     [InlineData("P0f", 6)]

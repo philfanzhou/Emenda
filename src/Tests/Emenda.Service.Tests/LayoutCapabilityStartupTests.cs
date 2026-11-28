@@ -101,7 +101,7 @@ public sealed class LayoutCapabilityStartupTests
     {
         // The StructaDoc base URL points at a request-counting probe: a correct startup
         // wires the client without sending anything to it.
-        await using var structaDoc = new HostProcess.RequestProbe();
+        await using var structaDoc = await HostProcess.RequestProbe.StartAsync();
         var settings = BaseSettings();
         settings["Mistake__Layout__Enabled"] = "true";
         settings["Mistake__Layout__BaseUrl"] = $"http://127.0.0.1:{structaDoc.Port}";

@@ -11,7 +11,7 @@ Emenda 现在有两条错题来源，都由 Ruoyu Portal 发起：
 | 入口 | `POST /api/.../extractions[/images]` | `POST /api/mistakes/conversation-collections` |
 | 题目内容 | Emenda 自己版面分析 + 调 AI Tutor `analyze-images` 识题 | Emenda 按 operationId 从 AI Tutor `question-operations/{id}` 拉取已识别好的题 |
 | 生命周期 | 一次性批次：版本、更正提案、补充图片、逐题审核、发布 | 持续增量：多次作答、更正、撤回、回执防重放、清空历史 |
-| 写入位置 | `ExtractionService.Revisions.cs` `PublishExtractionAsync` | `ConversationCollectionStore.ApplyAsync` |
+| 写入位置 | `ExtractionService.Revisions.cs` `PublishRevisionAsync` | `ConversationCollectionStore.ApplyAsync` |
 
 两条管道的**前半段差异是业务本身决定的，保留**。问题出在后半段：它们写进 `mistake_item` 的格式不同，导致下游每个功能都要先判断“这是哪种错题”。
 

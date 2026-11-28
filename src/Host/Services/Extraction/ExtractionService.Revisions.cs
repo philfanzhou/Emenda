@@ -87,7 +87,7 @@ public sealed partial class ExtractionService
         }
         if (current.Version != request.ExpectedVersion || current.Status is not ("Succeeded" or "Failed"))
             throw new ExtractionException("version_conflict", 409);
-        await PublishExtractionAsync(publish, current, snapshot, prior, request.RequestKey, hash,
+        await PublishRevisionAsync(publish, current, snapshot, prior, request.RequestKey, hash,
             access.Actor, request.Reason, "manual", ct);
         if (acceptance is not null)
             await publish.ExtractionProposals.Where(p => p.Id == acceptance.Id && p.JobId == id)
@@ -96,7 +96,7 @@ public sealed partial class ExtractionService
         return await ViewAsync(publish, current, null, ct);
     }
 
-    private static async Task PublishExtractionAsync(MistakeDbContext db, ExtractionJobEntity job,
+    private static async Task PublishRevisionAsync(MistakeDbContext db, ExtractionJobEntity job,
         ExtractionSnapshot snapshot, ExtractionSnapshot? prior, Guid requestKey, string payloadHash,
         string actor, string reason, string model, CancellationToken ct)
     {

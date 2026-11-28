@@ -28,9 +28,11 @@
       "docs/Integration/mistake-http-v6.json",
       "docs/Integration/mistake-http-v7.json",
       "docs/Integration/mistake-http-v8.json",
+      "docs/Integration/mistake-http-v9.json",
       "docs/Integration/emenda-intake-v1.json",
       "docs/Integration/emenda-extraction-v1.json",
-      "docs/Integration/emenda-extraction-v2.json"
+      "docs/Integration/emenda-extraction-v2.json",
+      "docs/Integration/emenda-extraction-v3.json"
     ]
   },
   "export": {
@@ -67,11 +69,6 @@
         "id": "Npgsql.EntityFrameworkCore.PostgreSQL",
         "version": "10.0.3",
         "license": "PostgreSQL"
-      },
-      {
-        "id": "Mapster",
-        "version": "10.0.7",
-        "license": "MIT"
       }
     ],
     "src/Domain/Emenda.Domain.csproj": [
@@ -81,13 +78,7 @@
         "license": "MIT"
       }
     ],
-    "src/Service/Emenda.Service.csproj": [
-      {
-        "id": "Mapster",
-        "version": "10.0.6",
-        "license": "MIT"
-      }
-    ],
+    "src/Service/Emenda.Service.csproj": [],
     "src/Host/Emenda.Host.csproj": [
       {
         "id": "Microsoft.EntityFrameworkCore.Design",

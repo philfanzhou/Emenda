@@ -14,7 +14,7 @@ internal static class ExtractionConsolePage
 <meta name="referrer" content="same-origin">
 <title>错题入库 · Emenda</title>
 <style>
-{{AdminConsoleLayout.Styles}}
+{{ConsoleLayout.Styles}}
 .workspace { display:grid; grid-template-columns:250px minmax(0,1fr); gap:18px; align-items:start; }
 .workspace.editing { grid-template-columns:minmax(0,1fr); }
 .workspace.editing aside { display:none; }
@@ -80,7 +80,7 @@ textarea { min-height:60px; resize:vertical; }
 </style>
 </head>
 <body>
-{{AdminConsoleLayout.Header(intake: true)}}
+{{ConsoleLayout.Header(intake: true)}}
 <main id="main-content">
   <div id="message" class="notice" role="status" aria-live="polite" hidden></div>
   <section id="login" class="panel login-hero" hidden>

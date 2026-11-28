@@ -73,7 +73,7 @@ public sealed partial class ExtractionService
             await LockAsync(db, id.ToString(), ct);
             var pruned = new ExtractionSnapshot(snapshot.Questions.Select(q => q.ItemId.HasValue && !existing.Contains(q.ItemId.Value)
                 ? q with { Images = [], ItemDeleted = true } : q).ToList());
-            await PublishExtractionAsync(db, job, pruned, snapshot, Guid.NewGuid(), "deleted_item_cleanup",
+            await PublishRevisionAsync(db, job, pruned, snapshot, Guid.NewGuid(), "deleted_item_cleanup",
                 "cleanup", "retire_deleted_item_crops", "cleanup", ct);
             await tx.CommitAsync(ct);
             snapshot = pruned;

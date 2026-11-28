@@ -1,5 +1,3 @@
-using System;
-
 namespace Emenda.Domain.Models;
 
 public class ProcessLogModel

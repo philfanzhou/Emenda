@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Emenda.Common.Oss;
 using Emenda.Database;
 using Emenda.Database.Entities;
@@ -11,13 +10,13 @@ namespace Emenda.Host.Services.Extraction;
 
 public sealed partial class ExtractionService
 {
-    private sealed record ExtractionLease(Guid Id, Guid Owner, long Fence);
+    private sealed record JobLease(Guid Id, Guid Owner, long Fence);
     private sealed record AcceptedLayout(Guid SourceId, LayoutDetectionResult Result);
 
     public async Task RunQueuedAsync(CancellationToken stoppingToken)
     {
         if (!options.Value.Enabled) return;
-        ExtractionLease lease;
+        JobLease lease;
         await using (var db = Open())
         await using (var tx = await db.Database.BeginTransactionAsync(stoppingToken))
         {
@@ -51,17 +50,17 @@ public sealed partial class ExtractionService
         }
         using var heartbeatStop = new CancellationTokenSource();
         using var processing = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        var heartbeat = HeartbeatExtractionAsync(lease, processing, heartbeatStop.Token);
-        try { await ExecuteExtractionAsync(lease, processing.Token); }
+        var heartbeat = RenewLeaseAsync(lease, processing, heartbeatStop.Token);
+        try { await ProcessJobAsync(lease, processing.Token); }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
-        catch (OperationCanceledException) { await FailExtractionAsync(lease, "lease_lost", stoppingToken); }
-        catch (ExtractionException error) { await FailExtractionAsync(lease, error.Code, stoppingToken); }
+        catch (OperationCanceledException) { await FailJobAsync(lease, "lease_lost", stoppingToken); }
+        catch (ExtractionException error) { await FailJobAsync(lease, error.Code, stoppingToken); }
         catch (Layout.LayoutDetectionException error)
-        { await FailExtractionAsync(lease, "layout_" + error.Failure.ToString().ToLowerInvariant(), stoppingToken); }
+        { await FailJobAsync(lease, "layout_" + error.Failure.ToString().ToLowerInvariant(), stoppingToken); }
         catch (Exception error)
         {
             logger.LogWarning("Extraction failed {JobId} {ErrorType}", lease.Id, error.GetType().Name);
-            await FailExtractionAsync(lease, "processing_failed", stoppingToken);
+            await FailJobAsync(lease, "processing_failed", stoppingToken);
         }
         finally
         {
@@ -70,7 +69,7 @@ public sealed partial class ExtractionService
         }
     }
 
-    private async Task HeartbeatExtractionAsync(ExtractionLease lease, CancellationTokenSource processing, CancellationToken stop)
+    private async Task RenewLeaseAsync(JobLease lease, CancellationTokenSource processing, CancellationToken stop)
     {
         try
         {
@@ -86,7 +85,7 @@ public sealed partial class ExtractionService
         catch (Exception) { processing.Cancel(); }
     }
 
-    private static async Task<ExtractionJobEntity> OwnedExtractionAsync(MistakeDbContext db, ExtractionLease lease, CancellationToken ct)
+    private static async Task<ExtractionJobEntity> GetLeasedJobAsync(MistakeDbContext db, JobLease lease, CancellationToken ct)
     {
         await LockAsync(db, lease.Id.ToString(), ct);
         var job = await db.ExtractionJobs.SingleOrDefaultAsync(j => j.Id == lease.Id, ct);
@@ -96,18 +95,18 @@ public sealed partial class ExtractionService
         return job;
     }
 
-    private async Task CheckpointExtractionAsync(ExtractionLease lease, Action<ExtractionJobEntity> change, CancellationToken ct)
+    private async Task CheckpointAsync(JobLease lease, Action<ExtractionJobEntity> change, CancellationToken ct)
     {
         await using var db = Open();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var job = await OwnedExtractionAsync(db, lease, ct);
+        var job = await GetLeasedJobAsync(db, lease, ct);
         change(job);
         job.UpdatedAt = await NowAsync(db, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
     }
 
-    private async Task ExecuteExtractionAsync(ExtractionLease lease, CancellationToken ct)
+    private async Task ProcessJobAsync(JobLease lease, CancellationToken ct)
     {
         ExtractionJobEntity job;
         await using (var db = Open()) job = await db.ExtractionJobs.AsNoTracking().SingleOrDefaultAsync(j => j.Id == lease.Id, ct)
@@ -147,7 +146,7 @@ public sealed partial class ExtractionService
                         throw new ExtractionException("layout_geometry_conflict", 502);
                     retained = new(source.Id, result);
                     accepted.Add(retained);
-                    await CheckpointExtractionAsync(lease, j => j.LayoutJson = ExtractionRules.Serialize(accepted), ct);
+                    await CheckpointAsync(lease, j => j.LayoutJson = ExtractionRules.Serialize(accepted), ct);
                 }
                 var regions = retained.Result.Regions.Where(r => r.Box.X0 < r.Box.X1 && r.Box.Y0 < r.Box.Y1)
                     .Select(r => ToDisplayRegion(source, r)).ToList();
@@ -161,7 +160,7 @@ public sealed partial class ExtractionService
             analyzed = analyzed with { Questions = analyzed.Questions.Select((q, index) =>
                 q with { Id = ExtractionRules.Identity($"{job.Id:N}:question:{index}") }).ToList() };
             ExtractionRules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
-            await CheckpointExtractionAsync(lease, j => j.CandidateJson = ExtractionRules.Serialize(analyzed), ct);
+            await CheckpointAsync(lease, j => j.CandidateJson = ExtractionRules.Serialize(analyzed), ct);
         }
         ExtractionRules.ValidateQuestions(analyzed.Questions, sources, automatic: true);
         var requestKey = ExtractionRules.Identity($"{job.Id:N}:automatic");
@@ -169,15 +168,15 @@ public sealed partial class ExtractionService
         await using (var check = Open())
         await using (var checkTransaction = await check.Database.BeginTransactionAsync(ct))
         {
-            await OwnedExtractionAsync(check, lease, ct);
+            await GetLeasedJobAsync(check, lease, ct);
             await checkTransaction.CommitAsync(ct);
         }
         var snapshot = await BuildSnapshotAsync(job.Id, requestKey, analyzed.Questions, sources, null, ct);
         await using var publish = Open();
         await using var transaction = await publish.Database.BeginTransactionAsync(ct);
-        var current = await OwnedExtractionAsync(publish, lease, ct);
+        var current = await GetLeasedJobAsync(publish, lease, ct);
         if (current.Version != 0) throw new ExtractionException("version_conflict", 409);
-        await PublishExtractionAsync(publish, current, snapshot, null, requestKey,
+        await PublishRevisionAsync(publish, current, snapshot, null, requestKey,
             ExtractionRules.Hash(analyzed), "automatic", "initial_extraction", analyzed.Model, ct);
         await transaction.CommitAsync(ct);
     }
@@ -195,12 +194,12 @@ public sealed partial class ExtractionService
         return new(source.Id, points.Min(p => p.U), points.Min(p => p.V), points.Max(p => p.U), points.Max(p => p.V));
     }
 
-    private async Task FailExtractionAsync(ExtractionLease lease, string code, CancellationToken ct)
+    private async Task FailJobAsync(JobLease lease, string code, CancellationToken ct)
     {
         await using var db = Open();
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         ExtractionJobEntity job;
-        try { job = await OwnedExtractionAsync(db, lease, ct); }
+        try { job = await GetLeasedJobAsync(db, lease, ct); }
         catch (ExtractionException error) when (error.Code == "lease_lost") { return; }
         job.Status = "Failed";
         job.ErrorCode = code;

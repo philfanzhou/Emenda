@@ -11,7 +11,7 @@ namespace Emenda.Host;
 
 public static partial class ExtractionEndpoints
 {
-    private static async Task<IResult> ReviewExtractionAsync(HttpContext http, bool administrator,
+    private static async Task<IResult> ReviewAsync(HttpContext http, bool administrator,
         Guid id, Guid questionId, IExtractionService service, MistakeDbContext db,
         IMistakeDomainService mistakes, CancellationToken ct)
     {

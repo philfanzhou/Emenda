@@ -3,7 +3,6 @@ using Emenda.Host.Security;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Xunit;
 
 namespace Emenda.Service.Tests;
 

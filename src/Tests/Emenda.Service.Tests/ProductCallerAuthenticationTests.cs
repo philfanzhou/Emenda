@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http;
 using System.Security.Claims;
 using System.Text;
 using FluentAssertions;
@@ -15,7 +14,6 @@ using Emenda.Host.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Xunit;
 
 namespace Emenda.Service.Tests;
 

@@ -5,7 +5,6 @@ using Emenda.Database;
 using Emenda.Host.Security;
 using Emenda.Host.Services.Conversation;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
