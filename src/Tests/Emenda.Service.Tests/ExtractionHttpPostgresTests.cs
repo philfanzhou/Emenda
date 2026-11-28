@@ -388,10 +388,13 @@ public sealed class ExtractionHostFixture : WebApplicationFactory<Program>
                 Height = (int)decoded.Height, Regions = [new(0, "question", new(0, 0, 1, 1))] });
         }
     }
-    private sealed class ControlledAnalysis : IQuestionAnalysisClient
+    internal sealed class ControlledAnalysis : IQuestionAnalysisClient
     {
+        /// <summary>A revision whose instruction ends with this finds nothing to change.</summary>
+        public const string NothingToChange = "没有要改的";
+
         public Task<QuestionAnalysisResult> AnalyzeAsync(QuestionAnalysisRequest request, CancellationToken ct = default) =>
-            Task.FromResult(new QuestionAnalysisResult("controlled-test-model", [new ExtractionQuestionDraft
+            Task.FromResult(new QuestionAnalysisResult("controlled-test-model", request.Revision?.Instruction.EndsWith(NothingToChange) == true ? [] : [new ExtractionQuestionDraft
             {
                 QuestionNumber = "12", Subject = 2, Statement = "1 + 1 = ?", StudentAnswer = "3", ReferenceAnswer = "2",
                 Explanation = "Add one and one", Evidence = "Actual attempt is 3 rather than 2", Outcome = "incorrect",

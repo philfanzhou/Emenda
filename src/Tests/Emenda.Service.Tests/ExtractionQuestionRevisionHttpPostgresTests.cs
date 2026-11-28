@@ -421,6 +421,44 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(JsonSerializer.Serialize(new[] { other }), JsonSerializer.Serialize(read.Questions));
     }
 
+    [Fact]
+    public async Task ReanalyzeRoute_ReturnsTheReceipt_AndRejectsAPossibleDuplicateWithoutWriting()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var caller = Caller(factory);
+        var job = await SeedAsync(factory);
+        var route = $"/api/intake/extractions/{job.Id}/reanalyze";
+        var request = new ExtractionReanalysisRequest(Guid.NewGuid(), job.Version,
+            "第二页没有新题，" + ExtractionHostFixture.ControlledAnalysis.NothingToChange, [2]);
+        async Task<(HttpStatusCode, string?)> Fail(HttpResponseMessage response)
+        {
+            var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+            Assert.False(body.GetProperty("success").GetBoolean());
+            return (response.StatusCode, body.GetProperty("errorCode").GetString());
+        }
+
+        Assert.Equal((HttpStatusCode.BadRequest, "invalid_request"),
+            await Fail(await caller.PostAsJsonAsync(route, request with { AllowedSubjects = [] })));
+        Assert.Equal((HttpStatusCode.Conflict, "version_conflict"),
+            await Fail(await caller.PostAsJsonAsync(route, request with { ExpectedVersion = job.Version + 1 })));
+        // The controlled model finds the existing whole-page question again as a new one.
+        Assert.Equal((HttpStatusCode.UnprocessableEntity, "clarification_required"),
+            await Fail(await caller.PostAsJsonAsync(route, request with { RequestKey = Guid.NewGuid(), Instruction = "第 12 题也是错题" })));
+        using var unchanged = await caller.PostAsJsonAsync(route, request);
+        var receipt = JsonDocument.Parse(await unchanged.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
+        Assert.True(receipt.GetProperty("success").GetBoolean());
+        var data = receipt.GetProperty("data");
+        Assert.Equal(new[] { "jobId", "studentId", "requestKey", "version" }, data.EnumerateObject().Select(p => p.Name));
+        Assert.Equal((job.Id, job.StudentId, request.RequestKey, job.Version),
+            (data.GetProperty("jobId").GetGuid(), data.GetProperty("studentId").GetString(), data.GetProperty("requestKey").GetGuid(),
+                data.GetProperty("version").GetInt32()));
+        var read = await DataAsync<ExtractionJobView>(await caller.GetAsync($"/api/intake/extractions/{job.Id}"));
+        Assert.Equal(job.Version, read.Version);
+        Assert.Equal(JsonSerializer.Serialize(job.Questions), JsonSerializer.Serialize(read.Questions));
+    }
+
     private static HttpClient Caller(ExtractionHostFixture factory)
     {
         var client = factory.CreateClient(new() { AllowAutoRedirect = false });

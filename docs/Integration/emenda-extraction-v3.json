@@ -1033,6 +1033,49 @@
         }
       }
     },
+    "/api/intake/extractions/{id}/reanalyze": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "post": {
+        "operationId": "reanalyzeExtraction",
+        "description": "\"补充分析提示\": apply one natural-language hint to the whole upload from its ordered originals and current questions, published directly without proposal/adoption. The model sees every original page and all current questions. Only what the hint supports changes: a returned question with a known ID updates it in place (question and item IDs kept); one without an ID is new, gets a server-assigned ID, is placed in reading order by where it starts, and creates one PendingReview item when incorrect. Questions the model omits stay as they are and are never withdrawn. Reviewed (confirmed or rejected) questions, questions whose item was deleted and questions outside allowedSubjects are context only; changes the model makes to them are ignored. A question removed through remove-mistake is not in the current result and may be recognized again as a new question with new IDs, recropped from the retained original. 200 keeps the version when nothing changed and advances it by one otherwise. The model runs outside the job lock; publication rechecks the version and, under the review lock in the same transaction, that every pending item it changes is still PendingReview and bound: a confirmation meanwhile returns 409 review_conflict, a removal or other change 409 version_conflict, and crops stored for it are reclaimed. 422 reanalysis_out_of_scope when a pending mistake would stop being incorrect (use remove-mistake) or a changed or new question is outside allowedSubjects; 422 clarification_required when a new question covers more than 20% of an existing question's region, an updated question newly covers more than 20% of another question's region, or two questions have the same content. 413 analysis_request_too_large past 30 originals. Any rejection publishes nothing. Same requestKey and exact payload replays its receipt without inference, including a no-change receipt. Voluntary collection of correct questions (includedByRequest) is not supported yet.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/Reanalysis"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ReanalysisReceipt"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/intake/extractions/{id}/questions/{questionId}/adjust": {
       "parameters": [
         {
@@ -1794,6 +1837,49 @@
         ]
       }
     },
+    "/admin/api/extractions/{id}/reanalyze": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Id"
+        }
+      ],
+      "post": {
+        "operationId": "reanalyzeAdminExtraction",
+        "description": "\"补充分析提示\": apply one natural-language hint to the whole upload from its ordered originals and current questions, published directly without proposal/adoption. The model sees every original page and all current questions. Only what the hint supports changes: a returned question with a known ID updates it in place (question and item IDs kept); one without an ID is new, gets a server-assigned ID, is placed in reading order by where it starts, and creates one PendingReview item when incorrect. Questions the model omits stay as they are and are never withdrawn. Reviewed (confirmed or rejected) questions, questions whose item was deleted and questions outside allowedSubjects are context only; changes the model makes to them are ignored. A question removed through remove-mistake is not in the current result and may be recognized again as a new question with new IDs, recropped from the retained original. 200 keeps the version when nothing changed and advances it by one otherwise. The model runs outside the job lock; publication rechecks the version and, under the review lock in the same transaction, that every pending item it changes is still PendingReview and bound: a confirmation meanwhile returns 409 review_conflict, a removal or other change 409 version_conflict, and crops stored for it are reclaimed. 422 reanalysis_out_of_scope when a pending mistake would stop being incorrect (use remove-mistake) or a changed or new question is outside allowedSubjects; 422 clarification_required when a new question covers more than 20% of an existing question's region, an updated question newly covers more than 20% of another question's region, or two questions have the same content. 413 analysis_request_too_large past 30 originals. Any rejection publishes nothing. Same requestKey and exact payload replays its receipt without inference, including a no-change receipt. Voluntary collection of correct questions (includedByRequest) is not supported yet.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/Reanalysis"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ReanalysisReceipt"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/admin/api/extractions/{id}/questions/{questionId}/adjust": {
       "parameters": [
         {
@@ -2225,6 +2311,48 @@
           }
         }
       },
+      "Reanalysis": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "requestKey",
+                "expectedVersion",
+                "instruction",
+                "allowedSubjects"
+              ],
+              "properties": {
+                "requestKey": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "instruction": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "Trimmed before validation and hashing."
+                },
+                "allowedSubjects": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9
+                  },
+                  "description": "Subjects the BFF authorized this caller to edit; questions in other subjects never change. Order and repeats do not matter."
+                }
+              }
+            }
+          }
+        }
+      },
       "MistakeRemoval": {
         "required": true,
         "content": {
@@ -2441,6 +2569,55 @@
                     },
                     "superseded": {
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "ReanalysisReceipt": {
+        "description": "Reanalysis receipt, returned once the updated result is readable; reload the same upload.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "success",
+                "data"
+              ],
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                },
+                "data": {
+                  "type": "object",
+                  "required": [
+                    "jobId",
+                    "studentId",
+                    "requestKey",
+                    "version"
+                  ],
+                  "properties": {
+                    "jobId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "studentId": {
+                      "type": "string"
+                    },
+                    "requestKey": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "description": "expectedVersion when nothing changed, otherwise expectedVersion plus one."
                     }
                   }
                 }
