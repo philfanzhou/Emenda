@@ -83,7 +83,7 @@ public sealed record MistakeContentImageDto(
 /// An extraction mistake's analysis as the extraction pipeline records it (the former analysis_snapshot shape).
 /// Not part of any HTTP response since mistake-http-v8; clients read <see cref="MistakeItemDto.Content"/>.
 /// </summary>
-public sealed record MistakeAnalysisSnapshotDto(string Statement, string StudentAnswer, string ReferenceAnswer,
+public sealed record MistakeAnalysisSnapshotDto(string Statement, string? StudentAnswer, string ReferenceAnswer,
     string Explanation, string Evidence, int SourceVersion);
 
 // ===== Request DTOs =====

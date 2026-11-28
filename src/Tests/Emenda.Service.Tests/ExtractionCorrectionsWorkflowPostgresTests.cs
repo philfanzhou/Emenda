@@ -177,7 +177,7 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
     public async Task ProposalKeepsARequestedCollectionOnlyOnACorrectQuestion_AndAdoptionCollectsIt()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
-        var analyzer = new Analyzer { CollectAll = true };
+        var analyzer = new Analyzer { CollectAll = true, Unknown = true };
         var service = Service(db, analyzer);
         var job = await Completed(service);
         var (correct, unknown) = (job.Questions[1], job.Questions[2]);
@@ -194,7 +194,11 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         Assert.Equal(("correct", true), (collected.Question.Outcome, collected.Question.IncludedByRequest));
         Assert.NotNull(collected.ItemId);
         Assert.NotEmpty(collected.Images);
-        Assert.Null(read.Questions.Single(q => q.Question.Id == unknown.Question.Id).ItemId);
+        // An unknown question is collected from the start; a request on it is dropped and its item is kept.
+        var other = read.Questions.Single(q => q.Question.Id == unknown.Question.Id);
+        Assert.Equal(("unknown", false), (other.Question.Outcome, other.Question.IncludedByRequest));
+        Assert.NotNull(unknown.ItemId);
+        Assert.Equal(unknown.ItemId, other.ItemId);
     }
 
     [Fact]
@@ -298,6 +302,8 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
         public bool MultipleMistakes { get; init; }
         public bool Empty { get; init; }
         public bool CollectAll { get; init; }
+        /// <summary>Judges the third question unknown, which collects it over the same regions as the first.</summary>
+        public bool Unknown { get; init; }
         public Task<QuestionAnalysisResult> AnalyzeAsync(QuestionAnalysisRequest request, CancellationToken ct = default)
         {
             ExtractionQuestionDraft Question(string outcome, string statement, int subject = 2) => new()
@@ -312,7 +318,7 @@ public sealed class ExtractionCorrectionsWorkflowPostgresTests
                 return Task.FromResult(new QuestionAnalysisResult("controlled", corrected));
             }
             return Task.FromResult(new QuestionAnalysisResult("controlled", Empty ? [] :
-                [Question("incorrect", "Mistake"), Question(MultipleMistakes ? "incorrect" : "correct", "Other subject", 3), Question("unknown", "Unknown")]));
+                [Question("incorrect", "Mistake"), Question(MultipleMistakes ? "incorrect" : "correct", "Other subject", 3), Question(Unknown ? "unknown" : "correct", "Third")]));
         }
     }
 
