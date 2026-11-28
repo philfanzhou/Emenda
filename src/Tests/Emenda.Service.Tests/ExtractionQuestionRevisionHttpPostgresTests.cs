@@ -353,6 +353,35 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         Assert.Equal(version, analysis.RootElement.GetProperty("sourceVersion").GetInt32());
     }
 
+    [Fact]
+    public async Task AdjustRoute_ReturnsStableErrorEnvelopes_AndLeavesTheQuestionUnchanged()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var caller = Caller(factory);
+        var job = await SeedAsync(factory);
+        var target = job.Questions[0];
+        var route = $"/api/intake/extractions/{job.Id}/questions/{target.Question.Id}/adjust";
+        var request = new ExtractionAdjustmentRequest(Guid.NewGuid(), job.Version, target.ItemId!.Value, "请把验算也裁进来");
+        async Task<(HttpStatusCode, string?)> Post(HttpContent content)
+        {
+            using var response = await caller.PostAsync(route, content);
+            var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+            Assert.False(body.GetProperty("success").GetBoolean());
+            return (response.StatusCode, body.GetProperty("errorCode").GetString());
+        }
+
+        // The controlled model answers with a new, unidentified question instead of the selected one.
+        Assert.Equal((HttpStatusCode.UnprocessableEntity, "adjustment_out_of_scope"), await Post(JsonContent.Create(request)));
+        Assert.Equal((HttpStatusCode.Conflict, "version_conflict"),
+            await Post(JsonContent.Create(request with { RequestKey = Guid.NewGuid(), ExpectedVersion = job.Version + 1 })));
+        Assert.Equal((HttpStatusCode.UnsupportedMediaType, "json_required"),
+            await Post(new StringContent(JsonSerializer.Serialize(request), System.Text.Encoding.UTF8, "text/plain")));
+        var read = await DataAsync<ExtractionJobView>(await caller.GetAsync($"/api/intake/extractions/{job.Id}"));
+        Assert.Equal(job.Version, read.Version);
+        Assert.Equal(JsonSerializer.Serialize(job.Questions), JsonSerializer.Serialize(read.Questions));
+    }
+
     private static HttpClient Caller(ExtractionHostFixture factory)
     {
         var client = factory.CreateClient(new() { AllowAutoRedirect = false });

@@ -22,6 +22,41 @@ internal static class ExtractionRules
     internal static Guid Identity(string value) => new(SHA256.HashData(Encoding.UTF8.GetBytes(value)).AsSpan(0, 16));
     internal static long LockKey(string value) => BitConverter.ToInt64(SHA256.HashData(Encoding.UTF8.GetBytes(value)), 0);
 
+    /// <summary>A new region covering more than this share of another question's region needs clarification.</summary>
+    internal const double AdjustmentOverlapLimit = 0.2;
+
+    /// <summary>
+    /// Accepts a model adjustment only when it changes the selected question alone: same identity, subject
+    /// and incorrect outcome, no split, merge or new record, and no region reaching into another question.
+    /// </summary>
+    internal static ExtractionQuestionDraft Adjustment(List<ExtractionQuestionDraft> current, ExtractionQuestionDraft target,
+        List<ExtractionQuestionDraft> proposed, IReadOnlyCollection<ExtractionSource> sources)
+    {
+        if (proposed.Count != 1 || proposed[0] is not { } adjusted || adjusted.Id != target.Id
+            || adjusted.Subject != target.Subject || adjusted.Outcome != "incorrect")
+            throw new ExtractionException("adjustment_out_of_scope", 422);
+        adjusted = adjusted with { Grade = adjusted.Grade ?? target.Grade, QuestionNumber = adjusted.QuestionNumber ?? target.QuestionNumber };
+        var others = current.Where(q => q.Id != target.Id).ToList();
+        try { ValidateQuestions(current.Select(q => q.Id == target.Id ? adjusted : q).ToList(), sources, automatic: false); }
+        catch (ExtractionException error) when (error.Code == "duplicate_question")
+        { throw new ExtractionException("adjustment_out_of_scope", 422); }
+        catch (ExtractionException) { throw new ExtractionException("invalid_analysis_response", 502); }
+        foreach (var region in others.SelectMany(q => q.Regions))
+        {
+            // Only overlap the adjustment adds counts; an existing shared boundary is not a new claim.
+            var added = adjusted.Regions.Max(r => Intersection(r, region));
+            var before = target.Regions.Select(r => Intersection(r, region)).DefaultIfEmpty(0).Max();
+            if (added > AdjustmentOverlapLimit * Area(region) && added > before + 1e-9)
+                throw new ExtractionException("clarification_required", 422);
+        }
+        return adjusted;
+    }
+
+    private static double Area(ExtractionRegion r) => (r.X1 - r.X0) * (r.Y1 - r.Y0);
+
+    private static double Intersection(ExtractionRegion a, ExtractionRegion b) => a.SourceId != b.SourceId ? 0
+        : Math.Max(0, Math.Min(a.X1, b.X1) - Math.Max(a.X0, b.X0)) * Math.Max(0, Math.Min(a.Y1, b.Y1) - Math.Max(a.Y0, b.Y0));
+
     internal static void ValidateUpload(ExtractionUpload upload)
     {
         if (upload is null || upload.Grade is < 1 or > 12 || string.IsNullOrWhiteSpace(upload.SourceKey) || upload.SourceKey.Length > 64 ||
