@@ -30,6 +30,8 @@ public sealed record ExtractionQuestionDraft
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool IncludedByRequest { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Dismissed { get; init; }
 }
 public sealed record ExtractionCrop(string Path, int Width, int Height, Guid SourceId, ExtractionRegion Region,
     long Length, string Sha256);
@@ -46,6 +48,8 @@ public sealed record ExtractionJobView(Guid Id, string StudentId, int Grade, str
     List<ExtractionSource> Sources, List<ExtractionQuestionView> Questions, List<ExtractionVersionView> Versions)
 {
     public bool Superseded { get; init; }
+    [JsonIgnore]
+    public List<ExtractionQuestionView> DismissedQuestions { get; init; } = [];
 }
 public sealed record ExtractionRevisionRequest(Guid RequestKey, int ExpectedVersion, string Reason,
     List<ExtractionQuestionDraft> Questions);
@@ -105,7 +109,7 @@ public interface IExtractionService
     /// <summary>Applies an instruction to one pending question in place; other questions and confirmed items never change.</summary>
     Task<ExtractionQuestionRevisionView> AdjustQuestionAsync(ExtractionAccess access, Guid id, Guid questionId,
         ExtractionAdjustmentRequest request, CancellationToken ct = default);
-    /// <summary>Removes one pending mistake and its question from the upload; returns only once its own files are reclaimed.</summary>
+    /// <summary>Withdraws a pending mistake or requested collection while retaining the recognized question; returns only once its own files are reclaimed.</summary>
     Task<ExtractionMistakeRemovalView> RemoveMistakeAsync(ExtractionAccess access, Guid id, Guid questionId,
         ExtractionMistakeRemovalRequest request, CancellationToken ct = default);
     /// <summary>

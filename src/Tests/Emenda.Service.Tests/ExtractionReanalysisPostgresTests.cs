@@ -95,7 +95,7 @@ public sealed class ExtractionReanalysisPostgresTests
     }
 
     [Fact]
-    public async Task RemovedQuestion_IsFoundAgainAfterItsFilesWereReclaimed_AsOneNewPendingMistake()
+    public async Task WithdrawnQuestion_IsRestoredInPlaceWithFreshCropsAndOneNewPendingItem()
     {
         await using var db = await PostgresTestDatabase.CreateAsync();
         var analyzer = new Analyzer();
@@ -105,14 +105,14 @@ public sealed class ExtractionReanalysisPostgresTests
         var removed = await service.RemoveMistakeAsync(Caller, job.Id, q13.Question.Id,
             new(job.Version, q13.ItemId!.Value, (int)ReviewStatus.PendingReview));
         Assert.False(await db.Files.ObjectExistsAsync(q13.Images[0].Path));
-        analyzer.Revise = context => [q13.Question with { Id = Guid.Empty }];
+        analyzer.Revise = context => [context.Single(q => q.Id == q13.Question.Id)];
 
         var receipt = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), removed.Version, "刚才误点了，第 13 题实际是错题", Math));
 
         Assert.Equal(removed.Version + 1, receipt.Version);
-        Assert.Equal(new[] { "12", "14" }, analyzer.Requests.Single().Revision!.Questions.Select(q => q.QuestionNumber));
+        Assert.Equal(new[] { "12", "14", "13" }, analyzer.Requests.Single().Revision!.Questions.Select(q => q.QuestionNumber));
         var again = (await service.GetAsync(Caller, job.Id)).Questions.Single(q => q.Question.QuestionNumber == "13");
-        Assert.NotEqual(q13.Question.Id, again.Question.Id);
+        Assert.Equal(q13.Question.Id, again.Question.Id);
         Assert.NotEqual(q13.ItemId, again.ItemId);
         Assert.Equal(q13.Question.Regions, again.Question.Regions);
         Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(again.Images).Path), "recropped from the retained original");
@@ -276,7 +276,7 @@ public sealed class ExtractionReanalysisPostgresTests
         Assert.Equal((restated.Version, true, view.ItemId, "Restated"),
             (collected.Version + 1, kept.Question.IncludedByRequest, kept.ItemId, kept.Question.Explanation));
 
-        // An adjustment keeps its judgment and the request; "不是错题" does not apply to a correct question.
+        // An adjustment keeps its judgment and the request; cancellation withdraws only its collection.
         analyzer.Revise = context => [context[0] with { IncludedByRequest = false, Regions = [context[0].Regions[0] with { Y1 = .74 }] }];
         var adjusted = await service.AdjustQuestionAsync(Caller, job.Id, q14.Question.Id,
             new(Guid.NewGuid(), restated.Version, view.ItemId!.Value, "裁小一点"));
@@ -284,8 +284,13 @@ public sealed class ExtractionReanalysisPostgresTests
         analyzer.Revise = context => [context[0] with { Outcome = "incorrect" }];
         Assert.Equal((422, "adjustment_out_of_scope"), await Code(() => service.AdjustQuestionAsync(Caller, job.Id, q14.Question.Id,
             new(Guid.NewGuid(), adjusted.Version, view.ItemId!.Value, "判错了"))));
-        Assert.Equal((409, "review_conflict"), await Code(() => service.RemoveMistakeAsync(Caller, job.Id, q14.Question.Id,
-            new(adjusted.Version, view.ItemId!.Value, (int)ReviewStatus.PendingReview))));
+        await service.RemoveMistakeAsync(Caller, job.Id, q14.Question.Id,
+            new(adjusted.Version, view.ItemId!.Value, (int)ReviewStatus.PendingReview));
+        var cancelled = (await service.GetAsync(Caller, job.Id)).Questions.Single(q => q.Question.Id == q14.Question.Id);
+        Assert.Equal("correct", cancelled.Question.Outcome);
+        Assert.False(cancelled.Question.IncludedByRequest);
+        Assert.Null(cancelled.ItemId);
+        Assert.Empty(cancelled.Images);
     }
 
     [Fact]

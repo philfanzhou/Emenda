@@ -33,7 +33,7 @@ public sealed class RetiredSourceSchemaPostgresTests
         var result = await DatabaseInitializer.UpgradeToTargetAsync(db);
 
         Assert.Equal(18, result.FromVersion);
-        Assert.Equal(29, result.ToVersion);
+        Assert.Equal(30, result.ToVersion);
         Assert.Equal("retained cause", (await db.MistakeItems.AsNoTracking().SingleAsync()).RootCause);
         Assert.Equal(1, await Scalar<long>(database, "SELECT count(*) FROM process_log"));
         Assert.False(await Scalar<bool>(database, "SELECT to_regclass('public.mistake_analysis') IS NOT NULL"));

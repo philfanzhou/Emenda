@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Emenda.Service.Tests;
 
-public sealed class ExtractionQuestionRevisionHttpPostgresTests
+public sealed partial class ExtractionQuestionRevisionHttpPostgresTests
 {
     [Fact]
     public async Task AddingMissedQuestion33_RequiresOnlyOneConfirmationAndReplaysWithoutDuplicates()
@@ -208,13 +208,14 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
         // A correction is not a request for student supplements and does not confirm review.
         var reclassified = request with { RequestKey = Guid.NewGuid(), ExpectedVersion = corrected.Version,
             Question = corrected.Question.Question with { Outcome = "correct", StudentAnswer = "2", Evidence = "The visible answer is 2" } };
-        var changed = await DataAsync<ExtractionQuestionRevisionView>(await caller.PutAsJsonAsync(route, reclassified));
-        Assert.NotNull(changed.Question);
-        Assert.Equal(target.ItemId, changed.Question.ItemId);
+        Assert.Equal(HttpStatusCode.Conflict, (await caller.PutAsJsonAsync(route, reclassified)).StatusCode);
         await using (var db = database.CreateContext())
-            Assert.Equal((int)ReviewStatus.Rejected, (await db.MistakeItems.SingleAsync(i => i.Id == target.ItemId)).ReviewStatus);
-        var rejectedContent = (await DataAsync<JsonElement>(await caller.GetAsync(detailRoute))).GetProperty("content");
-        Assert.Equal(JsonValueKind.Null, rejectedContent.GetProperty("statement").ValueKind);
+            Assert.Equal((int)ReviewStatus.Confirmed, (await db.MistakeItems.SingleAsync(i => i.Id == target.ItemId)).ReviewStatus);
+        var changed = await DataAsync<ExtractionQuestionRevisionView>(await caller.PutAsJsonAsync(route, request with
+        {
+            RequestKey = Guid.NewGuid(), ExpectedVersion = corrected.Version,
+            Question = corrected.Question.Question with { QuestionNumber = "12a" }
+        }));
 
         using var replayResponse = await caller.PutAsJsonAsync(route, request);
         var replayText = await replayResponse.Content.ReadAsStringAsync();

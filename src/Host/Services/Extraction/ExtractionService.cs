@@ -208,7 +208,11 @@ public sealed partial class ExtractionService(
         var versions = await db.ExtractionRevisions.AsNoTracking().Where(r => r.JobId == job.Id).OrderByDescending(r => r.Version)
             .Select(r => new ExtractionVersionView(r.Version, r.RequestKey, r.Actor, r.Reason, r.Model, r.CreatedAt)).ToListAsync(ct);
         return new(job.Id, job.StudentId, job.Grade ?? 0, job.Status, selected, job.Attempt, job.ErrorCode,
-            job.CreatedAt, job.UpdatedAt, Sources(job), snapshot.Questions, versions) { Superseded = selected != job.Version };
+            job.CreatedAt, job.UpdatedAt, Sources(job), snapshot.Questions.Where(q => !q.Question.Dismissed).ToList(), versions)
+        {
+            Superseded = selected != job.Version,
+            DismissedQuestions = snapshot.Questions.Where(q => q.Question.Dismissed).ToList()
+        };
     }
 
     public async Task<ExtractionJobView> RetryAsync(ExtractionAccess access, Guid id, ExtractionRetryRequest request, CancellationToken ct = default)

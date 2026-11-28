@@ -11,7 +11,8 @@ public sealed partial class ExtractionService
     /// <summary>Asks for changes only; whatever the model leaves out is kept, so it need not restate the worksheet.</summary>
     public const string ReanalysisGuidance = "Apply only what the user's hint below asks for, using the original pages. " +
         "Return only the questions the hint changes or newly finds: keep the supplied id for an existing question, omit the id " +
-        "only for a question not in the current list. Omit every other question; omitted questions stay exactly as they are. " +
+        "only for a question not in the current list. A dismissed question already exists; return its id when asked to collect it again. " +
+        "Omit every other question; omitted questions stay exactly as they are. " +
         "User hint: ";
 
     /// <summary>

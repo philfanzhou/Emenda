@@ -45,7 +45,7 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
         await db.SaveChangesAsync();
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(19, upgraded.FromVersion);
-        Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(30, upgraded.ToVersion);
         db.ChangeTracker.Clear();
         Assert.Equal(source, JsonSerializer.Deserialize<List<ExtractionSource>>((await db.ExtractionJobs.SingleAsync()).SourcesJson, json)!.Single());
         Assert.Null((await db.ExtractionJobs.SingleAsync()).CandidateJson);
@@ -117,7 +117,7 @@ public sealed class ExtractionCorrectionsSchemaPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(21, upgraded.FromVersion);
-        Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(30, upgraded.ToVersion);
         var items = await db.MistakeItems.AsNoTracking().ToDictionaryAsync(item => item.Id);
         var recovered = items[recoverable.Id];
         Assert.Equal(jobSource, recovered.SourceUploadId);

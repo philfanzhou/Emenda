@@ -45,7 +45,7 @@ public sealed class ExtractionCallerRecoveryPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(24, upgraded.FromVersion);
-        Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(30, upgraded.ToVersion);
         Assert.Equal("school", await CallerAsync(db, school));
         // A name the database cannot hash exactly is never compared, so the a+b row is not handed to that other caller;
         // it stays NULL and stays visible through the receipt.

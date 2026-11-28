@@ -50,7 +50,7 @@ public sealed class UnifiedSourceContractionPostgresTests
 
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(25, upgraded.FromVersion);
-        Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(30, upgraded.ToVersion);
         Assert.Equal(before, await UnifiedAsync(db));
         Assert.Equal(0, await db.Database.SqlQuery<int>($"""
             SELECT count(*)::int AS "Value" FROM information_schema.columns WHERE table_schema='public' AND table_name='mistake_item'
@@ -117,7 +117,7 @@ public sealed class UnifiedSourceContractionPostgresTests
         Assert.Contains("unified_mistake_contraction_irreversible", exception.ToString());
         var upgraded = await DatabaseInitializer.UpgradeToTargetAsync(db);
         Assert.Equal(26, upgraded.FromVersion);
-        Assert.Equal(29, upgraded.ToVersion);
+        Assert.Equal(30, upgraded.ToVersion);
     }
 
     private static void AssertJson(string expected, string? actual)

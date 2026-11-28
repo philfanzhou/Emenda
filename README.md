@@ -71,6 +71,10 @@ extraction contract is [emenda-extraction-v3](docs/Integration/emenda-extraction
 both are served anonymously under `GET /contracts/{version}.json`. Earlier published
 documents (`mistake-http-v1` through `v8`, `emenda-intake-v1`, `emenda-extraction-v1` and `v2`) stay available as historical versions.
 
+### Worksheet collection (schema v30)
+
+A learner can withdraw a pending mistake or a voluntarily collected correct answer while retaining the question in the recognized total. The database permits releasing its verified item binding during withdrawal. A subsequent collection binds a fresh item to the same question. See the [correction contract](docs/Integration/extraction-corrections-v2.md).
+
 ### Original answers and review (schema v29)
 
 Schema v29 drops the practice table and its attachment routes. An original answer stays in

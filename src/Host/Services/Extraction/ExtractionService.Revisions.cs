@@ -72,7 +72,17 @@ public sealed partial class ExtractionService
                 drafts = drafts.Select(q => q is not null && q.Grade is null && priorGrades.GetValueOrDefault(q.Id) is { } grade
                     ? q with { Grade = grade } : q!).ToList();
             }
+            if (prior is not null && drafts is not null && !questionId.HasValue)
+            {
+                // Whole-set clients cannot restate withdrawn cards from the detail response.
+                var supplied = drafts.Where(q => q is not null).Select(q => q.Id).ToHashSet();
+                drafts = drafts.Concat(prior.Questions.Where(q => q.Question.Dismissed && !supplied.Contains(q.Question.Id))
+                    .Select(q => q.Question)).ToList();
+            }
             Rules.ValidateQuestions(drafts, Sources(initial), automatic: false);
+            var dismissed = prior?.Questions.Where(q => q.Question.Dismissed).Select(q => q.Question.Id).ToHashSet();
+            if (drafts.Any(q => q.Dismissed && dismissed?.Contains(q.Id) != true))
+                throw new ExtractionException("invalid_questions");
         }
         var snapshot = await BuildSnapshotAsync(id, request.RequestKey, drafts, Sources(initial), prior, ct);
         await using var publish = Open();
@@ -148,6 +158,8 @@ public sealed partial class ExtractionService
             }
             else if (item is not null && (changed || reopened))
             {
+                if (item.ReviewStatus == (int)ReviewStatus.Confirmed && !collected)
+                    throw new ExtractionException("review_conflict", 409);
                 RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
                 item.Subject = proposed.Question.Subject;
                 item.Grade = proposed.Question.Grade ?? 0;
@@ -168,6 +180,8 @@ public sealed partial class ExtractionService
             if (removed.ItemId is not { } id) continue;
             var item = items.GetValueOrDefault(id);
             if (item is null) continue;
+            if (item.ReviewStatus == (int)ReviewStatus.Confirmed)
+                throw new ExtractionException("review_conflict", 409);
             RetainBeforeCorrection(db, item, actor, reason, job.Version + 1, now);
             item.SourceRegions = [];
             item.ReviewStatus = (int)ReviewStatus.Rejected;

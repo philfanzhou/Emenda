@@ -358,3 +358,7 @@ expects `reanalyze_job` only from v3 to v27 and `product_intake_request` only fr
 ## Schema v29
 
 The forward-only migration retires `mistake_practice` and its image-reference trigger. The item trigger continues to protect original images, supplements and crops referenced by mistake items.
+
+## Schema v30
+
+The extraction question keeps its ID when a pending item is withdrawn. The retention trigger allows the withdrawal transaction to clear exactly the verified item binding after the item is deleted. Other binding and identity edits remain guarded. Recollection creates a new pending item on the same recognized question. Existing tasks require no data rewrite.

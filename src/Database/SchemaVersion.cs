@@ -13,6 +13,7 @@ internal readonly record struct SchemaVersion(int Number)
     public bool Extractions => Number >= 16;
     public bool Corrections => Number >= 20;
     public bool Deletion => Number >= 22;
+    public bool ReleasableQuestionBinding => Number >= 30;
     public bool RetiredPractice => Number >= 29;
     public bool StorageReferences => StorageReferenceRemovalSchema.Present(Number);
     public bool UnifiedSourceTrigger => Number is >= 24 and < 26;
