@@ -126,7 +126,8 @@ public sealed partial class ExtractionService
                 Payload.HashJson(proposed.Question with { QuestionNumber = null }) || !row.Active;
             row.Active = true;
             MistakeItemEntity? item = row.ItemId is { } itemId ? items.GetValueOrDefault(itemId) : null;
-            if (proposed.Question.Outcome == "incorrect" && row.ItemId is null)
+            var collected = Rules.Collected(proposed.Question);
+            if (collected && row.ItemId is null)
             {
                 item = new() { Id = Guid.NewGuid(), StudentId = job.StudentId, Subject = proposed.Question.Subject,
                     Grade = proposed.Question.Grade ?? 0, SourceUploadId = $"extract:{job.Id:N}", QuestionId = row.Id.ToString("D"),
@@ -146,8 +147,8 @@ public sealed partial class ExtractionService
                 item.Subject = proposed.Question.Subject;
                 item.Grade = proposed.Question.Grade ?? 0;
                 item.SourceRegions = proposed.Images.Select(i => new SourceRegionEntry { SourceImagePath = i.Path }).ToList();
-                item.ReviewStatus = proposed.Question.Outcome == "incorrect" ? (int)ReviewStatus.PendingReview : (int)ReviewStatus.Rejected;
-                MistakeSource.SetAnalysis(item, proposed.Question.Outcome == "incorrect"
+                item.ReviewStatus = collected ? (int)ReviewStatus.PendingReview : (int)ReviewStatus.Rejected;
+                MistakeSource.SetAnalysis(item, collected
                     ? SerializeAnalysis(proposed.Question, job.Version + 1) : null);
                 item.ReviewerId = null;
                 item.ReviewedAt = null;

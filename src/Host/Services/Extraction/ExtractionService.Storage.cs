@@ -117,13 +117,13 @@ public sealed partial class ExtractionService
         List<ExtractionQuestionDraft> drafts, List<ExtractionSource> sources, ExtractionSnapshot? prior, CancellationToken ct)
     {
         var result = new List<ExtractionQuestionView>();
-        var reusable = (prior?.Questions ?? []).Where(q => !q.ItemDeleted && q.Question.Outcome == "incorrect")
+        var reusable = (prior?.Questions ?? []).Where(q => !q.ItemDeleted && Rules.Collected(q.Question))
             .SelectMany(q => q.Images).GroupBy(i => i.Region).ToDictionary(g => g.Key, g => g.First());
         var previous = (prior?.Questions ?? []).ToDictionary(q => q.Question.Id);
         foreach (var draft in drafts)
         {
             var old = previous.GetValueOrDefault(draft.Id);
-            if (draft.Outcome != "incorrect" || old?.ItemDeleted == true)
+            if (!Rules.Collected(draft) || old?.ItemDeleted == true)
             {
                 result.Add(new(draft, old?.ItemId, old?.ItemDeleted ?? false, []));
                 continue;

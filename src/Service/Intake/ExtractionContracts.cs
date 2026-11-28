@@ -24,6 +24,12 @@ public sealed record ExtractionQuestionDraft
     public string Outcome { get; init; } = "unknown";
     public string Evidence { get; init; } = "";
     public List<ExtractionRegion> Regions { get; init; } = [];
+    /// <summary>
+    /// The user asked to collect this correctly answered question. Only valid with outcome <c>correct</c>; the
+    /// judgment stays as recognized. Omitted when false so existing snapshots and request hashes keep their bytes.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IncludedByRequest { get; init; }
 }
 public sealed record ExtractionCrop(string Path, int Width, int Height, Guid SourceId, ExtractionRegion Region,
     long Length, string Sha256);

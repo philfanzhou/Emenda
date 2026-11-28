@@ -92,7 +92,7 @@ public sealed partial class ExtractionService
         var target = snapshot.Questions.SingleOrDefault(q => q.Question.Id == questionId)
             ?? throw new ExtractionException("not_found", 404);
         if (target.ItemDeleted || target.ItemId != itemId) throw new ExtractionException("item_binding_conflict", 409);
-        if (target.Question.Outcome != "incorrect") throw new ExtractionException("review_conflict", 409);
+        if (!Rules.Collected(target.Question)) throw new ExtractionException("review_conflict", 409);
         var item = (await db.MistakeItems.FromSqlInterpolated($"SELECT * FROM mistake_item WHERE id = {itemId} FOR UPDATE")
             .AsNoTracking().ToListAsync(ct)).SingleOrDefault();
         if (item is null || item.StudentId != job.StudentId || item.SourceUploadId != $"extract:{job.Id:N}"

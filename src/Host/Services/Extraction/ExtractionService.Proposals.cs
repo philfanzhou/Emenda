@@ -96,8 +96,10 @@ public sealed partial class ExtractionService
             var analyzed = await AnalyzeRevisionAsync(grade, sources, context, request.Instruction, request.Scope, request.Regions, ct);
             var allowed = context.Select(q => q.Id).ToHashSet();
             if (analyzed.Questions.Any(q => q.Id != Guid.Empty && !allowed.Contains(q.Id))) throw new ExtractionException("foreign_question", 502);
-            var proposed = analyzed.Questions.Select((q, i) => q.Id == Guid.Empty
-                ? q with { Id = Payload.Identity($"{proposalId:N}:question:{i}") } : q).ToList();
+            // A request to collect applies to a correct question only; elsewhere the flag is meaningless and dropped.
+            var proposed = analyzed.Questions.Select((q, i) => (q.Id == Guid.Empty
+                ? q with { Id = Payload.Identity($"{proposalId:N}:question:{i}") } : q) is var draft && draft.Outcome != "correct"
+                ? draft with { IncludedByRequest = false } : draft).ToList();
             if (request.Scope == "questions" && proposed.Any(q => !subjects.Contains(q.Subject)))
                 throw new ExtractionException("proposal_scope_conflict", 502);
             Rules.ValidateQuestions(proposed, sources, automatic: false);

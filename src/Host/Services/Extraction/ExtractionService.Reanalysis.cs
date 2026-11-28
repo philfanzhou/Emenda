@@ -31,7 +31,7 @@ public sealed partial class ExtractionService
         var hash = Payload.HashJson(new { operation = "reanalyze", request });
         ExtractionJobEntity job;
         ExtractionSnapshot snapshot;
-        HashSet<Guid> protectedIds;
+        HashSet<Guid> protectedIds, pendingItems;
         await using (var jobLock = await SerializeJobAsync(id, ct))
         await using (var db = Open())
         {
@@ -43,11 +43,15 @@ public sealed partial class ExtractionService
             if (job.Status != "Succeeded") throw new ExtractionException("processing_in_progress", 409);
             snapshot = await CurrentSnapshotAsync(db, job, ct);
             var itemIds = snapshot.Questions.Where(q => q.ItemId.HasValue).Select(q => q.ItemId!.Value).ToArray();
-            var pendingItems = (await db.MistakeItems.AsNoTracking()
-                .Where(i => itemIds.Contains(i.Id) && i.ReviewStatus == (int)ReviewStatus.PendingReview)
-                .Select(i => i.Id).ToListAsync(ct)).ToHashSet();
+            var items = await db.MistakeItems.AsNoTracking().Where(i => itemIds.Contains(i.Id))
+                .Select(i => new { i.Id, i.ReviewStatus, i.ReviewedAt }).ToListAsync(ct);
+            pendingItems = items.Where(i => i.ReviewStatus == (int)ReviewStatus.PendingReview).Select(i => i.Id).ToHashSet();
+            // Publication rejects the item of a question that stopped being collected without a reviewer; that item
+            // is reused if the question is collected again. A reviewer's decision is kept.
+            var editable = items.Where(i => pendingItems.Contains(i.Id)
+                || i.ReviewStatus == (int)ReviewStatus.Rejected && i.ReviewedAt is null).Select(i => i.Id).ToHashSet();
             // Reviewed (confirmed or rejected) and deleted items, and subjects the caller may not edit, never change here.
-            protectedIds = snapshot.Questions.Where(q => q.ItemDeleted || q.ItemId is { } item && !pendingItems.Contains(item)
+            protectedIds = snapshot.Questions.Where(q => q.ItemDeleted || q.ItemId is { } item && !editable.Contains(item)
                 || !request.AllowedSubjects.Contains(q.Question.Subject)).Select(q => q.Question.Id).ToHashSet();
         }
         // The model runs without the job lock; publication rechecks the version and every pending item it changes.
@@ -59,7 +63,7 @@ public sealed partial class ExtractionService
             analyzed.Questions, sources, i => Payload.Identity($"reanalyze:{id:N}:{key:N}:{i}"));
         if (merged.Select(Payload.HashJson).SequenceEqual(snapshot.Questions.Select(q => Payload.HashJson(q.Question))))
             return await RecordUnchangedAsync(access, job, request, hash, ct);
-        var changedItems = snapshot.Questions.Where(q => q.ItemId.HasValue && !q.ItemDeleted
+        var changedItems = snapshot.Questions.Where(q => q.ItemId is { } item && pendingItems.Contains(item)
                 && merged.Single(m => m.Id == q.Question.Id) is var next && Payload.HashJson(next) != Payload.HashJson(q.Question))
             .Select(q => (q.Question.Id, q.ItemId!.Value)).ToList();
         ExtractionJobView result;

@@ -422,6 +422,43 @@ public sealed class ExtractionQuestionRevisionHttpPostgresTests
     }
 
     [Fact]
+    public async Task CorrectQuestionCollectedOnRequest_IsListedAndConfirmed_ButStillCountsAsCorrect()
+    {
+        await using var database = await PostgresTestDatabase.CreateAsync();
+        using var factory = new ExtractionHostFixture(database.Connection);
+        using var caller = Caller(factory);
+        var job = await SeedAsync(factory);
+        var math = job.Questions[0];
+        var root = $"/api/intake/extractions/{job.Id}";
+        var correct = math.Question with { Outcome = "correct", StudentAnswer = "2", Evidence = "Visible answer 2 matches" };
+
+        using var invalid = await caller.PutAsJsonAsync(root + $"/questions/{math.Question.Id}",
+            new ExtractionQuestionRevisionRequest(Guid.NewGuid(), job.Version, "收录错题", math.Question with { IncludedByRequest = true }));
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        var collected = await DataAsync<ExtractionQuestionRevisionView>(await caller.PutAsJsonAsync(root + $"/questions/{math.Question.Id}",
+            new ExtractionQuestionRevisionRequest(Guid.NewGuid(), job.Version, "做对了也收录", correct with { IncludedByRequest = true })));
+
+        Assert.Equal(math.ItemId, collected.Question!.ItemId);
+        var raw = JsonDocument.Parse(await (await caller.GetAsync(root)).Content.ReadAsStringAsync()).RootElement.GetProperty("data");
+        Assert.True(raw.GetProperty("questions")[0].GetProperty("question").GetProperty("includedByRequest").GetBoolean());
+        Assert.False(raw.GetProperty("questions")[1].GetProperty("question").TryGetProperty("includedByRequest", out _));
+        var summary = await DataAsync<JsonElement>(await caller.GetAsync(root + "/summary"));
+        var group = summary.GetProperty("groups").EnumerateArray().Single(g => g.GetProperty("summary").GetProperty("subject").GetInt32() == 2);
+        Assert.Equal((1, 0), (group.GetProperty("summary").GetProperty("total").GetInt32(), group.GetProperty("summary").GetProperty("incorrect").GetInt32()));
+        var listed = Assert.Single(group.GetProperty("mistakes").EnumerateArray());
+        Assert.True(listed.GetProperty("includedByRequest").GetBoolean());
+        Assert.Single(listed.GetProperty("images").EnumerateArray());
+        var other = summary.GetProperty("groups").EnumerateArray().Single(g => g.GetProperty("summary").GetProperty("subject").GetInt32() == 3);
+        Assert.False(Assert.Single(other.GetProperty("mistakes").EnumerateArray()).TryGetProperty("includedByRequest", out _));
+
+        using var confirmed = await caller.PostAsJsonAsync(root + $"/questions/{math.Question.Id}/review",
+            new ExtractionReviewRequest(collected.Version, math.ItemId!.Value, (int)ReviewStatus.Confirmed, "teacher", null, null));
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        await using var context = database.CreateContext();
+        Assert.Equal((int)ReviewStatus.Confirmed, (await context.MistakeItems.SingleAsync(i => i.Id == math.ItemId)).ReviewStatus);
+    }
+
+    [Fact]
     public async Task ReanalyzeRoute_ReturnsTheReceipt_AndRejectsAPossibleDuplicateWithoutWriting()
     {
         await using var database = await PostgresTestDatabase.CreateAsync();

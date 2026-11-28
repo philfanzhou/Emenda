@@ -166,6 +166,7 @@ public sealed class ExtractionReanalysisPostgresTests
     public static TheoryData<string, int, string> RejectedOutputs => new()
     {
         { "withdraw", 422, "reanalysis_out_of_scope" },
+        { "collect-unknown", 422, "reanalysis_out_of_scope" },
         { "subject", 422, "reanalysis_out_of_scope" },
         { "new-subject", 422, "reanalysis_out_of_scope" },
         { "duplicate", 422, "clarification_required" },
@@ -190,6 +191,8 @@ public sealed class ExtractionReanalysisPostgresTests
         {
             // "第 12 题其实是对的" withdraws a pending mistake: that is "不是错题", not reanalysis.
             "withdraw" => [context[0] with { Outcome = "correct" }],
+            // Only a verified correct answer is collected on request.
+            "collect-unknown" => [context[1] with { Outcome = "unknown", IncludedByRequest = true }],
             "subject" => [context[0] with { Subject = 3 }],
             "new-subject" => [Question("15", page1, .8, 1) with { Id = Guid.Empty, Subject = 3 }],
             // Question 14 found again as a new question over most of its region.
@@ -214,6 +217,104 @@ public sealed class ExtractionReanalysisPostgresTests
         await using var context = db.CreateContext();
         Assert.Equal(2, await context.MistakeItems.CountAsync(i => i.ReviewStatus == (int)ReviewStatus.PendingReview));
         Assert.False(await context.ExtractionObjects.AnyAsync(o => o.Path.Contains(key.ToString("N"))));
+    }
+
+    [Fact]
+    public async Task CorrectQuestionCollectedOnRequest_KeepsItsJudgment_GetsCropsAndAPendingItem_AndStaysCollected()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer();
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        var q14 = job.Questions[1];
+        Assert.Null(q14.ItemId);
+        analyzer.Revise = context => [context[1] with { IncludedByRequest = true }];
+
+        var collected = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), job.Version, "第 14 题做对了，我也想收录", Math));
+
+        Assert.Equal(job.Version + 1, collected.Version);
+        var read = await service.GetAsync(Caller, job.Id);
+        var view = read.Questions[1];
+        Assert.Equal((q14.Question.Id, "correct", true), (view.Question.Id, view.Question.Outcome, view.Question.IncludedByRequest));
+        Assert.Equal(q14.Question.Evidence, view.Question.Evidence);
+        Assert.NotNull(view.ItemId);
+        Assert.True(await db.Files.ObjectExistsAsync(Assert.Single(view.Images).Path));
+        var json = JsonSerializer.Serialize(read.Questions, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(json, "\"includedByRequest\":true"));
+        Assert.DoesNotContain("\"includedByRequest\":false", json);
+        await using (var context = db.CreateContext())
+        {
+            var item = await context.MistakeItems.SingleAsync(i => i.Id == view.ItemId);
+            Assert.Equal((int)ReviewStatus.PendingReview, item.ReviewStatus);
+            Assert.Equal(view.Images.Select(i => i.Path), item.SourceRegions.Select(r => r.SourceImagePath));
+            using var analysis = JsonDocument.Parse(MistakeSource.Analysis(item)!);
+            Assert.Equal(q14.Question.Evidence, analysis.RootElement.GetProperty("evidence").GetString());
+        }
+
+        // A later hint that restates question 14 without the request keeps it collected.
+        analyzer.Revise = context => [context[1] with { IncludedByRequest = false, Explanation = "Restated" }];
+        var restated = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), collected.Version, "第 14 题的解析再写清楚一点", Math));
+        var kept = (await service.GetAsync(Caller, job.Id)).Questions[1];
+        Assert.Equal((restated.Version, true, view.ItemId, "Restated"),
+            (collected.Version + 1, kept.Question.IncludedByRequest, kept.ItemId, kept.Question.Explanation));
+
+        // An adjustment keeps its judgment and the request; "不是错题" does not apply to a correct question.
+        analyzer.Revise = context => [context[0] with { IncludedByRequest = false, Regions = [context[0].Regions[0] with { Y1 = .74 }] }];
+        var adjusted = await service.AdjustQuestionAsync(Caller, job.Id, q14.Question.Id,
+            new(Guid.NewGuid(), restated.Version, view.ItemId!.Value, "裁小一点"));
+        Assert.True(adjusted.Question!.Question.IncludedByRequest);
+        analyzer.Revise = context => [context[0] with { Outcome = "incorrect" }];
+        Assert.Equal((422, "adjustment_out_of_scope"), await Code(() => service.AdjustQuestionAsync(Caller, job.Id, q14.Question.Id,
+            new(Guid.NewGuid(), adjusted.Version, view.ItemId!.Value, "判错了"))));
+        Assert.Equal((409, "review_conflict"), await Code(() => service.RemoveMistakeAsync(Caller, job.Id, q14.Question.Id,
+            new(adjusted.Version, view.ItemId!.Value, (int)ReviewStatus.PendingReview))));
+    }
+
+    [Fact]
+    public async Task QuestionUncollectedByAPut_IsCollectedAgainWithItsOwnItem_AndARequestOnAnIncorrectOneIsDropped()
+    {
+        await using var db = await PostgresTestDatabase.CreateAsync();
+        var analyzer = new Analyzer();
+        var service = Service(db, analyzer);
+        var job = await Completed(service);
+        var q12 = job.Questions[0];
+        // Marking question 12 correct rejects its item without a reviewer.
+        var corrected = await service.ReviseQuestionAsync(Caller, job.Id, q12.Question.Id, new(Guid.NewGuid(), job.Version, "判对了",
+            q12.Question with { Outcome = "correct", StudentAnswer = "2", Evidence = "Visible answer 2 matches" }));
+        Assert.Empty(corrected.Question!.Images);
+        var page1 = job.Sources[0].Id;
+        analyzer.Revise = context => [context[0] with { IncludedByRequest = true },
+            Question("15", page1, .8, 1) with { Id = Guid.Empty, IncludedByRequest = true }];
+
+        var receipt = await service.ReanalyzeAsync(Caller, job.Id, new(Guid.NewGuid(), corrected.Version, "第 12 题也收录，还有第 15 题", Math));
+
+        Assert.Equal(corrected.Version + 1, receipt.Version);
+        var read = await service.GetAsync(Caller, job.Id);
+        var again = read.Questions[0];
+        Assert.Equal((q12.ItemId, "correct", true), (again.ItemId, again.Question.Outcome, again.Question.IncludedByRequest));
+        Assert.Single(again.Images);
+        var q15 = read.Questions.Single(q => q.Question.QuestionNumber == "15");
+        Assert.Equal(("incorrect", false), (q15.Question.Outcome, q15.Question.IncludedByRequest));
+        await using var context = db.CreateContext();
+        Assert.Equal((int)ReviewStatus.PendingReview, (await context.MistakeItems.SingleAsync(i => i.Id == q12.ItemId)).ReviewStatus);
+
+        // A reviewer's rejection is a decision this command keeps.
+        await using (var reject = db.CreateContext())
+        {
+            var item = await reject.MistakeItems.SingleAsync(i => i.Id == q12.ItemId);
+            item.ReviewStatus = (int)ReviewStatus.Rejected;
+            item.ReviewedAt = DateTimeOffset.UtcNow;
+            await reject.SaveChangesAsync();
+        }
+        analyzer.Revise = context => [context[0] with { Explanation = "Teacher rejected; model restates" }];
+        Assert.Equal(receipt.Version, (await service.ReanalyzeAsync(Caller, job.Id,
+            new(Guid.NewGuid(), receipt.Version, "第 12 题再看看", Math))).Version);
+    }
+
+    private static async Task<(int, string)> Code(Func<Task> call)
+    {
+        var error = await Assert.ThrowsAsync<ExtractionException>(call);
+        return (error.Status, error.Code);
     }
 
     [Theory]
